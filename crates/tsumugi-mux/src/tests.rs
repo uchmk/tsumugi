@@ -155,6 +155,33 @@ fn an_osc_9_marks_a_session_waiting() {
     pane.kill();
 }
 
+/// A split puts the new session beside the old in one tab; ending it gives
+/// the room back, and a shape naming a session that is gone loses it.
+#[test]
+fn splits_live_in_the_server() {
+    use crate::{Dir, Node, Place};
+    let at = address();
+    let _srv = server::start(&at).expect("the server starts");
+    let c = Client::connect(&at, || {}).expect("a client connects");
+    let size = Size::new(80, 24);
+    let a = c.spawn(std::env::temp_dir(), None, size, (8, 16)).expect("a starts");
+    let b = c.spawn_at(std::env::temp_dir(), None, size, (8, 16), Place::Split { beside: a.id(), dir: Dir::Right }).expect("b starts");
+    c.list().unwrap();
+    let ws = c.workspaces();
+    assert_eq!(ws.len(), 1, "one tab: {ws:?}");
+    assert_eq!((ws[0].layout.leaves(), ws[0].focus), (vec![a.id(), b.id()], b.id()), "b beside a, with the keys");
+
+    // A shape that still names b after b has gone keeps a alone.
+    let stale = ws[0].layout.clone();
+    b.kill();
+    c.list().unwrap();
+    c.set_layout(ws[0].id, stale, b.id());
+    c.list().unwrap();
+    let ws = c.workspaces();
+    assert_eq!((ws[0].layout.clone(), ws[0].focus), (Node::Leaf(a.id()), a.id()));
+    a.kill();
+}
+
 /// A second server at the same address refuses to start rather than
 /// taking the first one's clients.
 #[test]

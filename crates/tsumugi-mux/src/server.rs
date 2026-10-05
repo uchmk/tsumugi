@@ -17,7 +17,7 @@ use crossbeam_channel::{Receiver, Sender};
 use tsumugi_pane::{Pane, Terminal};
 
 use crate::frame;
-use crate::proto::{Info, ScrollBy, SessionId, State, ToClient, ToServer, VERSION};
+use crate::proto::{Info, Place, ScrollBy, SessionId, State, ToClient, ToServer, Workspace, WorkspaceId, VERSION};
 use crate::transport::{Address, Conn, Listener};
 
 type ClientId = u64;
@@ -34,6 +34,8 @@ struct Session {
 
 struct Shared {
     sessions: Mutex<BTreeMap<SessionId, Session>>,
+    /// The tabs and their splits. Locked after `sessions` when both are.
+    workspaces: Mutex<BTreeMap<WorkspaceId, Workspace>>,
     clients: Mutex<BTreeMap<ClientId, Sender<ToClient>>>,
     next: AtomicU64,
     /// A session to look at: its shell said something, or a client asked.
@@ -83,6 +85,7 @@ pub fn start(at: &Address) -> io::Result<ServerHandle> {
     let (done_tx, done_rx) = crossbeam_channel::bounded(1);
     let shared = Arc::new(Shared {
         sessions: Mutex::new(BTreeMap::new()),
+        workspaces: Mutex::new(BTreeMap::new()),
         clients: Mutex::new(BTreeMap::new()),
         next: AtomicU64::new(1),
         dirty: dirty_tx,
@@ -150,9 +153,20 @@ fn handle(shared: &Arc<Shared>, client: ClientId, tx: &Sender<ToClient>, msg: To
     match msg {
         ToServer::Hello { .. } => {}
         ToServer::List => {
+            let _ = tx.send(ToClient::Workspaces(lock(&shared.workspaces).values().cloned().collect()));
             let _ = tx.send(ToClient::Sessions(sessions.values().map(|s| s.info.clone()).collect()));
         }
-        ToServer::Spawn { cwd, shell, size, cell } => {
+        ToServer::SetLayout { id, layout, focus } => {
+            // Only panes that are still sessions: the window may have sent
+            // this before it heard that one ended.
+            let mut workspaces = lock(&shared.workspaces);
+            if let (Some(w), Some(layout)) = (workspaces.get_mut(&id), layout.retain(&|s| sessions.contains_key(s))) {
+                w.focus = if layout.contains(&focus) { focus } else { layout.leaves()[0] };
+                w.layout = layout;
+            }
+            broadcast_workspaces(shared, &workspaces);
+        }
+        ToServer::Spawn { cwd, shell, size, cell, place } => {
             let id = shared.next.fetch_add(1, Ordering::Relaxed);
             let command = shell.as_ref().map_or_else(tsumugi_pane::default_program, |(p, _)| p.clone());
             let dirty = shared.dirty.clone();
@@ -171,6 +185,10 @@ fn handle(shared: &Arc<Shared>, client: ClientId, tx: &Sender<ToClient>, msg: To
                     term.set_colors([0xc8, 0xcd, 0xd8], [0x1b, 0x1e, 0x24]);
                     let info = Info { id, cwd, title: String::new(), command, state: State::Running, note: String::new(), since_ms: now_ms() };
                     sessions.insert(id, Session { term, info, notice: None, watchers: BTreeSet::from([client]) });
+                    let mut workspaces = lock(&shared.workspaces);
+                    place_session(shared, &mut workspaces, id, place);
+                    broadcast_workspaces(shared, &workspaces);
+                    drop(workspaces);
                     let _ = tx.send(ToClient::Spawned { id });
                     broadcast(shared, &sessions);
                     let _ = shared.dirty.send(id);
@@ -264,11 +282,45 @@ fn broadcast(shared: &Shared, sessions: &BTreeMap<SessionId, Session>) {
     }
 }
 
+/// Put a new session in the workspace it is meant for, splitting the pane
+/// it goes beside, or in a workspace of its own; it gets the keys.
+fn place_session(shared: &Shared, workspaces: &mut BTreeMap<WorkspaceId, Workspace>, id: SessionId, place: Place) {
+    if let Place::Split { beside, dir } = place {
+        if let Some(w) = workspaces.values_mut().find(|w| w.layout.contains(&beside)) {
+            w.layout.split(&beside, dir, id);
+            w.focus = id;
+            return;
+        }
+    }
+    let ws = shared.next.fetch_add(1, Ordering::Relaxed);
+    workspaces.insert(ws, Workspace { id: ws, layout: tsumugi_layout::Node::Leaf(id), focus: id });
+}
+
+/// Tell every client the workspaces as they are now.
+fn broadcast_workspaces(shared: &Shared, workspaces: &BTreeMap<WorkspaceId, Workspace>) {
+    let list: Vec<Workspace> = workspaces.values().cloned().collect();
+    for tx in lock(&shared.clients).values() {
+        let _ = tx.send(ToClient::Workspaces(list.clone()));
+    }
+}
+
 /// A session is over: tell its watchers and every sidebar, then let the
 /// session go -- outside the lock, since ending a shell can take a moment --
 /// and stop the server after the last.
 fn end(shared: &Shared, mut sessions: std::sync::MutexGuard<'_, BTreeMap<SessionId, Session>>, id: SessionId) {
     let Some(s) = sessions.remove(&id) else { return };
+    // Its pane goes, and its sibling takes the room; a tab with no pane left goes too.
+    let mut workspaces = lock(&shared.workspaces);
+    let holder = workspaces.values().find(|w| w.layout.contains(&id)).map(|w| w.id);
+    if let Some(wid) = holder {
+        let w = workspaces.remove(&wid).expect("just found");
+        if let Some(layout) = w.layout.remove(&id) {
+            let focus = if w.focus == id { layout.leaves()[0] } else { w.focus };
+            workspaces.insert(wid, Workspace { id: wid, layout, focus });
+        }
+    }
+    broadcast_workspaces(shared, &workspaces);
+    drop(workspaces);
     let list: Vec<Info> = sessions.values().map(|s| s.info.clone()).collect();
     let empty = sessions.is_empty();
     drop(sessions);

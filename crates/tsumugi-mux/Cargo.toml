@@ -9,6 +9,7 @@ repository.workspace = true
 
 [dependencies]
 tsumugi-pane = { path = "../tsumugi-pane", features = ["serde"] }
+tsumugi-layout = { path = "../tsumugi-layout", features = ["serde"] }
 serde = { version = "1", features = ["derive"] }
 # 1.x: the format filer's tree already builds (through syntect). Pure Rust.
 bincode = "1.3"

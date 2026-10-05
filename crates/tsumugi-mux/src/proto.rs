@@ -7,9 +7,31 @@ use tsumugi_pane::{Screen, Size};
 
 /// Bumped whenever a message changes shape: a client and a server that
 /// disagree say so at `Hello` instead of misreading each other.
-pub const VERSION: u32 = 2;
+pub const VERSION: u32 = 3;
 
 pub type SessionId = u64;
+pub type WorkspaceId = u64;
+
+pub use tsumugi_layout::{Dir, Node};
+
+/// A tab of the sidebar: panes, each a session, split in a tree. The server
+/// keeps it, so closing the window loses no split.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Workspace {
+    pub id: WorkspaceId,
+    pub layout: Node<SessionId>,
+    /// The pane that has the keys.
+    pub focus: SessionId,
+}
+
+/// Where a new session goes.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Place {
+    /// A workspace of its own: a new tab.
+    NewWorkspace,
+    /// Beside a session, splitting its pane.
+    Split { beside: SessionId, dir: Dir },
+}
 
 /// What a session is doing, as its mark in the sidebar shows it
 /// (docs/v1-scope.md 2, QUESTIONS.md Q2).
@@ -88,7 +110,7 @@ pub enum ToServer {
     List,
     /// Start a shell (`None`: the default one) in `cwd`; answered with
     /// `Spawned`, and the session is attached.
-    Spawn { cwd: PathBuf, shell: Option<(String, Vec<String>)>, size: Size, cell: (u16, u16) },
+    Spawn { cwd: PathBuf, shell: Option<(String, Vec<String>)>, size: Size, cell: (u16, u16), place: Place },
     /// Send this session's screen whenever it changes, starting now.
     Attach { id: SessionId },
     Detach { id: SessionId },
@@ -103,6 +125,8 @@ pub enum ToServer {
     Copy { id: SessionId },
     /// End the session's shell.
     Kill { id: SessionId },
+    /// A workspace's new shape or focus, after a drag, a click or a key.
+    SetLayout { id: WorkspaceId, layout: Node<SessionId>, focus: SessionId },
     /// An agent's word on its session (`tsumugi notify`).
     Notify { id: SessionId, state: State, note: String },
 }
@@ -111,6 +135,7 @@ pub enum ToServer {
 pub enum ToClient {
     Hello { version: u32 },
     Sessions(Vec<Info>),
+    Workspaces(Vec<Workspace>),
     Spawned { id: SessionId },
     /// The visible screen of an attached session, and what goes with it.
     Screen { id: SessionId, screen: Screen, scrolled_back: usize, win32_input: bool, title: String },

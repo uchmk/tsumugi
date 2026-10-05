@@ -3212,29 +3212,38 @@ dependencies = [
 
 [[package]]
 name = "tsumugi"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "eframe",
  "egui",
+ "tsumugi-layout",
  "tsumugi-mux",
  "tsumugi-pane",
  "windows",
 ]
 
 [[package]]
+name = "tsumugi-layout"
+version = "0.4.0"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "tsumugi-mux"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "bincode",
  "crossbeam-channel",
  "serde",
+ "tsumugi-layout",
  "tsumugi-pane",
  "windows",
 ]
 
 [[package]]
 name = "tsumugi-pane"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "alacritty_terminal",
  "crossbeam-channel",

@@ -12,7 +12,7 @@ use tsumugi_pane::alacritty_terminal::grid::Scroll;
 use tsumugi_pane::{Pane, Screen, Size};
 
 use crate::frame;
-use crate::proto::{self, Info, ScrollBy, SessionId, ToClient, ToServer, VERSION};
+use crate::proto::{self, Info, Node, Place, ScrollBy, SessionId, ToClient, ToServer, Workspace, WorkspaceId, VERSION};
 use crate::transport::{self, Address};
 
 /// How long a request that waits for its answer (`list`, `spawn`) waits.
@@ -34,6 +34,7 @@ struct State {
     sessions: Option<Vec<Info>>,
     /// The latest list the server sent, kept for a sidebar.
     latest: Vec<Info>,
+    workspaces: Vec<Workspace>,
     spawned: VecDeque<Result<SessionId, String>>,
     clipboard: Vec<String>,
     /// The connection is gone (the server stopped, or never answered).
@@ -121,7 +122,19 @@ impl Client {
 
     /// Start a shell in a new session and attach to it.
     pub fn spawn(&self, cwd: PathBuf, shell: Option<(String, Vec<String>)>, size: Size, cell: (u16, u16)) -> io::Result<RemotePane> {
-        self.0.send(ToServer::Spawn { cwd, shell, size, cell });
+        self.spawn_at(cwd, shell, size, cell, Place::NewWorkspace)
+    }
+
+    /// [`spawn`](Self::spawn), splitting a pane or in a tab of its own.
+    pub fn spawn_at(
+        &self,
+        cwd: PathBuf,
+        shell: Option<(String, Vec<String>)>,
+        size: Size,
+        cell: (u16, u16),
+        place: Place,
+    ) -> io::Result<RemotePane> {
+        self.0.send(ToServer::Spawn { cwd, shell, size, cell, place });
         let id = self.0.wait(|st| st.spawned.pop_front())?.map_err(io::Error::other)?;
         Ok(self.pane(id))
     }
@@ -144,6 +157,16 @@ impl Client {
         self.list().map(drop)
     }
 
+    /// The tabs and their splits, as the server last told them.
+    pub fn workspaces(&self) -> Vec<Workspace> {
+        self.0.lock().workspaces.clone()
+    }
+
+    /// Tell the server a workspace's new shape or focus.
+    pub fn set_layout(&self, id: WorkspaceId, layout: Node<SessionId>, focus: SessionId) {
+        self.0.send(ToServer::SetLayout { id, layout, focus });
+    }
+
     /// The sessions as the server last told them, without asking.
     pub fn sessions(&self) -> Vec<Info> {
         self.0.lock().latest.clone()
@@ -164,6 +187,7 @@ fn receive(inner: &Inner, msg: ToClient) {
     let mut st = inner.lock();
     match msg {
         ToClient::Hello { .. } => {}
+        ToClient::Workspaces(list) => st.workspaces = list,
         ToClient::Sessions(list) => {
             st.latest = list.clone();
             st.sessions = Some(list);
