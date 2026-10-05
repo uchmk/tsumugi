@@ -22,7 +22,7 @@ filer は git の依存（`rev` で固定）で読み、tsumugi の窓（v0.1.0�
 | 段 | 中身 | 終わりの条件 | 状態 |
 | --- | --- | --- | --- |
 | 0 | workspace の骨組み、`crates/tsumugi-pane`（空）、`scripts/verify.sh`、CI | verify が緑 | 済み（v0.0.1） |
-| 1 | egui に依らない層を移す: キーの変換（`keys`）、OSC の読み取り（`osc`）、シェルの選び方と引用（`shell`）、PTY のログ（`log`）、`Terminal` と格子の読み出し（`terminal`）、OS の処理（`sys`） | filer の `terminal.rs` のテストが全部クレートで通る | |
+| 1 | egui に依らない層を移す: キーの変換（`keys`）、OSC の読み取り（`osc`）、シェルの選び方と引用（`shell`）、PTY のログ（`log`）、`Terminal` と格子の読み出し（`terminal`）、OS の処理（`sys`） | filer の `terminal.rs` のテストが全部クレートで通る | 済み（v0.0.2） |
 | 2 | 描画の層: `ui/term.rs` を filer の `App` と `Theme` から外し、色・文字・クリップボードを引数で受ける部品にする（feature `egui`）。`wgpu_options` / `pick_backends`（feature `wgpu`）、`restrict_dll_search`（`sys/windows.rs`） | filer の `ui/term.rs` と `main.rs` のテストに当たるものが通る | |
 | 3 | filer を切り替える: `tsumugi-pane` を git の依存で読み、filer の `terminal.rs` などを消す。`【pane】` の印を外し、ペインの実機の行（TESTING.md の 1、19、29、40 節）を filer の再テストの順番表（`windows-role.md` の x64 と ARM64）に積む | filer の `scripts/verify.sh` が緑 | |
 
@@ -39,3 +39,8 @@ PTY のログの環境変数は `Terminal::spawn` に渡す（filer は `FILER_P
 ## 進み具合
 
 （段が終わるたびにここに 1 行足す。上限などで止まったときは、どこで止まったかを書く）
+
+- 2026-10-05 v0.0.1: 段 0。workspace、空のクレート、`scripts/verify.sh`、CI。
+- 2026-10-05 v0.0.2: 段 1。filer の `src/terminal.rs`（v0.78.121 の時点）を 7 つのモジュールに分けて移した。テスト 44 件（Linux で 43 件）が通る。
+  filer の側は、まだ自分の `terminal.rs` を使っている。段 3 までの間に filer の `terminal.rs` が変わったら、同じ直しをこちらにも入れる（`【pane】` で止めてあるので、起きないはず）。
+  macOS のコード（`sys/unix.rs` の `hang_up_children`）は型検査もしていない（macOS のターゲットを入れていない）。
