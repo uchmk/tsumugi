@@ -5,6 +5,15 @@
 
 ## [未リリース]
 
+## [0.6.1] - 2026-10-06
+
+### 修正
+
+- ブランチの記号（`⎇`）がフォントに無く、四角になっていた。filer と同じく、Nerd Font（HackGen NF、FiraCode / Caskaydia Cove / JetBrains Mono Nerd Font）が
+  入っていれば一番前のフォントにして、その記号（U+E0A0）を文字で出す。ペインの中の starship などのアイコンも出るようになる。
+  Nerd Font が無い機械では、記号を図形で描く。探す場所は、Windows が `%LOCALAPPDATA%\Microsoft\Windows\Fonts` と `C:\Windows\Fonts`、
+  Linux が `~/.local/share/fonts` など、macOS が `~/Library/Fonts`。
+
 ## [0.6.0] - 2026-10-06
 
 ### 追加

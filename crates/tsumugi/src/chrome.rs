@@ -53,6 +53,39 @@ pub fn state_words(info: &Info, now: u64) -> String {
     }
 }
 
+/// The git branch mark drawn, for a machine with no Nerd Font: `⎇` is in few
+/// of the fonts there are (it came out as a box), so it is three rings and
+/// two strokes, the way GitHub and VS Code draw it, in a square of `rect`.
+pub fn branch_icon(p: &egui::Painter, rect: egui::Rect, color: Color32) {
+    let s = rect.height().min(rect.width());
+    let o = rect.center() - egui::vec2(s / 2.0, s / 2.0);
+    let at = |x: f32, y: f32| o + egui::vec2(x * s, y * s);
+    let stroke = egui::Stroke::new((s / 9.0).max(1.1), color);
+    let r = s * 0.13;
+    // The trunk, ring to ring, and the branch curving off it to its own ring.
+    p.circle_stroke(at(0.3, 0.17), r, stroke);
+    p.circle_stroke(at(0.3, 0.83), r, stroke);
+    p.circle_stroke(at(0.75, 0.3), r, stroke);
+    p.line_segment([at(0.3, 0.17 + 0.13), at(0.3, 0.83 - 0.13)], stroke);
+    let curve = egui::epaint::CubicBezierShape::from_points_stroke(
+        [at(0.75, 0.3 + 0.13), at(0.75, 0.62), at(0.3, 0.5), at(0.3, 0.7)],
+        false,
+        Color32::TRANSPARENT,
+        stroke,
+    );
+    p.add(curve);
+}
+
+/// The branch mark: the Nerd Font's character when one is installed (as in
+/// filer), else drawn.
+pub fn branch_mark(p: &egui::Painter, rect: egui::Rect, color: Color32, nerd: bool) {
+    if nerd {
+        p.text(rect.center(), egui::Align2::CENTER_CENTER, crate::fonts::BRANCH, FontId::monospace(rect.height() + 1.0), color);
+    } else {
+        branch_icon(p, rect, color);
+    }
+}
+
 /// What the status bar was clicked for.
 pub enum StatusClick {
     Bell,
@@ -61,7 +94,15 @@ pub enum StatusClick {
 /// The status bar along the bottom (1d): the server and how long it has been
 /// up, how many sessions are in each state, the folder and branch of the pane
 /// with the keys, its shell and size, and the clock (1n).
-pub fn status_bar(ui: &mut egui::Ui, pal: &Palette, sessions: &[Info], focus: Option<&Info>, size: Option<(usize, usize)>, up_ms: u64) -> Option<StatusClick> {
+pub fn status_bar(
+    ui: &mut egui::Ui,
+    pal: &Palette,
+    sessions: &[Info],
+    focus: Option<&Info>,
+    size: Option<(usize, usize)>,
+    up_ms: u64,
+    nerd: bool,
+) -> Option<StatusClick> {
     let mut click = None;
     let small = |t: String, c: Color32| RichText::new(t).font(FontId::proportional(11.5)).color(c);
     ui.horizontal_centered(|ui| {
@@ -82,8 +123,13 @@ pub fn status_bar(ui: &mut egui::Ui, pal: &Palette, sessions: &[Info], focus: Op
         }
         if let Some(i) = focus {
             ui.add_space(10.0);
-            let branch = if i.branch.is_empty() { String::new() } else { format!(" · {}", i.branch) };
-            ui.label(small(format!("{}{branch}", crate::home_short(&i.cwd)), pal.fg));
+            ui.label(small(crate::home_short(&i.cwd), pal.fg));
+            if !i.branch.is_empty() {
+                ui.add_space(4.0);
+                let (r, _) = ui.allocate_exact_size(egui::vec2(12.0, 12.0), egui::Sense::hover());
+                branch_mark(ui.painter(), r, pal.fg_dim, nerd);
+                ui.label(small(i.branch.clone(), pal.fg));
+            }
         }
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             ui.add_space(10.0);

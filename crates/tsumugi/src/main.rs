@@ -336,6 +336,8 @@ struct App {
     restore: Option<chrome::RestoreView>,
     /// The sidebar's "Jump to waiting" was pressed.
     jump_waiting: bool,
+    /// A Nerd Font is installed: the branch mark is its character, not drawn.
+    nerd: bool,
     /// The bell list opened this frame: the click that opened it is not a
     /// click outside it.
     bell_opening: bool,
@@ -343,7 +345,7 @@ struct App {
 
 impl App {
     fn new(cc: &eframe::CreationContext<'_>) -> Self {
-        fonts::install(&cc.egui_ctx);
+        let nerd = fonts::install(&cc.egui_ctx);
         let palette = Palette::default();
         let mut visuals = egui::Visuals::dark();
         visuals.panel_fill = palette.bg;
@@ -375,6 +377,7 @@ impl App {
             bell_open: None,
             restore,
             jump_waiting: false,
+            nerd,
             bell_opening: false,
         }
     }
@@ -524,8 +527,30 @@ impl App {
                     painter.galley(egui::pos2(left, rect.top() + y), galley, color);
                 };
                 line(name, 6.0, egui::FontId::proportional(13.5), pal.fg);
-                let branch = if focus.branch.is_empty() { String::new() } else { format!(" · {}", focus.branch) };
-                line(format!("{}{branch}", home_short(&focus.cwd)), 25.0, egui::FontId::monospace(11.0), pal.fg_dim);
+                // The folder, then the branch after its mark; the folder gives
+                // way first when the row is narrow.
+                let mono = egui::FontId::monospace(11.0);
+                let branch = (!focus.branch.is_empty()).then(|| {
+                    ui.fonts_mut(|f| {
+                        let mut job = egui::text::LayoutJob::simple_singleline(focus.branch.clone(), mono.clone(), pal.fg_dim);
+                        job.wrap = egui::text::TextWrapping::truncate_at_width(width * 0.45);
+                        f.layout_job(job)
+                    })
+                });
+                let room = width - branch.as_ref().map_or(0.0, |b| b.size().x + 20.0);
+                let folder = ui.fonts_mut(|f| {
+                    let mut job = egui::text::LayoutJob::simple_singleline(home_short(&focus.cwd), mono.clone(), pal.fg_dim);
+                    job.wrap = egui::text::TextWrapping::truncate_at_width(room.max(20.0));
+                    f.layout_job(job)
+                });
+                let y = rect.top() + 25.0;
+                let folder_w = folder.size().x;
+                painter.galley(egui::pos2(left, y), folder, pal.fg_dim);
+                if let Some(b) = branch {
+                    let mark = egui::Rect::from_min_size(egui::pos2(left + folder_w + 6.0, y + 1.0), egui::vec2(11.0, 11.0));
+                    chrome::branch_mark(&painter, mark, pal.fg_dim, self.nerd);
+                    painter.galley(egui::pos2(mark.right() + 3.0, y), b, pal.fg_dim);
+                }
                 let third = match urgent.state {
                     State::Waiting | State::Error | State::Done if !urgent.note.is_empty() => format!("{} · {}", chrome::state_words(urgent, now), urgent.note),
                     _ => chrome::state_words(urgent, now),
@@ -779,7 +804,7 @@ impl eframe::App for App {
         let status = egui::Panel::bottom("status")
             .exact_size(24.0)
             .frame(egui::Frame::NONE.fill(egui::Color32::from_rgb(0x12, 0x14, 0x18)))
-            .show(ui, |ui| chrome::status_bar(ui, &self.palette, &sessions, focus_info.as_ref(), size, up))
+            .show(ui, |ui| chrome::status_bar(ui, &self.palette, &sessions, focus_info.as_ref(), size, up, self.nerd))
             .inner;
         if let Some(chrome::StatusClick::Bell) = status {
             self.bell_open = Some(egui::pos2(20.0, 60.0));
