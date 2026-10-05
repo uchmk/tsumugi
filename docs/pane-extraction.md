@@ -24,7 +24,7 @@ filer は git の依存（`rev` で固定）で読み、tsumugi の窓（v0.1.0�
 | 0 | workspace の骨組み、`crates/tsumugi-pane`（空）、`scripts/verify.sh`、CI | verify が緑 | 済み（v0.0.1） |
 | 1 | egui に依らない層を移す: キーの変換（`keys`）、OSC の読み取り（`osc`）、シェルの選び方と引用（`shell`）、PTY のログ（`log`）、`Terminal` と格子の読み出し（`terminal`）、OS の処理（`sys`） | filer の `terminal.rs` のテストが全部クレートで通る | 済み（v0.0.2） |
 | 2 | 描画の層: `ui/term.rs` を filer の `App` と `Theme` から外し、色・文字・クリップボードを引数で受ける部品にする（feature `egui`）。`wgpu_options` / `pick_backends`（feature `wgpu`）、`restrict_dll_search`（`sys/windows.rs`） | filer の `ui/term.rs` と `main.rs` のテストに当たるものが通る | 済み（v0.0.3） |
-| 3 | filer を切り替える: `tsumugi-pane` を git の依存で読み、filer の `terminal.rs` などを消す。`【pane】` の印を外し、ペインの実機の行（TESTING.md の 1、19、29、40 節）を filer の再テストの順番表（`windows-role.md` の x64 と ARM64）に積む | filer の `scripts/verify.sh` が緑 | |
+| 3 | filer を切り替える: `tsumugi-pane` を git の依存で読み、filer の `terminal.rs` などを消す。`【pane】` の印を外し、ペインの実機の行（TESTING.md の 1、19、29、40 節）を filer の再テストの順番表（`windows-role.md` の x64 と ARM64）に積む | filer の `scripts/verify.sh` が緑 | 済み（filer v0.78.125） |
 
 `shellhook.rs` は filer の CLI（`filer shell-hook`）の文言で、関数名やコメントに filer の名前が入っているので、段 3 では filer に残す。
 tsumugi は自分の `shell-hook` を持つ（OSC 7 と OSC 133 の両方を出す形。v0.4.0 の状態の印で要る）。共有するのは「OSC 7 を読む側」だけ。
@@ -46,3 +46,16 @@ PTY のログの環境変数は `Terminal::spawn` に渡す（filer は `FILER_P
   macOS のコード（`sys/unix.rs` の `hang_up_children`）は型検査もしていない（macOS のターゲットを入れていない）。
 - 2026-10-05 v0.0.3: 段 2。`show`（feature `egui`）、`gpu`（feature `wgpu`）、`restrict_dll_search`。テスト 51 件。
   filer の側で残るもの: 枠の上の線（`focus_rule`、filer の見た目）は filer が `show` の後に描く。クリップボードの読み書きと、読めなかったときのトーストも filer。
+- 2026-10-05 filer v0.78.125: 段 3。filer が `tsumugi-pane`（v0.0.3、`rev` で固定）を git の依存で読む。filer の `src/terminal.rs` は `pub use tsumugi_pane::*;` だけ、
+  `src/ui/term.rs` はテーマの色・フォーカス・クリップボードを渡すだけになった。filer のテストは 749 → 700 件（移した 49 件はこちらで走る）。
+  filer の `make-testcheck` は `cargo metadata` でこのクレートのソースを引き、ここのテストが名指す TESTING.md の行も「自動テスト済み」に数える。
+  ペインの実機の行（TESTING.md の 1、19、29、40 節）は filer の x64 と ARM64 の再テストに積んだ（印は外していない）。
+
+## これから（切り出しの後）
+
+- **ペインの直しはここで入れ、filer の `Cargo.toml` の `rev` を上げる**（`cargo build` で filer の `Cargo.lock` も合わせる）。filer の TODO.md でペインに触る項目には
+  `【pane】` が付いていて、filer の開発の Routine は取らない（filer にしか push できないため）。今は 3 件: 起動に失敗したシェルが残す `OpenConsole.exe`、
+  `FILER_PTY_LOG` のキーを読める形に、何もしない窓の CPU（x64）。誰が取るかは QUESTIONS.md の Q3。
+- **名前の整理**は、tsumugi の窓（v0.1.0）が使い始めてから。今はルートに filer の頃の名前がそのまま並んでいる（`encode`、`snapshot`、`children` など）。
+- **macOS** の型検査をしていない（`sys/unix.rs` の `hang_up_children`）。CI に macOS を足すかは filer と同じく費用で決める（filer は止めている）。
+- 修飾キーの抽象化（Cmd と Ctrl）は、filer では `keys::from_egui` の側にあり、このクレートには来ていない。tsumugi の窓を作るときに決める。

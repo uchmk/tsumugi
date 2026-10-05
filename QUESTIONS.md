@@ -37,3 +37,17 @@
   3. **10 秒、出力が止まったら「たぶん入力待ち」**（Konsole の既定に合わせる）。ただし、最後のキー入力より後に出力があり、子プロセスが生きているときだけ。
      印は 1 より薄くして、確かな印と見分けられるようにする。秒数は設定で変えられ、0 で止められる。
 - 回答: 案で進める。
+
+## Q3: filer の `【pane】` の項目を誰が進めるか
+- 状態: 未回答
+- タスク: docs/pane-extraction.md「これから」
+- 背景: filer のターミナルペインは `tsumugi-pane` に移った（filer v0.78.125）。filer の TODO.md に、ペインのコードを直す項目が 3 件残っていて `【pane】` が付いている。
+  filer の開発の Routine は filer のリポジトリにしか push できないので、このままでは誰も取らない。
+- 選択肢:
+  1. **tsumugi の開発のセッション（対話か、tsumugi 用の Routine）が取る（推奨）。**`tsumugi-pane` を直して push し、同じ回で filer の `rev` を上げて
+     `scripts/push-main.sh` で filer に push する（このセッションがやった形）。
+  2. filer の開発の Routine にも tsumugi を付け（Routine の画面でリポジトリを 2 つにする）、`【pane】` を外す。手間は少ないが、Sonnet の Routine が
+     2 つのリポジトリの版と CHANGELOG を一緒に回すことになる。
+  3. ペインの項目は tsumugi の v0.1.0（窓が出る）まで止めておく。
+- 回答が無ければ 1 で進める（次に tsumugi のセッションを開いたときに取る）。
+- 回答:
