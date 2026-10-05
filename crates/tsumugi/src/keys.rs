@@ -24,6 +24,10 @@ pub enum Action {
     Zoom,
     /// The search box: sessions, folders and commands (the design's 1c).
     Search,
+    /// The sidebar as a narrow rail, or back (the design's 1i A). Not the
+    /// design's `Ctrl+B`: Claude Code sends a running command to the
+    /// background with it, and it is tmux's prefix.
+    Rail,
 }
 
 /// The action for a key press, if it is one of the window's.
@@ -72,6 +76,7 @@ fn action_on(key: Key, m: Modifiers, mac: bool) -> Option<Action> {
             Key::W if cmd && !m.shift => Some(Action::CloseTab),
             Key::U if cmd && m.shift => Some(Action::NextWaiting),
             Key::P if cmd && m.shift => Some(Action::Search),
+            Key::B if cmd && m.shift => Some(Action::Rail),
             _ if cmd && !m.shift => digit().map(Action::Tab),
             _ => None,
         };
@@ -82,6 +87,7 @@ fn action_on(key: Key, m: Modifiers, mac: bool) -> Option<Action> {
         Key::U if ctrl_shift => Some(Action::NextWaiting),
         Key::Z if ctrl_shift => Some(Action::Zoom),
         Key::P if ctrl_shift => Some(Action::Search),
+        Key::B if ctrl_shift => Some(Action::Rail),
         // Alt+Shift+= / Alt+Shift+-, Windows Terminal's; with Shift held a US
         // keyboard reports `+` for the first.
         Key::Equals | Key::Plus if m.alt && m.shift && !m.ctrl => Some(Action::SplitRight),
@@ -117,6 +123,8 @@ mod tests {
         assert_eq!(action_on(Key::Z, CTRL_SHIFT, false), Some(Action::Zoom));
         assert_eq!(action_on(Key::P, CTRL_SHIFT, false), Some(Action::Search));
         assert_eq!(action_on(Key::P, CTRL, false), None, "Ctrl+P is the shell's history");
+        assert_eq!(action_on(Key::B, CTRL_SHIFT, false), Some(Action::Rail));
+        assert_eq!(action_on(Key::B, CTRL, false), None, "Ctrl+B is Claude Code's and tmux's");
         assert_eq!(action_on(Key::Minus, alt, false), None, "Alt+- is the shell's");
     }
 

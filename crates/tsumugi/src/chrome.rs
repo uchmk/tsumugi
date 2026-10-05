@@ -415,6 +415,16 @@ pub fn filter_button(ui: &mut egui::Ui, pal: &Palette, label: &str, dot: Option<
     resp
 }
 
+/// A group's triangle: pointing down when open, right when closed.
+pub fn triangle(p: &egui::Painter, c: egui::Pos2, open: bool, color: Color32) {
+    let pts = if open {
+        vec![c + egui::vec2(-4.0, -2.0), c + egui::vec2(4.0, -2.0), c + egui::vec2(0.0, 3.0)]
+    } else {
+        vec![c + egui::vec2(-2.0, -4.0), c + egui::vec2(3.0, 0.0), c + egui::vec2(-2.0, 4.0)]
+    };
+    p.add(egui::Shape::convex_polygon(pts, color, egui::Stroke::NONE));
+}
+
 /// A pin: the tab is kept at the top.
 pub fn pin_mark(p: &egui::Painter, c: egui::Pos2, color: Color32) {
     let stroke = egui::Stroke::new(1.3, color);

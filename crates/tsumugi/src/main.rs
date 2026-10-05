@@ -323,22 +323,64 @@ fn always_restore() -> bool {
     always_restore_file().is_some_and(|p| p.exists())
 }
 
-/// The sidebar's order as last chosen, kept beside the state file: a
-/// window's own choice, not a setting.
-fn view_file() -> Option<std::path::PathBuf> {
-    tsumugi_mux::state::default_path().map(|p| p.with_file_name("sort"))
+/// The sidebar's own choices, kept beside the state file between runs: a
+/// window's preferences, not settings.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+struct View {
+    sort: sort::Sort,
+    density: sort::Density,
+    /// The narrow rail instead of the sidebar (the design's 1i A).
+    rail: bool,
+    /// Asked once, past twelve tabs, whether to go to one line each.
+    asked: bool,
 }
 
-fn view_sort() -> sort::Sort {
-    view_file().and_then(|p| std::fs::read_to_string(p).ok()).and_then(|w| sort::Sort::from_word(w.trim())).unwrap_or_default()
-}
-
-fn set_view_sort(s: sort::Sort) {
-    let Some(p) = view_file() else { return };
-    if let Some(dir) = p.parent() {
-        let _ = std::fs::create_dir_all(dir);
+impl View {
+    fn file() -> Option<std::path::PathBuf> {
+        tsumugi_mux::state::default_path().map(|p| p.with_file_name("view"))
     }
-    let _ = std::fs::write(p, s.word());
+
+    /// Read at the start; the order alone was kept in `sort` before v0.15.
+    fn load() -> Self {
+        let read = |p: Option<std::path::PathBuf>| p.and_then(|p| std::fs::read_to_string(p).ok());
+        match read(Self::file()) {
+            Some(text) => Self::parse(&text),
+            None => {
+                let sort = read(tsumugi_mux::state::default_path().map(|p| p.with_file_name("sort")));
+                Self { sort: sort.and_then(|w| sort::Sort::from_word(w.trim())).unwrap_or_default(), ..Self::default() }
+            }
+        }
+    }
+
+    fn parse(text: &str) -> Self {
+        let mut v = Self::default();
+        for (k, val) in text.lines().filter_map(|l| l.split_once('=')) {
+            match (k.trim(), val.trim()) {
+                ("sort", w) => v.sort = sort::Sort::from_word(w).unwrap_or_default(),
+                ("density", w) => v.density = sort::Density::from_word(w).unwrap_or_default(),
+                ("rail", w) => v.rail = w == "yes",
+                ("asked", w) => v.asked = w == "yes",
+                _ => {}
+            }
+        }
+        v
+    }
+
+    fn text(self) -> String {
+        let yes = |b: bool| if b { "yes" } else { "no" };
+        format!("sort={}\ndensity={}\nrail={}\nasked={}\n", self.sort.word(), self.density.word(), yes(self.rail), yes(self.asked))
+    }
+
+    /// Written on a thread of its own: no disk on the window's thread.
+    fn save(self) {
+        let _ = std::thread::Builder::new().name("view".into()).spawn(move || {
+            let Some(p) = Self::file() else { return };
+            if let Some(dir) = p.parent() {
+                let _ = std::fs::create_dir_all(dir);
+            }
+            let _ = std::fs::write(p, self.text());
+        });
+    }
 }
 
 fn set_always_restore(on: bool) {
@@ -361,7 +403,11 @@ fn new_session(client: &Client, cwd: std::path::PathBuf, place: Place) -> Result
 /// The sidebar's width when the window first opens, and how far a drag may
 /// take it (docs/v1-scope.md 1f).
 const SIDEBAR: f32 = 240.0;
-const SIDEBAR_RANGE: std::ops::RangeInclusive<f32> = 200.0..=480.0;
+/// Dragged narrower than `RAIL_AT`, the sidebar becomes the rail, and the
+/// rail dragged wider than it becomes the sidebar again (the design's 1i A).
+const SIDEBAR_RANGE: std::ops::RangeInclusive<f32> = 100.0..=480.0;
+const RAIL: f32 = 60.0;
+const RAIL_AT: f32 = 120.0;
 /// The gap between split panes, and how wide a strip around it a drag can
 /// start in (1f: 12px).
 const GAP: f32 = 6.0;
@@ -411,7 +457,7 @@ struct App {
     focus_sent: Option<bool>,
     /// What the sidebar shows, and in what order (the design's 1a and 1b).
     filter: sort::Filter,
-    sort: sort::Sort,
+    view: View,
     /// A tab being dragged to another place in the sidebar.
     dragging_tab: Option<WorkspaceId>,
     /// The search box, while it is open (the design's 1c).
@@ -430,6 +476,12 @@ struct App {
     /// The settings' `[open]` and `[menu]`, for the tab's menu (1j).
     open: tsumugi_mux::settings::Open,
     menu: tsumugi_mux::settings::Menu,
+    /// Bumped when the sidebar turns into the rail or back, so each starts
+    /// at its own width.
+    side_gen: u32,
+    /// Folders sorted by: the groups closed, and those opened all the way.
+    closed_groups: Vec<std::path::PathBuf>,
+    whole_groups: Vec<std::path::PathBuf>,
     /// A tab being renamed in its menu, and the name so far.
     renaming: Option<(WorkspaceId, String)>,
     /// "Close" was clicked once on a tab with something running.
@@ -509,7 +561,7 @@ impl App {
             }),
             focus_sent: None,
             filter: sort::Filter::default(),
-            sort: view_sort(),
+            view: View::load(),
             dragging_tab: None,
             search: None,
             tag_input: String::new(),
@@ -521,6 +573,9 @@ impl App {
             open: Default::default(),
             menu: Default::default(),
             renaming: None,
+            side_gen: 0,
+            closed_groups: Vec::new(),
+            whole_groups: Vec::new(),
             close_armed: None,
         }
     }
@@ -613,6 +668,10 @@ impl App {
             }
             keys::Action::Zoom => self.zoom = !self.zoom,
             keys::Action::Search => self.search = Some(palette::View::new()),
+            keys::Action::Rail => {
+                self.view.rail = !self.view.rail;
+                self.view.save();
+            }
         }
     }
 
@@ -716,8 +775,8 @@ impl App {
                 Err(e) => self.failed = Some(e),
             },
             palette::Pick::Command(palette::Command::Sort(s)) => {
-                self.sort = s;
-                set_view_sort(s);
+                self.view.sort = s;
+                self.view.save();
             }
             palette::Pick::Command(c) => {
                 let action = match c {
@@ -763,7 +822,7 @@ impl App {
         if self.filter.project.as_ref().is_some_and(|p| !projects.iter().any(|(q, _)| q == p)) {
             self.filter.project = None;
         }
-        let shown = sort::arrange(&tabs, self.sort, &self.filter);
+        let shown = sort::arrange(&tabs, self.view.sort, &self.filter);
 
         ui.add_space(8.0);
         ui.horizontal(|ui| {
@@ -783,14 +842,28 @@ impl App {
                 }
                 // The order (the design's 1b): a button with the choice's
                 // short name, opening the five.
-                let button = chrome::sort_button(ui, &pal, self.sort.short());
+                let button = chrome::sort_button(ui, &pal, self.view.sort.short());
                 egui::Popup::menu(&button).show(|ui| {
                     for s in sort::Sort::ALL {
-                        if ui.selectable_label(self.sort == s, s.label()).clicked() {
-                            self.sort = s;
-                            set_view_sort(s);
+                        if ui.selectable_label(self.view.sort == s, s.label()).clicked() {
+                            self.view.sort = s;
+                            self.view.save();
                             ui.close();
                         }
+                    }
+                    // How the rows look (the design's 1i).
+                    ui.separator();
+                    let lines = self.view.density == sort::Density::Lines;
+                    if ui.selectable_label(lines, "One line each").clicked() {
+                        self.view.density = if lines { sort::Density::Cards } else { sort::Density::Lines };
+                        self.view.save();
+                        ui.close();
+                    }
+                    let key = if cfg!(target_os = "macos") { "Cmd+Shift+B" } else { "Ctrl+Shift+B" };
+                    if ui.selectable_label(false, format!("Narrow rail   {key}")).clicked() {
+                        self.view.rail = true;
+                        self.view.save();
+                        ui.close();
                     }
                 });
             });
@@ -884,13 +957,87 @@ impl App {
             ui.add_space(6.0);
         });
 
+        // Past twelve tabs, once: one line each? (the design's 1i)
+        if !self.view.asked && tabs.len() > 12 && self.view.density == sort::Density::Cards {
+            let margin = egui::Margin { left: 12, right: 10, top: 2, bottom: 6 };
+            egui::Frame::NONE.inner_margin(margin).show(ui, |ui| {
+                egui::Frame::NONE.fill(egui::Color32::from_rgb(0x1b, 0x1e, 0x24)).corner_radius(8.0).inner_margin(egui::Margin::same(8)).show(ui, |ui| {
+                    ui.label(egui::RichText::new(format!("{} sessions: show one line each?", tabs.len())).size(12.0).color(pal.fg));
+                    ui.horizontal(|ui| {
+                        if ui.button("One line each").clicked() {
+                            self.view.density = sort::Density::Lines;
+                            self.view.asked = true;
+                            self.view.save();
+                        }
+                        if ui.button("Keep the cards").clicked() {
+                            self.view.asked = true;
+                            self.view.save();
+                        }
+                    });
+                });
+            });
+        }
         // Rows can be dragged into another order in `Manual` only: in the
         // others the order is the rule's.
-        let manual = self.sort == sort::Sort::Manual;
+        let manual = self.view.sort == sort::Sort::Manual;
         let sense = if manual { egui::Sense::click_and_drag() } else { egui::Sense::click() };
         let mut rows: Vec<(WorkspaceId, egui::Rect)> = Vec::new();
         egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
-            for tab in &shown {
+            let listed = sort::items(&shown, self.view.sort, self.view.density, &self.closed_groups, &self.whole_groups, self.active);
+            for item in &listed {
+                let (tab, as_card) = match item {
+                    // A project's heading (the design's 1i B): a click
+                    // opens or closes it.
+                    sort::Item::Group { project, total, kinds, open } => {
+                        let (rect, resp) = ui.allocate_exact_size(egui::vec2(ui.available_width(), 28.0), egui::Sense::click());
+                        let p = ui.painter_at(rect);
+                        if resp.hovered() {
+                            p.rect_filled(rect.shrink2(egui::vec2(6.0, 1.0)), 6.0, pal.selection.gamma_multiply(0.4));
+                        }
+                        chrome::triangle(&p, egui::pos2(rect.left() + 18.0, rect.center().y), *open, pal.fg_dim);
+                        let name = project.file_name().map_or_else(|| project.display().to_string(), |f| f.to_string_lossy().into_owned());
+                        let name = p.layout_no_wrap(name, egui::FontId::proportional(13.0), egui::Color32::from_rgb(0xe4, 0xe8, 0xf0));
+                        let x = rect.left() + 30.0 + name.size().x;
+                        p.galley(egui::pos2(rect.left() + 28.0, rect.center().y - name.size().y / 2.0), name, egui::Color32::WHITE);
+                        p.text(egui::pos2(x + 8.0, rect.center().y), egui::Align2::LEFT_CENTER, total.to_string(), egui::FontId::proportional(12.0), pal.fg_dim);
+                        let mut right = rect.right() - 14.0;
+                        if *open {
+                            for (k, color) in [(sort::Kind::Error, chrome::RED), (sort::Kind::Waiting, chrome::GOLD)] {
+                                let n = kinds.iter().filter(|x| **x == k).count();
+                                if n > 0 {
+                                    let r = p.text(egui::pos2(right, rect.center().y), egui::Align2::RIGHT_CENTER, format!("{n} {}", k.label().to_lowercase()), egui::FontId::proportional(11.5), color);
+                                    right = r.left() - 8.0;
+                                }
+                            }
+                        } else {
+                            // Closed: only a dot each.
+                            for k in kinds.iter().rev().take(12) {
+                                p.circle_filled(egui::pos2(right - 3.0, rect.center().y), 3.0, state_color(k.state()));
+                                right -= 9.0;
+                            }
+                        }
+                        if resp.on_hover_text(home_short(project)).clicked() {
+                            if *open {
+                                self.closed_groups.push(project.clone());
+                            } else {
+                                self.closed_groups.retain(|q| q != project);
+                            }
+                        }
+                        continue;
+                    }
+                    // What an open group leaves out: a click shows it all.
+                    sort::Item::More { project, kinds } => {
+                        let (rect, resp) = ui.allocate_exact_size(egui::vec2(ui.available_width(), 22.0), egui::Sense::click());
+                        let text = format!("+ {} more ({})", kinds.len(), sort::count_words(kinds));
+                        let color = if resp.hovered() { pal.fg } else { pal.fg_dim };
+                        ui.painter().text(egui::pos2(rect.left() + 30.0, rect.center().y), egui::Align2::LEFT_CENTER, text, egui::FontId::proportional(12.0), color);
+                        if resp.clicked() {
+                            self.whole_groups.push(project.clone());
+                        }
+                        continue;
+                    }
+                    sort::Item::Tab { tab, card } => (*tab, *card),
+                };
                 let w = tab.workspace;
                 let infos = &tab.infos;
                 let (Some(focus), Some(urgent)) = (tab.focus(), tab.urgent()) else { continue };
@@ -900,10 +1047,13 @@ impl App {
                         tags.push(t);
                     }
                 }
-                let height = if tags.is_empty() { 62.0 } else { 82.0 };
+                let height = if !as_card { 28.0 } else if tags.is_empty() { 62.0 } else { 82.0 };
                 let (rect, resp) = ui.allocate_exact_size(egui::vec2(ui.available_width(), height), sense);
                 rows.push((w.id, rect));
                 let painter = ui.painter_at(rect);
+                let muted = infos.iter().all(|i| i.muted);
+                let quiet_tab = infos.iter().all(|i| quiet(i, &muted_tags));
+                if as_card {
                 let card = rect.shrink2(egui::vec2(6.0, 2.0));
                 if urgent.state == State::Waiting {
                     // Ringed in gold: the one to look at (the design's sidebar).
@@ -933,8 +1083,6 @@ impl App {
                 let name = if infos.len() > 1 { format!("{name}  ·{}", infos.len()) } else { name };
                 let left = rect.left() + 32.0;
                 let width = rect.right() - left - 12.0;
-                let muted = infos.iter().all(|i| i.muted);
-                let quiet_tab = infos.iter().all(|i| quiet(i, &muted_tags));
                 let line = |text: String, y: f32, font: egui::FontId, color: egui::Color32, width: f32| {
                     let galley = ui.fonts_mut(|f| {
                         let mut job = egui::text::LayoutJob::simple_singleline(text, font, color);
@@ -1002,6 +1150,42 @@ impl App {
                         break;
                     }
                     x = chrome::tag_chip(&painter, at, t, muted_tags.contains(*t)).right() + 5.0;
+                }
+                } else {
+                    // One line (the design's 1i C): the dot, the name, the
+                    // project and how long; rings for what wants a person.
+                    let r = rect.shrink2(egui::vec2(6.0, 1.0));
+                    match urgent.state {
+                        State::Waiting => {
+                            painter.rect_filled(r, 6.0, egui::Color32::from_rgb(0x1f, 0x1d, 0x18));
+                            painter.rect_stroke(r, 6.0, egui::Stroke::new(1.0, chrome::GOLD.gamma_multiply(0.85)), egui::StrokeKind::Inside);
+                        }
+                        State::Error => {
+                            painter.rect_stroke(r, 6.0, egui::Stroke::new(1.0, chrome::RED.gamma_multiply(0.6)), egui::StrokeKind::Inside);
+                        }
+                        _ => {}
+                    }
+                    if resp.hovered() {
+                        painter.rect_filled(r, 6.0, pal.selection.gamma_multiply(0.4));
+                    }
+                    if self.dragging_tab == Some(w.id) {
+                        painter.rect_stroke(r, 6.0, egui::Stroke::new(1.0, chrome::CYAN), egui::StrokeKind::Inside);
+                    }
+                    painter.circle_filled(egui::pos2(r.left() + 12.0, r.center().y), 3.5, state_color(urgent.state));
+                    let since = if matches!(urgent.state, State::Running) { String::new() } else { chrome::elapsed(now.saturating_sub(urgent.since_ms)) };
+                    let time_color = if urgent.state == State::Waiting { chrome::GOLD } else { chrome::GREY };
+                    let t = painter.text(egui::pos2(r.right() - 8.0, r.center().y), egui::Align2::RIGHT_CENTER, since, egui::FontId::proportional(11.0), time_color);
+                    let project = focus.project.file_name().map(|f| f.to_string_lossy().into_owned()).unwrap_or_default();
+                    let pj = painter.text(egui::pos2(t.left() - 8.0, r.center().y), egui::Align2::RIGHT_CENTER, project, egui::FontId::proportional(11.0), chrome::GREY);
+                    let name_color = match urgent.state {
+                        State::Waiting => egui::Color32::from_rgb(0xf1, 0xea, 0xd6),
+                        State::Done => pal.fg_dim,
+                        _ => pal.fg,
+                    };
+                    let mut job = egui::text::LayoutJob::simple_singleline(tab.name(), egui::FontId::proportional(12.5), name_color);
+                    job.wrap = egui::text::TextWrapping::truncate_at_width((pj.left() - r.left() - 32.0).max(10.0));
+                    let g = ui.fonts_mut(|f| f.layout_job(job));
+                    painter.galley(egui::pos2(r.left() + 22.0, r.center().y - g.size().y / 2.0), g, name_color);
                 }
                 if resp.clicked() {
                     picked = Some(w.id);
@@ -1171,6 +1355,70 @@ impl App {
                         }
                     }
                 }
+            }
+        }
+        picked
+    }
+
+    /// The narrow rail (the design's 1i A): a square per tab with its
+    /// project's first letter, ringed in its state's colour, its card on
+    /// hover, and how many wait at the foot.
+    fn rail(&mut self, ui: &mut egui::Ui, workspaces: &[Workspace], sessions: &[Info]) -> Option<WorkspaceId> {
+        let pal = self.palette;
+        let now = chrome::now_ms();
+        let tabs: Vec<sort::Tab> = workspaces.iter().map(|w| sort::Tab::new(w, sessions)).collect();
+        let shown = sort::arrange(&tabs, self.view.sort, &self.filter);
+        let area = ui.max_rect();
+        let foot = area.bottom() - 44.0;
+        let mut picked = None;
+        let mut y = area.top() + 12.0;
+        for (k, tab) in shown.iter().enumerate() {
+            if y + 36.0 > foot - 22.0 {
+                ui.painter().text(egui::pos2(area.center().x, y + 6.0), egui::Align2::CENTER_CENTER, format!("+{}", shown.len() - k), egui::FontId::proportional(11.0), pal.fg_dim);
+                break;
+            }
+            let (Some(focus), Some(urgent)) = (tab.focus(), tab.urgent()) else { continue };
+            let rect = egui::Rect::from_center_size(egui::pos2(area.center().x, y + 18.0), egui::vec2(36.0, 36.0));
+            y += 46.0;
+            let resp = ui.interact(rect, egui::Id::new(("rail-tab", tab.workspace.id)), egui::Sense::click());
+            let p = ui.painter();
+            let fill = if urgent.state == State::Waiting {
+                egui::Color32::from_rgb(0x1f, 0x1d, 0x18)
+            } else if Some(tab.workspace.id) == self.active {
+                pal.selection
+            } else if resp.hovered() {
+                egui::Color32::from_rgb(0x22, 0x26, 0x2e)
+            } else {
+                egui::Color32::from_rgb(0x1b, 0x1e, 0x24)
+            };
+            p.rect_filled(rect, 9.0, fill);
+            p.rect_stroke(rect, 9.0, egui::Stroke::new(1.2, state_color(urgent.state).gamma_multiply(0.85)), egui::StrokeKind::Inside);
+            let letter = focus.project.file_name().and_then(|f| f.to_string_lossy().chars().next()).map_or('?', |c| c.to_ascii_uppercase());
+            let color = if urgent.state == State::Done { pal.fg_dim } else { egui::Color32::from_rgb(0xf1, 0xea, 0xd6) };
+            p.text(rect.center(), egui::Align2::CENTER_CENTER, letter, egui::FontId::proportional(14.0), color);
+            let resp = resp.on_hover_ui(|ui| {
+                ui.label(egui::RichText::new(tab.name()).strong());
+                let mut place = home_short(&focus.cwd);
+                if !focus.branch.is_empty() {
+                    place.push_str(&format!(" · {}", focus.branch));
+                }
+                ui.label(egui::RichText::new(place).monospace().size(11.0).color(pal.fg_dim));
+                let words = chrome::state_words(urgent, now);
+                ui.label(egui::RichText::new(words).size(11.5).color(state_color(urgent.state)));
+            });
+            if resp.clicked() {
+                picked = Some(tab.workspace.id);
+            }
+        }
+        // How many wait, a click away.
+        let waiting = sessions.iter().filter(|i| matches!(i.state, State::Waiting | State::MaybeWaiting)).count();
+        if waiting > 0 {
+            let pill = egui::Rect::from_center_size(egui::pos2(area.center().x, foot + 18.0), egui::vec2(36.0, 22.0));
+            let resp = ui.interact(pill, egui::Id::new("rail-waiting"), egui::Sense::click()).on_hover_text("Jump to waiting");
+            ui.painter().rect_filled(pill, 11.0, chrome::GOLD);
+            ui.painter().text(pill.center(), egui::Align2::CENTER_CENTER, waiting.to_string(), egui::FontId::proportional(12.0), egui::Color32::from_rgb(0x1a, 0x16, 0x08));
+            if resp.clicked() {
+                self.jump_waiting = true;
             }
         }
         picked
@@ -1538,13 +1786,35 @@ impl eframe::App for App {
         }
 
         let side = egui::Frame::NONE.fill(self.palette.on_cursor);
-        let picked = egui::Panel::left("sessions")
-            .resizable(true)
-            .default_size(SIDEBAR)
-            .size_range(SIDEBAR_RANGE)
-            .frame(side)
-            .show(ui, |ui| self.sidebar(ui, &workspaces, &sessions))
-            .inner;
+        // Each switch between the two starts the panel at its own width: a
+        // fresh id, since egui keeps a panel's width by its id.
+        let picked = if self.view.rail {
+            let shown = egui::Panel::left(egui::Id::new(("rail", self.side_gen)))
+                .resizable(true)
+                .default_size(RAIL)
+                .size_range(RAIL..=RAIL_AT + 40.0)
+                .frame(side)
+                .show(ui, |ui| self.rail(ui, &workspaces, &sessions));
+            if shown.response.rect.width() > RAIL_AT {
+                self.view.rail = false;
+                self.side_gen += 1;
+                self.view.save();
+            }
+            shown.inner
+        } else {
+            let shown = egui::Panel::left(egui::Id::new(("sessions", self.side_gen)))
+                .resizable(true)
+                .default_size(SIDEBAR)
+                .size_range(SIDEBAR_RANGE)
+                .frame(side)
+                .show(ui, |ui| self.sidebar(ui, &workspaces, &sessions));
+            if shown.response.rect.width() < RAIL_AT {
+                self.view.rail = true;
+                self.side_gen += 1;
+                self.view.save();
+            }
+            shown.inner
+        };
         if let Some(id) = picked {
             self.active = Some(id);
         }
@@ -1633,7 +1903,14 @@ impl App {
 
 #[cfg(test)]
 mod tests {
-    use super::json_string;
+    use super::{json_string, View};
+
+    #[test]
+    fn the_sidebars_choices_come_back() {
+        let v = View { sort: crate::sort::Sort::Needs, density: crate::sort::Density::Lines, rail: true, asked: true };
+        assert_eq!(View::parse(&v.text()), v);
+        assert_eq!(View::parse("nonsense\nsort=nope"), View::default());
+    }
 
     #[test]
     fn a_hooks_message_is_read() {

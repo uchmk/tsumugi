@@ -100,6 +100,18 @@ The foot of the sidebar shows only the tabs in one state, or in one
 repository, and the two combine with the tag filter; the heading then says
 how many of all are shown.
 
+### Many sessions
+
+The order button's menu also has **One line each** (a 28px row per tab,
+the tab shown still a full card; offered once when there are more than
+twelve) and **Narrow rail** (`Ctrl+Shift+B`, `Cmd+Shift+B` on macOS, or
+drag the sidebar's edge narrower than 120px): a 60px strip of squares with
+the project's first letter, ringed in the state's colour, the card on hover
+and how many wait at the foot. Sorted by **Folder**, the tabs come under
+headings that close with a click; an open one shows only what wants you
+and the tab shown, the rest as "+ N more", which opens it all. The design
+asks `Ctrl+B` for the rail, but Claude Code and tmux use it.
+
 ### Tags
 
 Put name tags on a session to tell them apart and pick them out: right-click

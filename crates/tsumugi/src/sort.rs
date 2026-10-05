@@ -209,6 +209,99 @@ pub fn arrange<'a, 'b>(tabs: &'b [Tab<'a>], sort: Sort, filter: &Filter) -> Vec<
     shown
 }
 
+/// How tall the sidebar's rows are (the design's 1i).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Density {
+    /// The three-line card (the default).
+    #[default]
+    Cards,
+    /// One line each, 28px: twenty in 600px. The tab shown still opens to
+    /// its card.
+    Lines,
+}
+
+impl Density {
+    pub fn word(self) -> &'static str {
+        match self {
+            Density::Cards => "cards",
+            Density::Lines => "lines",
+        }
+    }
+
+    pub fn from_word(w: &str) -> Option<Self> {
+        [Density::Cards, Density::Lines].into_iter().find(|d| d.word() == w)
+    }
+}
+
+/// One thing in the sidebar's list.
+pub enum Item<'b, 'a> {
+    /// A project's heading, when sorted by folder (the design's 1i B).
+    Group { project: PathBuf, total: usize, kinds: Vec<Kind>, open: bool },
+    /// A tab, as a card or as a line.
+    Tab { tab: &'b Tab<'a>, card: bool },
+    /// The tabs of an open group left out because nothing in them wants a
+    /// person, by state.
+    More { project: PathBuf, kinds: Vec<Kind> },
+}
+
+/// The sidebar's list. Sorted by folder, the tabs come under their
+/// project's heading; a closed group shows no tabs, an open one only those
+/// that want a person (waiting, error) and the one shown, unless it was
+/// opened all the way (`whole`). `Lines` makes every tab but the shown one
+/// a line.
+pub fn items<'b, 'a>(
+    shown: &[&'b Tab<'a>],
+    sort: Sort,
+    density: Density,
+    closed: &[PathBuf],
+    whole: &[PathBuf],
+    active: Option<tsumugi_mux::WorkspaceId>,
+) -> Vec<Item<'b, 'a>> {
+    let card = |t: &Tab| density == Density::Cards || Some(t.workspace.id) == active;
+    if sort != Sort::Folder {
+        return shown.iter().map(|t| Item::Tab { tab: t, card: card(t) }).collect();
+    }
+    let mut out = Vec::new();
+    let mut at = 0;
+    while at < shown.len() {
+        let project = shown[at].project().map(Path::to_path_buf).unwrap_or_default();
+        let end = shown[at..].iter().position(|t| t.project().map(Path::to_path_buf).unwrap_or_default() != project).map_or(shown.len(), |n| at + n);
+        let group = &shown[at..end];
+        let open = !closed.contains(&project);
+        let kinds: Vec<Kind> = group.iter().filter_map(|t| t.kind()).collect();
+        out.push(Item::Group { project: project.clone(), total: group.len(), kinds, open });
+        if open {
+            let all = whole.contains(&project);
+            let mut left = Vec::new();
+            for t in group {
+                let wants = matches!(t.kind(), Some(Kind::Waiting | Kind::Error));
+                if all || wants || Some(t.workspace.id) == active {
+                    out.push(Item::Tab { tab: t, card: card(t) });
+                } else if let Some(k) = t.kind() {
+                    left.push(k);
+                }
+            }
+            if !left.is_empty() {
+                out.push(Item::More { project: project.clone(), kinds: left });
+            }
+        }
+        at = end;
+    }
+    out
+}
+
+/// "4 running, 2 done": how many of each.
+pub fn count_words(kinds: &[Kind]) -> String {
+    Kind::ALL
+        .iter()
+        .filter_map(|k| {
+            let n = kinds.iter().filter(|x| *x == k).count();
+            (n > 0).then(|| format!("{n} {}", k.label().to_lowercase()))
+        })
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
 /// The projects among the tabs, each with how many tabs it has, in the
 /// order first seen.
 pub fn projects(tabs: &[Tab]) -> Vec<(PathBuf, usize)> {
@@ -288,6 +381,38 @@ mod tests {
         workspaces[0].name = "aaa".into();
         let tabs: Vec<Tab> = workspaces.iter().map(|w| Tab::new(w, &sessions)).collect();
         assert_eq!(order(&arrange(&tabs, Sort::Name, &all)), [5, 1, 2, 4, 3]);
+    }
+
+    #[test]
+    fn grouped_by_folder_only_what_wants_a_person_shows() {
+        let sessions = vec![
+            info(1, State::Running, 1, "/p/a", "a1"),
+            info(2, State::Waiting, 2, "/p/a", "a2"),
+            info(3, State::Done, 3, "/p/a", "a3"),
+            info(4, State::Running, 4, "/p/b", "b1"),
+        ];
+        let workspaces: Vec<Workspace> = (1..=4).map(|id| Workspace::new(id + 100, Node::Leaf(id), id)).collect();
+        let tabs: Vec<Tab> = workspaces.iter().map(|w| Tab::new(w, &sessions)).collect();
+        let shown = arrange(&tabs, Sort::Folder, &Filter::default());
+        let words = |items: &[Item]| {
+            items
+                .iter()
+                .map(|i| match i {
+                    Item::Group { project, total, open, .. } => format!("{}:{total}{}", project.display(), if *open { "" } else { " closed" }),
+                    Item::Tab { tab, card } => format!("{}{}", tab.workspace.focus, if *card { "" } else { "-" }),
+                    Item::More { kinds, .. } => format!("+{}", count_words(kinds)),
+                })
+                .collect::<Vec<_>>()
+        };
+        // Tab 1 is the one shown, so it stays.
+        let listed = items(&shown, Sort::Folder, Density::Cards, &[], &[], Some(101));
+        assert_eq!(words(&listed), ["/p/a:3", "1", "2", "+1 done", "/p/b:1", "+1 running"]);
+        let closed = [PathBuf::from("/p/a")];
+        let whole = [PathBuf::from("/p/b")];
+        assert_eq!(words(&items(&shown, Sort::Folder, Density::Lines, &closed, &whole, None)), ["/p/a:3 closed", "/p/b:1", "4-"]);
+        // Not by folder: no headings, lines but for the one shown.
+        let flat = items(&shown, Sort::Manual, Density::Lines, &[], &[], Some(102));
+        assert_eq!(words(&flat), ["1-", "2", "3-", "4-"]);
     }
 
     #[test]
