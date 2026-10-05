@@ -30,6 +30,10 @@ struct Session {
     notice: Option<(State, std::time::Instant)>,
     /// The clients this session's screen goes to.
     watchers: BTreeSet<ClientId>,
+    /// Those of them that have nothing yet and get every row next.
+    fresh: BTreeSet<ClientId>,
+    /// The screen the watchers have, which the next update is the change from.
+    sent: Option<(tsumugi_pane::Screen, crate::diff::Extra)>,
 }
 
 struct Shared {
@@ -143,6 +147,7 @@ fn serve(shared: Arc<Shared>, client: ClientId, conn: Conn) {
     lock(&shared.clients).remove(&client);
     for s in lock(&shared.sessions).values_mut() {
         s.watchers.remove(&client);
+        s.fresh.remove(&client);
     }
     drop(tx);
     let _ = writer.join();
@@ -184,7 +189,7 @@ fn handle(shared: &Arc<Shared>, client: ClientId, tx: &Sender<ToClient>, msg: To
                     // told: the window's default palette, filer's colours.
                     term.set_colors([0xc8, 0xcd, 0xd8], [0x1b, 0x1e, 0x24]);
                     let info = Info { id, cwd, title: String::new(), command, state: State::Running, note: String::new(), since_ms: now_ms() };
-                    sessions.insert(id, Session { term, info, notice: None, watchers: BTreeSet::from([client]) });
+                    sessions.insert(id, Session { term, info, notice: None, watchers: BTreeSet::from([client]), fresh: BTreeSet::from([client]), sent: None });
                     let mut workspaces = lock(&shared.workspaces);
                     place_session(shared, &mut workspaces, id, place);
                     broadcast_workspaces(shared, &workspaces);
@@ -201,6 +206,7 @@ fn handle(shared: &Arc<Shared>, client: ClientId, tx: &Sender<ToClient>, msg: To
         ToServer::Attach { id } => match sessions.get_mut(&id) {
             Some(s) => {
                 s.watchers.insert(client);
+                s.fresh.insert(client);
                 let _ = shared.dirty.send(id);
             }
             None => {
@@ -210,6 +216,7 @@ fn handle(shared: &Arc<Shared>, client: ClientId, tx: &Sender<ToClient>, msg: To
         ToServer::Detach { id } => {
             if let Some(s) = sessions.get_mut(&id) {
                 s.watchers.remove(&client);
+                s.fresh.remove(&client);
             }
         }
         ToServer::Kill { id } => end(shared, sessions, id),
@@ -420,23 +427,31 @@ fn run_pump(shared: Arc<Shared>, dirty: Receiver<SessionId>) {
                 ended.push(id);
                 continue;
             }
-            let msg = ToClient::Screen {
-                id,
-                screen: s.term.screen(),
+            // Only what changed since the watchers' copy; a watcher that has
+            // no copy yet gets every row.
+            let screen = s.term.screen();
+            let extra = crate::diff::Extra {
                 scrolled_back: s.term.scrolled_back(),
                 win32_input: s.term.win32_input(),
                 title: s.term.title.clone(),
             };
+            let change = crate::diff::diff(s.sent.as_ref().map(|(sc, ex)| (sc, ex)), &screen, &extra);
+            let whole = (!s.fresh.is_empty()).then(|| crate::diff::diff(None, &screen, &extra)).flatten();
             let clients = lock(&shared.clients);
             for c in &s.watchers {
                 if let Some(tx) = clients.get(c) {
                     for text in &clipboard {
                         let _ = tx.send(ToClient::Clipboard(text.clone()));
                     }
-                    let _ = tx.send(msg.clone());
+                    let update = if s.fresh.contains(c) { whole.clone() } else { change.clone() };
+                    if let Some(update) = update {
+                        let _ = tx.send(ToClient::Screen { id, update });
+                    }
                 }
             }
             drop(clients);
+            s.fresh.clear();
+            s.sent = Some((screen, extra));
             if changed {
                 broadcast(&shared, &sessions);
             }

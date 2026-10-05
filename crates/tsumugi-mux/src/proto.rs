@@ -3,11 +3,11 @@
 use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
-use tsumugi_pane::{Screen, Size};
+use tsumugi_pane::Size;
 
 /// Bumped whenever a message changes shape: a client and a server that
 /// disagree say so at `Hello` instead of misreading each other.
-pub const VERSION: u32 = 4;
+pub const VERSION: u32 = 5;
 
 pub type SessionId = u64;
 pub type WorkspaceId = u64;
@@ -137,8 +137,9 @@ pub enum ToClient {
     Sessions(Vec<Info>),
     Workspaces(Vec<Workspace>),
     Spawned { id: SessionId },
-    /// The visible screen of an attached session, and what goes with it.
-    Screen { id: SessionId, screen: Screen, scrolled_back: usize, win32_input: bool, title: String },
+    /// What changed on the screen of an attached session: every row the
+    /// first time, then only the rows that changed.
+    Screen { id: SessionId, update: crate::diff::Update },
     /// The session's shell is gone; the session is no more.
     Exited { id: SessionId },
     /// Text for the clipboard: a program set it (OSC 52), or `Copy` asked.

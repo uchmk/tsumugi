@@ -193,9 +193,11 @@ fn receive(inner: &Inner, msg: ToClient) {
             st.sessions = Some(list);
         }
         ToClient::Spawned { id } => st.spawned.push_back(Ok(id)),
-        ToClient::Screen { id, screen, scrolled_back, win32_input, title } => {
+        ToClient::Screen { id, update } => {
             let r = st.screens.entry(id).or_default();
-            *r = Remote { screen, scrolled_back, win32_input, title, exited: false };
+            let mut extra = crate::diff::Extra::default();
+            crate::diff::apply(&mut r.screen, &mut extra, update);
+            (r.scrolled_back, r.win32_input, r.title) = (extra.scrolled_back, extra.win32_input, extra.title);
         }
         ToClient::Exited { id } => st.screens.entry(id).or_default().exited = true,
         ToClient::Clipboard(text) => st.clipboard.push(text),

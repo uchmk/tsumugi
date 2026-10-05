@@ -7,6 +7,7 @@
 //! postcard body (`frame`) of the types in `proto`.
 
 pub mod client;
+pub mod diff;
 pub mod frame;
 pub mod proto;
 pub mod server;
