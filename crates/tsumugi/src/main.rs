@@ -17,6 +17,7 @@
 // No console window behind the GUI on Windows, in a release build.
 #![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 
+mod alert;
 mod chrome;
 mod fonts;
 mod keys;
@@ -191,6 +192,8 @@ fn json_string(json: &str, key: &str) -> Option<String> {
 }
 
 fn window() -> std::process::ExitCode {
+    // Before the window shows, so the taskbar files it under this name.
+    alert::name_process();
     let viewport = egui::ViewportBuilder::default().with_title("tsumugi").with_inner_size([960.0, 600.0]);
     let options = eframe::NativeOptions { viewport, wgpu_options: wgpu_options(), ..Default::default() };
     match eframe::run_native("tsumugi", options, Box::new(|cc| Ok(Box::new(App::new(cc))))) {
@@ -341,6 +344,9 @@ struct App {
     /// The bell list opened this frame: the click that opened it is not a
     /// click outside it.
     bell_opening: bool,
+    /// Telling someone who is not looking (the design's 1h).
+    alerts: alert::Alerts,
+    teller: alert::Teller,
 }
 
 impl App {
@@ -379,6 +385,8 @@ impl App {
             jump_waiting: false,
             nerd,
             bell_opening: false,
+            alerts: alert::Alerts::default(),
+            teller: alert::Teller::start(window_handle(cc)),
         }
     }
 
@@ -741,6 +749,15 @@ pub(crate) fn home_short(path: &std::path::Path) -> String {
     }
 }
 
+/// The window's own handle, for the taskbar's number (Windows).
+fn window_handle(cc: &eframe::CreationContext<'_>) -> Option<isize> {
+    use raw_window_handle::{HasWindowHandle, RawWindowHandle};
+    match cc.window_handle().ok()?.as_raw() {
+        RawWindowHandle::Win32(h) => Some(h.hwnd.get()),
+        _ => None,
+    }
+}
+
 impl eframe::App for App {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
@@ -762,6 +779,13 @@ impl eframe::App for App {
         } else if self.had_tabs && self.pending.is_none() {
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
         }
+        let looking = ctx.input(|i| i.viewport().focused).unwrap_or(true);
+        for out in self.alerts.decide(&client.notices(), looking) {
+            match out {
+                alert::Out::Flash => ctx.send_viewport_cmd(egui::ViewportCommand::RequestUserAttention(egui::UserAttentionType::Informational)),
+                out => self.teller.send(out),
+            }
+        }
         let current = self.current(&workspaces);
         if std::mem::take(&mut self.jump_waiting) {
             if let Some(w) = &current {
@@ -772,7 +796,12 @@ impl eframe::App for App {
 
         if let Some(w) = &current {
             let t = sessions.iter().find(|i| i.id == w.focus).map(|i| i.title.clone()).unwrap_or_default();
-            let title = if t.is_empty() { "tsumugi".to_owned() } else { format!("{t} — tsumugi") };
+            let mut title = if t.is_empty() { "tsumugi".to_owned() } else { format!("{t} — tsumugi") };
+            // Where the taskbar cannot carry the number, the title does.
+            let n = self.alerts.badge();
+            if !alert::TASKBAR_NUMBER && n > 0 {
+                title = format!("({n}) {title}");
+            }
             if title != self.title {
                 ctx.send_viewport_cmd(egui::ViewportCommand::Title(title.clone()));
                 self.title = title;

@@ -46,6 +46,22 @@ tsumugi shell-hook pwsh >> $PROFILE
 (`tsumugi shell-hook bash` and `zsh` exist too; on Linux and macOS the folder
 is read from the system anyway.)
 
+### When you are not looking
+
+While the window does not have the keyboard, a session that starts waiting,
+hits an error, or finishes after running a minute or more shows the system's
+notification, and the ones waiting or in error are counted on the taskbar
+button (on Windows a red number over the icon; elsewhere the window title
+starts with it, `(2) …`). Coming back to the window clears the number. The bell
+beside SESSIONS keeps the same list.
+
+On Windows the notification needs the app's name registered for the current
+user; tsumugi writes it at the first notification
+(`HKEY_CURRENT_USER\Software\Classes\AppUserModelId\uchmk.tsumugi`). On
+Linux it goes through `notify-send`, on macOS through AppleScript. Which
+states tell in which way will be in the settings screen; for now it is the
+defaults above, and the taskbar does not flash.
+
 ### Claude Code hooks
 
 An agent can say for itself that it is waiting. With `tsumugi` on the `PATH`,
