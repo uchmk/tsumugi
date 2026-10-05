@@ -5,9 +5,10 @@
 //! bell shows; doing it is the system's part (`os`), on a thread of its own
 //! so a slow notification service never holds up a frame.
 
-use std::sync::mpsc;
+use std::collections::HashSet;
+use std::sync::{Arc, mpsc};
 
-use tsumugi_mux::{Notice, State};
+use tsumugi_mux::{Notice, SessionId, State};
 
 /// Which ways to tell, per state. The settings screen (1m) will set these;
 /// until then they are the design's defaults.
@@ -53,7 +54,8 @@ impl Default for Rules {
 /// One thing to do.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Out {
-    Notify { title: String, body: String },
+    /// `session`: where a click on it goes.
+    Notify { session: SessionId, title: String, body: String },
     Flash,
     Badge(usize),
 }
@@ -69,26 +71,39 @@ pub struct Alerts {
     badge: usize,
 }
 
+/// Who is where, for [`Alerts::decide`].
+pub struct Seen<'a> {
+    /// Someone is at a window of this server: nothing needs telling.
+    pub looking: bool,
+    /// This window is the one to tell (the one that had the keyboard last),
+    /// so two windows do not tell twice. The number is on every window's
+    /// taskbar button all the same.
+    pub teller: bool,
+    /// Sessions told of in the bell only.
+    pub muted: &'a HashSet<SessionId>,
+}
+
 impl Alerts {
-    /// What the notices that arrived since the last call ask for. `looking`:
-    /// the window has the keyboard, and nothing needs telling.
-    pub fn decide(&mut self, notices: &[Notice], looking: bool) -> Vec<Out> {
+    /// What the notices that arrived since the last call ask for.
+    pub fn decide(&mut self, notices: &[Notice], seen: Seen) -> Vec<Out> {
+        let Seen { looking, teller, muted } = seen;
+        let heard = |n: &&Notice| !muted.contains(&n.session);
         let mut out = Vec::new();
         let next = notices.iter().map(|n| n.id + 1).max().unwrap_or(0);
         let fresh: Vec<&Notice> = match self.next {
-            Some(from) => notices.iter().filter(|n| n.id >= from && !n.read).collect(),
+            Some(from) => notices.iter().filter(|n| n.id >= from && !n.read).filter(heard).collect(),
             None => Vec::new(),
         };
         self.next = Some(next.max(self.next.unwrap_or(0)));
-        if !looking {
+        if !looking && teller {
             for n in fresh.iter().filter(|n| self.rules.notify.has(n.state)) {
-                out.push(Out::Notify { title: n.title.clone(), body: body(n) });
+                out.push(Out::Notify { session: n.session, title: n.title.clone(), body: body(n) });
             }
             if fresh.iter().any(|n| self.rules.flash.has(n.state)) {
                 out.push(Out::Flash);
             }
         }
-        let badge = if looking { 0 } else { notices.iter().filter(|n| !n.read && self.rules.badge.has(n.state)).count() };
+        let badge = if looking { 0 } else { notices.iter().filter(heard).filter(|n| !n.read && self.rules.badge.has(n.state)).count() };
         if badge != self.badge {
             self.badge = badge;
             out.push(Out::Badge(badge));
@@ -112,24 +127,43 @@ fn body(n: &Notice) -> String {
     if n.note.is_empty() { what.to_owned() } else { format!("{what} · {}", n.note) }
 }
 
+/// Called with the session of a notification that was clicked, from
+/// whichever thread the system tells it on.
+type Click = Arc<dyn Fn(SessionId) + Send + Sync>;
+
 /// Where the system's part runs.
-pub struct Teller(mpsc::Sender<Out>);
+pub struct Teller {
+    tx: mpsc::Sender<Out>,
+    clicked: mpsc::Receiver<SessionId>,
+}
 
 impl Teller {
-    /// `window`: the window's own handle, for the taskbar (Windows).
-    pub fn start(window: Option<isize>) -> Self {
+    /// `window`: the window's own handle, for the taskbar (Windows). `wake`:
+    /// a click came back, to have the window look.
+    pub fn start(window: Option<isize>, wake: impl Fn() + Send + Sync + 'static) -> Self {
         let (tx, rx) = mpsc::channel::<Out>();
+        let (click_tx, clicked) = mpsc::channel::<SessionId>();
+        let click_tx = std::sync::Mutex::new(click_tx);
+        let click: Click = Arc::new(move |id| {
+            let _ = click_tx.lock().unwrap_or_else(|e| e.into_inner()).send(id);
+            wake();
+        });
         let _ = std::thread::Builder::new().name("alerts".into()).spawn(move || {
-            let mut os = os::System::new(window);
+            let mut os = os::System::new(window, click);
             for out in rx {
                 os.tell(out);
             }
         });
-        Self(tx)
+        Self { tx, clicked }
     }
 
     pub fn send(&self, out: Out) {
-        let _ = self.0.send(out);
+        let _ = self.tx.send(out);
+    }
+
+    /// The sessions whose notification was clicked since the last call.
+    pub fn clicked(&self) -> Vec<SessionId> {
+        self.clicked.try_iter().collect()
     }
 }
 
@@ -202,16 +236,20 @@ mod os {
     //! A toast through the notification service, and the number as an
     //! overlay on the taskbar button (`ITaskbarList3`).
 
-    use super::{Out, badge_pixels, xml_escape};
+    use super::{Click, Out, badge_pixels, xml_escape};
+    use std::collections::VecDeque;
+    use std::sync::mpsc;
+    use tsumugi_mux::SessionId;
     use windows::Data::Xml::Dom::XmlDocument;
+    use windows::Foundation::TypedEventHandler;
     use windows::UI::Notifications::{ToastNotification, ToastNotificationManager};
     use windows::Win32::Foundation::HWND;
     use windows::Win32::Graphics::Gdi::{BI_RGB, BITMAPINFO, BITMAPINFOHEADER, CreateBitmap, CreateDIBSection, DIB_RGB_COLORS, DeleteObject, HGDIOBJ};
-    use windows::Win32::System::Com::{CLSCTX_INPROC_SERVER, COINIT_APARTMENTTHREADED, CoCreateInstance, CoInitializeEx};
+    use windows::Win32::System::Com::{CLSCTX_INPROC_SERVER, COINIT_APARTMENTTHREADED, COINIT_MULTITHREADED, CoCreateInstance, CoInitializeEx};
     use windows::Win32::System::Registry::{HKEY, HKEY_CURRENT_USER, KEY_WRITE, REG_OPTION_NON_VOLATILE, REG_SZ, RegCloseKey, RegCreateKeyExW, RegSetValueExW};
     use windows::Win32::UI::Shell::{ITaskbarList3, SetCurrentProcessExplicitAppUserModelID, TaskbarList};
     use windows::Win32::UI::WindowsAndMessaging::{CreateIconIndirect, DestroyIcon, HICON, ICONINFO};
-    use windows::core::{HSTRING, w};
+    use windows::core::{HSTRING, IInspectable, w};
 
     /// The app's id to the notification service. It is registered under the
     /// user's own keys (no installer, no shortcut needed), with the name the
@@ -225,30 +263,51 @@ mod os {
         }
     }
 
+    /// The taskbar is an apartment object and lives on this thread (single
+    /// threaded); the toasts live on one of their own (multithreaded), where
+    /// their `Activated` events can arrive while this one waits for work.
     pub struct System {
         window: Option<HWND>,
         taskbar: Option<ITaskbarList3>,
-        registered: bool,
+        toasts: mpsc::Sender<(SessionId, String, String)>,
     }
 
     impl System {
-        pub fn new(window: Option<isize>) -> Self {
+        pub fn new(window: Option<isize>, click: Click) -> Self {
             unsafe {
                 let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
             }
             let taskbar = unsafe { CoCreateInstance::<_, ITaskbarList3>(&TaskbarList, None, CLSCTX_INPROC_SERVER) }.ok();
             let taskbar = taskbar.filter(|t| unsafe { t.HrInit() }.is_ok());
-            Self { window: window.map(|h| HWND(h as *mut _)), taskbar, registered: false }
+            let (toasts, rx) = mpsc::channel::<(SessionId, String, String)>();
+            let _ = std::thread::Builder::new().name("toasts".into()).spawn(move || {
+                unsafe {
+                    let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
+                }
+                // Kept, so a click on one still reaches its handler.
+                let mut shown = VecDeque::new();
+                let mut registered = false;
+                for (session, title, body) in rx {
+                    // The name, written at the first notification only.
+                    if !registered {
+                        register();
+                        registered = true;
+                    }
+                    if let Ok(t) = toast(&title, &body, session, click.clone()) {
+                        shown.push_back(t);
+                        if shown.len() > 50 {
+                            shown.pop_front();
+                        }
+                    }
+                }
+            });
+            Self { window: window.map(|h| HWND(h as *mut _)), taskbar, toasts }
         }
 
         pub fn tell(&mut self, out: Out) {
             match out {
-                Out::Notify { title, body } => {
-                    if !self.registered {
-                        register();
-                        self.registered = true;
-                    }
-                    let _ = toast(&title, &body);
+                Out::Notify { session, title, body } => {
+                    let _ = self.toasts.send((session, title, body));
                 }
                 // The window asks for this itself (`RequestUserAttention`).
                 Out::Flash => {}
@@ -284,7 +343,7 @@ mod os {
         }
     }
 
-    fn toast(title: &str, body: &str) -> windows::core::Result<()> {
+    fn toast(title: &str, body: &str, session: SessionId, click: Click) -> windows::core::Result<ToastNotification> {
         let xml = format!(
             "<toast><visual><binding template=\"ToastGeneric\"><text>{}</text><text>{}</text></binding></visual></toast>",
             xml_escape(title),
@@ -293,7 +352,13 @@ mod os {
         let doc = XmlDocument::new()?;
         doc.LoadXml(&HSTRING::from(xml))?;
         let toast = ToastNotification::CreateToastNotification(&doc)?;
-        ToastNotificationManager::CreateToastNotifierWithId(&HSTRING::from(APP_ID))?.Show(&toast)
+        // A click on it, while tsumugi runs, goes to the session.
+        toast.Activated(&TypedEventHandler::<ToastNotification, IInspectable>::new(move |_, _| {
+            click(session);
+            Ok(())
+        }))?;
+        ToastNotificationManager::CreateToastNotifierWithId(&HSTRING::from(APP_ID))?.Show(&toast)?;
+        Ok(toast)
     }
 
     /// A 16 × 16 icon from BGRA pixels.
@@ -331,43 +396,71 @@ mod os {
     //! The notification through the desktop's own tool: `notify-send` on
     //! Linux and the BSDs, AppleScript on macOS. Not there, nothing shows.
 
-    use super::Out;
+    use super::{Click, Out};
     use std::process::{Command, Stdio};
 
     pub fn name_process() {}
 
-    pub struct System;
+    pub struct System {
+        click: Click,
+    }
 
     impl System {
-        pub fn new(_window: Option<isize>) -> Self {
-            Self
+        pub fn new(_window: Option<isize>, click: Click) -> Self {
+            Self { click }
         }
 
         pub fn tell(&mut self, out: Out) {
-            if let Out::Notify { title, body } = out {
-                let mut cmd = command(&title, &body);
-                cmd.stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
-                // Waited for, so no child is left a zombie; this thread
-                // does nothing else.
-                let _ = cmd.status();
+            if let Out::Notify { session, title, body } = out {
+                let click = self.click.clone();
+                // Each on a thread of its own: one that can say it was
+                // clicked waits until it is closed.
+                let _ = std::thread::Builder::new().name("notify".into()).spawn(move || {
+                    if show(&title, &body) {
+                        click(session);
+                    }
+                });
             }
         }
     }
 
+    /// Show it; whether it was clicked.
     #[cfg(target_os = "macos")]
-    fn command(title: &str, body: &str) -> Command {
+    fn show(title: &str, body: &str) -> bool {
+        // AppleScript's notifications cannot say they were clicked; a click
+        // opens Script Editor. A signed app bundle would have its own.
         use super::applescript_string;
         let script = format!("display notification {} with title {}", applescript_string(body), applescript_string(title));
-        let mut cmd = Command::new("osascript");
-        cmd.arg("-e").arg(script);
-        cmd
+        let _ = Command::new("osascript").arg("-e").arg(script).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).status();
+        false
     }
 
+    /// Show it; whether it was clicked. libnotify 0.7.12 and later can wait
+    /// for a click (`--action --wait`) and print its name; an older
+    /// `notify-send` does not know the options, and shows it plainly.
     #[cfg(not(target_os = "macos"))]
-    fn command(title: &str, body: &str) -> Command {
-        let mut cmd = Command::new("notify-send");
-        cmd.args(["--app-name=tsumugi", "--", title, body]);
-        cmd
+    fn show(title: &str, body: &str) -> bool {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        static PLAIN: AtomicBool = AtomicBool::new(false);
+        let run = |actions: bool| {
+            let mut cmd = Command::new("notify-send");
+            cmd.arg("--app-name=tsumugi");
+            if actions {
+                cmd.args(["--action=default=Open", "--wait"]);
+            }
+            cmd.args(["--", title, body]).stdin(Stdio::null()).stderr(Stdio::null());
+            cmd.output()
+        };
+        if !PLAIN.load(Ordering::Relaxed) {
+            match run(true) {
+                Ok(out) if out.status.success() => return String::from_utf8_lossy(&out.stdout).trim() == "default",
+                // Not there at all: nothing more to try.
+                Err(_) => return false,
+                Ok(_) => PLAIN.store(true, Ordering::Relaxed),
+            }
+        }
+        let _ = run(false);
+        false
     }
 }
 
@@ -377,6 +470,10 @@ pub use os::name_process;
 mod tests {
     use super::*;
 
+    fn seen(looking: bool, teller: bool, muted: &HashSet<SessionId>) -> Seen<'_> {
+        Seen { looking, teller, muted }
+    }
+
     fn notice(id: u64, state: State, read: bool) -> Notice {
         Notice { id, session: 1, state, title: "claude".into(), note: String::new(), at_ms: 0, read }
     }
@@ -384,41 +481,58 @@ mod tests {
     #[test]
     fn notices_from_before_the_window_are_not_told() {
         let mut a = Alerts::default();
+        let none = HashSet::new();
         let old = [notice(0, State::Waiting, false)];
         // Only the number: the notice is unread.
-        assert_eq!(a.decide(&old, false), vec![Out::Badge(1)]);
+        assert_eq!(a.decide(&old, seen(false, true, &none)), vec![Out::Badge(1)]);
         let new = [notice(0, State::Waiting, false), notice(1, State::Error, false)];
-        let out = a.decide(&new, false);
-        assert_eq!(out, vec![Out::Notify { title: "claude".into(), body: "Error".into() }, Out::Badge(2)]);
+        let out = a.decide(&new, seen(false, true, &none));
+        assert_eq!(out, vec![Out::Notify { session: 1, title: "claude".into(), body: "Error".into() }, Out::Badge(2)]);
         // Told once.
-        assert_eq!(a.decide(&new, false), vec![]);
+        assert_eq!(a.decide(&new, seen(false, true, &none)), vec![]);
     }
 
     #[test]
     fn nothing_is_told_while_looking() {
         let mut a = Alerts::default();
-        a.decide(&[], false);
-        let out = a.decide(&[notice(0, State::Waiting, false)], true);
+        let none = HashSet::new();
+        a.decide(&[], seen(false, true, &none));
+        let out = a.decide(&[notice(0, State::Waiting, false)], seen(true, true, &none));
         assert_eq!(out, vec![]);
         // Looking away later does not tell it then, but counts it.
-        assert_eq!(a.decide(&[notice(0, State::Waiting, false)], false), vec![Out::Badge(1)]);
+        assert_eq!(a.decide(&[notice(0, State::Waiting, false)], seen(false, true, &none)), vec![Out::Badge(1)]);
         // Looking back clears the number.
-        assert_eq!(a.decide(&[notice(0, State::Waiting, false)], true), vec![Out::Badge(0)]);
+        assert_eq!(a.decide(&[notice(0, State::Waiting, false)], seen(true, true, &none)), vec![Out::Badge(0)]);
     }
 
     #[test]
     fn the_rules_choose() {
         let mut a = Alerts::default();
-        a.decide(&[], false);
+        let none = HashSet::new();
+        a.decide(&[], seen(false, true, &none));
         // A long run done: told, not counted, not flashed.
-        let out = a.decide(&[notice(0, State::Done, false)], false);
-        assert_eq!(out, vec![Out::Notify { title: "claude".into(), body: "Done".into() }]);
+        let out = a.decide(&[notice(0, State::Done, false)], seen(false, true, &none));
+        assert_eq!(out, vec![Out::Notify { session: 1, title: "claude".into(), body: "Done".into() }]);
         a.rules.flash.waiting = true;
         a.rules.notify.waiting = false;
-        let out = a.decide(&[notice(0, State::Done, false), notice(1, State::Waiting, false)], false);
+        let out = a.decide(&[notice(0, State::Done, false), notice(1, State::Waiting, false)], seen(false, true, &none));
         assert_eq!(out, vec![Out::Flash, Out::Badge(1)]);
         // Read ones are neither told nor counted.
-        assert_eq!(a.decide(&[notice(2, State::Error, true)], false), vec![Out::Badge(0)]);
+        assert_eq!(a.decide(&[notice(2, State::Error, true)], seen(false, true, &none)), vec![Out::Badge(0)]);
+    }
+
+    #[test]
+    fn only_the_teller_tells_and_muted_ones_stay_in_the_bell() {
+        let mut a = Alerts::default();
+        let none = HashSet::new();
+        a.decide(&[], seen(false, false, &none));
+        // Another window tells; this one only counts.
+        assert_eq!(a.decide(&[notice(0, State::Waiting, false)], seen(false, false, &none)), vec![Out::Badge(1)]);
+        let mut b = Alerts::default();
+        let muted = HashSet::from([1]);
+        b.decide(&[], seen(false, true, &muted));
+        // Muted: neither told nor counted.
+        assert_eq!(b.decide(&[notice(0, State::Error, false)], seen(false, true, &muted)), vec![]);
     }
 
     #[test]

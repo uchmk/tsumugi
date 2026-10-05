@@ -48,6 +48,9 @@ struct Shared {
     /// The tabs and their splits. Locked after `sessions` when both are.
     workspaces: Mutex<BTreeMap<WorkspaceId, Workspace>>,
     clients: Mutex<BTreeMap<ClientId, Sender<ToClient>>>,
+    /// Which windows have the keyboard, and the order they last had it in.
+    /// Locked after `sessions`, before `clients`.
+    attention: Mutex<Attention>,
     next: AtomicU64,
     /// A session to look at: its shell said something, or a client asked.
     dirty: Sender<SessionId>,
@@ -125,6 +128,7 @@ pub fn start_with(at: &Address, options: Options) -> io::Result<ServerHandle> {
         sessions: Mutex::new(BTreeMap::new()),
         workspaces: Mutex::new(BTreeMap::new()),
         clients: Mutex::new(BTreeMap::new()),
+        attention: Mutex::new(Attention::default()),
         next: AtomicU64::new(1),
         dirty: dirty_tx,
         done: done_tx,
@@ -173,6 +177,10 @@ fn serve(shared: Arc<Shared>, client: ClientId, conn: Conn) {
     let _ = tx.send(ToClient::Started { at_ms: shared.started_ms });
     let _ = tx.send(ToClient::Notices(lock(&shared.notices).1.iter().cloned().collect()));
     lock(&shared.clients).insert(client, tx.clone());
+    // Last in the line to tell: a window that never had the keyboard tells
+    // only when it is the only one.
+    lock(&shared.attention).order.insert(0, client);
+    broadcast_attention(shared.as_ref());
     let writer = std::thread::spawn(move || {
         for msg in rx {
             if frame::write(&mut w, &msg).is_err() {
@@ -185,6 +193,12 @@ fn serve(shared: Arc<Shared>, client: ClientId, conn: Conn) {
     }
     // Gone: it watches nothing now, and its writer ends with the channel.
     lock(&shared.clients).remove(&client);
+    {
+        let mut a = lock(&shared.attention);
+        a.order.retain(|c| *c != client);
+        a.focused.remove(&client);
+    }
+    broadcast_attention(shared.as_ref());
     for s in lock(&shared.sessions).values_mut() {
         s.watchers.remove(&client);
         s.fresh.remove(&client);
@@ -226,6 +240,28 @@ fn handle(shared: &Arc<Shared>, client: ClientId, tx: &Sender<ToClient>, msg: To
                 n.read = true;
             }
             broadcast_notices(shared, &notices.1);
+        }
+        ToServer::Focus { focused } => {
+            {
+                let mut a = lock(&shared.attention);
+                if focused {
+                    a.focused.insert(client);
+                    a.order.retain(|c| *c != client);
+                    a.order.push(client);
+                } else {
+                    a.focused.remove(&client);
+                }
+            }
+            broadcast_attention(shared);
+        }
+        ToServer::Mute { ids, on } => {
+            for id in ids {
+                if let Some(s) = sessions.get_mut(&id) {
+                    s.info.muted = on;
+                }
+            }
+            broadcast(shared, &sessions);
+            save_soon(shared, SAVE_AFTER_CHANGE);
         }
         ToServer::Spawn { cwd, shell, size, cell, place } => {
             match spawn_session(shared, &mut sessions, Some(client), cwd, shell, size, cell) {
@@ -338,6 +374,25 @@ fn broadcast(shared: &Shared, sessions: &BTreeMap<SessionId, Session>) {
     }
 }
 
+/// Which windows have the keyboard (`ToServer::Focus`).
+#[derive(Default)]
+struct Attention {
+    focused: BTreeSet<ClientId>,
+    /// Every client, the one that had the keyboard last at the end: it is
+    /// the one that tells.
+    order: Vec<ClientId>,
+}
+
+fn broadcast_attention(shared: &Shared) {
+    let (looking, teller) = {
+        let a = lock(&shared.attention);
+        (!a.focused.is_empty(), a.order.last().copied())
+    };
+    for (id, tx) in lock(&shared.clients).iter() {
+        let _ = tx.send(ToClient::Attention { looking, teller: teller == Some(*id) });
+    }
+}
+
 /// How long after a change the state is written: soon after an ordinary one,
 /// later after a session ends (see `ServerHandle::wait`).
 const SAVE_AFTER_CHANGE: Duration = Duration::from_millis(500);
@@ -383,6 +438,7 @@ fn save_if_due(shared: &Shared) {
                         claude: s.claude.clone(),
                         title: s.info.title.clone(),
                         state: s.info.state,
+                        muted: s.info.muted,
                     })
                     .collect(),
             })
@@ -422,7 +478,7 @@ fn spawn_session(
     // window's default palette, filer's colours.
     term.set_colors([0xc8, 0xcd, 0xd8], [0x1b, 0x1e, 0x24]);
     let branch = git_branch(&cwd).unwrap_or_default();
-    let info = Info { id, cwd, title: String::new(), command, state: State::Running, note: String::new(), since_ms: now_ms(), branch };
+    let info = Info { id, cwd, title: String::new(), command, state: State::Running, note: String::new(), since_ms: now_ms(), branch, muted: false };
     let watchers: BTreeSet<ClientId> = client.into_iter().collect();
     sessions.insert(
         id,
@@ -446,8 +502,9 @@ fn restore(shared: &Arc<Shared>, sessions: &mut BTreeMap<SessionId, Session>, on
             let Ok(id) = spawn_session(shared, sessions, None, cwd, p.shell.clone(), tsumugi_pane::Size::new(80, 24), (8, 16)) else {
                 continue;
             };
+            let s = sessions.get_mut(&id).expect("just started");
+            s.info.muted = p.muted;
             if let Some(conversation) = &p.claude {
-                let s = sessions.get_mut(&id).expect("just started");
                 s.claude = Some(conversation.clone());
                 s.pending = Some(format!("claude --resume {conversation}\r").into_bytes());
             }

@@ -99,6 +99,35 @@ fn every_client_hears_of_a_new_session() {
     pane.kill();
 }
 
+/// Wait until `ok` holds, or fail saying `what`.
+fn eventually(what: &str, ok: impl Fn() -> bool) {
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while !ok() {
+        assert!(Instant::now() < deadline, "never: {what}");
+        std::thread::sleep(Duration::from_millis(20));
+    }
+}
+
+/// With two windows open, only one tells of a notice -- the one that had
+/// the keyboard last -- and none does while someone is at either.
+#[test]
+fn one_window_tells() {
+    let at = address();
+    let _srv = serve(&at).expect("the server starts");
+    let a = Client::connect(&at, || {}).expect("a connects");
+    eventually("a alone tells", || a.attention() == (false, true));
+    let b = Client::connect(&at, || {}).expect("b connects");
+    // A window that never had the keyboard does not take over.
+    eventually("a still tells", || a.attention() == (false, true) && b.attention() == (false, false));
+    b.focus(true);
+    eventually("b has the keyboard", || a.attention() == (true, false) && b.attention() == (true, true));
+    b.focus(false);
+    eventually("nobody looks, b tells", || a.attention() == (false, false) && b.attention() == (false, true));
+    a.focus(true);
+    a.focus(false);
+    eventually("a had it last", || a.attention() == (false, true) && b.attention() == (false, false));
+}
+
 /// Killing one of two sessions leaves the other, and the server answering.
 #[test]
 fn killing_one_session_leaves_the_rest() {
@@ -214,6 +243,7 @@ fn a_restart_brings_the_tabs_back() {
     let size = Size::new(80, 24);
     let a = c.spawn(dir.clone(), None, size, (8, 16)).expect("a starts");
     let b = c.spawn_at(dir.clone(), None, size, (8, 16), Place::Split { beside: a.id(), dir: Dir::Down }).expect("b starts");
+    c.mute(vec![a.id()], true);
     c.notify(b.id(), State::Done, String::new(), Some("conv-1234".into())).unwrap();
     let deadline = Instant::now() + Duration::from_secs(10);
     while crate::state::load(&state).is_none_or(|s| s.workspaces.first().is_none_or(|w| w.panes.iter().all(|p| p.claude.is_none()))) {
@@ -234,6 +264,8 @@ fn a_restart_brings_the_tabs_back() {
     assert!(matches!(ws[0].layout, crate::Node::Split { dir: Dir::Down, .. }), "split as before: {:?}", ws[0].layout);
     let infos = c2.list().unwrap();
     assert!(infos.iter().all(|i| i.cwd == dir), "each in its folder: {infos:?}");
+    let muted: Vec<_> = infos.iter().filter(|i| i.muted).map(|i| i.id).collect();
+    assert_eq!(muted, vec![leaves[0]], "the muted pane stays muted");
     let resumed = c2.attach(leaves[1]);
     until(&resumed, "claude --resume typed", |t| t.contains("claude --resume conv-1234"));
     assert_eq!(c2.restore().unwrap(), 0, "a server with sessions restores nothing");

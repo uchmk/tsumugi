@@ -7,7 +7,7 @@ use tsumugi_pane::Size;
 
 /// Bumped whenever a message changes shape: a client and a server that
 /// disagree say so at `Hello` instead of misreading each other.
-pub const VERSION: u32 = 7;
+pub const VERSION: u32 = 8;
 
 pub type SessionId = u64;
 pub type WorkspaceId = u64;
@@ -92,6 +92,9 @@ pub struct Info {
     pub since_ms: u64,
     /// The git branch of `cwd`, when it is in a repository.
     pub branch: String,
+    /// Its notices go to the bell only: no system notification, no number
+    /// on the taskbar.
+    pub muted: bool,
 }
 
 /// One entry of the notification list (the bell): a session that came to
@@ -155,6 +158,11 @@ pub enum ToServer {
     Restore { only: Option<Vec<SessionId>> },
     /// Mark notifications read: these, or all of them.
     ReadNotices { ids: Option<Vec<u64>> },
+    /// The window got or lost the keyboard; answered, to every client, with
+    /// `Attention`.
+    Focus { focused: bool },
+    /// Tell of these sessions only in the bell, or again everywhere.
+    Mute { ids: Vec<SessionId>, on: bool },
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -177,5 +185,9 @@ pub enum ToClient {
     Exited { id: SessionId },
     /// Text for the clipboard: a program set it (OSC 52), or `Copy` asked.
     Clipboard(String),
+    /// Whether someone is at one of the windows (`looking`), and whether this
+    /// client is the one to tell them otherwise (`teller`: the window that
+    /// had the keyboard last), so two windows do not tell twice.
+    Attention { looking: bool, teller: bool },
     Error(String),
 }

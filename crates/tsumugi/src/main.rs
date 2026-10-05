@@ -347,6 +347,8 @@ struct App {
     /// Telling someone who is not looking (the design's 1h).
     alerts: alert::Alerts,
     teller: alert::Teller,
+    /// Whether the server was last told this window has the keyboard.
+    focus_sent: Option<bool>,
 }
 
 impl App {
@@ -386,7 +388,11 @@ impl App {
             nerd,
             bell_opening: false,
             alerts: alert::Alerts::default(),
-            teller: alert::Teller::start(window_handle(cc)),
+            teller: alert::Teller::start(window_handle(cc), {
+                let ctx = cc.egui_ctx.clone();
+                move || ctx.request_repaint()
+            }),
+            focus_sent: None,
         }
     }
 
@@ -402,6 +408,19 @@ impl App {
         let w = found.or_else(|| workspaces.first())?.clone();
         self.active = Some(w.id);
         Some(w)
+    }
+
+    /// Show the session's tab with the keys in its pane, and count what it
+    /// said read.
+    fn go_to(&mut self, client: &Client, workspaces: &[Workspace], session: SessionId) {
+        if let Some(x) = workspaces.iter().find(|x| x.layout.contains(&session)) {
+            self.active = Some(x.id);
+            self.set_focus(x, session);
+        }
+        let unread: Vec<u64> = client.notices().iter().filter(|n| n.session == session && !n.read).map(|n| n.id).collect();
+        if !unread.is_empty() {
+            client.read_notices(Some(unread));
+        }
     }
 
     fn set_focus(&self, w: &Workspace, focus: SessionId) {
@@ -473,6 +492,7 @@ impl App {
     fn sidebar(&mut self, ui: &mut egui::Ui, workspaces: &[Workspace], sessions: &[Info]) -> Option<WorkspaceId> {
         let pal = self.palette;
         let mut picked = None;
+        let mut mute = None;
         let now = chrome::now_ms();
         ui.add_space(8.0);
         ui.horizontal(|ui| {
@@ -526,7 +546,8 @@ impl App {
                 let name = if infos.len() > 1 { format!("{name}  ·{}", infos.len()) } else { name };
                 let left = rect.left() + 32.0;
                 let width = rect.right() - left - 12.0;
-                let line = |text: String, y: f32, font: egui::FontId, color: egui::Color32| {
+                let muted = infos.iter().all(|i| i.muted);
+                let line = |text: String, y: f32, font: egui::FontId, color: egui::Color32, width: f32| {
                     let galley = ui.fonts_mut(|f| {
                         let mut job = egui::text::LayoutJob::simple_singleline(text, font, color);
                         job.wrap = egui::text::TextWrapping::truncate_at_width(width);
@@ -534,7 +555,10 @@ impl App {
                     });
                     painter.galley(egui::pos2(left, rect.top() + y), galley, color);
                 };
-                line(name, 6.0, egui::FontId::proportional(13.5), pal.fg);
+                line(name, 6.0, egui::FontId::proportional(13.5), pal.fg, if muted { width - 18.0 } else { width });
+                if muted {
+                    chrome::muted_mark(&painter, egui::pos2(rect.right() - 22.0, rect.top() + 14.0), pal.fg_dim);
+                }
                 // The folder, then the branch after its mark; the folder gives
                 // way first when the row is narrow.
                 let mono = egui::FontId::monospace(11.0);
@@ -568,10 +592,18 @@ impl App {
                     State::Error => chrome::RED,
                     _ => pal.fg_dim,
                 };
-                line(third, 42.0, egui::FontId::proportional(11.5), third_color);
+                line(third, 42.0, egui::FontId::proportional(11.5), third_color, width);
                 if resp.clicked() {
                     picked = Some(w.id);
                 }
+                // The design's 1j has more here; for now, notifications.
+                resp.context_menu(|ui| {
+                    let label = if muted { "Unmute notifications" } else { "Mute notifications" };
+                    if ui.button(label).on_hover_text("Muted: in the bell only, no system notification or taskbar number").clicked() {
+                        mute = Some((infos.iter().map(|i| i.id).collect::<Vec<_>>(), !muted));
+                        ui.close();
+                    }
+                });
             }
         });
         // What waits, one key away (the design's sidebar foot).
@@ -587,6 +619,9 @@ impl App {
                     }
                 });
             });
+        }
+        if let (Some((ids, on)), Some(client)) = (mute, &self.client) {
+            client.mute(ids, on);
         }
         picked
     }
@@ -779,8 +814,21 @@ impl eframe::App for App {
         } else if self.had_tabs && self.pending.is_none() {
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
         }
-        let looking = ctx.input(|i| i.viewport().focused).unwrap_or(true);
-        for out in self.alerts.decide(&client.notices(), looking) {
+        let here = ctx.input(|i| i.viewport().focused).unwrap_or(true);
+        if self.focus_sent != Some(here) {
+            client.focus(here);
+            self.focus_sent = Some(here);
+        }
+        let (anyone, teller) = client.attention();
+        let muted: std::collections::HashSet<SessionId> = sessions.iter().filter(|i| i.muted).map(|i| i.id).collect();
+        let seen = alert::Seen { looking: here || anyone, teller, muted: &muted };
+        for id in self.teller.clicked() {
+            // A notification clicked: its pane, in front.
+            self.go_to(&client, &workspaces, id);
+            ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(false));
+            ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
+        }
+        for out in self.alerts.decide(&client.notices(), seen) {
             match out {
                 alert::Out::Flash => ctx.send_viewport_cmd(egui::ViewportCommand::RequestUserAttention(egui::UserAttentionType::Informational)),
                 out => self.teller.send(out),
@@ -859,10 +907,7 @@ impl eframe::App for App {
             match chrome::bell_list(&ctx, &self.palette, at, &notices) {
                 Some(chrome::BellAction::Open(session, id)) => {
                     client.read_notices(Some(vec![id]));
-                    if let Some(x) = workspaces.iter().find(|x| x.layout.contains(&session)) {
-                        self.active = Some(x.id);
-                        self.set_focus(x, session);
-                    }
+                    self.go_to(&client, &workspaces, session);
                     self.bell_open = None;
                 }
                 Some(chrome::BellAction::ReadAll) => client.read_notices(None),

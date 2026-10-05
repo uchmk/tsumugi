@@ -180,6 +180,24 @@ pub fn bell(ui: &mut egui::Ui, pal: &Palette, notices: &[Notice]) -> egui::Respo
     resp
 }
 
+/// A small bell struck through: the tab's notifications are muted.
+pub fn muted_mark(p: &egui::Painter, c: egui::Pos2, color: Color32) {
+    let stroke = egui::Stroke::new(1.2, color);
+    let cup = vec![
+        c + egui::vec2(-4.0, 3.0),
+        c + egui::vec2(-3.3, -0.8),
+        c + egui::vec2(-2.2, -3.3),
+        c + egui::vec2(0.0, -4.0),
+        c + egui::vec2(2.2, -3.3),
+        c + egui::vec2(3.3, -0.8),
+        c + egui::vec2(4.0, 3.0),
+    ];
+    p.add(egui::Shape::line(cup, stroke));
+    p.line_segment([c + egui::vec2(-5.0, 3.0), c + egui::vec2(5.0, 3.0)], stroke);
+    p.circle_filled(c + egui::vec2(0.0, 4.6), 1.0, color);
+    p.line_segment([c + egui::vec2(-5.5, -5.0), c + egui::vec2(5.5, 6.0)], stroke);
+}
+
 /// What the notification list was asked to do.
 pub enum BellAction {
     /// Go to the session, and count it read.

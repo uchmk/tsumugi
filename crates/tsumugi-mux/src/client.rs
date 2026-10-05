@@ -41,6 +41,9 @@ struct State {
     notices: Vec<Notice>,
     started_ms: u64,
     clipboard: Vec<String>,
+    /// `ToClient::Attention`: someone is at a window, and this one tells.
+    looking: bool,
+    teller: bool,
     /// The connection is gone (the server stopped, or never answered).
     lost: bool,
 }
@@ -188,6 +191,23 @@ impl Client {
         self.0.lock().notices.clone()
     }
 
+    /// Whether someone is at one of the windows, and whether this client is
+    /// the one to tell them when not (`ToClient::Attention`).
+    pub fn attention(&self) -> (bool, bool) {
+        let st = self.0.lock();
+        (st.looking, st.teller)
+    }
+
+    /// This window got or lost the keyboard.
+    pub fn focus(&self, focused: bool) {
+        self.0.send(ToServer::Focus { focused });
+    }
+
+    /// Tell of these sessions only in the bell (`on`), or everywhere again.
+    pub fn mute(&self, ids: Vec<SessionId>, on: bool) {
+        self.0.send(ToServer::Mute { ids, on });
+    }
+
     /// Mark notifications read: these, or all.
     pub fn read_notices(&self, ids: Option<Vec<u64>>) {
         self.0.send(ToServer::ReadNotices { ids });
@@ -246,6 +266,7 @@ fn receive(inner: &Inner, msg: ToClient) {
         }
         ToClient::Exited { id } => st.screens.entry(id).or_default().exited = true,
         ToClient::Clipboard(text) => st.clipboard.push(text),
+        ToClient::Attention { looking, teller } => (st.looking, st.teller) = (looking, teller),
         // An error answers the request waiting on one (a spawn), if any.
         ToClient::Error(e) => st.spawned.push_back(Err(e)),
     }

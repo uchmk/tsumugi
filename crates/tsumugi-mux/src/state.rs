@@ -14,7 +14,7 @@ use crate::proto::SessionId;
 
 /// Bumped when the shape below changes; a file of another version is left
 /// alone rather than misread.
-const VERSION: u32 = 2;
+const VERSION: u32 = 3;
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Saved {
@@ -43,6 +43,56 @@ pub struct SavedPane {
     /// Its title and state when it was saved, for the "Welcome back" list.
     pub title: String,
     pub state: crate::proto::State,
+    /// Told of in the bell only (v3).
+    pub muted: bool,
+}
+
+/// The shape before `muted` (v2, tsumugi 0.5 and 0.6), read so that an
+/// update does not lose the tabs.
+mod v2 {
+    use super::*;
+
+    #[derive(Deserialize)]
+    pub struct Saved {
+        workspaces: Vec<SavedWorkspace>,
+        at_ms: u64,
+    }
+
+    #[derive(Deserialize)]
+    struct SavedWorkspace {
+        layout: Node<SessionId>,
+        focus: SessionId,
+        panes: Vec<SavedPane>,
+    }
+
+    #[derive(Deserialize)]
+    struct SavedPane {
+        id: SessionId,
+        cwd: PathBuf,
+        shell: Option<(String, Vec<String>)>,
+        claude: Option<String>,
+        title: String,
+        state: crate::proto::State,
+    }
+
+    impl From<Saved> for super::Saved {
+        fn from(s: Saved) -> Self {
+            let workspaces = s
+                .workspaces
+                .into_iter()
+                .map(|w| super::SavedWorkspace {
+                    layout: w.layout,
+                    focus: w.focus,
+                    panes: w
+                        .panes
+                        .into_iter()
+                        .map(|p| super::SavedPane { id: p.id, cwd: p.cwd, shell: p.shell, claude: p.claude, title: p.title, state: p.state, muted: false })
+                        .collect(),
+                })
+                .collect();
+            Self { workspaces, at_ms: s.at_ms }
+        }
+    }
 }
 
 /// Where the state is kept: `TSUMUGI_STATE` when set; else
@@ -68,7 +118,11 @@ pub fn default_path() -> Option<PathBuf> {
 pub fn load(path: &Path) -> Option<Saved> {
     let bytes = std::fs::read(path).ok()?;
     let (version, rest) = bytes.split_first_chunk::<4>()?;
-    (u32::from_le_bytes(*version) == VERSION).then(|| postcard::from_bytes(rest).ok()).flatten()
+    match u32::from_le_bytes(*version) {
+        VERSION => postcard::from_bytes(rest).ok(),
+        2 => postcard::from_bytes::<v2::Saved>(rest).ok().map(Into::into),
+        _ => None,
+    }
 }
 
 /// Write the state, or remove the file when there is nothing to keep. The
@@ -95,6 +149,33 @@ pub fn store(path: &Path, saved: &Saved) -> io::Result<()> {
 mod tests {
     use super::*;
 
+    /// A file from before `muted` (v2) still brings the tabs back.
+    #[test]
+    fn a_version_2_file_is_read() {
+        #[derive(Serialize)]
+        struct Pane {
+            id: SessionId,
+            cwd: PathBuf,
+            shell: Option<(String, Vec<String>)>,
+            claude: Option<String>,
+            title: String,
+            state: crate::proto::State,
+        }
+        let pane = |id| Pane { id, cwd: "/tmp".into(), shell: None, claude: None, title: "t".into(), state: crate::proto::State::Done };
+        let old = (vec![(Node::Split { dir: crate::proto::Dir::Right, ratio: 0.5, first: Box::new(Node::Leaf(1)), second: Box::new(Node::Leaf(2)) }, 2u64, vec![pane(1), pane(2)])], 9u64);
+        let dir = std::env::temp_dir().join(format!("tsumugi-state-v2-test-{}", std::process::id()));
+        let path = dir.join("state");
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut bytes = 2u32.to_le_bytes().to_vec();
+        bytes.extend(postcard::to_allocvec(&old).unwrap());
+        std::fs::write(&path, bytes).unwrap();
+        let saved = load(&path).expect("read");
+        assert_eq!(saved.at_ms, 9);
+        let ids: Vec<_> = saved.workspaces[0].panes.iter().map(|p| (p.id, p.muted)).collect();
+        assert_eq!(ids, vec![(1, false), (2, false)]);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     #[test]
     fn the_state_comes_back_as_it_was_written() {
         let dir = std::env::temp_dir().join(format!("tsumugi-state-test-{}", std::process::id()));
@@ -110,6 +191,7 @@ mod tests {
                     claude: Some("abc".into()),
                     title: "t".into(),
                     state: crate::proto::State::Waiting,
+                    muted: true,
                 }],
             }],
             at_ms: 1,

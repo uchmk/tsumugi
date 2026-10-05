@@ -55,10 +55,18 @@ button (on Windows a red number over the icon; elsewhere the window title
 starts with it, `(2) …`). Coming back to the window clears the number. The bell
 beside SESSIONS keeps the same list.
 
+Clicking the notification goes to that session's pane and brings the window
+to the front (Windows and Linux; macOS's AppleScript notifications cannot
+say they were clicked). With several windows open, only the one that had the
+keyboard last tells, and none does while you are at any of them. Right-click
+a tab and choose **Mute notifications** to keep it to the bell: no system
+notification and no number for it, and the tab shows a struck-through bell.
+
 On Windows the notification needs the app's name registered for the current
 user; tsumugi writes it at the first notification
 (`HKEY_CURRENT_USER\Software\Classes\AppUserModelId\uchmk.tsumugi`). On
-Linux it goes through `notify-send`, on macOS through AppleScript. Which
+Linux it goes through `notify-send` (a click is seen with libnotify 0.7.12 or
+later), on macOS through AppleScript. Which
 states tell in which way will be in the settings screen; for now it is the
 defaults above, and the taskbar does not flash.
 
