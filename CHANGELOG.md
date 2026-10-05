@@ -5,6 +5,17 @@
 
 ## [未リリース]
 
+## [0.0.10] - 2026-10-06
+
+### 追加
+
+- クレート `tsumugi-mux`（v0.2.0 の段 b）。セッションを持つサーバー（`server::start`）と、つなぐ側（`Client`、サーバーの向こうのセッションを `Pane` として扱う `RemotePane`）。
+  通信は Unix がドメインソケット（`$XDG_RUNTIME_DIR/tsumugi/sock`、フォルダは 0700）、Windows が名前付きパイプ（`\\.\pipe\tsumugi-<ユーザー名>`、
+  持ち主と SYSTEM だけ、ほかの機械からは断る、overlapped I/O で読みと書きを並べる）。形式は長さ＋ bincode（Q4 の推奨。新しい依存は serde と bincode）。
+  サーバーは画面が変わったセッションの写しを、見ているクライアントに送る（8 ms ごとにまとめる）。最後のセッションが終わると止まる。
+  テストは、クライアントが去ってもセッションが残り、次のクライアントが同じ画面に戻ること、同じ所に 2 つ目のサーバーを立てられないこと。
+- `tsumugi-pane` の feature `serde`（`Screen`、`CellView`、`MouseReport`、`Size`）。
+
 ## [0.0.9] - 2026-10-06
 
 ### 追加

@@ -42,7 +42,7 @@ tsumugi notify（フックから）──┘                                    
 | 段 | 中身 | 状態 |
 | --- | --- | --- |
 | a | `tsumugi-pane` に trait `Pane`。`show` と `input::feed` をそれに合わせ、`Terminal` が実装する（filer はそのまま） | 済み（v0.0.9） |
-| b | `crates/tsumugi-mux`: 送る型、枠、通信（Unix / Windows）、サーバー、クライアント（`RemotePane`）。テストはプロセス内でサーバーとクライアントをつなぐ | |
+| b | `crates/tsumugi-mux`: 送る型、枠、通信（Unix / Windows）、サーバー、クライアント（`RemotePane`）。テストはプロセス内でサーバーとクライアントをつなぐ | 済み（v0.0.10） |
 | c | `tsumugi` をクライアントにする。`tsumugi server`、`tsumugi ls`、サーバーが無ければ起こす。窓を閉じてもシェルが残り、開き直すと同じ画面に戻ることを Xvfb で確かめる | |
 
 ## 決めていないこと

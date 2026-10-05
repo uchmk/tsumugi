@@ -1,0 +1,18 @@
+[package]
+name = "tsumugi-mux"
+description = "The tsumugi server that keeps sessions alive, and the client a window talks to it with"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+tsumugi-pane = { path = "../tsumugi-pane", features = ["serde"] }
+serde = { version = "1", features = ["derive"] }
+# 1.x: the format filer's tree already builds (through syntect). Pure Rust.
+bincode = "1.3"
+crossbeam-channel = "0.5"
+
+[target."cfg(windows)".dependencies]
+windows = { version = "0.62", features = ["Win32_Foundation", "Win32_Security", "Win32_Security_Authorization", "Win32_Storage_FileSystem", "Win32_System_IO", "Win32_System_Pipes", "Win32_System_Threading"] }
