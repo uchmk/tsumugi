@@ -5,6 +5,17 @@
 
 ## [未リリース]
 
+## [0.0.3] - 2026-10-05
+
+### 追加
+
+- 切り出しの段 2。`tsumugi-pane` の feature `egui` に、filer の `src/ui/term.rs` を移した描画の部品 `show` を足した。filer の `App` と `Theme` には頼らず、
+  色は `Palette`、フォーカスとホイールは `ViewOptions` で受け、アプリにしかできないこと（キーを渡す、クリップボードに書く、右クリックで貼る）は
+  `Shown` で返す。ホイールの行の計算 `wheel_whole` も filer の `ui/mod.rs` から移した（テストも）。
+- feature `wgpu` に `gpu`（Windows では GL を先に使う `auto_backends`、`pick_backends`、`has_adapter`。filer の `main.rs` から）。
+  名指したバックエンドが無いときの警告の文言はアプリが出す（`pick_backends` は `Err` で `auto` の選択を返す）。
+- `restrict_dll_search`（Windows で DLL を exe の隣と System32 からだけ読む。filer の #184）。Windows 以外では何もしない。
+
 ## [0.0.2] - 2026-10-05
 
 ### 追加
