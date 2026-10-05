@@ -109,6 +109,52 @@ fn killing_one_session_leaves_the_rest() {
     assert!(start.elapsed() < Duration::from_secs(3), "the answer took {:?}", start.elapsed());
 }
 
+/// `tsumugi notify` marks a session waiting with its note, and a key typed
+/// into it takes the mark away again.
+#[test]
+fn a_notification_marks_a_session_until_the_next_key() {
+    use crate::State;
+    let at = address();
+    let _srv = server::start(&at).expect("the server starts");
+    let c = Client::connect(&at, || {}).expect("a client connects");
+    let pane = c.spawn(std::env::temp_dir(), None, Size::new(80, 24), (8, 16)).expect("a shell starts");
+    until(&pane, "a prompt", |t| !t.trim().is_empty());
+    c.notify(pane.id(), State::Waiting, "Claude needs your permission".into()).expect("the server takes it");
+    let info = |c: &Client| c.list().unwrap().into_iter().find(|i| i.id == pane.id()).unwrap();
+    let i = info(&c);
+    assert_eq!((i.state, i.note.as_str()), (State::Waiting, "Claude needs your permission"));
+    pane.send(b"\r".to_vec());
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while info(&c).state == State::Waiting {
+        assert!(Instant::now() < deadline, "the mark stayed after a key");
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    pane.kill();
+}
+
+/// A program's own notification (OSC 9) marks its session waiting too.
+#[cfg(unix)]
+#[test]
+fn an_osc_9_marks_a_session_waiting() {
+    use crate::State;
+    let at = address();
+    let _srv = server::start(&at).expect("the server starts");
+    let c = Client::connect(&at, || {}).expect("a client connects");
+    let shell = Some(("sh".to_owned(), vec!["-c".to_owned(), "printf '\\033]9;ready for you\\007'; sleep 30".to_owned()]));
+    let pane = c.spawn(std::env::temp_dir(), shell, Size::new(80, 24), (8, 16)).expect("sh starts");
+    let deadline = Instant::now() + Duration::from_secs(10);
+    loop {
+        let i = c.list().unwrap().into_iter().find(|i| i.id == pane.id()).unwrap();
+        if i.state == State::Waiting {
+            assert_eq!(i.note, "ready for you");
+            break;
+        }
+        assert!(Instant::now() < deadline, "never marked: {i:?}");
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    pane.kill();
+}
+
 /// A second server at the same address refuses to start rather than
 /// taking the first one's clients.
 #[test]

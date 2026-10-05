@@ -8,6 +8,7 @@
 //!   tsumugi            the window
 //!   tsumugi server     the server (the window starts it by itself)
 //!   tsumugi ls         the sessions, one per line
+//!   tsumugi notify     mark this session (waiting / done / error), from a hook
 //!
 //! The sidebar lists the server's sessions; the one picked is drawn beside
 //! it. Splits and the waiting marks come after (docs/v1-scope.md).
@@ -39,12 +40,13 @@ fn main() -> std::process::ExitCode {
         None => window(),
         Some("server") => server(),
         Some("ls") => ls(),
+        Some("notify") => notify(&args[1..]),
         Some("--version" | "-V") => {
             println!("tsumugi {}", env!("CARGO_PKG_VERSION"));
             std::process::ExitCode::SUCCESS
         }
         Some(other) => {
-            eprintln!("tsumugi: unknown command `{other}` (server, ls, --version)");
+            eprintln!("tsumugi: unknown command `{other}` (server, ls, notify, --version)");
             std::process::ExitCode::from(2)
         }
     }
@@ -86,7 +88,7 @@ fn ls() -> std::process::ExitCode {
     match listed {
         Ok(list) => {
             for i in list {
-                println!("{}\t{}\t{}\t{}", i.id, i.command, i.cwd.display(), i.title);
+                println!("{}\t{}\t{}\t{}\t{}\t{}", i.id, i.state.word(), i.command, i.cwd.display(), i.title, i.note);
             }
             std::process::ExitCode::SUCCESS
         }
@@ -95,6 +97,78 @@ fn ls() -> std::process::ExitCode {
             std::process::ExitCode::FAILURE
         }
     }
+}
+
+/// `tsumugi notify [--state waiting|done|error] [--session N] [MESSAGE...]`:
+/// mark a session for the sidebar. Meant for an agent's hooks, run inside
+/// the session, which is where `TSUMUGI_SESSION` and `TSUMUGI_ADDRESS` are
+/// set. Claude Code's `Notification` hook is `tsumugi notify`, its `Stop`
+/// hook `tsumugi notify --state done`.
+fn notify(args: &[String]) -> std::process::ExitCode {
+    let mut state = tsumugi_mux::State::Waiting;
+    let mut session = std::env::var("TSUMUGI_SESSION").ok().and_then(|s| s.parse().ok());
+    let mut words = Vec::new();
+    let mut it = args.iter();
+    while let Some(a) = it.next() {
+        match a.as_str() {
+            "--state" => match it.next().and_then(|s| tsumugi_mux::State::from_word(s)) {
+                Some(s) => state = s,
+                None => {
+                    eprintln!("tsumugi notify: --state takes waiting, done, error or running");
+                    return std::process::ExitCode::from(2);
+                }
+            },
+            "--session" => session = it.next().and_then(|s| s.parse().ok()),
+            // Claude Code hands a hook its event as JSON on stdin; its
+            // `message` ("Claude needs your permission to use Bash") is the
+            // note the sidebar shows.
+            "--stdin" => {
+                let mut input = String::new();
+                let _ = std::io::Read::read_to_string(&mut std::io::stdin(), &mut input);
+                if let Some(m) = json_string(&input, "message") {
+                    words.push(m);
+                }
+            }
+            _ => words.push(a.clone()),
+        }
+    }
+    let Some(id) = session else {
+        eprintln!("tsumugi notify: not inside a tsumugi session (no TSUMUGI_SESSION); give --session N");
+        return std::process::ExitCode::from(2);
+    };
+    match Client::connect(&Address::for_user(), || {}).and_then(|c| c.notify(id, state, words.join(" "))) {
+        Ok(()) => std::process::ExitCode::SUCCESS,
+        Err(e) => {
+            eprintln!("tsumugi notify: {e}");
+            std::process::ExitCode::FAILURE
+        }
+    }
+}
+
+/// The string value of `key` at the top of a JSON object, escapes undone --
+/// enough for a hook's event without a JSON crate.
+fn json_string(json: &str, key: &str) -> Option<String> {
+    let at = json.find(&format!("\"{key}\""))? + key.len() + 2;
+    let rest = json[at..].trim_start().strip_prefix(':')?.trim_start().strip_prefix('"')?;
+    let mut out = String::new();
+    let mut chars = rest.chars();
+    while let Some(c) = chars.next() {
+        match c {
+            '"' => return Some(out),
+            '\\' => match chars.next()? {
+                'n' => out.push('\n'),
+                't' => out.push('\t'),
+                'r' => out.push('\r'),
+                'u' => {
+                    let hex: String = chars.by_ref().take(4).collect();
+                    out.push(u32::from_str_radix(&hex, 16).ok().and_then(char::from_u32).unwrap_or('\u{fffd}'));
+                }
+                other => out.push(other),
+            },
+            c => out.push(c),
+        }
+    }
+    None
 }
 
 fn window() -> std::process::ExitCode {
@@ -237,6 +311,17 @@ impl App {
                 let next = if action == keys::Action::NextTab { (i + 1) % n } else { (i + n - 1) % n };
                 self.switch(list[next].id);
             }
+            keys::Action::NextWaiting => {
+                // The longest-waiting first; from the one shown, on to the next.
+                let mut waiting: Vec<&Info> =
+                    list.iter().filter(|i| matches!(i.state, tsumugi_mux::State::Waiting | tsumugi_mux::State::MaybeWaiting)).collect();
+                waiting.sort_by_key(|i| i.since_ms);
+                let here = self.active().and_then(|id| waiting.iter().position(|i| i.id == id));
+                let next = here.map_or(0, |h| (h + 1) % waiting.len().max(1));
+                if let Some(info) = waiting.get(next) {
+                    self.switch(info.id);
+                }
+            }
             keys::Action::Tab(i) => {
                 if let Some(info) = list.get(i) {
                     self.switch(info.id);
@@ -276,8 +361,17 @@ impl App {
             } else if resp.hovered() {
                 painter.rect_filled(rect.shrink2(egui::vec2(6.0, 2.0)), 6.0, pal.selection.gamma_multiply(0.4));
             }
-            // Running, for now: the waiting marks are v0.4.0's.
-            painter.circle_filled(egui::pos2(rect.left() + 18.0, rect.top() + 15.0), 4.0, egui::Color32::from_rgb(0x8e, 0xd0, 0x8e));
+            let dot = egui::pos2(rect.left() + 18.0, rect.top() + 15.0);
+            let color = state_color(info.state);
+            match info.state {
+                // The guess is a ring, the sure mark a filled dot (Q2).
+                tsumugi_mux::State::MaybeWaiting => {
+                    painter.circle_stroke(dot, 4.0, egui::Stroke::new(1.5, color));
+                }
+                _ => {
+                    painter.circle_filled(dot, 4.0, color);
+                }
+            }
             let name = if info.title.is_empty() { program_name(&info.command) } else { info.title.clone() };
             let left = rect.left() + 30.0;
             let width = rect.right() - left - 10.0;
@@ -290,12 +384,29 @@ impl App {
                 painter.galley(egui::pos2(left, rect.top() + y), galley, color);
             };
             line(name, 7.0, 13.0, pal.fg);
-            line(home_short(&info.cwd), 25.0, 11.0, pal.fg_dim);
+            let second = match info.state {
+                tsumugi_mux::State::Running => home_short(&info.cwd),
+                _ if !info.note.is_empty() => info.note.clone(),
+                _ => home_short(&info.cwd),
+            };
+            line(second, 25.0, 11.0, pal.fg_dim);
             if resp.clicked() {
                 picked = Some(info.id);
             }
         }
         picked
+    }
+}
+
+/// The four state colours (docs/v1-scope.md 1k): waiting yellow, running
+/// cyan, error red, done green -- filer's own yellow, cyan, red and green.
+fn state_color(state: tsumugi_mux::State) -> egui::Color32 {
+    use tsumugi_mux::State;
+    match state {
+        State::Waiting | State::MaybeWaiting => egui::Color32::from_rgb(0xe8, 0xc8, 0x7a),
+        State::Running => egui::Color32::from_rgb(0x6f, 0xd0, 0xd0),
+        State::Error => egui::Color32::from_rgb(0xf0, 0x71, 0x78),
+        State::Done => egui::Color32::from_rgb(0x8e, 0xd0, 0x8e),
     }
 }
 
@@ -339,6 +450,13 @@ impl eframe::App for App {
                 self.title = title;
             }
             let events = ctx.input(|i| i.events.clone());
+            if std::env::var_os("TSUMUGI_DEBUG_KEYS").is_some() {
+                for e in &events {
+                    if !matches!(e, egui::Event::PointerMoved(_) | egui::Event::MouseMoved(_)) {
+                        eprintln!("event: {e:?}");
+                    }
+                }
+            }
             tsumugi_pane::input::feed(pane, &events, |key, m| match keys::action(key, m) {
                 Some(a) => {
                     actions.push(a);
@@ -381,5 +499,17 @@ impl eframe::App for App {
                 ctx.send_viewport_cmd(egui::ViewportCommand::RequestPaste);
             }
         });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::json_string;
+
+    #[test]
+    fn a_hooks_message_is_read() {
+        let event = r#"{"session_id":"x","hook_event_name":"Notification","message":"Claude needs your \"OK\"\u3002"}"#;
+        assert_eq!(json_string(event, "message").as_deref(), Some("Claude needs your \"OK\"\u{3002}"));
+        assert_eq!(json_string(event, "missing"), None);
     }
 }

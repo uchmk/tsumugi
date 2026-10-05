@@ -12,7 +12,7 @@ use tsumugi_pane::alacritty_terminal::grid::Scroll;
 use tsumugi_pane::{Pane, Screen, Size};
 
 use crate::frame;
-use crate::proto::{Info, ScrollBy, SessionId, ToClient, ToServer, VERSION};
+use crate::proto::{self, Info, ScrollBy, SessionId, ToClient, ToServer, VERSION};
 use crate::transport::{self, Address};
 
 /// How long a request that waits for its answer (`list`, `spawn`) waits.
@@ -135,6 +135,13 @@ impl Client {
     fn pane(&self, id: SessionId) -> RemotePane {
         self.0.lock().screens.entry(id).or_default();
         RemotePane { id, inner: self.0.clone(), size: None }
+    }
+
+    /// Tell the server how session `id` is (`tsumugi notify`). Returns once
+    /// the server has it, so a command that exits right after loses nothing.
+    pub fn notify(&self, id: SessionId, state: proto::State, note: String) -> io::Result<()> {
+        self.0.send(ToServer::Notify { id, state, note });
+        self.list().map(drop)
     }
 
     /// The sessions as the server last told them, without asking.

@@ -3212,7 +3212,7 @@ dependencies = [
 
 [[package]]
 name = "tsumugi"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "eframe",
  "egui",
@@ -3223,7 +3223,7 @@ dependencies = [
 
 [[package]]
 name = "tsumugi-mux"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "bincode",
  "crossbeam-channel",
@@ -3234,7 +3234,7 @@ dependencies = [
 
 [[package]]
 name = "tsumugi-pane"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "alacritty_terminal",
  "crossbeam-channel",

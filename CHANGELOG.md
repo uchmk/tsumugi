@@ -5,6 +5,25 @@
 
 ## [未リリース]
 
+## [0.3.0] - 2026-10-06
+
+### 追加
+
+- セッションの状態の印（Q2 の案）。サイドバーの点が、動いている（水色）・入力待ち（黄）・たぶん入力待ち（黄の輪）・終わった（緑）・エラー（赤）を示す。
+  確かな順に、エージェント自身の知らせ（`tsumugi notify`、OSC 9 / 99 / 777）、シェルのプロンプトが戻った（OSC 133、または何も動いていない）、
+  プログラムが動いたまま出力が 10 秒止まった（`TSUMUGI_QUIET_SECS` で変える、0 で止める）。印はそのセッションに何か打つと消える。
+  知らせのメモ（「Claude needs your permission」など）を 2 行目に出す。
+- `tsumugi notify [--state waiting|done|error] [--stdin] [メモ]`。セッションの中では `TSUMUGI_SESSION` と `TSUMUGI_ADDRESS` が入っているので、
+  Claude Code のフック（`Notification` に `tsumugi notify --stdin`、`Stop` に `tsumugi notify --state done`）から呼べる。設定の例は README。
+  `--stdin` はフックが標準入力に渡す JSON の `message` をメモにする。
+- `Ctrl+Shift+U`（macOS は `Cmd+Shift+U`）で、入力待ちのセッションへ、待っている時間の長い順に飛ぶ。
+- `tsumugi ls` に状態とメモの列。
+
+### 修正
+
+- `Ctrl+Shift+T` などを押すと、シェルに `Ctrl+S`（端末の出力を止める）が送られていた。egui 0.36 は Shift や Ctrl そのものもキーとして送ってきて、
+  `tsumugi-pane` の `input` がキーの名前（`ShiftLeft`）の頭文字から制御文字を作っていた。キーの文字だけを見るようにした（filer は手前で止めていたので起きない）。
+
 ## [0.2.0] - 2026-10-06
 
 ### 追加

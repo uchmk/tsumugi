@@ -12,6 +12,8 @@ pub enum Action {
     PrevTab,
     /// The N-th tab, counting from 0.
     Tab(usize),
+    /// The next session waiting for a person, the longest-waiting first.
+    NextWaiting,
 }
 
 /// The action for a key press, if it is one of the window's.
@@ -43,6 +45,7 @@ fn action_on(key: Key, m: Modifiers, mac: bool) -> Option<Action> {
         return match key {
             Key::T if cmd && !m.shift => Some(Action::NewTab),
             Key::W if cmd && !m.shift => Some(Action::CloseTab),
+            Key::U if cmd && m.shift => Some(Action::NextWaiting),
             _ if cmd && !m.shift => digit().map(Action::Tab),
             _ => None,
         };
@@ -50,6 +53,7 @@ fn action_on(key: Key, m: Modifiers, mac: bool) -> Option<Action> {
     match key {
         Key::T if ctrl_shift => Some(Action::NewTab),
         Key::W if ctrl_shift => Some(Action::CloseTab),
+        Key::U if ctrl_shift => Some(Action::NextWaiting),
         _ if m.ctrl && m.alt && !m.shift => digit().map(Action::Tab),
         _ => None,
     }
@@ -71,6 +75,7 @@ mod tests {
         assert_eq!(action_on(Key::Tab, CTRL, false), Some(Action::NextTab));
         assert_eq!(action_on(Key::Tab, CTRL_SHIFT, false), Some(Action::PrevTab));
         assert_eq!(action_on(Key::Num3, CTRL_ALT, false), Some(Action::Tab(2)));
+        assert_eq!(action_on(Key::U, CTRL_SHIFT, false), Some(Action::NextWaiting));
     }
 
     /// The keys a shell or Claude Code needs stay theirs.

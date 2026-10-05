@@ -7,9 +7,50 @@ use tsumugi_pane::{Screen, Size};
 
 /// Bumped whenever a message changes shape: a client and a server that
 /// disagree say so at `Hello` instead of misreading each other.
-pub const VERSION: u32 = 1;
+pub const VERSION: u32 = 2;
 
 pub type SessionId = u64;
+
+/// What a session is doing, as its mark in the sidebar shows it
+/// (docs/v1-scope.md 2, QUESTIONS.md Q2).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum State {
+    /// Working, or nothing known.
+    #[default]
+    Running,
+    /// Wants a person: an agent said so (`tsumugi notify`, OSC 9 / 99 / 777).
+    Waiting,
+    /// Probably wants a person: its output stopped a while ago while a
+    /// program is still running. The weaker mark.
+    MaybeWaiting,
+    /// Back at the shell's prompt, or an agent said it finished.
+    Done,
+    /// An agent said something went wrong.
+    Error,
+}
+
+impl State {
+    /// The word `tsumugi ls` prints and `tsumugi notify --state` takes.
+    pub fn word(self) -> &'static str {
+        match self {
+            State::Running => "running",
+            State::Waiting => "waiting",
+            State::MaybeWaiting => "waiting?",
+            State::Done => "done",
+            State::Error => "error",
+        }
+    }
+
+    pub fn from_word(s: &str) -> Option<Self> {
+        Some(match s {
+            "running" => State::Running,
+            "waiting" => State::Waiting,
+            "done" => State::Done,
+            "error" => State::Error,
+            _ => return None,
+        })
+    }
+}
 
 /// One session, as `tsumugi ls` lists it.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -21,6 +62,12 @@ pub struct Info {
     pub title: String,
     /// The program that was started (`pwsh`, `claude`).
     pub command: String,
+    pub state: State,
+    /// What the last notification said, if anything.
+    pub note: String,
+    /// When `state` began, in Unix milliseconds: the session waiting longest
+    /// is the one `Ctrl+Shift+U` goes to first.
+    pub since_ms: u64,
 }
 
 /// The scrollback moves `Scroll` can ask for; alacritty's own type is not a
@@ -56,6 +103,8 @@ pub enum ToServer {
     Copy { id: SessionId },
     /// End the session's shell.
     Kill { id: SessionId },
+    /// An agent's word on its session (`tsumugi notify`).
+    Notify { id: SessionId, state: State, note: String },
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

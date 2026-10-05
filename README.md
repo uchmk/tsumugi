@@ -17,6 +17,32 @@ local build gets it with `pwsh -File scripts/fetch-conpty.ps1 -Dest target\debug
 without it the pane runs on the older ConPTY built into Windows, which breaks
 `Esc` in lazygit and the like.
 
+Sessions live in a background server (`tsumugi server`, which the window
+starts by itself), so closing the window leaves them running; `tsumugi ls`
+lists them. The sidebar marks each one: cyan while it works, yellow when it
+wants you, a yellow ring when its output has stopped for 10 seconds while a
+program runs (`TSUMUGI_QUIET_SECS`, 0 to turn the guess off), green when the
+shell is back at its prompt, red for an error. `Ctrl+Shift+U` (Cmd+Shift+U on
+macOS) goes to the session that has waited longest.
+
+### Claude Code hooks
+
+An agent can say for itself that it is waiting. With `tsumugi` on the `PATH`,
+add to Claude Code's settings (`~/.claude/settings.json`):
+
+```json
+{
+  "hooks": {
+    "Notification": [{ "hooks": [{ "type": "command", "command": "tsumugi notify --stdin" }] }],
+    "Stop": [{ "hooks": [{ "type": "command", "command": "tsumugi notify --state done" }] }]
+  }
+}
+```
+
+`tsumugi notify` works inside a tsumugi session only (it reads
+`TSUMUGI_SESSION`). Programs that send OSC 9, 99 or 777 notifications are
+marked without any setup.
+
 The terminal pane is the crate `tsumugi-pane` (`crates/tsumugi-pane`), shared
 with [filer](https://github.com/uchmk/filer).
 

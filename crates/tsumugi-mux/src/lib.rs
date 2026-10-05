@@ -16,5 +16,5 @@ pub mod transport;
 mod tests;
 
 pub use client::{Client, RemotePane};
-pub use proto::{Info, SessionId};
+pub use proto::{Info, SessionId, State};
 pub use transport::Address;

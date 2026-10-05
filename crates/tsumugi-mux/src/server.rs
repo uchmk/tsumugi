@@ -17,7 +17,7 @@ use crossbeam_channel::{Receiver, Sender};
 use tsumugi_pane::{Pane, Terminal};
 
 use crate::frame;
-use crate::proto::{Info, ScrollBy, SessionId, ToClient, ToServer, VERSION};
+use crate::proto::{Info, ScrollBy, SessionId, State, ToClient, ToServer, VERSION};
 use crate::transport::{Address, Conn, Listener};
 
 type ClientId = u64;
@@ -25,6 +25,9 @@ type ClientId = u64;
 struct Session {
     term: Terminal,
     info: Info,
+    /// The last notification and when it came: an agent's own word on its
+    /// state, which stands until the next key.
+    notice: Option<(State, std::time::Instant)>,
     /// The clients this session's screen goes to.
     watchers: BTreeSet<ClientId>,
 }
@@ -39,6 +42,12 @@ struct Shared {
     done: Sender<()>,
     /// A session has been started at some point.
     ever: std::sync::atomic::AtomicBool,
+    /// Where this server listens, told to its shells (`TSUMUGI_ADDRESS`) so
+    /// that `tsumugi notify` inside them finds it.
+    address: PathBuf,
+    /// Seconds of silence after which a running program reads as probably
+    /// waiting (Q2: Konsole's 10). 0 turns the guess off.
+    quiet: Duration,
 }
 
 /// A running server; [`ServerHandle::wait`] returns when it stops.
@@ -79,6 +88,10 @@ pub fn start(at: &Address) -> io::Result<ServerHandle> {
         dirty: dirty_tx,
         done: done_tx,
         ever: false.into(),
+        address: at.0.clone(),
+        quiet: Duration::from_secs(
+            std::env::var("TSUMUGI_QUIET_SECS").ok().and_then(|s| s.parse().ok()).unwrap_or(10),
+        ),
     });
     let pump = shared.clone();
     std::thread::Builder::new().name("mux-pump".into()).spawn(move || run_pump(pump, dirty_rx))?;
@@ -144,7 +157,11 @@ fn handle(shared: &Arc<Shared>, client: ClientId, tx: &Sender<ToClient>, msg: To
             let command = shell.as_ref().map_or_else(tsumugi_pane::default_program, |(p, _)| p.clone());
             let dirty = shared.dirty.clone();
             let log = std::env::var_os("TSUMUGI_PTY_LOG").map(PathBuf::from);
-            match Terminal::spawn(&cwd, size, cell, shell, log.as_deref(), move || {
+            let env = vec![
+                ("TSUMUGI_SESSION".to_owned(), id.to_string()),
+                ("TSUMUGI_ADDRESS".to_owned(), shared.address.to_string_lossy().into_owned()),
+            ];
+            match Terminal::spawn_with_env(&cwd, size, cell, shell, log.as_deref(), env, move || {
                 let _ = dirty.send(id);
             }) {
                 Ok(mut term) => {
@@ -152,8 +169,8 @@ fn handle(shared: &Arc<Shared>, client: ClientId, tx: &Sender<ToClient>, msg: To
                     // What a program asking for the colours (OSC 10 / 11) is
                     // told: the window's default palette, filer's colours.
                     term.set_colors([0xc8, 0xcd, 0xd8], [0x1b, 0x1e, 0x24]);
-                    let info = Info { id, cwd, title: String::new(), command };
-                    sessions.insert(id, Session { term, info, watchers: BTreeSet::from([client]) });
+                    let info = Info { id, cwd, title: String::new(), command, state: State::Running, note: String::new(), since_ms: now_ms() };
+                    sessions.insert(id, Session { term, info, notice: None, watchers: BTreeSet::from([client]) });
                     let _ = tx.send(ToClient::Spawned { id });
                     broadcast(shared, &sessions);
                     let _ = shared.dirty.send(id);
@@ -178,6 +195,17 @@ fn handle(shared: &Arc<Shared>, client: ClientId, tx: &Sender<ToClient>, msg: To
             }
         }
         ToServer::Kill { id } => end(shared, sessions, id),
+        ToServer::Notify { id, state, note } => {
+            if let Some(s) = sessions.get_mut(&id) {
+                s.notice = Some((state, std::time::Instant::now()));
+                if !note.is_empty() {
+                    s.info.note = note;
+                }
+                if settle(s, shared.quiet) {
+                    broadcast(shared, &sessions);
+                }
+            }
+        }
         other => {
             let Some(id) = target(&other) else { return };
             let Some(s) = sessions.get_mut(&id) else { return };
@@ -256,25 +284,86 @@ fn end(shared: &Shared, mut sessions: std::sync::MutexGuard<'_, BTreeMap<Session
     }
 }
 
+fn now_ms() -> u64 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_millis() as u64)
+}
+
+/// Work out a session's state again; true when it changed.
+///
+/// In order of how sure each sign is (QUESTIONS.md Q2): an agent's own word
+/// (`tsumugi notify`, OSC 9 / 99 / 777) since the last key; the shell's
+/// prompt back (OSC 133) since the last key with nothing running under it;
+/// nothing running and nothing said for two seconds, which is a shell sitting
+/// at its prompt; and output stopped for `quiet` while a program runs and
+/// has written since the last key -- the guess, marked more faintly.
+fn settle(s: &mut Session, quiet: Duration) -> bool {
+    let input = s.term.last_input();
+    let after_input = |t: Option<std::time::Instant>| t.is_some_and(|t| input.is_none_or(|i| t > i));
+    let busy = s.term.busy();
+    let state = match s.notice {
+        Some((state, at)) if after_input(Some(at)) => state,
+        _ if !busy && after_input(s.term.last_prompt()) => State::Done,
+        _ if !busy && s.term.quiet_for(Duration::from_secs(2)) => State::Done,
+        _ if busy && !quiet.is_zero() && s.term.quiet_for(quiet) && after_input(s.term.last_output()) => State::MaybeWaiting,
+        _ => State::Running,
+    };
+    if state == s.info.state {
+        return false;
+    }
+    if state == State::Running {
+        s.info.note.clear();
+    }
+    s.info.state = state;
+    s.info.since_ms = now_ms();
+    true
+}
+
 /// Turn "session N changed" into messages, at most one screen per session
 /// every few milliseconds however fast its shell writes.
 fn run_pump(shared: Arc<Shared>, dirty: Receiver<SessionId>) {
-    while let Ok(first) = dirty.recv() {
-        std::thread::sleep(Duration::from_millis(8));
-        let mut ids = BTreeSet::from([first]);
-        ids.extend(dirty.try_iter());
+    let mut last_settle = std::time::Instant::now();
+    loop {
+        let mut ids = BTreeSet::new();
+        match dirty.recv_timeout(Duration::from_millis(500)) {
+            Ok(first) => {
+                std::thread::sleep(Duration::from_millis(8));
+                ids.insert(first);
+                ids.extend(dirty.try_iter());
+            }
+            Err(crossbeam_channel::RecvTimeoutError::Timeout) => {}
+            Err(crossbeam_channel::RecvTimeoutError::Disconnected) => return,
+        }
         let mut sessions = lock(&shared.sessions);
+        // Once a second, every session's state again: the guesses are about
+        // time passing, which no output announces.
+        if last_settle.elapsed() >= Duration::from_secs(1) {
+            last_settle = std::time::Instant::now();
+            let mut changed = false;
+            for s in sessions.values_mut() {
+                changed |= settle(s, shared.quiet);
+            }
+            if changed {
+                broadcast(&shared, &sessions);
+            }
+        }
         let mut ended = Vec::new();
         for id in ids {
             let Some(s) = sessions.get_mut(&id) else { continue };
             let clipboard = s.term.drain();
+            let noticed = s.term.take_notices().pop().map(|note| {
+                s.notice = Some((State::Waiting, std::time::Instant::now()));
+                s.info.note = note;
+            }).is_some();
             let before = (s.info.title.clone(), s.info.cwd.clone());
             s.info.title = s.term.title.clone();
             // Where the shell says it is (OSC 7), when it says so.
             if let Some(cwd) = &s.term.shell_cwd {
                 s.info.cwd = cwd.clone();
             }
-            let changed = before != (s.info.title.clone(), s.info.cwd.clone());
+            // A notification settles the state at once; the rest waits for
+            // the once-a-second pass, since asking whether anything runs under
+            // the shell reads the process table.
+            let changed = (before != (s.info.title.clone(), s.info.cwd.clone())) | (noticed && settle(s, shared.quiet));
             if s.term.exited {
                 ended.push(id);
                 continue;
