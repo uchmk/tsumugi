@@ -17,6 +17,7 @@
 // No console window behind the GUI on Windows, in a release build.
 #![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 
+mod chrome;
 mod fonts;
 mod keys;
 mod shellhook;
@@ -233,15 +234,49 @@ fn connect(wake: impl Fn() + Send + Sync + Clone + 'static) -> Result<Client, St
     }
 }
 
-/// Make sure the server has a tab to show: the tabs saved before a restart
-/// when there are any, else a new shell here.
-fn first_session(client: &Client) -> Result<(), String> {
+/// Make sure the server has a tab to show. After a restart (no session, but
+/// a saved state) that is the "Welcome back" screen, or the saved tabs at
+/// once when it was told not to ask; else a new shell here.
+fn first_session(client: &Client) -> Result<Option<chrome::RestoreView>, String> {
     let list = client.list().map_err(|e| e.to_string())?;
-    if list.is_empty() && client.restore().unwrap_or(0) == 0 {
-        let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
-        new_session(client, cwd, Place::NewWorkspace).map(drop)?;
+    if !list.is_empty() {
+        return Ok(None);
     }
-    Ok(())
+    if let Some(saved) = client.saved().ok().flatten().filter(|s| s.workspaces.iter().any(|w| !w.panes.is_empty())) {
+        if !always_restore() {
+            return Ok(Some(chrome::RestoreView::new(saved)));
+        }
+        if client.restore().unwrap_or(0) > 0 {
+            return Ok(None);
+        }
+    }
+    start_here(client).map(|_| None)
+}
+
+fn start_here(client: &Client) -> Result<RemotePane, String> {
+    let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+    new_session(client, cwd, Place::NewWorkspace)
+}
+
+/// "Always restore without asking", kept as a file beside the state.
+fn always_restore_file() -> Option<std::path::PathBuf> {
+    tsumugi_mux::state::default_path().map(|p| p.with_file_name("always-restore"))
+}
+
+fn always_restore() -> bool {
+    always_restore_file().is_some_and(|p| p.exists())
+}
+
+fn set_always_restore(on: bool) {
+    let Some(p) = always_restore_file() else { return };
+    if on {
+        if let Some(dir) = p.parent() {
+            let _ = std::fs::create_dir_all(dir);
+        }
+        let _ = std::fs::write(p, b"");
+    } else {
+        let _ = std::fs::remove_file(p);
+    }
 }
 
 fn new_session(client: &Client, cwd: std::path::PathBuf, place: Place) -> Result<RemotePane, String> {
@@ -259,6 +294,8 @@ const GAP: f32 = 6.0;
 const GRAB: f32 = 12.0;
 /// How much a pane without the keys is dimmed (1e).
 const DIM: f32 = 0.35;
+/// The heading over each pane of a split.
+const HEADER: f32 = 22.0;
 
 /// The most urgent state among a tab's panes, which its row shows.
 fn urgency(state: State) -> u8 {
@@ -293,6 +330,15 @@ struct App {
     /// The server has had a tab since this window opened: when the last one
     /// goes, so does the window.
     had_tabs: bool,
+    /// The bell's list is open, and where.
+    bell_open: Option<egui::Pos2>,
+    /// After a restart: the "Welcome back" screen, until it is answered.
+    restore: Option<chrome::RestoreView>,
+    /// The sidebar's "Jump to waiting" was pressed.
+    jump_waiting: bool,
+    /// The bell list opened this frame: the click that opened it is not a
+    /// click outside it.
+    bell_opening: bool,
 }
 
 impl App {
@@ -306,12 +352,12 @@ impl App {
         cc.egui_ctx.options_mut(|o| o.zoom_with_keyboard = false);
 
         let ctx = cc.egui_ctx.clone();
-        let (client, failed) = match connect(move || ctx.request_repaint()) {
-            Ok(client) => {
-                let failed = first_session(&client).err();
-                (Some(client), failed)
-            }
-            Err(e) => (None, Some(e)),
+        let (client, failed, restore) = match connect(move || ctx.request_repaint()) {
+            Ok(client) => match first_session(&client) {
+                Ok(restore) => (Some(client), None, restore),
+                Err(e) => (Some(client), Some(e), None),
+            },
+            Err(e) => (None, Some(e), None),
         };
         Self {
             client,
@@ -326,6 +372,10 @@ impl App {
             font: egui::FontId::monospace(FONT_SIZE),
             title: String::new(),
             had_tabs: false,
+            bell_open: None,
+            restore,
+            jump_waiting: false,
+            bell_opening: false,
         }
     }
 
@@ -405,56 +455,105 @@ impl App {
         }
     }
 
-    /// One row per tab: the state of its most urgent pane, the title of the
-    /// pane with the keys, and how many panes it has.
+    /// The header (SESSIONS and the bell), one row per tab, and the jump to
+    /// what waits at the bottom. A row is the design's sidebar: the state of
+    /// its most urgent pane and the title of the pane with the keys; its
+    /// folder and branch; what it is doing and for how long, or what it said.
     fn sidebar(&mut self, ui: &mut egui::Ui, workspaces: &[Workspace], sessions: &[Info]) -> Option<WorkspaceId> {
         let pal = self.palette;
         let mut picked = None;
-        ui.add_space(6.0);
-        for w in workspaces {
-            let infos: Vec<&Info> = w.layout.leaves().iter().filter_map(|id| sessions.iter().find(|i| i.id == *id)).collect();
-            let Some(focus) = infos.iter().find(|i| i.id == w.focus).or(infos.first()) else { continue };
-            let urgent = infos.iter().max_by_key(|i| (urgency(i.state), std::cmp::Reverse(i.since_ms))).unwrap_or(focus);
-            let (rect, resp) = ui.allocate_exact_size(egui::vec2(ui.available_width(), 44.0), egui::Sense::click());
-            let painter = ui.painter_at(rect);
-            if Some(w.id) == self.active {
-                painter.rect_filled(rect.shrink2(egui::vec2(6.0, 2.0)), 6.0, pal.selection);
-            } else if resp.hovered() {
-                painter.rect_filled(rect.shrink2(egui::vec2(6.0, 2.0)), 6.0, pal.selection.gamma_multiply(0.4));
-            }
-            let dot = egui::pos2(rect.left() + 18.0, rect.top() + 15.0);
-            let color = state_color(urgent.state);
-            match urgent.state {
-                // The guess is a ring, the sure mark a filled dot (Q2).
-                State::MaybeWaiting => {
-                    painter.circle_stroke(dot, 4.0, egui::Stroke::new(1.5, color));
+        let now = chrome::now_ms();
+        ui.add_space(8.0);
+        ui.horizontal(|ui| {
+            ui.add_space(14.0);
+            ui.label(egui::RichText::new(format!("SESSIONS  {}", workspaces.len())).size(11.0).strong().color(pal.fg_dim));
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                ui.add_space(8.0);
+                let notices = self.client.as_ref().map(Client::notices).unwrap_or_default();
+                let bell = chrome::bell(ui, &pal, &notices);
+                if bell.clicked() {
+                    self.bell_open = match self.bell_open {
+                        Some(_) => None,
+                        None => Some(bell.rect.left_bottom() + egui::vec2(0.0, 6.0)),
+                    };
+                    self.bell_opening = true;
                 }
-                _ => {
-                    painter.circle_filled(dot, 4.0, color);
+            });
+        });
+        ui.add_space(4.0);
+        let bottom = 34.0;
+        egui::ScrollArea::vertical().max_height(ui.available_height() - bottom).show(ui, |ui| {
+            for w in workspaces {
+                let infos: Vec<&Info> = w.layout.leaves().iter().filter_map(|id| sessions.iter().find(|i| i.id == *id)).collect();
+                let Some(focus) = infos.iter().find(|i| i.id == w.focus).or(infos.first()) else { continue };
+                let urgent = infos.iter().max_by_key(|i| (urgency(i.state), std::cmp::Reverse(i.since_ms))).unwrap_or(focus);
+                let (rect, resp) = ui.allocate_exact_size(egui::vec2(ui.available_width(), 62.0), egui::Sense::click());
+                let painter = ui.painter_at(rect);
+                let card = rect.shrink2(egui::vec2(6.0, 2.0));
+                if urgent.state == State::Waiting {
+                    // Ringed in gold: the one to look at (the design's sidebar).
+                    painter.rect_filled(card, 8.0, egui::Color32::from_rgb(0x1f, 0x1d, 0x18));
+                    painter.rect_stroke(card, 8.0, egui::Stroke::new(1.0, chrome::GOLD.gamma_multiply(0.8)), egui::StrokeKind::Inside);
+                }
+                if Some(w.id) == self.active {
+                    painter.rect_filled(card, 8.0, pal.selection.gamma_multiply(0.85));
+                } else if resp.hovered() {
+                    painter.rect_filled(card, 8.0, pal.selection.gamma_multiply(0.4));
+                }
+                let dot = egui::pos2(rect.left() + 20.0, rect.top() + 14.0);
+                let color = state_color(urgent.state);
+                match urgent.state {
+                    // The guess is a ring, the sure mark a filled dot (Q2).
+                    State::MaybeWaiting => {
+                        painter.circle_stroke(dot, 4.0, egui::Stroke::new(1.5, color));
+                    }
+                    _ => {
+                        painter.circle_filled(dot, 4.0, color);
+                    }
+                }
+                let name = if focus.title.is_empty() { program_name(&focus.command) } else { focus.title.clone() };
+                let name = if infos.len() > 1 { format!("{name}  ·{}", infos.len()) } else { name };
+                let left = rect.left() + 32.0;
+                let width = rect.right() - left - 12.0;
+                let line = |text: String, y: f32, font: egui::FontId, color: egui::Color32| {
+                    let galley = ui.fonts_mut(|f| {
+                        let mut job = egui::text::LayoutJob::simple_singleline(text, font, color);
+                        job.wrap = egui::text::TextWrapping::truncate_at_width(width);
+                        f.layout_job(job)
+                    });
+                    painter.galley(egui::pos2(left, rect.top() + y), galley, color);
+                };
+                line(name, 6.0, egui::FontId::proportional(13.5), pal.fg);
+                let branch = if focus.branch.is_empty() { String::new() } else { format!(" · {}", focus.branch) };
+                line(format!("{}{branch}", home_short(&focus.cwd)), 25.0, egui::FontId::monospace(11.0), pal.fg_dim);
+                let third = match urgent.state {
+                    State::Waiting | State::Error | State::Done if !urgent.note.is_empty() => format!("{} · {}", chrome::state_words(urgent, now), urgent.note),
+                    _ => chrome::state_words(urgent, now),
+                };
+                let third_color = match urgent.state {
+                    State::Waiting => chrome::GOLD,
+                    State::Error => chrome::RED,
+                    _ => pal.fg_dim,
+                };
+                line(third, 42.0, egui::FontId::proportional(11.5), third_color);
+                if resp.clicked() {
+                    picked = Some(w.id);
                 }
             }
-            let name = if focus.title.is_empty() { program_name(&focus.command) } else { focus.title.clone() };
-            let name = if infos.len() > 1 { format!("{name}  ·{}", infos.len()) } else { name };
-            let left = rect.left() + 30.0;
-            let width = rect.right() - left - 10.0;
-            let line = |text: String, y: f32, size: f32, color: egui::Color32| {
-                let galley = ui.fonts_mut(|f| {
-                    let mut job = egui::text::LayoutJob::simple_singleline(text, egui::FontId::proportional(size), color);
-                    job.wrap = egui::text::TextWrapping::truncate_at_width(width);
-                    f.layout_job(job)
+        });
+        // What waits, one key away (the design's sidebar foot).
+        let waiting = sessions.iter().filter(|i| matches!(i.state, State::Waiting | State::MaybeWaiting)).count();
+        if waiting > 0 {
+            ui.with_layout(egui::Layout::bottom_up(egui::Align::Min), |ui| {
+                ui.add_space(6.0);
+                ui.horizontal(|ui| {
+                    ui.add_space(12.0);
+                    let text = egui::RichText::new(format!("Jump to waiting ({waiting})   Ctrl+Shift+U")).size(12.0).color(chrome::GOLD);
+                    if ui.add(egui::Button::new(text).frame(false)).clicked() {
+                        self.jump_waiting = true;
+                    }
                 });
-                painter.galley(egui::pos2(left, rect.top() + y), galley, color);
-            };
-            line(name, 7.0, 13.0, pal.fg);
-            let second = match urgent.state {
-                State::Running => home_short(&focus.cwd),
-                _ if !urgent.note.is_empty() => urgent.note.clone(),
-                _ => home_short(&focus.cwd),
-            };
-            line(second, 25.0, 11.0, pal.fg_dim);
-            if resp.clicked() {
-                picked = Some(w.id);
-            }
+            });
         }
         picked
     }
@@ -480,9 +579,36 @@ impl App {
         let row_h = ui.fonts_mut(|f| f.row_height(&self.font)).ceil();
         let ctx = ui.ctx().clone();
         let mut focus_to = None;
+        let headed = rects.len() > 1;
+        let now = chrome::now_ms();
         for (id, r) in &rects {
-            let rect = from_rect(*r);
+            let mut rect = from_rect(*r);
             let focused = *id == w.focus;
+            if headed {
+                // Each pane of a split says what it is (the design's 1f): its
+                // program or title, its folder, and what it is doing.
+                let head = egui::Rect::from_min_size(rect.min, egui::vec2(rect.width(), HEADER));
+                rect.min.y += HEADER;
+                let p = ui.painter_at(head);
+                p.rect_filled(head, 0.0, if focused { egui::Color32::from_rgb(0x22, 0x26, 0x2e) } else { self.palette.on_cursor });
+                if let Some(info) = sessions.iter().find(|i| i.id == *id) {
+                    // The state on the right first; the name and folder get
+                    // what is left, cut short rather than run into it.
+                    let words = chrome::state_words(info, now);
+                    let right = p.text(head.right_center() - egui::vec2(8.0, 0.0), egui::Align2::RIGHT_CENTER, words, egui::FontId::proportional(11.5), state_color(info.state));
+                    let name = if info.title.is_empty() { program_name(&info.command) } else { info.title.clone() };
+                    let color = if focused { self.palette.fg } else { self.palette.fg_dim };
+                    let room = (right.left() - head.left() - 24.0).max(0.0);
+                    let galley = ui.fonts_mut(|f| {
+                        let mut job = egui::text::LayoutJob::default();
+                        job.append(&name, 0.0, egui::TextFormat::simple(egui::FontId::proportional(12.0), color));
+                        job.append(&home_short(&info.cwd), 10.0, egui::TextFormat::simple(egui::FontId::monospace(11.0), self.palette.fg_dim));
+                        job.wrap = egui::text::TextWrapping::truncate_at_width(room);
+                        f.layout_job(job)
+                    });
+                    p.galley(egui::pos2(head.left() + 8.0, head.center().y - galley.size().y / 2.0), galley, color);
+                }
+            }
             let (Some(pane), view) = (self.panes.get_mut(id), self.views.entry(*id).or_default()) else { continue };
             let opts = ViewOptions { focused, wheel: true };
             let shown = ui.push_id(id, |ui| tsumugi_pane::show(ui, Some(pane), view, rect, &self.font, row_h, &self.palette, opts)).inner;
@@ -571,26 +697,17 @@ fn from_rect(r: Rect) -> egui::Rect {
     egui::Rect::from_min_size(egui::pos2(r.x, r.y), egui::vec2(r.w, r.h))
 }
 
-/// The four state colours (docs/v1-scope.md 1k): waiting yellow, running
-/// cyan, error red, done green -- filer's own yellow, cyan, red and green.
-fn state_color(state: tsumugi_mux::State) -> egui::Color32 {
-    use tsumugi_mux::State;
-    match state {
-        State::Waiting | State::MaybeWaiting => egui::Color32::from_rgb(0xe8, 0xc8, 0x7a),
-        State::Running => egui::Color32::from_rgb(0x6f, 0xd0, 0xd0),
-        State::Error => egui::Color32::from_rgb(0xf0, 0x71, 0x78),
-        State::Done => egui::Color32::from_rgb(0x8e, 0xd0, 0x8e),
-    }
-}
+use chrome::state_color;
+
 
 /// `pwsh` out of `C:\Program Files\PowerShell\7\pwsh.exe`.
-fn program_name(command: &str) -> String {
+pub(crate) fn program_name(command: &str) -> String {
     let name = command.rsplit(['/', '\\']).next().unwrap_or(command);
     name.strip_suffix(".exe").unwrap_or(name).to_owned()
 }
 
 /// A folder with the home folder said as `~`.
-fn home_short(path: &std::path::Path) -> String {
+pub(crate) fn home_short(path: &std::path::Path) -> String {
     let home = std::env::var_os(if cfg!(windows) { "USERPROFILE" } else { "HOME" }).map(std::path::PathBuf::from);
     match home.as_deref().and_then(|h| path.strip_prefix(h).ok()) {
         Some(rest) if rest.as_os_str().is_empty() => "~".to_owned(),
@@ -621,6 +738,12 @@ impl eframe::App for App {
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
         }
         let current = self.current(&workspaces);
+        if std::mem::take(&mut self.jump_waiting) {
+            if let Some(w) = &current {
+                let area = to_rect(ctx.content_rect());
+                self.act(keys::Action::NextWaiting, w, &workspaces, area);
+            }
+        }
 
         if let Some(w) = &current {
             let t = sessions.iter().find(|i| i.id == w.focus).map(|i| i.title.clone()).unwrap_or_default();
@@ -646,6 +769,25 @@ impl eframe::App for App {
             }
         }
 
+        // The status bar along the bottom (the design's 1d).
+        let focus_info = current.as_ref().and_then(|w| sessions.iter().find(|i| i.id == w.focus)).cloned();
+        let size = current.as_ref().and_then(|w| self.panes.get(&w.focus)).map(|p| {
+            let rows = tsumugi_pane::Pane::screen(p).rows;
+            (rows.first().map_or(0, Vec::len), rows.len())
+        });
+        let up = chrome::now_ms().saturating_sub(client.started_ms());
+        let status = egui::Panel::bottom("status")
+            .exact_size(24.0)
+            .frame(egui::Frame::NONE.fill(egui::Color32::from_rgb(0x12, 0x14, 0x18)))
+            .show(ui, |ui| chrome::status_bar(ui, &self.palette, &sessions, focus_info.as_ref(), size, up))
+            .inner;
+        if let Some(chrome::StatusClick::Bell) = status {
+            self.bell_open = Some(egui::pos2(20.0, 60.0));
+            self.bell_opening = true;
+        }
+        // The clock and the elapsed times move on without any output.
+        ctx.request_repaint_after(std::time::Duration::from_secs(1));
+
         let side = egui::Frame::NONE.fill(self.palette.on_cursor);
         let picked = egui::Panel::left("sessions")
             .resizable(true)
@@ -658,9 +800,47 @@ impl eframe::App for App {
             self.active = Some(id);
         }
 
+        if let Some(at) = self.bell_open {
+            let notices = client.notices();
+            match chrome::bell_list(&ctx, &self.palette, at, &notices) {
+                Some(chrome::BellAction::Open(session, id)) => {
+                    client.read_notices(Some(vec![id]));
+                    if let Some(x) = workspaces.iter().find(|x| x.layout.contains(&session)) {
+                        self.active = Some(x.id);
+                        self.set_focus(x, session);
+                    }
+                    self.bell_open = None;
+                }
+                Some(chrome::BellAction::ReadAll) => client.read_notices(None),
+                Some(chrome::BellAction::Close) if !self.bell_opening => self.bell_open = None,
+                _ => {}
+            }
+        }
+
+        self.bell_opening = false;
         egui::CentralPanel::default().frame(egui::Frame::NONE.fill(self.palette.on_cursor)).show(ui, |ui| {
             if self.failed.is_some() {
                 self.message(ui);
+                return;
+            }
+            if let Some(view) = &mut self.restore {
+                match chrome::restore_screen(ui, &self.palette, view) {
+                    Some(chrome::RestoreAnswer::Restore(ids)) => {
+                        set_always_restore(view.always);
+                        if client.restore_only(Some(ids)).unwrap_or(0) == 0 {
+                            let _ = start_here(&client);
+                        }
+                        self.restore = None;
+                    }
+                    Some(chrome::RestoreAnswer::Fresh) => {
+                        set_always_restore(view.always);
+                        if let Err(e) = start_here(&client) {
+                            self.failed = Some(e);
+                        }
+                        self.restore = None;
+                    }
+                    None => {}
+                }
                 return;
             }
             if let Some(w) = &current {

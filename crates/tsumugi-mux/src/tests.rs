@@ -129,7 +129,15 @@ fn a_notification_marks_a_session_until_the_next_key() {
     let info = |c: &Client| c.list().unwrap().into_iter().find(|i| i.id == pane.id()).unwrap();
     let i = info(&c);
     assert_eq!((i.state, i.note.as_str()), (State::Waiting, "Claude needs your permission"));
+    let bell = c.notices();
+    assert_eq!(bell.len(), 1, "the bell has it: {bell:?}");
+    assert_eq!((bell[0].session, bell[0].read, bell[0].note.as_str()), (pane.id(), false, "Claude needs your permission"));
     pane.send(b"\r".to_vec());
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while !c.notices().iter().all(|n| n.read) {
+        assert!(Instant::now() < deadline, "a key did not mark it read");
+        std::thread::sleep(Duration::from_millis(50));
+    }
     let deadline = Instant::now() + Duration::from_secs(10);
     while info(&c).state == State::Waiting {
         assert!(Instant::now() < deadline, "the mark stayed after a key");
@@ -217,6 +225,8 @@ fn a_restart_brings_the_tabs_back() {
     let at2 = address();
     let _after = server::start_with(&at2, options()).expect("the second server starts");
     let c2 = Client::connect(&at2, || {}).expect("a client connects to it");
+    let saved = c2.saved().unwrap().expect("something was saved");
+    assert_eq!(saved.workspaces[0].panes.len(), 2);
     assert_eq!(c2.restore().unwrap(), 2, "both panes came back");
     let ws = c2.workspaces();
     assert_eq!(ws.len(), 1);
@@ -228,6 +238,39 @@ fn a_restart_brings_the_tabs_back() {
     until(&resumed, "claude --resume typed", |t| t.contains("claude --resume conv-1234"));
     assert_eq!(c2.restore().unwrap(), 0, "a server with sessions restores nothing");
     for id in leaves {
+        c2.attach(id).kill();
+    }
+    a.kill();
+    b.kill();
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// The restore screen can leave panes out: only those picked come back, and
+/// the tab keeps its shape around them.
+#[test]
+fn a_restore_can_leave_panes_out() {
+    use crate::{Dir, Place};
+    let dir = std::env::temp_dir().join(format!("tsumugi-restore-some-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let state = dir.join("state");
+    let at = address();
+    let _before = server::start_with(&at, server::Options { state: Some(state.clone()) }).unwrap();
+    let c = Client::connect(&at, || {}).unwrap();
+    let a = c.spawn(dir.clone(), None, Size::new(80, 24), (8, 16)).unwrap();
+    let b = c.spawn_at(dir.clone(), None, Size::new(80, 24), (8, 16), Place::Split { beside: a.id(), dir: Dir::Right }).unwrap();
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while crate::state::load(&state).is_none_or(|s| s.workspaces.iter().map(|w| w.panes.len()).sum::<usize>() < 2) {
+        assert!(Instant::now() < deadline, "never saved");
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    let at2 = address();
+    let _after = server::start_with(&at2, server::Options { state: Some(state.clone()) }).unwrap();
+    let c2 = Client::connect(&at2, || {}).unwrap();
+    assert_eq!(c2.restore_only(Some(vec![b.id()])).unwrap(), 1);
+    let ws = c2.workspaces();
+    assert_eq!(ws[0].layout.leaves().len(), 1, "a alone was left out");
+    for id in ws[0].layout.leaves() {
         c2.attach(id).kill();
     }
     a.kill();

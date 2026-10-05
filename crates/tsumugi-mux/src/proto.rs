@@ -7,7 +7,7 @@ use tsumugi_pane::Size;
 
 /// Bumped whenever a message changes shape: a client and a server that
 /// disagree say so at `Hello` instead of misreading each other.
-pub const VERSION: u32 = 6;
+pub const VERSION: u32 = 7;
 
 pub type SessionId = u64;
 pub type WorkspaceId = u64;
@@ -90,6 +90,22 @@ pub struct Info {
     /// When `state` began, in Unix milliseconds: the session waiting longest
     /// is the one `Ctrl+Shift+U` goes to first.
     pub since_ms: u64,
+    /// The git branch of `cwd`, when it is in a repository.
+    pub branch: String,
+}
+
+/// One entry of the notification list (the bell): a session that came to
+/// want a person, failed, or finished a long run.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Notice {
+    pub id: u64,
+    pub session: SessionId,
+    pub state: State,
+    /// The session's title then, and what it said.
+    pub title: String,
+    pub note: String,
+    pub at_ms: u64,
+    pub read: bool,
 }
 
 /// The scrollback moves `Scroll` can ask for; alacritty's own type is not a
@@ -130,9 +146,15 @@ pub enum ToServer {
     /// An agent's word on its session (`tsumugi notify`); `claude` is the
     /// Claude Code conversation its hook named, kept for `claude --resume`.
     Notify { id: SessionId, state: State, note: String, claude: Option<String> },
-    /// Start again the tabs saved before a restart, when the server has no
-    /// session yet; answered with `Restored`.
-    Restore,
+    /// What was saved before a restart, to show before restoring it;
+    /// answered with `Saved`.
+    Saved,
+    /// Start again the tabs saved before a restart -- only the panes listed,
+    /// by their saved ids, or all of them -- when the server has no session
+    /// yet; answered with `Restored`.
+    Restore { only: Option<Vec<SessionId>> },
+    /// Mark notifications read: these, or all of them.
+    ReadNotices { ids: Option<Vec<u64>> },
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -143,6 +165,11 @@ pub enum ToClient {
     Spawned { id: SessionId },
     /// How many sessions `Restore` started.
     Restored(usize),
+    Saved(Option<crate::state::Saved>),
+    /// The notification list, newest last, whenever it changes.
+    Notices(Vec<Notice>),
+    /// When the server started, in Unix milliseconds (the status bar's "up").
+    Started { at_ms: u64 },
     /// What changed on the screen of an attached session: every row the
     /// first time, then only the rows that changed.
     Screen { id: SessionId, update: crate::diff::Update },

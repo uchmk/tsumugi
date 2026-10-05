@@ -17,7 +17,7 @@ use crossbeam_channel::{Receiver, Sender};
 use tsumugi_pane::{Pane, Terminal};
 
 use crate::frame;
-use crate::proto::{Info, Place, ScrollBy, SessionId, State, ToClient, ToServer, Workspace, WorkspaceId, VERSION};
+use crate::proto::{Info, Notice, Place, ScrollBy, SessionId, State, ToClient, ToServer, Workspace, WorkspaceId, VERSION};
 use crate::transport::{Address, Conn, Listener};
 
 type ClientId = u64;
@@ -58,6 +58,10 @@ struct Shared {
     /// Where this server listens, told to its shells (`TSUMUGI_ADDRESS`) so
     /// that `tsumugi notify` inside them finds it.
     address: PathBuf,
+    /// The bell's list, oldest first, and the next notice's id.
+    notices: Mutex<(u64, std::collections::VecDeque<Notice>)>,
+    /// When the server started, in Unix milliseconds.
+    started_ms: u64,
     /// The state file (`state.rs`), and when it is next to be written.
     state: Option<PathBuf>,
     save_due: Mutex<Option<std::time::Instant>>,
@@ -127,6 +131,8 @@ pub fn start_with(at: &Address, options: Options) -> io::Result<ServerHandle> {
         ever: false.into(),
         address: at.0.clone(),
         state: options.state,
+        notices: Mutex::new((1, std::collections::VecDeque::new())),
+        started_ms: now_ms(),
         save_due: Mutex::new(None),
         quiet: Duration::from_secs(
             std::env::var("TSUMUGI_QUIET_SECS").ok().and_then(|s| s.parse().ok()).unwrap_or(10),
@@ -164,6 +170,8 @@ fn serve(shared: Arc<Shared>, client: ClientId, conn: Conn) {
         return;
     }
     let (tx, rx) = crossbeam_channel::unbounded::<ToClient>();
+    let _ = tx.send(ToClient::Started { at_ms: shared.started_ms });
+    let _ = tx.send(ToClient::Notices(lock(&shared.notices).1.iter().cloned().collect()));
     lock(&shared.clients).insert(client, tx.clone());
     let writer = std::thread::spawn(move || {
         for msg in rx {
@@ -204,9 +212,20 @@ fn handle(shared: &Arc<Shared>, client: ClientId, tx: &Sender<ToClient>, msg: To
             broadcast_workspaces(shared, &workspaces);
             save_soon(shared, SAVE_AFTER_CHANGE);
         }
-        ToServer::Restore => {
-            let n = if sessions.is_empty() { restore(shared, &mut sessions) } else { 0 };
+        ToServer::Saved => {
+            let saved = shared.state.as_deref().and_then(crate::state::load);
+            let _ = tx.send(ToClient::Saved(saved));
+        }
+        ToServer::Restore { only } => {
+            let n = if sessions.is_empty() { restore(shared, &mut sessions, only.as_deref()) } else { 0 };
             let _ = tx.send(ToClient::Restored(n));
+        }
+        ToServer::ReadNotices { ids } => {
+            let mut notices = lock(&shared.notices);
+            for n in notices.1.iter_mut().filter(|n| ids.as_ref().is_none_or(|ids| ids.contains(&n.id))) {
+                n.read = true;
+            }
+            broadcast_notices(shared, &notices.1);
         }
         ToServer::Spawn { cwd, shell, size, cell, place } => {
             match spawn_session(shared, &mut sessions, Some(client), cwd, shell, size, cell) {
@@ -252,7 +271,8 @@ fn handle(shared: &Arc<Shared>, client: ClientId, tx: &Sender<ToClient>, msg: To
                 if !note.is_empty() {
                     s.info.note = note;
                 }
-                if settle(s, shared.quiet) {
+                if let Some(before) = settle(s, shared.quiet) {
+                    record_notice(shared, s, before);
                     broadcast(shared, &sessions);
                 }
             }
@@ -262,7 +282,10 @@ fn handle(shared: &Arc<Shared>, client: ClientId, tx: &Sender<ToClient>, msg: To
             let Some(s) = sessions.get_mut(&id) else { return };
             let term = &mut s.term;
             match other {
-                ToServer::Input { bytes, .. } => term.send(bytes),
+                ToServer::Input { bytes, .. } => {
+                    term.send(bytes);
+                    read_notices_of(shared, id);
+                }
                 ToServer::Paste { text, .. } => term.paste(&text),
                 ToServer::Resize { size, cell, .. } => Pane::resize(term, size, cell),
                 ToServer::Scroll { by, .. } => term.scroll(scroll(by)),
@@ -353,10 +376,18 @@ fn save_if_due(shared: &Shared) {
                     .leaves()
                     .into_iter()
                     .filter_map(|id| sessions.get(&id).map(|s| (id, s)))
-                    .map(|(id, s)| crate::state::SavedPane { id, cwd: s.info.cwd.clone(), shell: s.shell.clone(), claude: s.claude.clone() })
+                    .map(|(id, s)| crate::state::SavedPane {
+                        id,
+                        cwd: s.info.cwd.clone(),
+                        shell: s.shell.clone(),
+                        claude: s.claude.clone(),
+                        title: s.info.title.clone(),
+                        state: s.info.state,
+                    })
                     .collect(),
             })
             .collect(),
+        at_ms: now_ms(),
     };
     drop(workspaces);
     drop(sessions);
@@ -390,7 +421,8 @@ fn spawn_session(
     // What a program asking for the colours (OSC 10 / 11) is told: the
     // window's default palette, filer's colours.
     term.set_colors([0xc8, 0xcd, 0xd8], [0x1b, 0x1e, 0x24]);
-    let info = Info { id, cwd, title: String::new(), command, state: State::Running, note: String::new(), since_ms: now_ms() };
+    let branch = git_branch(&cwd).unwrap_or_default();
+    let info = Info { id, cwd, title: String::new(), command, state: State::Running, note: String::new(), since_ms: now_ms(), branch };
     let watchers: BTreeSet<ClientId> = client.into_iter().collect();
     sessions.insert(
         id,
@@ -402,14 +434,14 @@ fn spawn_session(
 /// Start again the tabs the state file has, after a restart: each pane's
 /// shell in its folder (the home folder when that is gone), and Claude Code
 /// resumed where it ran. The number of sessions started.
-fn restore(shared: &Arc<Shared>, sessions: &mut BTreeMap<SessionId, Session>) -> usize {
+fn restore(shared: &Arc<Shared>, sessions: &mut BTreeMap<SessionId, Session>, only: Option<&[SessionId]>) -> usize {
     let Some(saved) = shared.state.as_deref().and_then(crate::state::load) else { return 0 };
     let home = std::env::var_os(if cfg!(windows) { "USERPROFILE" } else { "HOME" }).map(PathBuf::from);
     let mut started = 0;
     let mut workspaces = lock(&shared.workspaces);
     for w in saved.workspaces {
         let mut ids = BTreeMap::new();
-        for p in &w.panes {
+        for p in w.panes.iter().filter(|p| only.is_none_or(|o| o.contains(&p.id))) {
             let cwd = if p.cwd.is_dir() { p.cwd.clone() } else { home.clone().unwrap_or_else(|| p.cwd.clone()) };
             let Ok(id) = spawn_session(shared, sessions, None, cwd, p.shell.clone(), tsumugi_pane::Size::new(80, 24), (8, 16)) else {
                 continue;
@@ -493,7 +525,8 @@ fn now_ms() -> u64 {
     std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_millis() as u64)
 }
 
-/// Work out a session's state again; true when it changed.
+/// Work out a session's state again; when it changed, the state it had and
+/// since when.
 ///
 /// In order of how sure each sign is (QUESTIONS.md Q2): an agent's own word
 /// (`tsumugi notify`, OSC 9 / 99 / 777) since the last key; the shell's
@@ -501,7 +534,7 @@ fn now_ms() -> u64 {
 /// nothing running and nothing said for two seconds, which is a shell sitting
 /// at its prompt; and output stopped for `quiet` while a program runs and
 /// has written since the last key -- the guess, marked more faintly.
-fn settle(s: &mut Session, quiet: Duration) -> bool {
+fn settle(s: &mut Session, quiet: Duration) -> Option<(State, u64)> {
     let input = s.term.last_input();
     let after_input = |t: Option<std::time::Instant>| t.is_some_and(|t| input.is_none_or(|i| t > i));
     let busy = s.term.busy();
@@ -513,14 +546,88 @@ fn settle(s: &mut Session, quiet: Duration) -> bool {
         _ => State::Running,
     };
     if state == s.info.state {
-        return false;
+        return None;
     }
+    let before = (s.info.state, s.info.since_ms);
     if state == State::Running {
         s.info.note.clear();
     }
     s.info.state = state;
     s.info.since_ms = now_ms();
-    true
+    Some(before)
+}
+
+/// How long a session has to have run for its finishing to be worth a
+/// notification (docs/v1-scope.md 1h: "1 分以上動いたときだけ").
+const LONG_RUN: u64 = 60_000;
+
+/// Put a session's new state on the bell's list when it is one a person
+/// should hear of: it wants them, it failed, or it finished a long run.
+fn record_notice(shared: &Shared, s: &Session, (was, since): (State, u64)) {
+    let worth = match s.info.state {
+        State::Waiting | State::Error => true,
+        State::Done => was == State::Running && now_ms().saturating_sub(since) >= LONG_RUN,
+        _ => false,
+    };
+    if !worth {
+        return;
+    }
+    let mut notices = lock(&shared.notices);
+    let id = notices.0;
+    notices.0 += 1;
+    let title = if s.info.title.is_empty() { s.info.command.clone() } else { s.info.title.clone() };
+    notices.1.push_back(Notice { id, session: s.info.id, state: s.info.state, title, note: s.info.note.clone(), at_ms: now_ms(), read: false });
+    while notices.1.len() > 200 {
+        notices.1.pop_front();
+    }
+    broadcast_notices(shared, &notices.1);
+}
+
+/// A key typed into a session answers what it asked: its notices are read.
+fn read_notices_of(shared: &Shared, id: SessionId) {
+    let mut notices = lock(&shared.notices);
+    let mut any = false;
+    for n in notices.1.iter_mut().filter(|n| n.session == id && !n.read) {
+        n.read = true;
+        any = true;
+    }
+    if any {
+        broadcast_notices(shared, &notices.1);
+    }
+}
+
+fn broadcast_notices(shared: &Shared, list: &std::collections::VecDeque<Notice>) {
+    let list: Vec<Notice> = list.iter().cloned().collect();
+    for tx in lock(&shared.clients).values() {
+        let _ = tx.send(ToClient::Notices(list.clone()));
+    }
+}
+
+/// The git branch the folder is on: `.git/HEAD` of the nearest repository
+/// above it (a worktree's `.git` file points to its own HEAD). Read on the
+/// server's threads, never the window's.
+fn git_branch(dir: &std::path::Path) -> Option<String> {
+    let mut at = Some(dir);
+    while let Some(d) = at {
+        let git = d.join(".git");
+        let head = if git.is_dir() {
+            git.join("HEAD")
+        } else if git.is_file() {
+            let text = std::fs::read_to_string(&git).ok()?;
+            let gitdir = text.trim().strip_prefix("gitdir:")?.trim();
+            d.join(gitdir).join("HEAD")
+        } else {
+            at = d.parent();
+            continue;
+        };
+        let head = std::fs::read_to_string(head).ok()?;
+        let head = head.trim();
+        return Some(match head.strip_prefix("ref: refs/heads/") {
+            Some(branch) => branch.to_owned(),
+            None => head.chars().take(7).collect(),
+        });
+    }
+    None
 }
 
 /// Turn "session N changed" into messages, at most one screen per session
@@ -545,10 +652,14 @@ fn run_pump(shared: Arc<Shared>, dirty: Receiver<SessionId>) {
             last_settle = std::time::Instant::now();
             let mut changed = false;
             for s in sessions.values_mut() {
-                changed |= settle(s, shared.quiet);
+                if let Some(before) = settle(s, shared.quiet) {
+                    record_notice(&shared, s, before);
+                    changed = true;
+                }
                 // Where the shell is now, for the sidebar and for a restore:
                 // a bash that never says (no OSC 7) still has a folder.
                 if let Some(cwd) = s.term.current_dir().filter(|c| *c != s.info.cwd) {
+                    s.info.branch = git_branch(&cwd).unwrap_or_default();
                     s.info.cwd = cwd;
                     changed = true;
                     save_soon(&shared, SAVE_AFTER_CHANGE);
@@ -584,9 +695,14 @@ fn run_pump(shared: Arc<Shared>, dirty: Receiver<SessionId>) {
             // the once-a-second pass, since asking whether anything runs under
             // the shell reads the process table.
             if before.1 != s.info.cwd {
+                s.info.branch = git_branch(&s.info.cwd).unwrap_or_default();
                 save_soon(&shared, SAVE_AFTER_CHANGE);
             }
-            let changed = (before != (s.info.title.clone(), s.info.cwd.clone())) | (noticed && settle(s, shared.quiet));
+            let settled = if noticed { settle(s, shared.quiet) } else { None };
+            if let Some(b) = settled {
+                record_notice(&shared, s, b);
+            }
+            let changed = (before != (s.info.title.clone(), s.info.cwd.clone())) | settled.is_some();
             if s.term.exited {
                 ended.push(id);
                 continue;
@@ -626,5 +742,21 @@ fn run_pump(shared: Arc<Shared>, dirty: Receiver<SessionId>) {
         }
         drop(sessions);
         save_if_due(&shared);
+    }
+}
+
+#[cfg(test)]
+mod branch {
+    #[test]
+    fn the_branch_is_read_from_head() {
+        let dir = std::env::temp_dir().join(format!("tsumugi-branch-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join(".git")).unwrap();
+        std::fs::create_dir_all(dir.join("src/deep")).unwrap();
+        std::fs::write(dir.join(".git/HEAD"), "ref: refs/heads/claude/task-09\n").unwrap();
+        assert_eq!(super::git_branch(&dir.join("src/deep")).as_deref(), Some("claude/task-09"));
+        std::fs::write(dir.join(".git/HEAD"), "0123456789abcdef\n").unwrap();
+        assert_eq!(super::git_branch(&dir).as_deref(), Some("0123456"), "a detached HEAD by its commit");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

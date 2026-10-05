@@ -12,6 +12,8 @@ tsumugi-pane = { path = "../tsumugi-pane", features = ["egui", "wgpu"] }
 tsumugi-mux = { path = "../tsumugi-mux" }
 tsumugi-layout = { path = "../tsumugi-layout" }
 eframe = "0.36"
+# The status bar's clock in local time; filer uses the same.
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 egui = "0.36"
 
 [target."cfg(windows)".dependencies]

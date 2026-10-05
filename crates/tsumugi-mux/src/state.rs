@@ -14,11 +14,13 @@ use crate::proto::SessionId;
 
 /// Bumped when the shape below changes; a file of another version is left
 /// alone rather than misread.
-const VERSION: u32 = 1;
+const VERSION: u32 = 2;
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Saved {
     pub workspaces: Vec<SavedWorkspace>,
+    /// When it was written, in Unix milliseconds: "when tsumugi stopped".
+    pub at_ms: u64,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -38,6 +40,9 @@ pub struct SavedPane {
     /// The Claude Code conversation last seen in it (its hooks' `session_id`),
     /// resumed with `claude --resume`.
     pub claude: Option<String>,
+    /// Its title and state when it was saved, for the "Welcome back" list.
+    pub title: String,
+    pub state: crate::proto::State,
 }
 
 /// Where the state is kept: `TSUMUGI_STATE` when set; else
@@ -98,8 +103,16 @@ mod tests {
             workspaces: vec![SavedWorkspace {
                 layout: Node::Leaf(7),
                 focus: 7,
-                panes: vec![SavedPane { id: 7, cwd: "/tmp".into(), shell: None, claude: Some("abc".into()) }],
+                panes: vec![SavedPane {
+                    id: 7,
+                    cwd: "/tmp".into(),
+                    shell: None,
+                    claude: Some("abc".into()),
+                    title: "t".into(),
+                    state: crate::proto::State::Waiting,
+                }],
             }],
+            at_ms: 1,
         };
         store(&path, &saved).unwrap();
         assert_eq!(load(&path), Some(saved));
