@@ -21,6 +21,7 @@ mod alert;
 mod chrome;
 mod fonts;
 mod keys;
+mod newsession;
 mod palette;
 mod shellhook;
 mod sort;
@@ -418,8 +419,13 @@ struct App {
     tag_input: String,
     /// `settings.toml` as read again whenever it changes, and what is wrong
     /// with it.
-    settings: std::sync::mpsc::Receiver<Result<tsumugi_mux::settings::Settings, String>>,
+    settings: std::sync::mpsc::Receiver<Read>,
     settings_error: Option<String>,
+    /// From the settings and `profiles.toml`, for the new-session dialog.
+    tag_rules: Vec<tsumugi_mux::settings::TagRule>,
+    profiles: Vec<tsumugi_mux::settings::Profile>,
+    /// The new-session dialog, while it is open (the design's 1g).
+    new_session: Option<newsession::Dialog>,
 }
 
 /// A change asked for from the sidebar, made once it is drawn.
@@ -494,6 +500,9 @@ impl App {
             tag_input: String::new(),
             settings: watch_settings(cc.egui_ctx.clone()),
             settings_error: None,
+            tag_rules: Vec::new(),
+            profiles: Vec::new(),
+            new_session: None,
         }
     }
 
@@ -545,7 +554,8 @@ impl App {
             }
         };
         match action {
-            keys::Action::NewTab => self.pending = start(Place::NewWorkspace),
+            // The dialog, with this pane's folder in it (the design's 1g).
+            keys::Action::NewTab => self.new_session = Some(newsession::Dialog::new(&here)),
             keys::Action::SplitRight => self.pending = start(Place::Split { beside: w.focus, dir: Dir::Right }),
             keys::Action::SplitDown => self.pending = start(Place::Split { beside: w.focus, dir: Dir::Down }),
             keys::Action::CloseTab => {
@@ -623,6 +633,60 @@ impl App {
         out
     }
 
+    /// The folders the new-session dialog offers: the pane with the keys'
+    /// first, then where the other sessions are, the most recently busy
+    /// first, each with its branch.
+    fn recents(sessions: &[Info], current: Option<&Workspace>) -> Vec<newsession::Recent> {
+        let mut by_time: Vec<&Info> = sessions.iter().collect();
+        by_time.sort_by_key(|i| std::cmp::Reverse(i.since_ms));
+        if let Some(focus) = current.and_then(|w| sessions.iter().find(|i| i.id == w.focus)) {
+            by_time.insert(0, focus);
+        }
+        let mut out: Vec<newsession::Recent> = Vec::new();
+        for (k, i) in by_time.into_iter().enumerate() {
+            for f in [&i.cwd, &i.project] {
+                if !out.iter().any(|r| r.folder == *f) {
+                    let note = if k == 0 && current.is_some() { format!("{}  · now", i.branch) } else { i.branch.clone() };
+                    out.push(newsession::Recent { folder: f.clone(), note: note.trim().to_owned() });
+                }
+            }
+        }
+        out
+    }
+
+    /// Start what the new-session dialog asked for.
+    fn create(&mut self, client: &Client, c: newsession::Create, current: Option<&Workspace>) {
+        let place = match current {
+            Some(w) if c.split => Place::Split { beside: w.focus, dir: Dir::Right },
+            _ => Place::NewWorkspace,
+        };
+        let shell = tsumugi_pane::default_shell().map(|s| (s, Vec::new()));
+        match client.spawn_typing(c.folder.clone(), shell, Size::new(80, 24), (8, 16), place, c.start.typed()) {
+            Ok(pane) => {
+                let id = pane.id();
+                self.pending = Some(id);
+                // The server gives the rules' tags itself; the rest go on,
+                // and the rules' taken off in the dialog come off.
+                for t in c.tags.iter().cloned() {
+                    client.tag(vec![id], t, true);
+                }
+                for t in c.dropped.iter().cloned() {
+                    client.tag(vec![id], t, false);
+                }
+            }
+            Err(e) => self.failed = Some(format!("the shell did not start: {e}")),
+        }
+        if let Some(name) = c.save_as {
+            let profile = tsumugi_mux::settings::Profile {
+                name,
+                folder: home_short(&c.folder),
+                start: c.start.word().into(),
+                tags: c.tags.clone(),
+            };
+            save_profile(self.profiles.clone(), profile);
+        }
+    }
+
     /// Do what the search box picked.
     fn picked(&mut self, pick: palette::Pick, current: Option<&Workspace>, workspaces: &[Workspace], area: Rect) {
         let Some(client) = self.client.clone() else { return };
@@ -639,6 +703,7 @@ impl App {
             palette::Pick::Command(c) => {
                 let action = match c {
                     palette::Command::NewSession => keys::Action::NewTab,
+                    // (opens the dialog)
                     palette::Command::SplitRight => keys::Action::SplitRight,
                     palette::Command::SplitDown => keys::Action::SplitDown,
                     palette::Command::Zoom => keys::Action::Zoom,
@@ -1145,25 +1210,56 @@ pub(crate) fn home_short(path: &std::path::Path) -> String {
 
 /// Read `settings.toml` now and whenever it changes, on a thread of its own
 /// (no disk on the window's thread).
-fn watch_settings(ctx: egui::Context) -> std::sync::mpsc::Receiver<Result<tsumugi_mux::settings::Settings, String>> {
+/// What the settings thread read.
+enum Read {
+    Settings(Result<tsumugi_mux::settings::Settings, String>),
+    Profiles(Result<Vec<tsumugi_mux::settings::Profile>, String>),
+}
+
+/// Read `settings.toml` and `profiles.toml` now and whenever they change, on
+/// a thread of its own (no disk on the window's thread).
+fn watch_settings(ctx: egui::Context) -> std::sync::mpsc::Receiver<Read> {
     use tsumugi_mux::settings;
     let (tx, rx) = std::sync::mpsc::channel();
     let _ = std::thread::Builder::new().name("settings".into()).spawn(move || {
-        let Some(path) = settings::default_path() else { return };
-        let mut seen = None;
+        let (Some(path), Some(profiles)) = (settings::default_path(), settings::profiles_path()) else { return };
+        let (mut seen, mut seen_profiles) = (None, None);
         loop {
             let stamp = settings::stamp(&path);
+            let mut sent = false;
             if seen != Some(stamp) {
                 seen = Some(stamp);
-                if tx.send(settings::load(&path)).is_err() {
+                sent = true;
+                if tx.send(Read::Settings(settings::load(&path))).is_err() {
                     return;
                 }
+            }
+            let stamp = settings::stamp(&profiles);
+            if seen_profiles != Some(stamp) {
+                seen_profiles = Some(stamp);
+                sent = true;
+                if tx.send(Read::Profiles(settings::load_profiles(&profiles))).is_err() {
+                    return;
+                }
+            }
+            if sent {
                 ctx.request_repaint();
             }
             std::thread::sleep(Duration::from_secs(2));
         }
     });
     rx
+}
+
+/// Keep a new profile, on a thread of its own: replaces one of the same name.
+fn save_profile(mut profiles: Vec<tsumugi_mux::settings::Profile>, new: tsumugi_mux::settings::Profile) {
+    profiles.retain(|p| p.name != new.name);
+    profiles.push(new);
+    let _ = std::thread::Builder::new().name("profiles".into()).spawn(move || {
+        if let Some(path) = tsumugi_mux::settings::profiles_path() {
+            let _ = tsumugi_mux::settings::save_profiles(&path, &profiles);
+        }
+    });
 }
 
 /// Told of in the bell only: muted itself, or one of its tags is.
@@ -1203,11 +1299,13 @@ impl eframe::App for App {
         }
         for read in self.settings.try_iter() {
             match read {
-                Ok(s) => {
+                Read::Settings(Ok(s)) => {
                     self.alerts.rules = alert::Rules::from(&s.notify);
+                    self.tag_rules = s.tags.rule;
                     self.settings_error = None;
                 }
-                Err(e) => self.settings_error = Some(e),
+                Read::Profiles(Ok(p)) => self.profiles = p,
+                Read::Settings(Err(e)) | Read::Profiles(Err(e)) => self.settings_error = Some(e),
             }
         }
         if let Some(e) = &self.settings_error {
@@ -1263,7 +1361,7 @@ impl eframe::App for App {
             let mut actions = Vec::new();
             // A field of the window's own (a menu's "Add a tag") has the
             // keys while it is focused; the pane gets them otherwise.
-            let field = ctx.memory(|m| m.focused().is_some());
+            let field = ctx.memory(|m| m.focused().is_some()) || self.new_session.is_some() || self.search.is_some();
             if let Some(pane) = self.panes.get(&w.focus).filter(|_| !field) {
                 let events = ctx.input(|i| i.events.clone());
                 tsumugi_pane::input::feed(pane, &events, |key, m| match keys::action(key, m) {
@@ -1336,6 +1434,19 @@ impl eframe::App for App {
                 Some(chrome::BellAction::Close) if !self.bell_opening => self.bell_open = None,
                 _ => {}
             }
+        }
+
+        let made = match &mut self.new_session {
+            Some(d) => newsession::show(&ctx, &self.palette, d, &Self::recents(&sessions, current.as_ref()), &self.profiles, &self.tag_rules),
+            None => None,
+        };
+        match made {
+            Some(newsession::Answer::Create(c)) => {
+                self.new_session = None;
+                self.create(&client, c, current.as_ref());
+            }
+            Some(newsession::Answer::Cancel) => self.new_session = None,
+            None => {}
         }
 
         let answer = match &mut self.search {

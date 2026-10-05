@@ -191,6 +191,18 @@ fn tabs_keep_the_order_they_are_dragged_into() {
     }
 }
 
+/// A line asked for at the start is typed once the shell is ready.
+#[test]
+fn a_new_session_can_start_with_a_line_typed() {
+    use crate::Place;
+    let at = address();
+    let _srv = serve(&at).expect("the server starts");
+    let c = Client::connect(&at, || {}).expect("a client connects");
+    let pane = c.spawn_typing(std::env::temp_dir(), None, Size::new(80, 24), (8, 16), Place::NewWorkspace, Some("echo typed-$((40+2))".into())).expect("a shell starts");
+    until(&pane, "the line and its answer", |t| t.contains("typed-42"));
+    pane.kill();
+}
+
 /// Killing one of two sessions leaves the other, and the server answering.
 #[test]
 fn killing_one_session_leaves_the_rest() {

@@ -7,7 +7,7 @@ use tsumugi_pane::Size;
 
 /// Bumped whenever a message changes shape: a client and a server that
 /// disagree say so at `Hello` instead of misreading each other.
-pub const VERSION: u32 = 10;
+pub const VERSION: u32 = 11;
 
 pub type SessionId = u64;
 pub type WorkspaceId = u64;
@@ -145,7 +145,8 @@ pub enum ToServer {
     List,
     /// Start a shell (`None`: the default one) in `cwd`; answered with
     /// `Spawned`, and the session is attached.
-    Spawn { cwd: PathBuf, shell: Option<(String, Vec<String>)>, size: Size, cell: (u16, u16), place: Place },
+    /// `typed`: a line typed into the shell once its prompt shows (`claude`).
+    Spawn { cwd: PathBuf, shell: Option<(String, Vec<String>)>, size: Size, cell: (u16, u16), place: Place, typed: Option<String> },
     /// Send this session's screen whenever it changes, starting now.
     Attach { id: SessionId },
     Detach { id: SessionId },

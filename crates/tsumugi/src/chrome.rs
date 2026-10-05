@@ -415,6 +415,12 @@ pub fn filter_button(ui: &mut egui::Ui, pal: &Palette, label: &str, dot: Option<
     resp
 }
 
+/// A dashed rectangle around `rect`: a tag the folder's rule gives.
+pub fn dashed_outline(p: &egui::Painter, rect: egui::Rect, color: Color32) {
+    let corners = [rect.left_top(), rect.right_top(), rect.right_bottom(), rect.left_bottom(), rect.left_top()];
+    p.extend(egui::Shape::dashed_line(&corners, egui::Stroke::new(1.0, color), 3.0, 2.0));
+}
+
 /// Six dots to take a row by (the design's grip), centred on `c`.
 pub fn grip(p: &egui::Painter, c: egui::Pos2, color: Color32) {
     for dx in [-2.0, 2.0] {

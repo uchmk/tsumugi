@@ -320,9 +320,12 @@ fn handle(shared: &Arc<Shared>, client: ClientId, tx: &Sender<ToClient>, msg: To
             }
             save_soon(shared, SAVE_AFTER_CHANGE);
         }
-        ToServer::Spawn { cwd, shell, size, cell, place } => {
+        ToServer::Spawn { cwd, shell, size, cell, place, typed } => {
             match spawn_session(shared, &mut sessions, Some(client), cwd, shell, size, cell) {
                 Ok(id) => {
+                    if let (Some(line), Some(s)) = (typed, sessions.get_mut(&id)) {
+                        s.pending = Some(format!("{line}\r").into_bytes());
+                    }
                     let mut workspaces = lock(&shared.workspaces);
                     place_session(shared, &mut workspaces, id, place);
                     broadcast_workspaces(shared, &workspaces);

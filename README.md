@@ -70,6 +70,18 @@ later), on macOS through AppleScript. Which
 states tell in which way is `[notify]` in the settings (below); by default
 the taskbar does not flash.
 
+### New sessions
+
+`Ctrl+Shift+T` (`Cmd+T` on macOS) opens the new-session dialog with the
+folder of the pane you are in already filled in and Claude Code chosen, so
+one more Claude Code beside this one is that key and `Enter`. Type another
+folder or pick one of the folders the other sessions are in (the arrows and
+`Tab` complete); choose **Resume last** (`claude --continue`) or **Shell**
+instead; the folder rules' tags are there, dashed, and more can be added.
+`Enter` opens it in a new tab, `Alt+Enter` splits it to the right of the
+pane with the keys. **Save as a profile** keeps the choices under a name in
+`profiles.toml` beside the settings, for **Profile…** to fill in next time.
+
 ### Searching
 
 `Ctrl+Shift+P` (`Cmd+Shift+P` on macOS), or the box in the band along the

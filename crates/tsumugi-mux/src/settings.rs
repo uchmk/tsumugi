@@ -22,7 +22,7 @@
 
 use std::path::{Component, Path, PathBuf};
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Default, PartialEq, Deserialize)]
 #[serde(default, deny_unknown_fields)]
@@ -117,6 +117,46 @@ pub fn stamp(path: &Path) -> Option<std::time::SystemTime> {
     std::fs::metadata(path).and_then(|m| m.modified()).ok()
 }
 
+/// A new session's choices kept under a name (the design's 1g): the window
+/// writes these to `profiles.toml` beside the settings, whole, so the
+/// settings a person wrote by hand are never rewritten.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Profile {
+    pub name: String,
+    pub folder: String,
+    /// `claude`, `resume` or `shell`.
+    pub start: String,
+    #[serde(default)]
+    pub tags: Vec<String>,
+}
+
+#[derive(Default, Serialize, Deserialize)]
+struct ProfileFile {
+    #[serde(default)]
+    profile: Vec<Profile>,
+}
+
+/// `profiles.toml`, beside the settings file.
+pub fn profiles_path() -> Option<PathBuf> {
+    default_path().map(|p| p.with_file_name("profiles.toml"))
+}
+
+pub fn load_profiles(path: &Path) -> Result<Vec<Profile>, String> {
+    match std::fs::read_to_string(path) {
+        Ok(text) => toml::from_str::<ProfileFile>(&text).map(|f| f.profile).map_err(|e| format!("{}: {}", path.display(), e.message())),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Vec::new()),
+        Err(e) => Err(format!("{}: {e}", path.display())),
+    }
+}
+
+pub fn save_profiles(path: &Path, profiles: &[Profile]) -> std::io::Result<()> {
+    let text = toml::to_string(&ProfileFile { profile: profiles.to_vec() }).map_err(std::io::Error::other)?;
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir)?;
+    }
+    std::fs::write(path, text)
+}
+
 /// The user's home folder, for a `~` in a rule.
 pub fn home() -> Option<PathBuf> {
     std::env::var_os(if cfg!(windows) { "USERPROFILE" } else { "HOME" }).filter(|v| !v.is_empty()).map(PathBuf::from)
@@ -180,6 +220,20 @@ mod tests {
         let s = parse(&text).expect("the example in the module's comment reads");
         assert_eq!(s.tags.rule, vec![rule("~/dev/filer", "filer"), rule("~/dev/*", "{name}")]);
         assert_eq!(s.notify, Notify { flash: vec![], ..Notify::default() });
+    }
+
+    #[test]
+    fn profiles_come_back_as_written() {
+        let dir = std::env::temp_dir().join(format!("tsumugi-profiles-test-{}", std::process::id()));
+        let path = dir.join("profiles.toml");
+        assert_eq!(load_profiles(&path), Ok(vec![]), "no file, no profiles");
+        let list = vec![
+            Profile { name: "filer".into(), folder: "~/dev/filer".into(), start: "claude".into(), tags: vec!["review".into()] },
+            Profile { name: "a \"quoted\" one".into(), folder: r"C:\dev\x".into(), start: "shell".into(), tags: vec![] },
+        ];
+        save_profiles(&path, &list).unwrap();
+        assert_eq!(load_profiles(&path), Ok(list));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
