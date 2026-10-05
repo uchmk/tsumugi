@@ -5,6 +5,13 @@
 
 ## [未リリース]
 
+## [0.0.8] - 2026-10-06
+
+### 追加
+
+- Windows（x64 と ARM64）のビルドを Actions の成果物として残す `build.yml`。`tsumugi.exe` の横に新しい ConPTY（`conpty.dll` と `OpenConsole.exe`）を置く。
+  取得は filer と同じ `scripts/fetch-conpty.ps1`（版とハッシュも同じ。変えるときは 2 つのリポジトリで揃える）。
+
 ## [0.0.7] - 2026-10-06
 
 ### 追加

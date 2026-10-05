@@ -11,6 +11,12 @@ version's scope is in [docs/v1-scope.md](docs/v1-scope.md).
 cargo run -p tsumugi
 ```
 
+On Windows, a build with the newer ConPTY beside it is on the Actions tab
+(the **Build** workflow, artifact `tsumugi-windows-x64-…` or `-arm64-…`). A
+local build gets it with `pwsh -File scripts/fetch-conpty.ps1 -Dest target\debug`;
+without it the pane runs on the older ConPTY built into Windows, which breaks
+`Esc` in lazygit and the like.
+
 The terminal pane is the crate `tsumugi-pane` (`crates/tsumugi-pane`), shared
 with [filer](https://github.com/uchmk/filer).
 
