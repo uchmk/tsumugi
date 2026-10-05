@@ -4,7 +4,7 @@
 //!
 //! The design is `docs/mux-design.md`. Over a named pipe on Windows and a Unix
 //! domain socket elsewhere (`transport`), each message is a length and a
-//! bincode body (`frame`) of the types in `proto`.
+//! postcard body (`frame`) of the types in `proto`.
 
 pub mod client;
 pub mod frame;

@@ -24,8 +24,10 @@ tsumugi notify（フックから）──┘                                    
 - **Unix はドメインソケット**（`std::os::unix::net`）。場所は `$XDG_RUNTIME_DIR/tsumugi/sock`、無ければ `/tmp/tsumugi-<uid>/sock`（フォルダは 0700）。
 - **Windows は名前付きパイプ** `\\.\pipe\tsumugi-<ユーザー名>`。`windows` クレート（filer も tsumugi-pane も使っている）で `CreateNamedPipeW` と `CreateFileW` を呼び、
   あとは `std::fs::File` として読み書きする。ほかのユーザーからつながれないよう、既定のセキュリティ（作ったユーザーと管理者だけ）のままにし、`PIPE_REJECT_REMOTE_CLIENTS` を付ける。
-- **形式は「長さ（u32、リトルエンディアン）＋ bincode」**の枠。型は serde で書く。先頭で版を言い合い、違えばクライアントがそう言って止まる。
-  新しい依存は `serde` と `bincode`（どちらも Pure Rust で、filer の依存の木に既にある）。QUESTIONS.md の Q4。
+- **形式は「長さ（u32、リトルエンディアン）＋ postcard」**の枠。型は serde で書く。先頭で版を言い合い、違えばクライアントがそう言って止まる。
+  新しい依存は `serde` と `postcard`（どちらも Pure Rust）。最初は bincode にしたが、bincode は 2025 年に保守が止まっていた（v0.4.1 で替えた）。QUESTIONS.md の Q4。
+  200 × 50 の画面 1 枚が約 79 KB（1 セル 8 バイト）、書くのも読むのも約 0.25 ms（release、クラウドの機械）。重くなるのは形式より「毎回画面を丸ごと送る」こと。
+  変わった行だけを送る形にするのが、次に効く手。
 - **1 つのつなぎに 2 本のスレッド**（読む・書く）。サーバーはクライアントごとに。画面の写しは、そのセッションが変わったときに送る（毎秒 60 回まで）。
 
 ### 送るもの（最初の版）

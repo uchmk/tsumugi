@@ -7,7 +7,7 @@ use tsumugi_pane::{Screen, Size};
 
 /// Bumped whenever a message changes shape: a client and a server that
 /// disagree say so at `Hello` instead of misreading each other.
-pub const VERSION: u32 = 3;
+pub const VERSION: u32 = 4;
 
 pub type SessionId = u64;
 pub type WorkspaceId = u64;

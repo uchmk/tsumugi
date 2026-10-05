@@ -1,5 +1,5 @@
 //! One message on the wire: its length as a little-endian `u32`, then the
-//! message in bincode.
+//! message in postcard (serde's compact binary form: varints, no field names).
 
 use std::io::{self, Read, Write};
 
@@ -11,7 +11,7 @@ use serde::Serialize;
 const MAX: u32 = 64 << 20;
 
 pub fn write<W: Write, T: Serialize>(w: &mut W, msg: &T) -> io::Result<()> {
-    let body = bincode::serialize(msg).map_err(io::Error::other)?;
+    let body = postcard::to_allocvec(msg).map_err(io::Error::other)?;
     let len = u32::try_from(body.len()).ok().filter(|&n| n <= MAX).ok_or_else(|| io::Error::other("message too large"))?;
     let mut out = Vec::with_capacity(body.len() + 4);
     out.extend_from_slice(&len.to_le_bytes());
@@ -30,7 +30,7 @@ pub fn read<R: Read, T: DeserializeOwned>(r: &mut R) -> io::Result<T> {
     }
     let mut body = vec![0u8; len as usize];
     r.read_exact(&mut body)?;
-    bincode::deserialize(&body).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
+    postcard::from_bytes(&body).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
 }
 
 #[cfg(test)]
