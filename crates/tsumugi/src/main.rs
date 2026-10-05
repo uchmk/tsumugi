@@ -21,6 +21,7 @@ mod alert;
 mod chrome;
 mod fonts;
 mod keys;
+mod palette;
 mod shellhook;
 mod sort;
 mod spawn;
@@ -411,6 +412,8 @@ struct App {
     sort: sort::Sort,
     /// A tab being dragged to another place in the sidebar.
     dragging_tab: Option<WorkspaceId>,
+    /// The search box, while it is open (the design's 1c).
+    search: Option<palette::View>,
     /// What is being typed into a tab menu's "Add a tag".
     tag_input: String,
     /// `settings.toml` as read again whenever it changes, and what is wrong
@@ -487,6 +490,7 @@ impl App {
             filter: sort::Filter::default(),
             sort: view_sort(),
             dragging_tab: None,
+            search: None,
             tag_input: String::new(),
             settings: watch_settings(cc.egui_ctx.clone()),
             settings_error: None,
@@ -579,6 +583,73 @@ impl App {
                 }
             }
             keys::Action::Zoom => self.zoom = !self.zoom,
+            keys::Action::Search => self.search = Some(palette::View::new()),
+        }
+    }
+
+    /// What the search box lists: every session, every folder the sessions
+    /// are in, and the commands.
+    fn search_entries(workspaces: &[Workspace], sessions: &[Info]) -> Vec<palette::Entry> {
+        let mut out = Vec::new();
+        for w in workspaces {
+            for id in w.layout.leaves() {
+                let Some(i) = sessions.iter().find(|i| i.id == id) else { continue };
+                let name = if i.title.is_empty() { program_name(&i.command) } else { i.title.clone() };
+                let mut detail = home_short(&i.cwd);
+                if !i.branch.is_empty() {
+                    detail.push_str(&format!(" · {}", i.branch));
+                }
+                for t in &i.tags {
+                    detail.push_str(&format!(" · {t}"));
+                }
+                out.push(palette::Entry { title: name, detail, pick: palette::Pick::Session(id) });
+            }
+        }
+        let mut folders: Vec<&std::path::Path> = Vec::new();
+        for i in sessions {
+            for f in [i.project.as_path(), i.cwd.as_path()] {
+                if !folders.contains(&f) {
+                    folders.push(f);
+                }
+            }
+        }
+        for f in folders {
+            out.push(palette::Entry { title: format!("New session in {}", home_short(f)), detail: "folder".into(), pick: palette::Pick::Folder(f.to_path_buf()) });
+        }
+        let mac = cfg!(target_os = "macos");
+        for c in palette::Command::ALL {
+            out.push(palette::Entry { title: c.title(), detail: c.key(mac).into(), pick: palette::Pick::Command(c) });
+        }
+        out
+    }
+
+    /// Do what the search box picked.
+    fn picked(&mut self, pick: palette::Pick, current: Option<&Workspace>, workspaces: &[Workspace], area: Rect) {
+        let Some(client) = self.client.clone() else { return };
+        match pick {
+            palette::Pick::Session(id) => self.go_to(&client, workspaces, id),
+            palette::Pick::Folder(dir) => match new_session(&client, dir, Place::NewWorkspace) {
+                Ok(pane) => self.pending = Some(pane.id()),
+                Err(e) => self.failed = Some(e),
+            },
+            palette::Pick::Command(palette::Command::Sort(s)) => {
+                self.sort = s;
+                set_view_sort(s);
+            }
+            palette::Pick::Command(c) => {
+                let action = match c {
+                    palette::Command::NewSession => keys::Action::NewTab,
+                    palette::Command::SplitRight => keys::Action::SplitRight,
+                    palette::Command::SplitDown => keys::Action::SplitDown,
+                    palette::Command::Zoom => keys::Action::Zoom,
+                    palette::Command::NextWaiting => keys::Action::NextWaiting,
+                    palette::Command::CloseTab => keys::Action::CloseTab,
+                    palette::Command::Sort(_) => return,
+                };
+                if let Some(w) = current {
+                    self.act(action, w, workspaces, area);
+                }
+            }
         }
     }
 
@@ -1228,6 +1299,19 @@ impl eframe::App for App {
         // The clock and the elapsed times move on without any output.
         ctx.request_repaint_after(std::time::Duration::from_secs(1));
 
+        // The band along the top (the design's 1c): the name, the search
+        // box, and the tags of the session with the keys.
+        let focus_tags = focus_info.as_ref().map(|i| i.tags.clone()).unwrap_or_default();
+        let muted_tags_now = client.muted_tags();
+        let open_search = egui::Panel::top("band")
+            .exact_size(40.0)
+            .frame(egui::Frame::NONE.fill(egui::Color32::from_rgb(0x12, 0x14, 0x18)))
+            .show(ui, |ui| chrome::top_band(ui, &self.palette, &focus_tags, &muted_tags_now))
+            .inner;
+        if open_search {
+            self.search = Some(palette::View::new());
+        }
+
         let side = egui::Frame::NONE.fill(self.palette.on_cursor);
         let picked = egui::Panel::left("sessions")
             .resizable(true)
@@ -1252,6 +1336,19 @@ impl eframe::App for App {
                 Some(chrome::BellAction::Close) if !self.bell_opening => self.bell_open = None,
                 _ => {}
             }
+        }
+
+        let answer = match &mut self.search {
+            Some(view) => chrome::search_box(&ctx, &self.palette, view, &Self::search_entries(&workspaces, &sessions)),
+            None => None,
+        };
+        match answer {
+            Some(palette::Answer::Pick(p)) => {
+                self.search = None;
+                self.picked(p, current.as_ref(), &workspaces, to_rect(ctx.content_rect()));
+            }
+            Some(palette::Answer::Close) => self.search = None,
+            None => {}
         }
 
         self.bell_opening = false;

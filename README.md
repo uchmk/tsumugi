@@ -70,6 +70,14 @@ later), on macOS through AppleScript. Which
 states tell in which way is `[notify]` in the settings (below); by default
 the taskbar does not flash.
 
+### Searching
+
+`Ctrl+Shift+P` (`Cmd+Shift+P` on macOS), or the box in the band along the
+top, searches the sessions (by title, folder, branch and tags), the folders
+they are in (to start a new session there) and the window's commands. Type
+a few letters in order, move with the arrows, `Enter` to go, `Esc` to close.
+The band also shows the tags of the session with the keys.
+
 ### Sorting and filtering
 
 The button beside SESSIONS orders the tabs: **Manual** (the default, where a

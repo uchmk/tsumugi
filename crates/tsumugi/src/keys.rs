@@ -22,6 +22,8 @@ pub enum Action {
     Move(Toward),
     /// Show the pane with the keys alone, or all of them again.
     Zoom,
+    /// The search box: sessions, folders and commands (the design's 1c).
+    Search,
 }
 
 /// The action for a key press, if it is one of the window's.
@@ -69,6 +71,7 @@ fn action_on(key: Key, m: Modifiers, mac: bool) -> Option<Action> {
             Key::T if cmd && !m.shift => Some(Action::NewTab),
             Key::W if cmd && !m.shift => Some(Action::CloseTab),
             Key::U if cmd && m.shift => Some(Action::NextWaiting),
+            Key::P if cmd && m.shift => Some(Action::Search),
             _ if cmd && !m.shift => digit().map(Action::Tab),
             _ => None,
         };
@@ -78,6 +81,7 @@ fn action_on(key: Key, m: Modifiers, mac: bool) -> Option<Action> {
         Key::W if ctrl_shift => Some(Action::CloseTab),
         Key::U if ctrl_shift => Some(Action::NextWaiting),
         Key::Z if ctrl_shift => Some(Action::Zoom),
+        Key::P if ctrl_shift => Some(Action::Search),
         // Alt+Shift+= / Alt+Shift+-, Windows Terminal's; with Shift held a US
         // keyboard reports `+` for the first.
         Key::Equals | Key::Plus if m.alt && m.shift && !m.ctrl => Some(Action::SplitRight),
@@ -111,6 +115,8 @@ mod tests {
         assert_eq!(action_on(Key::Minus, alt_shift, false), Some(Action::SplitDown));
         assert_eq!(action_on(Key::ArrowLeft, alt, false), Some(Action::Move(Toward::Left)));
         assert_eq!(action_on(Key::Z, CTRL_SHIFT, false), Some(Action::Zoom));
+        assert_eq!(action_on(Key::P, CTRL_SHIFT, false), Some(Action::Search));
+        assert_eq!(action_on(Key::P, CTRL, false), None, "Ctrl+P is the shell's history");
         assert_eq!(action_on(Key::Minus, alt, false), None, "Alt+- is the shell's");
     }
 
@@ -130,6 +136,8 @@ mod tests {
         assert_eq!(action_on(Key::W, CMD, true), Some(Action::CloseTab));
         assert_eq!(action_on(Key::Num1, CMD, true), Some(Action::Tab(0)));
         assert_eq!(action_on(Key::D, CMD, true), Some(Action::SplitRight));
+        let cmd_shift = Modifiers { shift: true, ..CMD };
+        assert_eq!(action_on(Key::P, cmd_shift, true), Some(Action::Search));
         let cmd_opt = Modifiers { alt: true, ctrl: false, shift: false, mac_cmd: true, command: true };
         assert_eq!(action_on(Key::ArrowUp, cmd_opt, true), Some(Action::Move(Toward::Up)));
         let ctrl_mac = Modifiers { alt: false, ctrl: true, shift: false, mac_cmd: false, command: false };

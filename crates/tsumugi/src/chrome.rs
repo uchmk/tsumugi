@@ -222,6 +222,155 @@ pub fn more_chip(p: &egui::Painter, at: egui::Pos2, n: usize, color: Color32) ->
     rect
 }
 
+/// The band along the top of the window (the design's 1c): the name, the
+/// search box in the middle, and the tags of the session with the keys on
+/// the right, three and `+N`. When the window is narrow the tags give way
+/// first, then the box shrinks to its magnifier (1o). Whether the box was
+/// clicked.
+pub fn top_band(ui: &mut egui::Ui, pal: &Palette, tags: &[String], muted_tags: &[String]) -> bool {
+    let rect = ui.max_rect();
+    let p = ui.painter().clone();
+    p.line_segment([rect.left_bottom(), rect.right_bottom()], egui::Stroke::new(1.0, Color32::from_rgb(0x23, 0x26, 0x2e)));
+    // The mark: two threads, cyan and gold (the design's 10 A).
+    let o = egui::pos2(rect.left() + 16.0, rect.center().y);
+    let wave = |amp: f32, color: Color32| {
+        let pts: Vec<egui::Pos2> = (0..=16).map(|k| {
+            let x = k as f32;
+            o + egui::vec2(x, -amp * ((x / 16.0) * std::f32::consts::TAU).cos())
+        }).collect();
+        p.add(egui::Shape::line(pts, egui::Stroke::new(1.6, color)));
+    };
+    wave(4.0, CYAN);
+    wave(2.0, GOLD);
+    let name = p.layout_no_wrap("tsumugi".into(), FontId::proportional(13.0), Color32::from_rgb(0xe4, 0xe8, 0xf0));
+    let name_right = o.x + 24.0 + name.size().x;
+    p.galley(egui::pos2(o.x + 24.0, rect.center().y - name.size().y / 2.0), name, Color32::WHITE);
+
+    // The tags, right to left, as many as fit with the box at its widest.
+    let chip_w = |t: &str| p.layout_no_wrap(t.to_owned(), FontId::proportional(11.0), pal.fg).size().x + 12.0;
+    let full: f32 = tags.iter().take(3).map(|t| chip_w(t) + 5.0).sum::<f32>() + if tags.len() > 3 { 34.0 } else { 0.0 };
+    let room = rect.width() - (name_right - rect.left()) - 32.0;
+    let box_w = 420.0f32.min(room - full - 16.0);
+    let (show_tags, box_w) = if box_w >= 200.0 { (true, box_w) } else { (false, (room - 34.0).min(420.0)) };
+    if show_tags && !tags.is_empty() {
+        let mut x = rect.right() - 12.0 - full;
+        for t in tags.iter().take(3) {
+            let r = tag_chip(&p, egui::pos2(x, rect.center().y - 8.0), t, muted_tags.contains(t));
+            x = r.right() + 5.0;
+        }
+        if tags.len() > 3 {
+            let r = more_chip(&p, egui::pos2(x, rect.center().y - 8.0), tags.len() - 3, pal.fg_dim);
+            ui.interact(r, ui.id().with("more-tags"), egui::Sense::hover()).on_hover_text(tags[3..].join(", "));
+        }
+    }
+
+    // The box, or only its magnifier when there is no room.
+    let compact = box_w < 160.0;
+    let w = if compact { 30.0 } else { box_w };
+    let center_x = (name_right + rect.right() - if show_tags { full } else { 0.0 }) / 2.0;
+    let r = egui::Rect::from_center_size(egui::pos2(center_x.max(name_right + 12.0 + w / 2.0), rect.center().y), egui::vec2(w, 26.0));
+    let resp = ui.interact(r, ui.id().with("search"), egui::Sense::click()).on_hover_text("Search sessions, folders and commands");
+    let fill = if resp.hovered() { Color32::from_rgb(0x22, 0x26, 0x2e) } else { Color32::from_rgb(0x1b, 0x1e, 0x24) };
+    p.rect_filled(r, 6.0, fill);
+    p.rect_stroke(r, 6.0, egui::Stroke::new(1.0, Color32::from_rgb(0x2c, 0x30, 0x39)), egui::StrokeKind::Inside);
+    let glass = egui::pos2(r.left() + 15.0, r.center().y - 1.0);
+    let stroke = egui::Stroke::new(1.3, pal.fg_dim);
+    p.circle_stroke(glass, 4.0, stroke);
+    p.line_segment([glass + egui::vec2(3.0, 3.0), glass + egui::vec2(6.0, 6.0)], stroke);
+    if !compact {
+        let key = if cfg!(target_os = "macos") { "Cmd+Shift+P" } else { "Ctrl+Shift+P" };
+        let key = p.layout_no_wrap(key.into(), FontId::monospace(11.0), GREY);
+        let key_x = r.right() - 10.0 - key.size().x;
+        let mut job = egui::text::LayoutJob::simple_singleline("Search sessions, folders and commands".into(), FontId::proportional(12.0), pal.fg_dim);
+        job.wrap = egui::text::TextWrapping::truncate_at_width((key_x - r.left() - 40.0).max(0.0));
+        let words = ui.fonts_mut(|f| f.layout_job(job));
+        if key_x - r.left() > 140.0 {
+            p.galley(egui::pos2(r.left() + 28.0, r.center().y - 7.0), words, pal.fg_dim);
+        }
+        p.galley(egui::pos2(key_x, r.center().y - key.size().y / 2.0), key, GREY);
+    }
+    resp.clicked()
+}
+
+/// The search box opened (`Ctrl+Shift+P`): a field, and the entries that
+/// match it below, the arrows moving among them, `Enter` picking, `Esc` or a
+/// click elsewhere closing.
+pub fn search_box(ctx: &egui::Context, pal: &Palette, view: &mut crate::palette::View, entries: &[crate::palette::Entry]) -> Option<crate::palette::Answer> {
+    use crate::palette::Answer;
+    let found = crate::palette::search(&view.query, entries);
+    let (up, down, enter, esc) = ctx.input_mut(|i| {
+        (
+            i.consume_key(egui::Modifiers::NONE, egui::Key::ArrowUp),
+            i.consume_key(egui::Modifiers::NONE, egui::Key::ArrowDown),
+            i.consume_key(egui::Modifiers::NONE, egui::Key::Enter),
+            i.consume_key(egui::Modifiers::NONE, egui::Key::Escape),
+        )
+    });
+    if esc {
+        return Some(Answer::Close);
+    }
+    let shown = found.len().min(12);
+    if down && shown > 0 {
+        view.selected = (view.selected + 1) % shown;
+    }
+    if up && shown > 0 {
+        view.selected = (view.selected + shown - 1) % shown;
+    }
+    view.selected = view.selected.min(shown.saturating_sub(1));
+    if enter {
+        return found.get(view.selected).map(|e| Answer::Pick(e.pick.clone()));
+    }
+    let mut answer = None;
+    let area = egui::Area::new(egui::Id::new("search-box")).order(egui::Order::Foreground).anchor(egui::Align2::CENTER_TOP, egui::vec2(0.0, 46.0)).show(ctx, |ui| {
+        egui::Frame::NONE
+            .fill(Color32::from_rgb(0x20, 0x23, 0x2b))
+            .stroke(egui::Stroke::new(1.0, Color32::from_rgb(0x3a, 0x3f, 0x4b)))
+            .corner_radius(8.0)
+            .inner_margin(egui::Margin::same(6))
+            .show(ui, |ui| {
+                ui.set_width(520.0);
+                let before = view.query.clone();
+                let field = egui::TextEdit::singleline(&mut view.query)
+                    .id(egui::Id::new("search-field"))
+                    .hint_text("Search sessions, folders and commands")
+                    .desired_width(f32::INFINITY);
+                ui.add(field).request_focus();
+                if view.query != before {
+                    view.selected = 0;
+                }
+                ui.add_space(4.0);
+                if found.is_empty() {
+                    ui.label(RichText::new("Nothing matches").color(pal.fg_dim).size(12.0));
+                }
+                for (k, e) in found.iter().take(12).enumerate() {
+                    let (rect, resp) = ui.allocate_exact_size(egui::vec2(ui.available_width(), 26.0), egui::Sense::click());
+                    if resp.hovered() && ui.input(|i| i.pointer.delta() != egui::Vec2::ZERO) {
+                        view.selected = k;
+                    }
+                    let p = ui.painter();
+                    if k == view.selected {
+                        p.rect_filled(rect, 5.0, Color32::from_rgb(0x2a, 0x2e, 0x37));
+                    }
+                    let title = p.layout_no_wrap(e.title.clone(), FontId::proportional(12.5), Color32::from_rgb(0xe4, 0xe8, 0xf0));
+                    let title_w = title.size().x;
+                    p.galley(egui::pos2(rect.left() + 8.0, rect.center().y - title.size().y / 2.0), title, Color32::WHITE);
+                    let mut job = egui::text::LayoutJob::simple_singleline(e.detail.clone(), FontId::proportional(11.5), pal.fg_dim);
+                    job.wrap = egui::text::TextWrapping::truncate_at_width((rect.width() - title_w - 28.0).max(0.0));
+                    let detail = ui.fonts_mut(|f| f.layout_job(job));
+                    p.galley(egui::pos2(rect.right() - 8.0 - detail.size().x, rect.center().y - detail.size().y / 2.0), detail, pal.fg_dim);
+                    if resp.clicked() {
+                        answer = Some(Answer::Pick(e.pick.clone()));
+                    }
+                }
+            });
+    });
+    if answer.is_none() && area.response.clicked_elsewhere() && !view.opening {
+        answer = Some(Answer::Close);
+    }
+    view.opening = false;
+    answer
+}
+
 /// The sidebar's order button: two arrows and the order's short name.
 pub fn sort_button(ui: &mut egui::Ui, pal: &Palette, label: &str) -> egui::Response {
     let galley = ui.painter().layout_no_wrap(label.to_owned(), FontId::proportional(11.5), pal.fg_dim);
