@@ -9,6 +9,7 @@
 //!   tsumugi server     the server (the window starts it by itself)
 //!   tsumugi ls         the sessions, one per line
 //!   tsumugi notify     mark this session (waiting / done / error), from a hook
+//!   tsumugi shell-hook make a shell say its folder (pwsh, bash, zsh)
 //!
 //! The sidebar lists the server's workspaces (tabs); the one picked is drawn
 //! beside it, its panes split as the server keeps them (`tsumugi-layout`).
@@ -18,6 +19,7 @@
 
 mod fonts;
 mod keys;
+mod shellhook;
 mod spawn;
 
 use std::time::Duration;
@@ -44,12 +46,22 @@ fn main() -> std::process::ExitCode {
         Some("server") => server(),
         Some("ls") => ls(),
         Some("notify") => notify(&args[1..]),
+        Some("shell-hook") => match shellhook::text(args.get(1).map(String::as_str)) {
+            Ok(text) => {
+                print!("{text}");
+                std::process::ExitCode::SUCCESS
+            }
+            Err(e) => {
+                eprintln!("tsumugi shell-hook: {e}");
+                std::process::ExitCode::from(2)
+            }
+        },
         Some("--version" | "-V") => {
             println!("tsumugi {}", env!("CARGO_PKG_VERSION"));
             std::process::ExitCode::SUCCESS
         }
         Some(other) => {
-            eprintln!("tsumugi: unknown command `{other}` (server, ls, notify, --version)");
+            eprintln!("tsumugi: unknown command `{other}` (server, ls, notify, shell-hook, --version)");
             std::process::ExitCode::from(2)
         }
     }
@@ -111,6 +123,7 @@ fn notify(args: &[String]) -> std::process::ExitCode {
     let mut state = tsumugi_mux::State::Waiting;
     let mut session = std::env::var("TSUMUGI_SESSION").ok().and_then(|s| s.parse().ok());
     let mut words = Vec::new();
+    let mut claude = None;
     let mut it = args.iter();
     while let Some(a) = it.next() {
         match a.as_str() {
@@ -131,6 +144,8 @@ fn notify(args: &[String]) -> std::process::ExitCode {
                 if let Some(m) = json_string(&input, "message") {
                     words.push(m);
                 }
+                // Its conversation, for `claude --resume` after a restart.
+                claude = json_string(&input, "session_id");
             }
             _ => words.push(a.clone()),
         }
@@ -139,7 +154,7 @@ fn notify(args: &[String]) -> std::process::ExitCode {
         eprintln!("tsumugi notify: not inside a tsumugi session (no TSUMUGI_SESSION); give --session N");
         return std::process::ExitCode::from(2);
     };
-    match Client::connect(&Address::for_user(), || {}).and_then(|c| c.notify(id, state, words.join(" "))) {
+    match Client::connect(&Address::for_user(), || {}).and_then(|c| c.notify(id, state, words.join(" "), claude)) {
         Ok(()) => std::process::ExitCode::SUCCESS,
         Err(e) => {
             eprintln!("tsumugi notify: {e}");
@@ -218,10 +233,11 @@ fn connect(wake: impl Fn() + Send + Sync + Clone + 'static) -> Result<Client, St
     }
 }
 
-/// Make sure the server has a tab to show: a new shell here when it has none.
+/// Make sure the server has a tab to show: the tabs saved before a restart
+/// when there are any, else a new shell here.
 fn first_session(client: &Client) -> Result<(), String> {
     let list = client.list().map_err(|e| e.to_string())?;
-    if list.is_empty() {
+    if list.is_empty() && client.restore().unwrap_or(0) == 0 {
         let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
         new_session(client, cwd, Place::NewWorkspace).map(drop)?;
     }

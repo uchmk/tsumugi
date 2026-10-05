@@ -36,6 +36,7 @@ struct State {
     latest: Vec<Info>,
     workspaces: Vec<Workspace>,
     spawned: VecDeque<Result<SessionId, String>>,
+    restored: Option<usize>,
     clipboard: Vec<String>,
     /// The connection is gone (the server stopped, or never answered).
     lost: bool,
@@ -152,9 +153,19 @@ impl Client {
 
     /// Tell the server how session `id` is (`tsumugi notify`). Returns once
     /// the server has it, so a command that exits right after loses nothing.
-    pub fn notify(&self, id: SessionId, state: proto::State, note: String) -> io::Result<()> {
-        self.0.send(ToServer::Notify { id, state, note });
+    pub fn notify(&self, id: SessionId, state: proto::State, note: String, claude: Option<String>) -> io::Result<()> {
+        self.0.send(ToServer::Notify { id, state, note, claude });
         self.list().map(drop)
+    }
+
+    /// Start again the tabs saved before a restart, if the server has no
+    /// session yet. How many sessions came back.
+    pub fn restore(&self) -> io::Result<usize> {
+        self.0.lock().restored = None;
+        self.0.send(ToServer::Restore);
+        let n = self.0.wait(|st| st.restored.take())?;
+        self.list()?;
+        Ok(n)
     }
 
     /// The tabs and their splits, as the server last told them.
@@ -193,6 +204,7 @@ fn receive(inner: &Inner, msg: ToClient) {
             st.sessions = Some(list);
         }
         ToClient::Spawned { id } => st.spawned.push_back(Ok(id)),
+        ToClient::Restored(n) => st.restored = Some(n),
         ToClient::Screen { id, update } => {
             let r = st.screens.entry(id).or_default();
             let mut extra = crate::diff::Extra::default();

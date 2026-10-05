@@ -25,6 +25,27 @@ program runs (`TSUMUGI_QUIET_SECS`, 0 to turn the guess off), green when the
 shell is back at its prompt, red for an error. `Ctrl+Shift+U` (Cmd+Shift+U on
 macOS) goes to the session that has waited longest.
 
+### After a restart
+
+The server writes the tabs down as they change: each tab's splits, and per
+pane its folder, its shell and the Claude Code conversation running in it.
+After a restart of the machine, the first window starts them all again and
+types `claude --resume <conversation>` where Claude Code ran. The file is
+`%LOCALAPPDATA%\tsumugi\state` on Windows, `~/.local/state/tsumugi/state`
+on Linux, `~/Library/Application Support/tsumugi/state` on macOS
+(`TSUMUGI_STATE` overrides).
+
+On Windows a shell's folder can only be known when the shell says it, so add
+the hook to PowerShell 7's profile; without it a tab comes back in the folder
+it was opened in:
+
+```powershell
+tsumugi shell-hook pwsh >> $PROFILE
+```
+
+(`tsumugi shell-hook bash` and `zsh` exist too; on Linux and macOS the folder
+is read from the system anyway.)
+
 ### Claude Code hooks
 
 An agent can say for itself that it is waiting. With `tsumugi` on the `PATH`,
@@ -39,6 +60,8 @@ add to Claude Code's settings (`~/.claude/settings.json`):
 }
 ```
 
+The `Notification` hook's `--stdin` also hands over Claude Code's
+conversation id, which is what `claude --resume` takes after a restart.
 `tsumugi notify` works inside a tsumugi session only (it reads
 `TSUMUGI_SESSION`). Programs that send OSC 9, 99 or 777 notifications are
 marked without any setup.

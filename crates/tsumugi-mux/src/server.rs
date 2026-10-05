@@ -34,6 +34,13 @@ struct Session {
     fresh: BTreeSet<ClientId>,
     /// The screen the watchers have, which the next update is the change from.
     sent: Option<(tsumugi_pane::Screen, crate::diff::Extra)>,
+    /// What was started, for starting it again after a restart.
+    shell: Option<(String, Vec<String>)>,
+    /// The Claude Code conversation its hooks last named.
+    claude: Option<String>,
+    /// A line to type once the shell is ready: `claude --resume` in a
+    /// restored session.
+    pending: Option<Vec<u8>>,
 }
 
 struct Shared {
@@ -51,6 +58,9 @@ struct Shared {
     /// Where this server listens, told to its shells (`TSUMUGI_ADDRESS`) so
     /// that `tsumugi notify` inside them finds it.
     address: PathBuf,
+    /// The state file (`state.rs`), and when it is next to be written.
+    state: Option<PathBuf>,
+    save_due: Mutex<Option<std::time::Instant>>,
     /// Seconds of silence after which a running program reads as probably
     /// waiting (Q2: Konsole's 10). 0 turns the guess off.
     quiet: Duration,
@@ -71,8 +81,15 @@ impl ServerHandle {
         loop {
             match self.done.recv_timeout(idle) {
                 Err(crossbeam_channel::RecvTimeoutError::Timeout) if self.shared.ever.load(Ordering::Relaxed) => {}
-                _ => return,
+                _ => break,
             }
+        }
+        // The state is written a moment after the last session ends, not at
+        // once: a machine shutting down ends every shell before it ends the
+        // server, and writing then would forget the tabs it should restore.
+        let deadline = std::time::Instant::now() + SAVE_AFTER_END + Duration::from_secs(2);
+        while lock(&self.shared.save_due).is_some() && std::time::Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(50));
         }
     }
 
@@ -83,7 +100,20 @@ impl ServerHandle {
 }
 
 /// Start a server listening at `at`, on threads of its own.
+/// How a server runs.
+#[derive(Clone, Debug, Default)]
+pub struct Options {
+    /// Where to keep the tabs across a restart; `None` keeps nothing.
+    pub state: Option<PathBuf>,
+}
+
+/// Start this user's server: listening at `at`, keeping its state where
+/// `state::default_path` says.
 pub fn start(at: &Address) -> io::Result<ServerHandle> {
+    start_with(at, Options { state: crate::state::default_path() })
+}
+
+pub fn start_with(at: &Address, options: Options) -> io::Result<ServerHandle> {
     let listener = Listener::bind(at)?;
     let (dirty_tx, dirty_rx) = crossbeam_channel::unbounded();
     let (done_tx, done_rx) = crossbeam_channel::bounded(1);
@@ -96,6 +126,8 @@ pub fn start(at: &Address) -> io::Result<ServerHandle> {
         done: done_tx,
         ever: false.into(),
         address: at.0.clone(),
+        state: options.state,
+        save_due: Mutex::new(None),
         quiet: Duration::from_secs(
             std::env::var("TSUMUGI_QUIET_SECS").ok().and_then(|s| s.parse().ok()).unwrap_or(10),
         ),
@@ -170,26 +202,15 @@ fn handle(shared: &Arc<Shared>, client: ClientId, tx: &Sender<ToClient>, msg: To
                 w.layout = layout;
             }
             broadcast_workspaces(shared, &workspaces);
+            save_soon(shared, SAVE_AFTER_CHANGE);
+        }
+        ToServer::Restore => {
+            let n = if sessions.is_empty() { restore(shared, &mut sessions) } else { 0 };
+            let _ = tx.send(ToClient::Restored(n));
         }
         ToServer::Spawn { cwd, shell, size, cell, place } => {
-            let id = shared.next.fetch_add(1, Ordering::Relaxed);
-            let command = shell.as_ref().map_or_else(tsumugi_pane::default_program, |(p, _)| p.clone());
-            let dirty = shared.dirty.clone();
-            let log = std::env::var_os("TSUMUGI_PTY_LOG").map(PathBuf::from);
-            let env = vec![
-                ("TSUMUGI_SESSION".to_owned(), id.to_string()),
-                ("TSUMUGI_ADDRESS".to_owned(), shared.address.to_string_lossy().into_owned()),
-            ];
-            match Terminal::spawn_with_env(&cwd, size, cell, shell, log.as_deref(), env, move || {
-                let _ = dirty.send(id);
-            }) {
-                Ok(mut term) => {
-                    shared.ever.store(true, Ordering::Relaxed);
-                    // What a program asking for the colours (OSC 10 / 11) is
-                    // told: the window's default palette, filer's colours.
-                    term.set_colors([0xc8, 0xcd, 0xd8], [0x1b, 0x1e, 0x24]);
-                    let info = Info { id, cwd, title: String::new(), command, state: State::Running, note: String::new(), since_ms: now_ms() };
-                    sessions.insert(id, Session { term, info, notice: None, watchers: BTreeSet::from([client]), fresh: BTreeSet::from([client]), sent: None });
+            match spawn_session(shared, &mut sessions, Some(client), cwd, shell, size, cell) {
+                Ok(id) => {
                     let mut workspaces = lock(&shared.workspaces);
                     place_session(shared, &mut workspaces, id, place);
                     broadcast_workspaces(shared, &workspaces);
@@ -197,6 +218,7 @@ fn handle(shared: &Arc<Shared>, client: ClientId, tx: &Sender<ToClient>, msg: To
                     let _ = tx.send(ToClient::Spawned { id });
                     broadcast(shared, &sessions);
                     let _ = shared.dirty.send(id);
+                    save_soon(shared, SAVE_AFTER_CHANGE);
                 }
                 Err(e) => {
                     let _ = tx.send(ToClient::Error(format!("the shell did not start: {e}")));
@@ -220,8 +242,12 @@ fn handle(shared: &Arc<Shared>, client: ClientId, tx: &Sender<ToClient>, msg: To
             }
         }
         ToServer::Kill { id } => end(shared, sessions, id),
-        ToServer::Notify { id, state, note } => {
+        ToServer::Notify { id, state, note, claude } => {
             if let Some(s) = sessions.get_mut(&id) {
+                if claude.is_some() && claude != s.claude {
+                    s.claude = claude;
+                    save_soon(shared, SAVE_AFTER_CHANGE);
+                }
                 s.notice = Some((state, std::time::Instant::now()));
                 if !note.is_empty() {
                     s.info.note = note;
@@ -289,6 +315,125 @@ fn broadcast(shared: &Shared, sessions: &BTreeMap<SessionId, Session>) {
     }
 }
 
+/// How long after a change the state is written: soon after an ordinary one,
+/// later after a session ends (see `ServerHandle::wait`).
+const SAVE_AFTER_CHANGE: Duration = Duration::from_millis(500);
+const SAVE_AFTER_END: Duration = Duration::from_secs(3);
+
+/// Ask for the state to be written `after` from now, unless it already is to
+/// be written sooner.
+fn save_soon(shared: &Shared, after: Duration) {
+    if shared.state.is_none() {
+        return;
+    }
+    let at = std::time::Instant::now() + after;
+    let mut due = lock(&shared.save_due);
+    if due.is_none_or(|d| d > at) {
+        *due = Some(at);
+    }
+}
+
+/// Write the state now, if it is due.
+fn save_if_due(shared: &Shared) {
+    let due = *lock(&shared.save_due);
+    let (Some(path), Some(at)) = (&shared.state, due) else { return };
+    if std::time::Instant::now() < at {
+        return;
+    }
+    let sessions = lock(&shared.sessions);
+    let workspaces = lock(&shared.workspaces);
+    let saved = crate::state::Saved {
+        workspaces: workspaces
+            .values()
+            .map(|w| crate::state::SavedWorkspace {
+                layout: w.layout.clone(),
+                focus: w.focus,
+                panes: w
+                    .layout
+                    .leaves()
+                    .into_iter()
+                    .filter_map(|id| sessions.get(&id).map(|s| (id, s)))
+                    .map(|(id, s)| crate::state::SavedPane { id, cwd: s.info.cwd.clone(), shell: s.shell.clone(), claude: s.claude.clone() })
+                    .collect(),
+            })
+            .collect(),
+    };
+    drop(workspaces);
+    drop(sessions);
+    let _ = crate::state::store(path, &saved);
+    *lock(&shared.save_due) = None;
+}
+
+/// Start a shell in a session of its own. `client`, when there is one, is
+/// watching it from the start.
+fn spawn_session(
+    shared: &Arc<Shared>,
+    sessions: &mut BTreeMap<SessionId, Session>,
+    client: Option<ClientId>,
+    cwd: PathBuf,
+    shell: Option<(String, Vec<String>)>,
+    size: tsumugi_pane::Size,
+    cell: (u16, u16),
+) -> io::Result<SessionId> {
+    let id = shared.next.fetch_add(1, Ordering::Relaxed);
+    let command = shell.as_ref().map_or_else(tsumugi_pane::default_program, |(p, _)| p.clone());
+    let dirty = shared.dirty.clone();
+    let log = std::env::var_os("TSUMUGI_PTY_LOG").map(PathBuf::from);
+    let env = vec![
+        ("TSUMUGI_SESSION".to_owned(), id.to_string()),
+        ("TSUMUGI_ADDRESS".to_owned(), shared.address.to_string_lossy().into_owned()),
+    ];
+    let mut term = Terminal::spawn_with_env(&cwd, size, cell, shell.clone(), log.as_deref(), env, move || {
+        let _ = dirty.send(id);
+    })?;
+    shared.ever.store(true, Ordering::Relaxed);
+    // What a program asking for the colours (OSC 10 / 11) is told: the
+    // window's default palette, filer's colours.
+    term.set_colors([0xc8, 0xcd, 0xd8], [0x1b, 0x1e, 0x24]);
+    let info = Info { id, cwd, title: String::new(), command, state: State::Running, note: String::new(), since_ms: now_ms() };
+    let watchers: BTreeSet<ClientId> = client.into_iter().collect();
+    sessions.insert(
+        id,
+        Session { term, info, notice: None, fresh: watchers.clone(), watchers, sent: None, shell, claude: None, pending: None },
+    );
+    Ok(id)
+}
+
+/// Start again the tabs the state file has, after a restart: each pane's
+/// shell in its folder (the home folder when that is gone), and Claude Code
+/// resumed where it ran. The number of sessions started.
+fn restore(shared: &Arc<Shared>, sessions: &mut BTreeMap<SessionId, Session>) -> usize {
+    let Some(saved) = shared.state.as_deref().and_then(crate::state::load) else { return 0 };
+    let home = std::env::var_os(if cfg!(windows) { "USERPROFILE" } else { "HOME" }).map(PathBuf::from);
+    let mut started = 0;
+    let mut workspaces = lock(&shared.workspaces);
+    for w in saved.workspaces {
+        let mut ids = BTreeMap::new();
+        for p in &w.panes {
+            let cwd = if p.cwd.is_dir() { p.cwd.clone() } else { home.clone().unwrap_or_else(|| p.cwd.clone()) };
+            let Ok(id) = spawn_session(shared, sessions, None, cwd, p.shell.clone(), tsumugi_pane::Size::new(80, 24), (8, 16)) else {
+                continue;
+            };
+            if let Some(conversation) = &p.claude {
+                let s = sessions.get_mut(&id).expect("just started");
+                s.claude = Some(conversation.clone());
+                s.pending = Some(format!("claude --resume {conversation}\r").into_bytes());
+            }
+            ids.insert(p.id, id);
+            started += 1;
+        }
+        let Some(layout) = w.layout.retain(&|old| ids.contains_key(old)) else { continue };
+        let layout = layout.map(&mut |old| ids[&old]);
+        let focus = ids.get(&w.focus).copied().unwrap_or_else(|| layout.leaves()[0]);
+        let ws = shared.next.fetch_add(1, Ordering::Relaxed);
+        workspaces.insert(ws, Workspace { id: ws, layout, focus });
+    }
+    broadcast_workspaces(shared, &workspaces);
+    drop(workspaces);
+    broadcast(shared, sessions);
+    started
+}
+
 /// Put a new session in the workspace it is meant for, splitting the pane
 /// it goes beside, or in a workspace of its own; it gets the keys.
 fn place_session(shared: &Shared, workspaces: &mut BTreeMap<WorkspaceId, Workspace>, id: SessionId, place: Place) {
@@ -328,6 +473,7 @@ fn end(shared: &Shared, mut sessions: std::sync::MutexGuard<'_, BTreeMap<Session
     }
     broadcast_workspaces(shared, &workspaces);
     drop(workspaces);
+    save_soon(shared, SAVE_AFTER_END);
     let list: Vec<Info> = sessions.values().map(|s| s.info.clone()).collect();
     let empty = sessions.is_empty();
     drop(sessions);
@@ -400,6 +546,21 @@ fn run_pump(shared: Arc<Shared>, dirty: Receiver<SessionId>) {
             let mut changed = false;
             for s in sessions.values_mut() {
                 changed |= settle(s, shared.quiet);
+                // Where the shell is now, for the sidebar and for a restore:
+                // a bash that never says (no OSC 7) still has a folder.
+                if let Some(cwd) = s.term.current_dir().filter(|c| *c != s.info.cwd) {
+                    s.info.cwd = cwd;
+                    changed = true;
+                    save_soon(&shared, SAVE_AFTER_CHANGE);
+                }
+                // A restored session's `claude --resume`, once the shell
+                // has shown its prompt (or gone quiet after its first output).
+                let ready = s.term.prompt_seen() || (s.term.last_output().is_some() && s.term.quiet_for(Duration::from_millis(800)));
+                if ready {
+                    if let Some(line) = s.pending.take() {
+                        s.term.send(line);
+                    }
+                }
             }
             if changed {
                 broadcast(&shared, &sessions);
@@ -422,6 +583,9 @@ fn run_pump(shared: Arc<Shared>, dirty: Receiver<SessionId>) {
             // A notification settles the state at once; the rest waits for
             // the once-a-second pass, since asking whether anything runs under
             // the shell reads the process table.
+            if before.1 != s.info.cwd {
+                save_soon(&shared, SAVE_AFTER_CHANGE);
+            }
             let changed = (before != (s.info.title.clone(), s.info.cwd.clone())) | (noticed && settle(s, shared.quiet));
             if s.term.exited {
                 ended.push(id);
@@ -460,5 +624,7 @@ fn run_pump(shared: Arc<Shared>, dirty: Receiver<SessionId>) {
             end(&shared, sessions, id);
             sessions = lock(&shared.sessions);
         }
+        drop(sessions);
+        save_if_due(&shared);
     }
 }

@@ -7,7 +7,7 @@ use tsumugi_pane::Size;
 
 /// Bumped whenever a message changes shape: a client and a server that
 /// disagree say so at `Hello` instead of misreading each other.
-pub const VERSION: u32 = 5;
+pub const VERSION: u32 = 6;
 
 pub type SessionId = u64;
 pub type WorkspaceId = u64;
@@ -127,8 +127,12 @@ pub enum ToServer {
     Kill { id: SessionId },
     /// A workspace's new shape or focus, after a drag, a click or a key.
     SetLayout { id: WorkspaceId, layout: Node<SessionId>, focus: SessionId },
-    /// An agent's word on its session (`tsumugi notify`).
-    Notify { id: SessionId, state: State, note: String },
+    /// An agent's word on its session (`tsumugi notify`); `claude` is the
+    /// Claude Code conversation its hook named, kept for `claude --resume`.
+    Notify { id: SessionId, state: State, note: String, claude: Option<String> },
+    /// Start again the tabs saved before a restart, when the server has no
+    /// session yet; answered with `Restored`.
+    Restore,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -137,6 +141,8 @@ pub enum ToClient {
     Sessions(Vec<Info>),
     Workspaces(Vec<Workspace>),
     Spawned { id: SessionId },
+    /// How many sessions `Restore` started.
+    Restored(usize),
     /// What changed on the screen of an attached session: every row the
     /// first time, then only the rows that changed.
     Screen { id: SessionId, update: crate::diff::Update },

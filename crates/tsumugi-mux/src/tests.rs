@@ -9,6 +9,12 @@ use tsumugi_pane::{Pane, Size};
 use crate::transport::Address;
 use crate::{server, Client, RemotePane};
 
+/// A server for a test: no state file, so nothing of the machine's own is
+/// read or written.
+fn serve(at: &Address) -> std::io::Result<server::ServerHandle> {
+    server::start_with(at, server::Options { state: None })
+}
+
 /// An address no other test, and no real server, is using.
 fn address() -> Address {
     static N: AtomicU32 = AtomicU32::new(0);
@@ -46,7 +52,7 @@ fn until(pane: &RemotePane, what: &str, ok: impl Fn(&str) -> bool) {
 #[test]
 fn a_session_outlives_its_client() {
     let at = address();
-    let srv = server::start(&at).expect("the server starts");
+    let srv = serve(&at).expect("the server starts");
     let cwd = std::env::temp_dir();
 
     let first = Client::connect(&at, || {}).expect("a client connects");
@@ -81,7 +87,7 @@ fn a_session_outlives_its_client() {
 #[test]
 fn every_client_hears_of_a_new_session() {
     let at = address();
-    let _srv = server::start(&at).expect("the server starts");
+    let _srv = serve(&at).expect("the server starts");
     let a = Client::connect(&at, || {}).expect("a connects");
     let b = Client::connect(&at, || {}).expect("b connects");
     let pane = a.spawn(std::env::temp_dir(), None, Size::new(80, 24), (8, 16)).expect("a shell starts");
@@ -97,7 +103,7 @@ fn every_client_hears_of_a_new_session() {
 #[test]
 fn killing_one_session_leaves_the_rest() {
     let at = address();
-    let _srv = server::start(&at).expect("the server starts");
+    let _srv = serve(&at).expect("the server starts");
     let c = Client::connect(&at, || {}).expect("a client connects");
     let one = c.spawn(std::env::temp_dir(), None, Size::new(80, 24), (8, 16)).expect("one starts");
     let two = c.spawn(std::env::temp_dir(), None, Size::new(80, 24), (8, 16)).expect("two starts");
@@ -115,11 +121,11 @@ fn killing_one_session_leaves_the_rest() {
 fn a_notification_marks_a_session_until_the_next_key() {
     use crate::State;
     let at = address();
-    let _srv = server::start(&at).expect("the server starts");
+    let _srv = serve(&at).expect("the server starts");
     let c = Client::connect(&at, || {}).expect("a client connects");
     let pane = c.spawn(std::env::temp_dir(), None, Size::new(80, 24), (8, 16)).expect("a shell starts");
     until(&pane, "a prompt", |t| !t.trim().is_empty());
-    c.notify(pane.id(), State::Waiting, "Claude needs your permission".into()).expect("the server takes it");
+    c.notify(pane.id(), State::Waiting, "Claude needs your permission".into(), None).expect("the server takes it");
     let info = |c: &Client| c.list().unwrap().into_iter().find(|i| i.id == pane.id()).unwrap();
     let i = info(&c);
     assert_eq!((i.state, i.note.as_str()), (State::Waiting, "Claude needs your permission"));
@@ -138,7 +144,7 @@ fn a_notification_marks_a_session_until_the_next_key() {
 fn an_osc_9_marks_a_session_waiting() {
     use crate::State;
     let at = address();
-    let _srv = server::start(&at).expect("the server starts");
+    let _srv = serve(&at).expect("the server starts");
     let c = Client::connect(&at, || {}).expect("a client connects");
     let shell = Some(("sh".to_owned(), vec!["-c".to_owned(), "printf '\\033]9;ready for you\\007'; sleep 30".to_owned()]));
     let pane = c.spawn(std::env::temp_dir(), shell, Size::new(80, 24), (8, 16)).expect("sh starts");
@@ -161,7 +167,7 @@ fn an_osc_9_marks_a_session_waiting() {
 fn splits_live_in_the_server() {
     use crate::{Dir, Node, Place};
     let at = address();
-    let _srv = server::start(&at).expect("the server starts");
+    let _srv = serve(&at).expect("the server starts");
     let c = Client::connect(&at, || {}).expect("a client connects");
     let size = Size::new(80, 24);
     let a = c.spawn(std::env::temp_dir(), None, size, (8, 16)).expect("a starts");
@@ -182,13 +188,60 @@ fn splits_live_in_the_server() {
     a.kill();
 }
 
+/// After a restart: a new server with the old one's state file starts the
+/// same tab again, split the same way, each shell in its folder, and types
+/// `claude --resume` where Claude Code ran.
+#[test]
+fn a_restart_brings_the_tabs_back() {
+    use crate::{Dir, Place, State};
+    let dir = std::env::temp_dir().join(format!("tsumugi-restore-test-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let state = dir.join("state");
+    let options = || server::Options { state: Some(state.clone()) };
+
+    let at = address();
+    let _before = server::start_with(&at, options()).expect("the first server starts");
+    let c = Client::connect(&at, || {}).expect("a client connects");
+    let size = Size::new(80, 24);
+    let a = c.spawn(dir.clone(), None, size, (8, 16)).expect("a starts");
+    let b = c.spawn_at(dir.clone(), None, size, (8, 16), Place::Split { beside: a.id(), dir: Dir::Down }).expect("b starts");
+    c.notify(b.id(), State::Done, String::new(), Some("conv-1234".into())).unwrap();
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while crate::state::load(&state).is_none_or(|s| s.workspaces.first().is_none_or(|w| w.panes.iter().all(|p| p.claude.is_none()))) {
+        assert!(Instant::now() < deadline, "the state was never written");
+        std::thread::sleep(Duration::from_millis(50));
+    }
+
+    // "Restarted": another server, the same state file.
+    let at2 = address();
+    let _after = server::start_with(&at2, options()).expect("the second server starts");
+    let c2 = Client::connect(&at2, || {}).expect("a client connects to it");
+    assert_eq!(c2.restore().unwrap(), 2, "both panes came back");
+    let ws = c2.workspaces();
+    assert_eq!(ws.len(), 1);
+    let leaves = ws[0].layout.leaves();
+    assert!(matches!(ws[0].layout, crate::Node::Split { dir: Dir::Down, .. }), "split as before: {:?}", ws[0].layout);
+    let infos = c2.list().unwrap();
+    assert!(infos.iter().all(|i| i.cwd == dir), "each in its folder: {infos:?}");
+    let resumed = c2.attach(leaves[1]);
+    until(&resumed, "claude --resume typed", |t| t.contains("claude --resume conv-1234"));
+    assert_eq!(c2.restore().unwrap(), 0, "a server with sessions restores nothing");
+    for id in leaves {
+        c2.attach(id).kill();
+    }
+    a.kill();
+    b.kill();
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 /// A second server at the same address refuses to start rather than
 /// taking the first one's clients.
 #[test]
 fn one_server_per_address() {
     let at = address();
-    let _srv = server::start(&at).expect("the first server starts");
-    let err = server::start(&at).err().expect("a second one is refused");
+    let _srv = serve(&at).expect("the first server starts");
+    let err = serve(&at).err().expect("a second one is refused");
     assert_eq!(err.kind(), std::io::ErrorKind::AddrInUse, "{err}");
 }
 
