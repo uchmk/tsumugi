@@ -290,6 +290,45 @@ fn handle(shared: &Arc<Shared>, client: ClientId, tx: &Sender<ToClient>, msg: To
                 save_soon(shared, SAVE_AFTER_CHANGE);
             }
         }
+        ToServer::RenameWorkspace { id, name } => {
+            let mut workspaces = lock(&shared.workspaces);
+            if let Some(w) = workspaces.get_mut(&id) {
+                w.name = name.trim().chars().take(80).collect();
+                broadcast_workspaces(shared, &workspaces);
+                save_soon(shared, SAVE_AFTER_CHANGE);
+            }
+        }
+        ToServer::PinWorkspace { id, on } => {
+            let mut workspaces = lock(&shared.workspaces);
+            if let Some(w) = workspaces.get_mut(&id) {
+                w.pinned = on;
+                broadcast_workspaces(shared, &workspaces);
+                save_soon(shared, SAVE_AFTER_CHANGE);
+            }
+        }
+        ToServer::Restart { id } => {
+            let Some(s) = sessions.get_mut(&id) else { return };
+            match start_terminal(shared, id, &s.info.cwd.clone(), s.term.size(), (8, 16), s.shell.clone()) {
+                Ok(term) => {
+                    let old = std::mem::replace(&mut s.term, term);
+                    // Every watcher gets the whole new screen.
+                    s.sent = None;
+                    s.fresh.clone_from(&s.watchers);
+                    s.notice = None;
+                    s.info.state = State::Running;
+                    s.info.since_ms = now_ms();
+                    s.info.note.clear();
+                    s.pending = s.claude.as_ref().map(|c| format!("claude --resume {c}\r").into_bytes());
+                    // Ending a shell can take a moment: not under the lock.
+                    std::thread::spawn(move || drop(old));
+                    broadcast(shared, &sessions);
+                    let _ = shared.dirty.send(id);
+                }
+                Err(e) => {
+                    let _ = tx.send(ToClient::Error(format!("the shell did not start again: {e}")));
+                }
+            }
+        }
         ToServer::Tag { ids, tag, on } => {
             let Some(tag) = crate::proto::tag_name(&tag) else { return };
             for id in ids {
@@ -361,6 +400,7 @@ fn handle(shared: &Arc<Shared>, client: ClientId, tx: &Sender<ToClient>, msg: To
             if let Some(s) = sessions.get_mut(&id) {
                 if claude.is_some() && claude != s.claude {
                     s.claude = claude;
+                    s.info.claude = true;
                     save_soon(shared, SAVE_AFTER_CHANGE);
                 }
                 s.notice = Some((state, std::time::Instant::now()));
@@ -515,6 +555,8 @@ fn save_if_due(shared: &Shared) {
         workspaces: ordered(shared, &workspaces)
             .into_iter()
             .map(|w| crate::state::SavedWorkspace {
+                name: w.name.clone(),
+                pinned: w.pinned,
                 layout: w.layout.clone(),
                 focus: w.focus,
                 panes: w
@@ -557,22 +599,11 @@ fn spawn_session(
 ) -> io::Result<SessionId> {
     let id = shared.next.fetch_add(1, Ordering::Relaxed);
     let command = shell.as_ref().map_or_else(tsumugi_pane::default_program, |(p, _)| p.clone());
-    let dirty = shared.dirty.clone();
-    let log = std::env::var_os("TSUMUGI_PTY_LOG").map(PathBuf::from);
-    let env = vec![
-        ("TSUMUGI_SESSION".to_owned(), id.to_string()),
-        ("TSUMUGI_ADDRESS".to_owned(), shared.address.to_string_lossy().into_owned()),
-    ];
-    let mut term = Terminal::spawn_with_env(&cwd, size, cell, shell.clone(), log.as_deref(), env, move || {
-        let _ = dirty.send(id);
-    })?;
+    let term = start_terminal(shared, id, &cwd, size, cell, shell.clone())?;
     shared.ever.store(true, Ordering::Relaxed);
-    // What a program asking for the colours (OSC 10 / 11) is told: the
-    // window's default palette, filer's colours.
-    term.set_colors([0xc8, 0xcd, 0xd8], [0x1b, 0x1e, 0x24]);
     let (branch, project) = git(&cwd);
     let branch = branch.unwrap_or_default();
-    let mut info = Info { id, cwd, title: String::new(), command, state: State::Running, note: String::new(), since_ms: now_ms(), branch, project, muted: false, tags: Vec::new() };
+    let mut info = Info { id, cwd, title: String::new(), command, state: State::Running, note: String::new(), since_ms: now_ms(), branch, project, muted: false, tags: Vec::new(), claude: false };
     lock(&shared.rules).apply(&mut info);
     let watchers: BTreeSet<ClientId> = client.into_iter().collect();
     sessions.insert(
@@ -580,6 +611,31 @@ fn spawn_session(
         Session { term, info, notice: None, fresh: watchers.clone(), watchers, sent: None, shell, claude: None, pending: None },
     );
     Ok(id)
+}
+
+/// A session's shell, told who it is (`TSUMUGI_SESSION`) and where the
+/// server is, so that `tsumugi notify` inside it finds them.
+fn start_terminal(
+    shared: &Shared,
+    id: SessionId,
+    cwd: &Path,
+    size: tsumugi_pane::Size,
+    cell: (u16, u16),
+    shell: Option<(String, Vec<String>)>,
+) -> io::Result<Terminal> {
+    let dirty = shared.dirty.clone();
+    let log = std::env::var_os("TSUMUGI_PTY_LOG").map(PathBuf::from);
+    let env = vec![
+        ("TSUMUGI_SESSION".to_owned(), id.to_string()),
+        ("TSUMUGI_ADDRESS".to_owned(), shared.address.to_string_lossy().into_owned()),
+    ];
+    let mut term = Terminal::spawn_with_env(cwd, size, cell, shell, log.as_deref(), env, move || {
+        let _ = dirty.send(id);
+    })?;
+    // What a program asking for the colours (OSC 10 / 11) is told: the
+    // window's default palette, filer's colours.
+    term.set_colors([0xc8, 0xcd, 0xd8], [0x1b, 0x1e, 0x24]);
+    Ok(term)
 }
 
 /// Start again the tabs the state file has, after a restart: each pane's
@@ -608,6 +664,7 @@ fn restore(shared: &Arc<Shared>, sessions: &mut BTreeMap<SessionId, Session>, on
             let s = sessions.get_mut(&id).expect("just started");
             s.info.muted = p.muted;
             s.info.tags.clone_from(&p.tags);
+            s.info.claude = p.claude.is_some();
             if let Some(conversation) = &p.claude {
                 s.claude = Some(conversation.clone());
                 s.pending = Some(format!("claude --resume {conversation}\r").into_bytes());
@@ -619,7 +676,7 @@ fn restore(shared: &Arc<Shared>, sessions: &mut BTreeMap<SessionId, Session>, on
         let layout = layout.map(&mut |old| ids[&old]);
         let focus = ids.get(&w.focus).copied().unwrap_or_else(|| layout.leaves()[0]);
         let ws = shared.next.fetch_add(1, Ordering::Relaxed);
-        workspaces.insert(ws, Workspace { id: ws, layout, focus });
+        workspaces.insert(ws, Workspace { name: w.name.clone(), pinned: w.pinned, ..Workspace::new(ws, layout, focus) });
     }
     broadcast_workspaces(shared, &workspaces);
     drop(workspaces);
@@ -638,7 +695,7 @@ fn place_session(shared: &Shared, workspaces: &mut BTreeMap<WorkspaceId, Workspa
         }
     }
     let ws = shared.next.fetch_add(1, Ordering::Relaxed);
-    workspaces.insert(ws, Workspace { id: ws, layout: tsumugi_layout::Node::Leaf(id), focus: id });
+    workspaces.insert(ws, Workspace::new(ws, tsumugi_layout::Node::Leaf(id), id));
 }
 
 /// Tell every client the workspaces as they are now.
@@ -669,7 +726,7 @@ fn end(shared: &Shared, mut sessions: std::sync::MutexGuard<'_, BTreeMap<Session
         let w = workspaces.remove(&wid).expect("just found");
         if let Some(layout) = w.layout.remove(&id) {
             let focus = if w.focus == id { layout.leaves()[0] } else { w.focus };
-            workspaces.insert(wid, Workspace { id: wid, layout, focus });
+            workspaces.insert(wid, Workspace { layout, focus, ..w });
         }
     }
     broadcast_workspaces(shared, &workspaces);

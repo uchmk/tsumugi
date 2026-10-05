@@ -203,6 +203,40 @@ fn a_new_session_can_start_with_a_line_typed() {
     pane.kill();
 }
 
+/// A restarted session is a fresh shell in the same place, under the same
+/// id, and resumes the conversation its hooks named.
+#[test]
+fn a_restart_starts_the_shell_again_in_place() {
+    use crate::State;
+    let at = address();
+    let _srv = serve(&at).expect("the server starts");
+    let c = Client::connect(&at, || {}).expect("a client connects");
+    let pane = c.spawn(std::env::temp_dir(), None, Size::new(80, 24), (8, 16)).expect("a shell starts");
+    until(&pane, "a prompt", |t| !t.trim().is_empty());
+    pane.send(b"echo before-$((1+1))\r".to_vec());
+    until(&pane, "the echo", |t| t.contains("before-2"));
+    c.notify(pane.id(), State::Done, String::new(), Some("conv-9".into())).unwrap();
+    c.restart(pane.id());
+    until(&pane, "a fresh screen resuming the conversation", |t| !t.contains("before-2") && t.contains("claude --resume conv-9"));
+    assert_eq!(c.list().unwrap().len(), 1, "still one session");
+    pane.kill();
+}
+
+/// A tab's name and pin are the server's, for every window.
+#[test]
+fn tabs_can_be_named_and_pinned() {
+    let at = address();
+    let _srv = serve(&at).expect("the server starts");
+    let c = Client::connect(&at, || {}).expect("a client connects");
+    let pane = c.spawn(std::env::temp_dir(), None, Size::new(80, 24), (8, 16)).expect("a shell starts");
+    eventually("a tab", || c.workspaces().len() == 1);
+    let id = c.workspaces()[0].id;
+    c.rename_workspace(id, "  my work  ".into());
+    c.pin_workspace(id, true);
+    eventually("named and pinned", || c.workspaces().first().is_some_and(|w| w.name == "my work" && w.pinned));
+    pane.kill();
+}
+
 /// Killing one of two sessions leaves the other, and the server answering.
 #[test]
 fn killing_one_session_leaves_the_rest() {

@@ -21,6 +21,7 @@ mod alert;
 mod chrome;
 mod fonts;
 mod keys;
+mod menu;
 mod newsession;
 mod palette;
 mod shellhook;
@@ -426,6 +427,13 @@ struct App {
     profiles: Vec<tsumugi_mux::settings::Profile>,
     /// The new-session dialog, while it is open (the design's 1g).
     new_session: Option<newsession::Dialog>,
+    /// The settings' `[open]` and `[menu]`, for the tab's menu (1j).
+    open: tsumugi_mux::settings::Open,
+    menu: tsumugi_mux::settings::Menu,
+    /// A tab being renamed in its menu, and the name so far.
+    renaming: Option<(WorkspaceId, String)>,
+    /// "Close" was clicked once on a tab with something running.
+    close_armed: Option<WorkspaceId>,
 }
 
 /// A change asked for from the sidebar, made once it is drawn.
@@ -434,6 +442,12 @@ enum SideOp {
     Tag(Vec<SessionId>, String, bool),
     MuteTag(String, bool),
     Move(WorkspaceId, usize),
+    Rename(WorkspaceId, String),
+    Pin(WorkspaceId, bool),
+    Restart(SessionId),
+    /// A new tab in this folder; Claude Code in it when it ran here.
+    Duplicate(std::path::PathBuf, bool),
+    Close(Vec<SessionId>),
 }
 
 /// Where in the server's order a tab dropped at `gap` among the rows shown
@@ -472,7 +486,8 @@ impl App {
         Self {
             client,
             failed,
-            active: None,
+            // A window opened by "Move to a new window" shows that tab.
+            active: std::env::var(menu::SHOW_TAB).ok().and_then(|v| v.parse().ok()),
             pending: None,
             panes: HashMap::new(),
             views: HashMap::new(),
@@ -503,6 +518,10 @@ impl App {
             tag_rules: Vec::new(),
             profiles: Vec::new(),
             new_session: None,
+            open: Default::default(),
+            menu: Default::default(),
+            renaming: None,
+            close_armed: None,
         }
     }
 
@@ -924,9 +943,15 @@ impl App {
                     });
                     painter.galley(egui::pos2(left, rect.top() + y), galley, color);
                 };
-                line(name, 6.0, egui::FontId::proportional(13.5), pal.fg, if quiet_tab { width - 18.0 } else { width });
+                let marks = usize::from(quiet_tab) + usize::from(w.pinned);
+                line(name, 6.0, egui::FontId::proportional(13.5), pal.fg, width - 18.0 * marks as f32);
+                let mut mark_x = rect.right() - 22.0;
                 if quiet_tab {
-                    chrome::muted_mark(&painter, egui::pos2(rect.right() - 22.0, rect.top() + 14.0), pal.fg_dim);
+                    chrome::muted_mark(&painter, egui::pos2(mark_x, rect.top() + 14.0), pal.fg_dim);
+                    mark_x -= 18.0;
+                }
+                if w.pinned {
+                    chrome::pin_mark(&painter, egui::pos2(mark_x, rect.top() + 14.0), pal.fg_dim);
                 }
                 // Where to take hold of it, shown only on the way there.
                 if manual && resp.hovered() {
@@ -984,34 +1009,119 @@ impl App {
                 if resp.drag_started() {
                     self.dragging_tab = Some(w.id);
                 }
-                // The design's 1j has more here; for now, notifications and tags.
+                // The tab's menu (the design's 1j), in four groups: how it
+                // looks, starting it again, its folder, closing it.
                 let ids: Vec<SessionId> = infos.iter().map(|i| i.id).collect();
-                // Open until a click outside it: a click into its tag field
-                // must not close it.
+                let shown_item = |word: &str| !self.menu.hide.iter().any(|h| h == word);
+                // Open until a click outside it: a click into one of its
+                // fields must not close it.
                 let menu = egui::Popup::context_menu(&resp).close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside);
                 menu.show(|ui| {
-                    let label = if muted { "Unmute notifications" } else { "Mute notifications" };
-                    if ui.button(label).on_hover_text("Muted: in the bell only, no system notification or taskbar number").clicked() {
-                        ops.push(SideOp::Mute(ids.clone(), !muted));
+                    ui.set_min_width(240.0);
+                    if shown_item("rename") {
+                        match &mut self.renaming {
+                            Some((id, text)) if *id == w.id => {
+                                let edit = ui.add(egui::TextEdit::singleline(text).id(egui::Id::new(("rename", w.id))).hint_text("The tab's name").desired_width(220.0));
+                                edit.request_focus();
+                                if ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                                    ops.push(SideOp::Rename(w.id, text.clone()));
+                                    self.renaming = None;
+                                    ui.close();
+                                }
+                            }
+                            _ => {
+                                if ui.button("Rename…").clicked() {
+                                    self.renaming = Some((w.id, w.name.clone()));
+                                }
+                            }
+                        }
+                    }
+                    if shown_item("tags") {
+                        for t in &tags {
+                            if ui.button(format!("Remove tag {t}")).clicked() {
+                                ops.push(SideOp::Tag(ids.clone(), t.to_string(), false));
+                            }
+                        }
+                        if tags.len() < tsumugi_mux::proto::MAX_TAGS {
+                            let edit = ui.add(egui::TextEdit::singleline(&mut self.tag_input).id(egui::Id::new(("tag-input", w.id))).hint_text("Add a tag").desired_width(220.0));
+                            if edit.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                                if let Some(t) = tsumugi_mux::proto::tag_name(&self.tag_input) {
+                                    ops.push(SideOp::Tag(ids.clone(), t, true));
+                                }
+                                self.tag_input.clear();
+                                edit.request_focus();
+                            }
+                        } else {
+                            ui.label(egui::RichText::new(format!("{} tags at most", tsumugi_mux::proto::MAX_TAGS)).color(pal.fg_dim));
+                        }
+                    }
+                    if shown_item("mute") {
+                        let label = if muted { "Unmute notifications" } else { "Mute notifications" };
+                        if ui.button(label).on_hover_text("Muted: in the bell only, no system notification or taskbar number").clicked() {
+                            ops.push(SideOp::Mute(ids.clone(), !muted));
+                            ui.close();
+                        }
+                    }
+                    if shown_item("pin") {
+                        let label = if w.pinned { "Unpin" } else { "Pin to top" };
+                        if ui.button(label).clicked() {
+                            ops.push(SideOp::Pin(w.id, !w.pinned));
+                            ui.close();
+                        }
+                    }
+                    ui.separator();
+                    if shown_item("restart") {
+                        let label = if focus.claude { "Restart (resume the conversation)" } else { "Restart" };
+                        if ui.button(label).clicked() {
+                            ops.push(SideOp::Restart(focus.id));
+                            ui.close();
+                        }
+                    }
+                    if shown_item("duplicate") && ui.button("Duplicate in the same folder").clicked() {
+                        ops.push(SideOp::Duplicate(focus.cwd.clone(), focus.claude));
+                        ui.close();
+                    }
+                    if shown_item("new-window") && ui.button("Move to a new window").clicked() {
+                        menu::new_window(w.id);
                         ui.close();
                     }
                     ui.separator();
-                    for t in &tags {
-                        if ui.button(format!("Remove tag {t}")).clicked() {
-                            ops.push(SideOp::Tag(ids.clone(), t.to_string(), false));
+                    if shown_item("filer") && ui.button("Open the folder in filer").clicked() {
+                        menu::run(tsumugi_mux::settings::fill(&self.open.filer, &focus.cwd, focus.id));
+                        ui.close();
+                    }
+                    if shown_item("editor") && ui.button("Open in the editor").clicked() {
+                        menu::run(tsumugi_mux::settings::fill(&self.open.editor, &focus.cwd, focus.id));
+                        ui.close();
+                    }
+                    if shown_item("copy-path") && ui.button("Copy the folder path").clicked() {
+                        ui.ctx().copy_text(focus.cwd.display().to_string());
+                        ui.close();
+                    }
+                    if !self.menu.session.is_empty() {
+                        ui.separator();
+                        for item in &self.menu.session {
+                            if ui.button(&item.name).on_hover_text(&item.command).clicked() {
+                                menu::run(tsumugi_mux::settings::fill(&item.command, &focus.cwd, focus.id));
+                                ui.close();
+                            }
                         }
                     }
-                    if tags.len() < tsumugi_mux::proto::MAX_TAGS {
-                        let edit = ui.add(egui::TextEdit::singleline(&mut self.tag_input).id(egui::Id::new(("tag-input", w.id))).hint_text("Add a tag").desired_width(150.0));
-                        if edit.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
-                            if let Some(t) = tsumugi_mux::proto::tag_name(&self.tag_input) {
-                                ops.push(SideOp::Tag(ids.clone(), t, true));
+                    if shown_item("close") {
+                        ui.separator();
+                        // Something running in it: a second click, to be sure.
+                        let busy = infos.iter().any(|i| matches!(i.state, State::Running | State::MaybeWaiting));
+                        let armed = self.close_armed == Some(w.id);
+                        let label = if armed { "Click again to close: it is running" } else { "Close the session" };
+                        if ui.button(egui::RichText::new(label).color(egui::Color32::from_rgb(0xf4, 0xa3, 0xa8))).clicked() {
+                            if busy && !armed {
+                                self.close_armed = Some(w.id);
+                            } else {
+                                ops.push(SideOp::Close(ids.clone()));
+                                self.close_armed = None;
+                                ui.close();
                             }
-                            self.tag_input.clear();
-                            edit.request_focus();
                         }
-                    } else {
-                        ui.label(egui::RichText::new(format!("{} tags at most", tsumugi_mux::proto::MAX_TAGS)).color(pal.fg_dim));
                     }
                 });
             }
@@ -1045,6 +1155,21 @@ impl App {
                     SideOp::Tag(ids, tag, on) => client.tag(ids, tag, on),
                     SideOp::MuteTag(tag, on) => client.mute_tag(tag, on),
                     SideOp::Move(id, to) => client.move_workspace(id, to),
+                    SideOp::Rename(id, name) => client.rename_workspace(id, name),
+                    SideOp::Pin(id, on) => client.pin_workspace(id, on),
+                    SideOp::Restart(id) => client.restart(id),
+                    SideOp::Duplicate(cwd, claude) => {
+                        let shell = tsumugi_pane::default_shell().map(|s| (s, Vec::new()));
+                        let typed = claude.then(|| "claude".to_owned());
+                        if let Ok(pane) = client.spawn_typing(cwd, shell, Size::new(80, 24), (8, 16), Place::NewWorkspace, typed) {
+                            self.pending = Some(pane.id());
+                        }
+                    }
+                    SideOp::Close(ids) => {
+                        for id in ids {
+                            client.attach(id).kill();
+                        }
+                    }
                 }
             }
         }
@@ -1302,6 +1427,8 @@ impl eframe::App for App {
                 Read::Settings(Ok(s)) => {
                     self.alerts.rules = alert::Rules::from(&s.notify);
                     self.tag_rules = s.tags.rule;
+                    self.open = s.open;
+                    self.menu = s.menu;
                     self.settings_error = None;
                 }
                 Read::Profiles(Ok(p)) => self.profiles = p,

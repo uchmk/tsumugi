@@ -14,7 +14,7 @@ use crate::proto::SessionId;
 
 /// Bumped when the shape below changes; a file of another version is left
 /// alone rather than misread.
-const VERSION: u32 = 4;
+const VERSION: u32 = 5;
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Saved {
@@ -27,6 +27,9 @@ pub struct Saved {
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct SavedWorkspace {
+    /// Its name given by hand, and whether it is pinned (v5).
+    pub name: String,
+    pub pinned: bool,
     /// The splits, with the ids the sessions had (only a key into `panes`).
     pub layout: Node<SessionId>,
     pub focus: SessionId,
@@ -52,7 +55,8 @@ pub struct SavedPane {
 }
 
 /// The shapes before this one, read so that an update does not lose the
-/// tabs: v2 (tsumugi 0.5 to 0.7) had no `muted`, v3 (0.8) no tags.
+/// tabs: v2 (tsumugi 0.5 to 0.7) had no `muted`, v3 (0.8) no tags, v4
+/// (0.9 to 0.13) no tab names or pins.
 mod old {
     use super::*;
 
@@ -104,14 +108,30 @@ mod old {
         }
     }
 
+    impl<P: Into<super::SavedPane>> From<SavedWorkspace<P>> for super::SavedWorkspace {
+        fn from(w: SavedWorkspace<P>) -> Self {
+            let panes = w.panes.into_iter().map(Into::into).collect();
+            Self { name: String::new(), pinned: false, layout: w.layout, focus: w.focus, panes }
+        }
+    }
+
     impl<P: Into<super::SavedPane>> From<Saved<P>> for super::Saved {
         fn from(s: Saved<P>) -> Self {
-            let workspaces = s
-                .workspaces
-                .into_iter()
-                .map(|w| super::SavedWorkspace { layout: w.layout, focus: w.focus, panes: w.panes.into_iter().map(Into::into).collect() })
-                .collect();
-            Self { workspaces, at_ms: s.at_ms, muted_tags: Vec::new() }
+            Self { workspaces: s.workspaces.into_iter().map(Into::into).collect(), at_ms: s.at_ms, muted_tags: Vec::new() }
+        }
+    }
+
+    /// v4: the panes as now, the tabs without names or pins.
+    #[derive(Deserialize)]
+    pub struct V4 {
+        workspaces: Vec<SavedWorkspace<super::SavedPane>>,
+        at_ms: u64,
+        muted_tags: Vec<String>,
+    }
+
+    impl From<V4> for super::Saved {
+        fn from(s: V4) -> Self {
+            Self { workspaces: s.workspaces.into_iter().map(Into::into).collect(), at_ms: s.at_ms, muted_tags: s.muted_tags }
         }
     }
 }
@@ -141,6 +161,7 @@ pub fn load(path: &Path) -> Option<Saved> {
     let (version, rest) = bytes.split_first_chunk::<4>()?;
     match u32::from_le_bytes(*version) {
         VERSION => postcard::from_bytes(rest).ok(),
+        4 => postcard::from_bytes::<old::V4>(rest).ok().map(Into::into),
         3 => postcard::from_bytes::<old::Saved<old::V3>>(rest).ok().map(Into::into),
         2 => postcard::from_bytes::<old::Saved<old::V2>>(rest).ok().map(Into::into),
         _ => None,
@@ -204,6 +225,8 @@ mod tests {
         let path = dir.join("state");
         let saved = Saved {
             workspaces: vec![SavedWorkspace {
+                name: "mine".into(),
+                pinned: true,
                 layout: Node::Leaf(7),
                 focus: 7,
                 panes: vec![SavedPane {

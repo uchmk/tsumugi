@@ -135,7 +135,30 @@ tag = "{name}"
 system = ["waiting", "error", "done"]   # the system's notification
 taskbar = ["waiting", "error"]          # the number on the taskbar
 flash = []                              # flash the taskbar button
+
+# What the tab's menu opens its folder with; the system's shell runs it.
+[open]
+editor = "code {folder}"
+filer = "filer {folder}"
+
+# The tab's menu: items left out, and your own ({folder}, {session}).
+[menu]
+hide = ["new-window"]
+
+[[menu.session]]
+name = "Open lazygit here"
+command = "wt -d {folder} lazygit"
 ```
+
+The tab's right-click menu: **Rename…**, tags, **Mute notifications**, **Pin
+to top**; **Restart** (a fresh shell in its place, resuming the Claude Code
+conversation), **Duplicate in the same folder**, **Move to a new window**;
+**Open the folder in filer**, **Open in the editor** (the commands in
+`[open]` above), **Copy the folder path**; your own items from
+`[[menu.session]]`; and **Close the session**, which asks a second click
+while something is running in it. `[menu] hide` leaves out any of rename,
+tags, mute, pin, restart, duplicate, new-window, filer, editor, copy-path,
+close.
 
 A folder rule adds its tag when a session starts or moves into the folder;
 it never takes one off, so a tag removed by hand stays off until the session

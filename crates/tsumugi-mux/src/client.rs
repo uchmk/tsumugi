@@ -228,6 +228,21 @@ impl Client {
         self.0.send(ToServer::MoveWorkspace { id, to });
     }
 
+    /// Name a tab; empty gives it back its pane's name.
+    pub fn rename_workspace(&self, id: WorkspaceId, name: String) {
+        self.0.send(ToServer::RenameWorkspace { id, name });
+    }
+
+    /// Keep a tab at the top of the sidebar, or not.
+    pub fn pin_workspace(&self, id: WorkspaceId, on: bool) {
+        self.0.send(ToServer::PinWorkspace { id, on });
+    }
+
+    /// Start the session's shell again in its place.
+    pub fn restart(&self, id: SessionId) {
+        self.0.send(ToServer::Restart { id });
+    }
+
     /// Put a tag on these sessions (`on`), or take it off.
     pub fn tag(&self, ids: Vec<SessionId>, tag: String, on: bool) {
         self.0.send(ToServer::Tag { ids, tag, on });

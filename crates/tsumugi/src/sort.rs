@@ -147,8 +147,12 @@ impl<'a> Tab<'a> {
         self.infos.iter().any(|i| i.tags.iter().any(|t| t == tag))
     }
 
-    /// What `Name` sorts by: the title, or the program when there is none.
+    /// What the row says and `Name` sorts by: the name given by hand, else
+    /// the title, else the program.
     pub fn name(&self) -> String {
+        if !self.workspace.name.is_empty() {
+            return self.workspace.name.clone();
+        }
         self.focus().map(|i| if i.title.is_empty() { program_name(&i.command) } else { i.title.clone() }).unwrap_or_default()
     }
 
@@ -200,6 +204,8 @@ pub fn arrange<'a, 'b>(tabs: &'b [Tab<'a>], sort: Sort, filter: &Filter) -> Vec<
         Sort::Folder => shown.sort_by(|a, b| a.project().cmp(&b.project())),
         Sort::Name => shown.sort_by_key(|t| t.name().to_lowercase()),
     }
+    // Pinned ones at the top, in that same order.
+    shown.sort_by_key(|t| !t.workspace.pinned);
     shown
 }
 
@@ -234,6 +240,7 @@ mod tests {
             project: project.into(),
             muted: false,
             tags: if id == 3 { vec!["ci".into()] } else { vec![] },
+            claude: false,
         }
     }
 
@@ -250,7 +257,7 @@ mod tests {
             info(4, State::MaybeWaiting, 10, "/p/tsumugi", ""),
             info(5, State::Running, 20, "/p/filer", "delta"),
         ];
-        let workspaces: Vec<Workspace> = (1..=5).map(|id| Workspace { id: id + 100, layout: Node::Leaf(id), focus: id }).collect();
+        let mut workspaces: Vec<Workspace> = (1..=5).map(|id| Workspace::new(id + 100, Node::Leaf(id), id)).collect();
         let tabs: Vec<Tab> = workspaces.iter().map(|w| Tab::new(w, &sessions)).collect();
         let all = Filter::default();
         assert_eq!(order(&arrange(&tabs, Sort::Manual, &all)), [1, 2, 3, 4, 5]);
@@ -271,6 +278,16 @@ mod tests {
         assert_eq!(order(&arrange(&tabs, Sort::Manual, &ci)), [3]);
 
         assert_eq!(projects(&tabs), vec![(PathBuf::from("/p/tsumugi"), 2), (PathBuf::from("/p/filer"), 3)]);
+
+        // A pinned tab is first whatever the order.
+        workspaces[4].pinned = true;
+        let tabs: Vec<Tab> = workspaces.iter().map(|w| Tab::new(w, &sessions)).collect();
+        assert_eq!(order(&arrange(&tabs, Sort::Manual, &all)), [5, 1, 2, 3, 4]);
+        assert_eq!(order(&arrange(&tabs, Sort::Needs, &all)), [5, 4, 2, 3, 1]);
+        // A name given by hand is the one sorted by.
+        workspaces[0].name = "aaa".into();
+        let tabs: Vec<Tab> = workspaces.iter().map(|w| Tab::new(w, &sessions)).collect();
+        assert_eq!(order(&arrange(&tabs, Sort::Name, &all)), [5, 1, 2, 4, 3]);
     }
 
     #[test]

@@ -18,6 +18,19 @@
 //! system = ["waiting", "error", "done"]
 //! taskbar = ["waiting", "error"]
 //! flash = []
+//!
+//! # What a tab's menu runs to open its folder; {folder} is the folder.
+//! [open]
+//! editor = "code {folder}"
+//! filer = "filer {folder}"
+//!
+//! # The tab's menu (the design's 1j): items left out, and more of your own.
+//! [menu]
+//! hide = ["new-window"]
+//!
+//! [[menu.session]]
+//! name = "Open lazygit here"
+//! command = "wt -d {folder} lazygit"
 //! ```
 
 use std::path::{Component, Path, PathBuf};
@@ -29,6 +42,54 @@ use serde::{Deserialize, Serialize};
 pub struct Settings {
     pub tags: Tags,
     pub notify: Notify,
+    pub open: Open,
+    pub menu: Menu,
+}
+
+/// The commands the tab's menu opens a folder with: `{folder}` is the
+/// folder, quoted; run by the system's shell (`cmd /C`, `sh -c`), so a
+/// `code.cmd` on Windows is found as `code`.
+#[derive(Clone, Debug, PartialEq, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct Open {
+    pub editor: String,
+    pub filer: String,
+}
+
+impl Default for Open {
+    fn default() -> Self {
+        Self { editor: "code {folder}".into(), filer: "filer {folder}".into() }
+    }
+}
+
+/// The tab's right-click menu: built-in items to leave out, by their words
+/// (`rename`, `tags`, `mute`, `pin`, `restart`, `duplicate`, `new-window`,
+/// `filer`, `editor`, `copy-path`, `close`), and items of one's own.
+#[derive(Clone, Debug, Default, PartialEq, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct Menu {
+    pub hide: Vec<String>,
+    pub session: Vec<MenuItem>,
+}
+
+/// An item of one's own: `{folder}` and `{session}` (its number) are put
+/// into the command, which the system's shell runs.
+#[derive(Clone, Debug, PartialEq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MenuItem {
+    pub name: String,
+    pub command: String,
+}
+
+/// The words of the menu's own items, for `menu.hide`.
+pub const MENU_ITEMS: [&str; 11] = ["rename", "tags", "mute", "pin", "restart", "duplicate", "new-window", "filer", "editor", "copy-path", "close"];
+
+/// A command line with `{folder}` (quoted for the system's shell) and
+/// `{session}` put in.
+pub fn fill(command: &str, folder: &Path, session: u64) -> String {
+    let f = folder.display().to_string();
+    let quoted = if cfg!(windows) { format!("\"{f}\"") } else { format!("'{}'", f.replace('\'', "'\\''")) };
+    command.replace("{folder}", &quoted).replace("{session}", &session.to_string())
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Deserialize)]
@@ -103,6 +164,9 @@ pub fn parse(text: &str) -> Result<Settings, String> {
         Some(at) => format!("line {}: {}", text[..at.start].matches('\n').count() + 1, e.message()),
         None => e.message().to_owned(),
     })?;
+    if let Some(w) = s.menu.hide.iter().find(|w| !MENU_ITEMS.contains(&w.as_str())) {
+        return Err(format!("menu.hide: `{w}` is not one of {}", MENU_ITEMS.join(", ")));
+    }
     for (key, words) in [("system", &s.notify.system), ("taskbar", &s.notify.taskbar), ("flash", &s.notify.flash)] {
         if let Some(w) = words.iter().find(|w| !matches!(w.as_str(), "waiting" | "error" | "done")) {
             return Err(format!("notify.{key}: `{w}` is not waiting, error or done"));
@@ -220,6 +284,9 @@ mod tests {
         let s = parse(&text).expect("the example in the module's comment reads");
         assert_eq!(s.tags.rule, vec![rule("~/dev/filer", "filer"), rule("~/dev/*", "{name}")]);
         assert_eq!(s.notify, Notify { flash: vec![], ..Notify::default() });
+        assert_eq!(s.open, Open::default());
+        assert_eq!(s.menu.hide, ["new-window"]);
+        assert_eq!(s.menu.session[0].command, "wt -d {folder} lazygit");
     }
 
     #[test]
@@ -234,6 +301,13 @@ mod tests {
         save_profiles(&path, &list).unwrap();
         assert_eq!(load_profiles(&path), Ok(list));
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_command_gets_the_folder_quoted() {
+        assert_eq!(fill("code {folder} # {session}", Path::new("/tmp/it's here"), 7), "code '/tmp/it'\\''s here' # 7");
+        assert!(parse("[menu]\nhide = [\"nope\"]").unwrap_err().starts_with("menu.hide: `nope`"));
     }
 
     #[test]

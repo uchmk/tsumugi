@@ -7,7 +7,7 @@ use tsumugi_pane::Size;
 
 /// Bumped whenever a message changes shape: a client and a server that
 /// disagree say so at `Hello` instead of misreading each other.
-pub const VERSION: u32 = 11;
+pub const VERSION: u32 = 12;
 
 pub type SessionId = u64;
 pub type WorkspaceId = u64;
@@ -22,6 +22,16 @@ pub struct Workspace {
     pub layout: Node<SessionId>,
     /// The pane that has the keys.
     pub focus: SessionId,
+    /// A name given by hand; empty, the tab is called after its pane.
+    pub name: String,
+    /// Kept at the top of the sidebar, whatever the order.
+    pub pinned: bool,
+}
+
+impl Workspace {
+    pub fn new(id: WorkspaceId, layout: Node<SessionId>, focus: SessionId) -> Self {
+        Self { id, layout, focus, name: String::new(), pinned: false }
+    }
 }
 
 /// Where a new session goes.
@@ -101,6 +111,8 @@ pub struct Info {
     /// Name tags put on it (`review`, `ci`), at most [`MAX_TAGS`], in the
     /// order they were put on.
     pub tags: Vec<String>,
+    /// Claude Code runs in it: its hooks named a conversation.
+    pub claude: bool,
 }
 
 /// How many tags a session can have (the design's 1o).
@@ -187,6 +199,13 @@ pub enum ToServer {
     MuteTag { tag: String, on: bool },
     /// Put a tab at `to` in the sidebar's own order (dragged there).
     MoveWorkspace { id: WorkspaceId, to: usize },
+    /// Name a tab; an empty name gives it back its pane's.
+    RenameWorkspace { id: WorkspaceId, name: String },
+    /// Keep a tab at the top of the sidebar, or not.
+    PinWorkspace { id: WorkspaceId, on: bool },
+    /// End the session's shell and start it again in its place, resuming
+    /// the Claude Code conversation that ran in it.
+    Restart { id: SessionId },
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

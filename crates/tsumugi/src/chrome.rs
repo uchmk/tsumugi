@@ -415,6 +415,13 @@ pub fn filter_button(ui: &mut egui::Ui, pal: &Palette, label: &str, dot: Option<
     resp
 }
 
+/// A pin: the tab is kept at the top.
+pub fn pin_mark(p: &egui::Painter, c: egui::Pos2, color: Color32) {
+    let stroke = egui::Stroke::new(1.3, color);
+    p.circle_filled(c + egui::vec2(1.5, -2.5), 3.0, color);
+    p.line_segment([c + egui::vec2(0.5, -1.5), c + egui::vec2(-4.0, 4.5)], stroke);
+}
+
 /// A dashed rectangle around `rect`: a tag the folder's rule gives.
 pub fn dashed_outline(p: &egui::Painter, rect: egui::Rect, color: Color32) {
     let corners = [rect.left_top(), rect.right_top(), rect.right_bottom(), rect.left_bottom(), rect.left_top()];
