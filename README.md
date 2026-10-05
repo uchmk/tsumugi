@@ -4,8 +4,15 @@ A terminal built for running many Claude Code and other AI CLI sessions side
 by side: vertical tabs, split panes, and a glance at which session is waiting
 for you. Rust + egui, Windows first, with macOS and Linux on x86_64 and ARM64.
 
-**Status: planning.** No code yet. The first version's scope is in
-[docs/v1-scope.md](docs/v1-scope.md).
+**Status: early.** A window with one shell in it, nothing more yet. The first
+version's scope is in [docs/v1-scope.md](docs/v1-scope.md).
+
+```sh
+cargo run -p tsumugi
+```
+
+The terminal pane is the crate `tsumugi-pane` (`crates/tsumugi-pane`), shared
+with [filer](https://github.com/uchmk/filer).
 
 ## Why
 

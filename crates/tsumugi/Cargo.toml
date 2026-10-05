@@ -1,0 +1,13 @@
+[package]
+name = "tsumugi"
+description = "A terminal for running many AI CLI sessions side by side"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+tsumugi-pane = { path = "../tsumugi-pane", features = ["egui", "wgpu"] }
+eframe = "0.36"
+egui = "0.36"

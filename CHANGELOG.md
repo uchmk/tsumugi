@@ -5,6 +5,17 @@
 
 ## [未リリース]
 
+## [0.0.7] - 2026-10-06
+
+### 追加
+
+- 窓を出す本体 `crates/tsumugi`（`cargo run -p tsumugi`）。今いるフォルダで既定のシェル（Windows は pwsh があれば pwsh）を 1 つ開き、窓いっぱいに描く。
+  色は filer と同じ。シェルが付けたタイトルを窓のタイトルにし、シェルが終われば窓を閉じる。`TSUMUGI_PTY_LOG` で PTY のログを取れる。
+  日本語のために OS のゴシック体を等幅の後ろに足す（Windows は BIZ UDゴシック → MS ゴシック → 游ゴシック → メイリオ、Linux は Noto CJK か IPA ゴシック）。
+  GPU は Windows では GL を先に使う（filer と同じ理由）。
+- `tsumugi-pane` の `input`（feature `egui`）: egui のキー入力をシェルへのバイトに変える部分を filer の `on_key_event` から写した（win32-input-mode、
+  `Ctrl` の制御文字、`Alt` の文字、`Ctrl+C` / `Ctrl+X` が egui のコピー・切り取りに化けるのを戻す）。アプリが自分で取るキーは `claim` で先に抜ける。
+
 ## [0.0.6] - 2026-10-06
 
 ### 変更
