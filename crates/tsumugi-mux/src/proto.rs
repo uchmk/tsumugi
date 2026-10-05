@@ -7,7 +7,7 @@ use tsumugi_pane::Size;
 
 /// Bumped whenever a message changes shape: a client and a server that
 /// disagree say so at `Hello` instead of misreading each other.
-pub const VERSION: u32 = 9;
+pub const VERSION: u32 = 10;
 
 pub type SessionId = u64;
 pub type WorkspaceId = u64;
@@ -92,6 +92,9 @@ pub struct Info {
     pub since_ms: u64,
     /// The git branch of `cwd`, when it is in a repository.
     pub branch: String,
+    /// The repository `cwd` is in (its top folder), or `cwd` itself: what
+    /// the sidebar groups and filters "by folder".
+    pub project: PathBuf,
     /// Its notices go to the bell only: no system notification, no number
     /// on the taskbar.
     pub muted: bool,
@@ -181,6 +184,8 @@ pub enum ToServer {
     /// Tell of the sessions with this tag only in the bell, or again
     /// everywhere; answered, to every client, with `MutedTags`.
     MuteTag { tag: String, on: bool },
+    /// Put a tab at `to` in the sidebar's own order (dragged there).
+    MoveWorkspace { id: WorkspaceId, to: usize },
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

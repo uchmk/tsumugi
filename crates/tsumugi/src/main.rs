@@ -22,6 +22,7 @@ mod chrome;
 mod fonts;
 mod keys;
 mod shellhook;
+mod sort;
 mod spawn;
 
 use std::time::Duration;
@@ -319,6 +320,24 @@ fn always_restore() -> bool {
     always_restore_file().is_some_and(|p| p.exists())
 }
 
+/// The sidebar's order as last chosen, kept beside the state file: a
+/// window's own choice, not a setting.
+fn view_file() -> Option<std::path::PathBuf> {
+    tsumugi_mux::state::default_path().map(|p| p.with_file_name("sort"))
+}
+
+fn view_sort() -> sort::Sort {
+    view_file().and_then(|p| std::fs::read_to_string(p).ok()).and_then(|w| sort::Sort::from_word(w.trim())).unwrap_or_default()
+}
+
+fn set_view_sort(s: sort::Sort) {
+    let Some(p) = view_file() else { return };
+    if let Some(dir) = p.parent() {
+        let _ = std::fs::create_dir_all(dir);
+    }
+    let _ = std::fs::write(p, s.word());
+}
+
 fn set_always_restore(on: bool) {
     let Some(p) = always_restore_file() else { return };
     if on {
@@ -348,17 +367,6 @@ const GRAB: f32 = 12.0;
 const DIM: f32 = 0.35;
 /// The heading over each pane of a split.
 const HEADER: f32 = 22.0;
-
-/// The most urgent state among a tab's panes, which its row shows.
-fn urgency(state: State) -> u8 {
-    match state {
-        State::Waiting => 4,
-        State::Error => 3,
-        State::MaybeWaiting => 2,
-        State::Running => 1,
-        State::Done => 0,
-    }
-}
 
 struct App {
     client: Option<Client>,
@@ -398,8 +406,11 @@ struct App {
     teller: alert::Teller,
     /// Whether the server was last told this window has the keyboard.
     focus_sent: Option<bool>,
-    /// The sidebar shows only the tabs with this tag (the design's 1a).
-    tag_filter: Option<String>,
+    /// What the sidebar shows, and in what order (the design's 1a and 1b).
+    filter: sort::Filter,
+    sort: sort::Sort,
+    /// A tab being dragged to another place in the sidebar.
+    dragging_tab: Option<WorkspaceId>,
     /// What is being typed into a tab menu's "Add a tag".
     tag_input: String,
     /// `settings.toml` as read again whenever it changes, and what is wrong
@@ -413,6 +424,22 @@ enum SideOp {
     Mute(Vec<SessionId>, bool),
     Tag(Vec<SessionId>, String, bool),
     MuteTag(String, bool),
+    Move(WorkspaceId, usize),
+}
+
+/// Where in the server's order a tab dropped at `gap` among the rows shown
+/// goes (the server takes it out, then puts it in); `None` when it stays.
+fn drop_index(workspaces: &[Workspace], rows: &[(WorkspaceId, egui::Rect)], dragged: WorkspaceId, gap: usize) -> Option<usize> {
+    let at = |id: WorkspaceId| workspaces.iter().position(|w| w.id == id);
+    let from = at(dragged)?;
+    let mut to = match rows.get(gap) {
+        Some((id, _)) => at(*id)?,
+        None => at(rows.last()?.0)? + 1,
+    };
+    if from < to {
+        to -= 1;
+    }
+    (to != from).then_some(to)
 }
 
 impl App {
@@ -457,7 +484,9 @@ impl App {
                 move || ctx.request_repaint()
             }),
             focus_sent: None,
-            tag_filter: None,
+            filter: sort::Filter::default(),
+            sort: view_sort(),
+            dragging_tab: None,
             tag_input: String::new(),
             settings: watch_settings(cc.egui_ctx.clone()),
             settings_error: None,
@@ -563,24 +592,29 @@ impl App {
         let mut ops = Vec::new();
         let now = chrome::now_ms();
         let muted_tags = self.client.as_ref().map(Client::muted_tags).unwrap_or_default();
+        let tabs: Vec<sort::Tab> = workspaces.iter().map(|w| sort::Tab::new(w, sessions)).collect();
         // Every tag in use, in the order the tabs show them.
         let mut all_tags: Vec<String> = Vec::new();
-        for w in workspaces {
-            for id in w.layout.leaves() {
-                for t in sessions.iter().find(|i| i.id == id).map(|i| i.tags.as_slice()).unwrap_or_default() {
-                    if !all_tags.contains(t) {
-                        all_tags.push(t.clone());
-                    }
-                }
+        for t in tabs.iter().flat_map(|t| t.infos.iter().flat_map(|i| &i.tags)) {
+            if !all_tags.contains(t) {
+                all_tags.push(t.clone());
             }
         }
-        if self.tag_filter.as_ref().is_some_and(|t| !all_tags.contains(t)) {
-            self.tag_filter = None;
+        let projects = sort::projects(&tabs);
+        // A filter on something no longer there lets everything through.
+        if self.filter.tag.as_ref().is_some_and(|t| !all_tags.contains(t)) {
+            self.filter.tag = None;
         }
+        if self.filter.project.as_ref().is_some_and(|p| !projects.iter().any(|(q, _)| q == p)) {
+            self.filter.project = None;
+        }
+        let shown = sort::arrange(&tabs, self.sort, &self.filter);
+
         ui.add_space(8.0);
         ui.horizontal(|ui| {
             ui.add_space(14.0);
-            ui.label(egui::RichText::new(format!("SESSIONS  {}", workspaces.len())).size(11.0).strong().color(pal.fg_dim));
+            let count = if shown.len() == tabs.len() { format!("{}", tabs.len()) } else { format!("{} of {}", shown.len(), tabs.len()) };
+            ui.label(egui::RichText::new(format!("SESSIONS  {count}")).size(11.0).strong().color(pal.fg_dim));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 ui.add_space(8.0);
                 let notices = self.client.as_ref().map(Client::notices).unwrap_or_default();
@@ -592,6 +626,18 @@ impl App {
                     };
                     self.bell_opening = true;
                 }
+                // The order (the design's 1b): a button with the choice's
+                // short name, opening the five.
+                let button = chrome::sort_button(ui, &pal, self.sort.short());
+                egui::Popup::menu(&button).show(|ui| {
+                    for s in sort::Sort::ALL {
+                        if ui.selectable_label(self.sort == s, s.label()).clicked() {
+                            self.sort = s;
+                            set_view_sort(s);
+                            ui.close();
+                        }
+                    }
+                });
             });
         });
         ui.add_space(4.0);
@@ -605,9 +651,9 @@ impl App {
                     let faded = muted_tags.contains(t);
                     let size = egui::vec2(ui.fonts_mut(|f| f.layout_no_wrap(t.clone(), egui::FontId::proportional(11.0), pal.fg).size().x) + 12.0, 16.0);
                     let (rect, resp) = ui.allocate_exact_size(size, egui::Sense::click());
-                    let on = self.tag_filter.as_ref() == Some(t);
+                    let on = self.filter.tag.as_ref() == Some(t);
                     let p = ui.painter();
-                    let dim = self.tag_filter.is_some() && !on;
+                    let dim = self.filter.tag.is_some() && !on;
                     chrome::tag_chip(p, rect.min, t, faded || dim);
                     if on {
                         p.rect_stroke(rect.expand(1.5), 5.0, egui::Stroke::new(1.0, pal.fg), egui::StrokeKind::Outside);
@@ -615,7 +661,7 @@ impl App {
                     let hint = if faded { format!("Show only {t} (muted)") } else { format!("Show only {t}") };
                     let resp = resp.on_hover_text(hint);
                     if resp.clicked() {
-                        self.tag_filter = if on { None } else { Some(t.clone()) };
+                        self.filter.tag = if on { None } else { Some(t.clone()) };
                     }
                     resp.context_menu(|ui| {
                         let label = if faded { format!("Unmute notifications for {t}") } else { format!("Mute notifications for {t}") };
@@ -628,23 +674,80 @@ impl App {
             }));
             ui.add_space(6.0);
         }
-        let bottom = 34.0;
-        egui::ScrollArea::vertical().max_height(ui.available_height() - bottom).show(ui, |ui| {
-            for w in workspaces {
-                let infos: Vec<&Info> = w.layout.leaves().iter().filter_map(|id| sessions.iter().find(|i| i.id == *id)).collect();
-                let Some(focus) = infos.iter().find(|i| i.id == w.focus).or(infos.first()) else { continue };
+
+        // The foot: the filters by state and by folder, and what waits one
+        // key away (the design's sidebar foot).
+        egui::Panel::bottom("side-foot").frame(egui::Frame::NONE).show(ui, |ui| {
+            let (line, _) = ui.allocate_exact_size(egui::vec2(ui.available_width(), 1.0), egui::Sense::hover());
+            ui.painter().rect_filled(line, 0.0, egui::Color32::from_rgb(0x23, 0x26, 0x2e));
+            ui.add_space(8.0);
+            let margin = egui::Margin { left: 12, right: 8, top: 0, bottom: 0 };
+            egui::Frame::NONE.inner_margin(margin).show(ui, |ui| {
+                ui.spacing_mut().item_spacing = egui::vec2(5.0, 5.0);
+                ui.horizontal_wrapped(|ui| {
+                    let all = self.filter.kind.is_none();
+                    if chrome::filter_button(ui, &pal, &format!("All {}", tabs.len()), None, all).clicked() {
+                        self.filter.kind = None;
+                    }
+                    for k in sort::Kind::ALL {
+                        let n = tabs.iter().filter(|t| t.kind() == Some(k)).count();
+                        let on = self.filter.kind == Some(k);
+                        if n == 0 && !on {
+                            continue;
+                        }
+                        if chrome::filter_button(ui, &pal, &format!("{} {n}", k.label()), Some(state_color(k.state())), on).clicked() {
+                            self.filter.kind = if on { None } else { Some(k) };
+                        }
+                    }
+                });
+                if projects.len() > 1 || self.filter.project.is_some() {
+                    ui.horizontal_wrapped(|ui| {
+                        if chrome::filter_button(ui, &pal, &format!("All folders {}", tabs.len()), None, self.filter.project.is_none()).clicked() {
+                            self.filter.project = None;
+                        }
+                        for (p, n) in &projects {
+                            let on = self.filter.project.as_ref() == Some(p);
+                            let name = p.file_name().map_or_else(|| p.display().to_string(), |f| f.to_string_lossy().into_owned());
+                            let b = chrome::filter_button(ui, &pal, &format!("{name} {n}"), None, on).on_hover_text(home_short(p));
+                            if b.clicked() {
+                                self.filter.project = if on { None } else { Some(p.clone()) };
+                            }
+                        }
+                    });
+                }
+            });
+            let waiting = sessions.iter().filter(|i| matches!(i.state, State::Waiting | State::MaybeWaiting)).count();
+            if waiting > 0 {
+                ui.horizontal(|ui| {
+                    ui.add_space(12.0);
+                    let text = egui::RichText::new(format!("Jump to waiting ({waiting})   Ctrl+Shift+U")).size(12.0).color(chrome::GOLD);
+                    if ui.add(egui::Button::new(text).frame(false)).clicked() {
+                        self.jump_waiting = true;
+                    }
+                });
+            }
+            ui.add_space(6.0);
+        });
+
+        // Rows can be dragged into another order in `Manual` only: in the
+        // others the order is the rule's.
+        let manual = self.sort == sort::Sort::Manual;
+        let sense = if manual { egui::Sense::click_and_drag() } else { egui::Sense::click() };
+        let mut rows: Vec<(WorkspaceId, egui::Rect)> = Vec::new();
+        egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
+            for tab in &shown {
+                let w = tab.workspace;
+                let infos = &tab.infos;
+                let (Some(focus), Some(urgent)) = (tab.focus(), tab.urgent()) else { continue };
                 let mut tags: Vec<&String> = Vec::new();
                 for t in infos.iter().flat_map(|i| &i.tags) {
                     if !tags.contains(&t) {
                         tags.push(t);
                     }
                 }
-                if self.tag_filter.as_ref().is_some_and(|f| !tags.contains(&f)) {
-                    continue;
-                }
-                let urgent = infos.iter().max_by_key(|i| (urgency(i.state), std::cmp::Reverse(i.since_ms))).unwrap_or(focus);
                 let height = if tags.is_empty() { 62.0 } else { 82.0 };
-                let (rect, resp) = ui.allocate_exact_size(egui::vec2(ui.available_width(), height), egui::Sense::click());
+                let (rect, resp) = ui.allocate_exact_size(egui::vec2(ui.available_width(), height), sense);
+                rows.push((w.id, rect));
                 let painter = ui.painter_at(rect);
                 let card = rect.shrink2(egui::vec2(6.0, 2.0));
                 if urgent.state == State::Waiting {
@@ -657,6 +760,9 @@ impl App {
                 } else if resp.hovered() {
                     painter.rect_filled(card, 8.0, pal.selection.gamma_multiply(0.4));
                 }
+                if self.dragging_tab == Some(w.id) {
+                    painter.rect_stroke(card, 8.0, egui::Stroke::new(1.0, chrome::CYAN), egui::StrokeKind::Inside);
+                }
                 let dot = egui::pos2(rect.left() + 20.0, rect.top() + 14.0);
                 let color = state_color(urgent.state);
                 match urgent.state {
@@ -668,7 +774,7 @@ impl App {
                         painter.circle_filled(dot, 4.0, color);
                     }
                 }
-                let name = if focus.title.is_empty() { program_name(&focus.command) } else { focus.title.clone() };
+                let name = tab.name();
                 let name = if infos.len() > 1 { format!("{name}  ·{}", infos.len()) } else { name };
                 let left = rect.left() + 32.0;
                 let width = rect.right() - left - 12.0;
@@ -686,6 +792,10 @@ impl App {
                 if quiet_tab {
                     chrome::muted_mark(&painter, egui::pos2(rect.right() - 22.0, rect.top() + 14.0), pal.fg_dim);
                 }
+                // Where to take hold of it, shown only on the way there.
+                if manual && resp.hovered() {
+                    chrome::grip(&painter, egui::pos2(rect.right() - 16.0, rect.center().y), pal.fg_dim);
+                }
                 // The folder, then the branch after its mark; the folder gives
                 // way first when the row is narrow.
                 let mono = egui::FontId::monospace(11.0);
@@ -696,7 +806,7 @@ impl App {
                         f.layout_job(job)
                     })
                 });
-                let room = width - branch.as_ref().map_or(0.0, |b| b.size().x + 20.0);
+                let room = width - 14.0 - branch.as_ref().map_or(0.0, |b| b.size().x + 20.0);
                 let folder = ui.fonts_mut(|f| {
                     let mut job = egui::text::LayoutJob::simple_singleline(home_short(&focus.cwd), mono.clone(), pal.fg_dim);
                     job.wrap = egui::text::TextWrapping::truncate_at_width(room.max(20.0));
@@ -735,6 +845,9 @@ impl App {
                 if resp.clicked() {
                     picked = Some(w.id);
                 }
+                if resp.drag_started() {
+                    self.dragging_tab = Some(w.id);
+                }
                 // The design's 1j has more here; for now, notifications and tags.
                 let ids: Vec<SessionId> = infos.iter().map(|i| i.id).collect();
                 // Open until a click outside it: a click into its tag field
@@ -767,19 +880,27 @@ impl App {
                 });
             }
         });
-        // What waits, one key away (the design's sidebar foot).
-        let waiting = sessions.iter().filter(|i| matches!(i.state, State::Waiting | State::MaybeWaiting)).count();
-        if waiting > 0 {
-            ui.with_layout(egui::Layout::bottom_up(egui::Align::Min), |ui| {
-                ui.add_space(6.0);
-                ui.horizontal(|ui| {
-                    ui.add_space(12.0);
-                    let text = egui::RichText::new(format!("Jump to waiting ({waiting})   Ctrl+Shift+U")).size(12.0).color(chrome::GOLD);
-                    if ui.add(egui::Button::new(text).frame(false)).clicked() {
-                        self.jump_waiting = true;
+        // A tab being dragged: a line where it would go, and there on release.
+        if let Some(dragged) = self.dragging_tab {
+            let pointer = ui.ctx().pointer_latest_pos();
+            let gap = pointer.map(|p| rows.iter().take_while(|(_, r)| p.y > r.center().y).count());
+            if let (Some(gap), Some((_, first))) = (gap, rows.first()) {
+                let y = match rows.get(gap) {
+                    Some((_, r)) => r.top(),
+                    None => rows.last().map_or(first.bottom(), |(_, r)| r.bottom()),
+                };
+                let x = first.x_range();
+                ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
+                ui.painter().line_segment([egui::pos2(x.min + 8.0, y), egui::pos2(x.max - 8.0, y)], egui::Stroke::new(2.0, chrome::CYAN));
+            }
+            if ui.input(|i| !i.pointer.any_down()) {
+                if let Some(gap) = gap {
+                    if let Some(to) = drop_index(workspaces, &rows, dragged, gap) {
+                        ops.push(SideOp::Move(dragged, to));
                     }
-                });
-            });
+                }
+                self.dragging_tab = None;
+            }
         }
         if let Some(client) = &self.client {
             for op in ops {
@@ -787,6 +908,7 @@ impl App {
                     SideOp::Mute(ids, on) => client.mute(ids, on),
                     SideOp::Tag(ids, tag, on) => client.tag(ids, tag, on),
                     SideOp::MuteTag(tag, on) => client.mute_tag(tag, on),
+                    SideOp::Move(id, to) => client.move_workspace(id, to),
                 }
             }
         }
@@ -937,8 +1059,7 @@ use chrome::state_color;
 
 /// `pwsh` out of `C:\Program Files\PowerShell\7\pwsh.exe`.
 pub(crate) fn program_name(command: &str) -> String {
-    let name = command.rsplit(['/', '\\']).next().unwrap_or(command);
-    name.strip_suffix(".exe").unwrap_or(name).to_owned()
+    sort::program_name(command)
 }
 
 /// A folder with the home folder said as `~`.

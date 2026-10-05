@@ -51,6 +51,9 @@ struct Shared {
     /// Which windows have the keyboard, and the order they last had it in.
     /// Locked after `sessions`, before `clients`.
     attention: Mutex<Attention>,
+    /// The tabs in the order they were dragged into; a tab not in it goes
+    /// after, by id. Locked after `workspaces`.
+    order: Mutex<Vec<WorkspaceId>>,
     /// Tags muted (`ToServer::MuteTag`), kept across a restart.
     muted_tags: Mutex<BTreeSet<String>>,
     next: AtomicU64,
@@ -137,6 +140,7 @@ pub fn start_with(at: &Address, options: Options) -> io::Result<ServerHandle> {
         workspaces: Mutex::new(BTreeMap::new()),
         clients: Mutex::new(BTreeMap::new()),
         attention: Mutex::new(Attention::default()),
+        order: Mutex::new(Vec::new()),
         muted_tags: Mutex::new(BTreeSet::new()),
         next: AtomicU64::new(1),
         dirty: dirty_tx,
@@ -274,6 +278,17 @@ fn handle(shared: &Arc<Shared>, client: ClientId, tx: &Sender<ToClient>, msg: To
             }
             broadcast(shared, &sessions);
             save_soon(shared, SAVE_AFTER_CHANGE);
+        }
+        ToServer::MoveWorkspace { id, to } => {
+            let workspaces = lock(&shared.workspaces);
+            let mut now: Vec<WorkspaceId> = ordered(shared, &workspaces).iter().map(|w| w.id).collect();
+            if let Some(from) = now.iter().position(|w| *w == id) {
+                now.remove(from);
+                now.insert(to.min(now.len()), id);
+                *lock(&shared.order) = now;
+                broadcast_workspaces(shared, &workspaces);
+                save_soon(shared, SAVE_AFTER_CHANGE);
+            }
         }
         ToServer::Tag { ids, tag, on } => {
             let Some(tag) = crate::proto::tag_name(&tag) else { return };
@@ -493,8 +508,9 @@ fn save_if_due(shared: &Shared) {
     let sessions = lock(&shared.sessions);
     let workspaces = lock(&shared.workspaces);
     let saved = crate::state::Saved {
-        workspaces: workspaces
-            .values()
+        // In the sidebar's order, which a restore keeps.
+        workspaces: ordered(shared, &workspaces)
+            .into_iter()
             .map(|w| crate::state::SavedWorkspace {
                 layout: w.layout.clone(),
                 focus: w.focus,
@@ -551,8 +567,9 @@ fn spawn_session(
     // What a program asking for the colours (OSC 10 / 11) is told: the
     // window's default palette, filer's colours.
     term.set_colors([0xc8, 0xcd, 0xd8], [0x1b, 0x1e, 0x24]);
-    let branch = git_branch(&cwd).unwrap_or_default();
-    let mut info = Info { id, cwd, title: String::new(), command, state: State::Running, note: String::new(), since_ms: now_ms(), branch, muted: false, tags: Vec::new() };
+    let (branch, project) = git(&cwd);
+    let branch = branch.unwrap_or_default();
+    let mut info = Info { id, cwd, title: String::new(), command, state: State::Running, note: String::new(), since_ms: now_ms(), branch, project, muted: false, tags: Vec::new() };
     lock(&shared.rules).apply(&mut info);
     let watchers: BTreeSet<ClientId> = client.into_iter().collect();
     sessions.insert(
@@ -622,8 +639,16 @@ fn place_session(shared: &Shared, workspaces: &mut BTreeMap<WorkspaceId, Workspa
 }
 
 /// Tell every client the workspaces as they are now.
+/// The tabs in the sidebar's order: as dragged, then the rest by id.
+fn ordered<'a>(shared: &Shared, workspaces: &'a BTreeMap<WorkspaceId, Workspace>) -> Vec<&'a Workspace> {
+    let order = lock(&shared.order);
+    let mut list: Vec<&Workspace> = order.iter().filter_map(|id| workspaces.get(id)).collect();
+    list.extend(workspaces.values().filter(|w| !order.contains(&w.id)));
+    list
+}
+
 fn broadcast_workspaces(shared: &Shared, workspaces: &BTreeMap<WorkspaceId, Workspace>) {
-    let list: Vec<Workspace> = workspaces.values().cloned().collect();
+    let list: Vec<Workspace> = ordered(shared, workspaces).into_iter().cloned().collect();
     for tx in lock(&shared.clients).values() {
         let _ = tx.send(ToClient::Workspaces(list.clone()));
     }
@@ -744,29 +769,44 @@ fn broadcast_notices(shared: &Shared, list: &std::collections::VecDeque<Notice>)
     }
 }
 
-/// The git branch the folder is on: `.git/HEAD` of the nearest repository
-/// above it (a worktree's `.git` file points to its own HEAD). Read on the
+fn git_info(dir: &std::path::Path) -> (String, PathBuf) {
+    let (branch, root) = git(dir);
+    (branch.unwrap_or_default(), root)
+}
+
+/// The git branch the folder is on -- `.git/HEAD` of the nearest repository
+/// above it (a worktree's `.git` file points to its own HEAD) -- and that
+/// repository's top folder (`dir` itself when it is in none). Read on the
 /// server's threads, never the window's.
-fn git_branch(dir: &std::path::Path) -> Option<String> {
+fn git(dir: &std::path::Path) -> (Option<String>, PathBuf) {
+    match repo(dir) {
+        Some((branch, root)) => (branch, root),
+        None => (None, dir.to_path_buf()),
+    }
+}
+
+fn repo(dir: &std::path::Path) -> Option<(Option<String>, PathBuf)> {
     let mut at = Some(dir);
     while let Some(d) = at {
         let git = d.join(".git");
         let head = if git.is_dir() {
-            git.join("HEAD")
+            Some(git.join("HEAD"))
         } else if git.is_file() {
-            let text = std::fs::read_to_string(&git).ok()?;
-            let gitdir = text.trim().strip_prefix("gitdir:")?.trim();
-            d.join(gitdir).join("HEAD")
+            let text = std::fs::read_to_string(&git).unwrap_or_default();
+            text.trim().strip_prefix("gitdir:").map(|g| d.join(g.trim()).join("HEAD"))
         } else {
             at = d.parent();
             continue;
         };
-        let head = std::fs::read_to_string(head).ok()?;
-        let head = head.trim();
-        return Some(match head.strip_prefix("ref: refs/heads/") {
-            Some(branch) => branch.to_owned(),
-            None => head.chars().take(7).collect(),
+        let head = head.and_then(|h| std::fs::read_to_string(h).ok());
+        let branch = head.map(|h| {
+            let h = h.trim();
+            match h.strip_prefix("ref: refs/heads/") {
+                Some(branch) => branch.to_owned(),
+                None => h.chars().take(7).collect(),
+            }
         });
+        return Some((branch, d.to_path_buf()));
     }
     None
 }
@@ -810,7 +850,7 @@ fn run_pump(shared: Arc<Shared>, dirty: Receiver<SessionId>) {
                 // Where the shell is now, for the sidebar and for a restore:
                 // a bash that never says (no OSC 7) still has a folder.
                 if let Some(cwd) = s.term.current_dir().filter(|c| *c != s.info.cwd) {
-                    s.info.branch = git_branch(&cwd).unwrap_or_default();
+                    (s.info.branch, s.info.project) = git_info(&cwd);
                     s.info.cwd = cwd;
                     lock(&shared.rules).apply(&mut s.info);
                     changed = true;
@@ -847,7 +887,7 @@ fn run_pump(shared: Arc<Shared>, dirty: Receiver<SessionId>) {
             // the once-a-second pass, since asking whether anything runs under
             // the shell reads the process table.
             if before.1 != s.info.cwd {
-                s.info.branch = git_branch(&s.info.cwd).unwrap_or_default();
+                (s.info.branch, s.info.project) = git_info(&s.info.cwd);
                 lock(&shared.rules).apply(&mut s.info);
                 save_soon(&shared, SAVE_AFTER_CHANGE);
             }
@@ -907,9 +947,11 @@ mod branch {
         std::fs::create_dir_all(dir.join(".git")).unwrap();
         std::fs::create_dir_all(dir.join("src/deep")).unwrap();
         std::fs::write(dir.join(".git/HEAD"), "ref: refs/heads/claude/task-09\n").unwrap();
-        assert_eq!(super::git_branch(&dir.join("src/deep")).as_deref(), Some("claude/task-09"));
+        assert_eq!(super::git(&dir.join("src/deep")), (Some("claude/task-09".to_owned()), dir.clone()), "the branch, and the repository's top");
         std::fs::write(dir.join(".git/HEAD"), "0123456789abcdef\n").unwrap();
-        assert_eq!(super::git_branch(&dir).as_deref(), Some("0123456"), "a detached HEAD by its commit");
+        assert_eq!(super::git(&dir).0.as_deref(), Some("0123456"), "a detached HEAD by its commit");
+        let outside = std::env::temp_dir();
+        assert_eq!(super::git(&outside), (None, outside.clone()), "no repository: the folder itself");
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

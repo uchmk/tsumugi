@@ -222,6 +222,59 @@ pub fn more_chip(p: &egui::Painter, at: egui::Pos2, n: usize, color: Color32) ->
     rect
 }
 
+/// The sidebar's order button: two arrows and the order's short name.
+pub fn sort_button(ui: &mut egui::Ui, pal: &Palette, label: &str) -> egui::Response {
+    let galley = ui.painter().layout_no_wrap(label.to_owned(), FontId::proportional(11.5), pal.fg_dim);
+    let size = egui::vec2(galley.size().x + 30.0, 24.0);
+    let (rect, resp) = ui.allocate_exact_size(size, egui::Sense::click());
+    let resp = resp.on_hover_text("Sort sessions");
+    let p = ui.painter();
+    let border = if resp.hovered() { Color32::from_rgb(0x4a, 0x50, 0x60) } else { Color32::from_rgb(0x2c, 0x30, 0x39) };
+    p.rect_stroke(rect, 6.0, egui::Stroke::new(1.0, border), egui::StrokeKind::Inside);
+    // Down on the left, up on the right, as in the design.
+    let stroke = egui::Stroke::new(1.3, pal.fg_dim);
+    let o = rect.left_center() + egui::vec2(9.0, 0.0);
+    p.line_segment([o + egui::vec2(0.0, -5.0), o + egui::vec2(0.0, 5.0)], stroke);
+    p.add(egui::Shape::line(vec![o + egui::vec2(-2.5, 2.5), o + egui::vec2(0.0, 5.0), o + egui::vec2(2.5, 2.5)], stroke));
+    let o = o + egui::vec2(7.0, 0.0);
+    p.line_segment([o + egui::vec2(0.0, -5.0), o + egui::vec2(0.0, 5.0)], stroke);
+    p.add(egui::Shape::line(vec![o + egui::vec2(-2.5, -2.5), o + egui::vec2(0.0, -5.0), o + egui::vec2(2.5, -2.5)], stroke));
+    p.galley(egui::pos2(rect.left() + 24.0, rect.center().y - galley.size().y / 2.0), galley, pal.fg_dim);
+    resp
+}
+
+/// A filter's toggle at the sidebar's foot: outlined, and filled while on;
+/// `dot`, a state's colour before the words.
+pub fn filter_button(ui: &mut egui::Ui, pal: &Palette, label: &str, dot: Option<Color32>, on: bool) -> egui::Response {
+    let color = if on { Color32::from_rgb(0xe4, 0xe8, 0xf0) } else { Color32::from_rgb(0x9a, 0xa3, 0xb5) };
+    let galley = ui.painter().layout_no_wrap(label.to_owned(), FontId::proportional(11.5), color);
+    let pad = if dot.is_some() { 21.0 } else { 9.0 };
+    let size = egui::vec2(galley.size().x + pad + 9.0, 22.0);
+    let (rect, resp) = ui.allocate_exact_size(size, egui::Sense::click());
+    let p = ui.painter();
+    if on {
+        p.rect_filled(rect, 6.0, Color32::from_rgb(0x2a, 0x2e, 0x37));
+    } else if resp.hovered() {
+        p.rect_filled(rect, 6.0, pal.selection.gamma_multiply(0.4));
+    }
+    let border = if on { Color32::from_rgb(0x4a, 0x50, 0x60) } else { Color32::from_rgb(0x2c, 0x30, 0x39) };
+    p.rect_stroke(rect, 6.0, egui::Stroke::new(1.0, border), egui::StrokeKind::Inside);
+    if let Some(c) = dot {
+        p.circle_filled(rect.left_center() + egui::vec2(12.0, 0.0), 3.0, c);
+    }
+    p.galley(egui::pos2(rect.left() + pad, rect.center().y - galley.size().y / 2.0), galley, color);
+    resp
+}
+
+/// Six dots to take a row by (the design's grip), centred on `c`.
+pub fn grip(p: &egui::Painter, c: egui::Pos2, color: Color32) {
+    for dx in [-2.0, 2.0] {
+        for dy in [-4.0, 0.0, 4.0] {
+            p.circle_filled(c + egui::vec2(dx, dy), 1.1, color);
+        }
+    }
+}
+
 /// A small bell struck through: the tab's notifications are muted.
 pub fn muted_mark(p: &egui::Painter, c: egui::Pos2, color: Color32) {
     let stroke = egui::Stroke::new(1.2, color);

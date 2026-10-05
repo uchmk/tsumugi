@@ -170,6 +170,27 @@ fn folder_rules_tag_sessions() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+/// A tab dragged to another place stays there, for every window.
+#[test]
+fn tabs_keep_the_order_they_are_dragged_into() {
+    let at = address();
+    let _srv = serve(&at).expect("the server starts");
+    let c = Client::connect(&at, || {}).expect("a client connects");
+    let panes: Vec<_> = (0..3).map(|_| c.spawn(std::env::temp_dir(), None, Size::new(80, 24), (8, 16)).expect("a shell starts")).collect();
+    let tabs = || c.workspaces().iter().map(|w| w.layout.leaves()[0]).collect::<Vec<_>>();
+    let ids: Vec<_> = panes.iter().map(|p| p.id()).collect();
+    eventually("three tabs", || tabs() == ids);
+    let last = c.workspaces()[2].id;
+    c.move_workspace(last, 0);
+    eventually("the last first", || tabs() == vec![ids[2], ids[0], ids[1]]);
+    let first = c.workspaces()[0].id;
+    c.move_workspace(first, 9);
+    eventually("and back at the end", || tabs() == ids);
+    for p in panes {
+        p.kill();
+    }
+}
+
 /// Killing one of two sessions leaves the other, and the server answering.
 #[test]
 fn killing_one_session_leaves_the_rest() {

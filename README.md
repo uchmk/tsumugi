@@ -70,6 +70,16 @@ later), on macOS through AppleScript. Which
 states tell in which way is `[notify]` in the settings (below); by default
 the taskbar does not flash.
 
+### Sorting and filtering
+
+The button beside SESSIONS orders the tabs: **Manual** (the default, where a
+tab is dragged into place and stays there for every window), **Needs me
+first** (waiting, then errors, running, done; the longest waiting first),
+**Recent activity**, **Folder** (the repository a tab is in) or **Name**.
+The foot of the sidebar shows only the tabs in one state, or in one
+repository, and the two combine with the tag filter; the heading then says
+how many of all are shown.
+
 ### Tags
 
 Put name tags on a session to tell them apart and pick them out: right-click

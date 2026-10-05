@@ -209,6 +209,11 @@ impl Client {
         self.0.send(ToServer::Mute { ids, on });
     }
 
+    /// Put a tab at `to` in the sidebar's order.
+    pub fn move_workspace(&self, id: WorkspaceId, to: usize) {
+        self.0.send(ToServer::MoveWorkspace { id, to });
+    }
+
     /// Put a tag on these sessions (`on`), or take it off.
     pub fn tag(&self, ids: Vec<SessionId>, tag: String, on: bool) {
         self.0.send(ToServer::Tag { ids, tag, on });
