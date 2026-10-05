@@ -11,6 +11,7 @@ pub mod diff;
 pub mod frame;
 pub mod proto;
 pub mod server;
+pub mod settings;
 pub mod state;
 pub mod transport;
 

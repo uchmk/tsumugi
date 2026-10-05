@@ -8,7 +8,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::io;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -70,6 +70,10 @@ struct Shared {
     /// The state file (`state.rs`), and when it is next to be written.
     state: Option<PathBuf>,
     save_due: Mutex<Option<std::time::Instant>>,
+    /// The settings file and the tag rules read from it. Locked after
+    /// `sessions`.
+    settings: Option<PathBuf>,
+    rules: Mutex<Rules>,
     /// Seconds of silence after which a running program reads as probably
     /// waiting (Q2: Konsole's 10). 0 turns the guess off.
     quiet: Duration,
@@ -114,12 +118,14 @@ impl ServerHandle {
 pub struct Options {
     /// Where to keep the tabs across a restart; `None` keeps nothing.
     pub state: Option<PathBuf>,
+    /// The settings file, for its tag rules; `None` reads none.
+    pub settings: Option<PathBuf>,
 }
 
 /// Start this user's server: listening at `at`, keeping its state where
 /// `state::default_path` says.
 pub fn start(at: &Address) -> io::Result<ServerHandle> {
-    start_with(at, Options { state: crate::state::default_path() })
+    start_with(at, Options { state: crate::state::default_path(), settings: crate::settings::default_path() })
 }
 
 pub fn start_with(at: &Address, options: Options) -> io::Result<ServerHandle> {
@@ -141,6 +147,8 @@ pub fn start_with(at: &Address, options: Options) -> io::Result<ServerHandle> {
         notices: Mutex::new((1, std::collections::VecDeque::new())),
         started_ms: now_ms(),
         save_due: Mutex::new(None),
+        rules: Mutex::new(Rules::read(options.settings.as_deref())),
+        settings: options.settings,
         quiet: Duration::from_secs(
             std::env::var("TSUMUGI_QUIET_SECS").ok().and_then(|s| s.parse().ok()).unwrap_or(10),
         ),
@@ -408,6 +416,36 @@ fn broadcast(shared: &Shared, sessions: &BTreeMap<SessionId, Session>) {
     }
 }
 
+/// The settings' tag rules, and when the file was read.
+struct Rules {
+    stamp: Option<std::time::SystemTime>,
+    tags: Vec<crate::settings::TagRule>,
+    home: Option<PathBuf>,
+}
+
+impl Rules {
+    /// A file that cannot be read gives no rules; the window says what is
+    /// wrong with it.
+    fn read(path: Option<&Path>) -> Self {
+        let stamp = path.and_then(crate::settings::stamp);
+        let tags = path.and_then(|p| crate::settings::load(p).ok()).map(|s| s.tags.rule).unwrap_or_default();
+        Self { stamp, tags, home: crate::settings::home() }
+    }
+
+    /// Put on `info` the tags its folder's rules give it. Only ever adds: a
+    /// tag taken off by hand comes back only when the folder changes.
+    fn apply(&self, info: &mut Info) -> bool {
+        let mut added = false;
+        for t in self.tags.iter().filter_map(|r| r.tag_for(&info.cwd, self.home.as_deref())) {
+            if !info.tags.contains(&t) && info.tags.len() < crate::proto::MAX_TAGS {
+                info.tags.push(t);
+                added = true;
+            }
+        }
+        added
+    }
+}
+
 /// Which windows have the keyboard (`ToServer::Focus`).
 #[derive(Default)]
 struct Attention {
@@ -514,7 +552,8 @@ fn spawn_session(
     // window's default palette, filer's colours.
     term.set_colors([0xc8, 0xcd, 0xd8], [0x1b, 0x1e, 0x24]);
     let branch = git_branch(&cwd).unwrap_or_default();
-    let info = Info { id, cwd, title: String::new(), command, state: State::Running, note: String::new(), since_ms: now_ms(), branch, muted: false, tags: Vec::new() };
+    let mut info = Info { id, cwd, title: String::new(), command, state: State::Running, note: String::new(), since_ms: now_ms(), branch, muted: false, tags: Vec::new() };
+    lock(&shared.rules).apply(&mut info);
     let watchers: BTreeSet<ClientId> = client.into_iter().collect();
     sessions.insert(
         id,
@@ -753,6 +792,16 @@ fn run_pump(shared: Arc<Shared>, dirty: Receiver<SessionId>) {
         if last_settle.elapsed() >= Duration::from_secs(1) {
             last_settle = std::time::Instant::now();
             let mut changed = false;
+            // The settings changed: their rules apply to every session.
+            let mut rules = lock(&shared.rules);
+            let fresh = shared.settings.as_deref().is_some_and(|p| crate::settings::stamp(p) != rules.stamp);
+            if fresh {
+                *rules = Rules::read(shared.settings.as_deref());
+                for s in sessions.values_mut() {
+                    changed |= rules.apply(&mut s.info);
+                }
+            }
+            drop(rules);
             for s in sessions.values_mut() {
                 if let Some(before) = settle(s, shared.quiet) {
                     record_notice(&shared, s, before);
@@ -763,6 +812,7 @@ fn run_pump(shared: Arc<Shared>, dirty: Receiver<SessionId>) {
                 if let Some(cwd) = s.term.current_dir().filter(|c| *c != s.info.cwd) {
                     s.info.branch = git_branch(&cwd).unwrap_or_default();
                     s.info.cwd = cwd;
+                    lock(&shared.rules).apply(&mut s.info);
                     changed = true;
                     save_soon(&shared, SAVE_AFTER_CHANGE);
                 }
@@ -798,6 +848,7 @@ fn run_pump(shared: Arc<Shared>, dirty: Receiver<SessionId>) {
             // the shell reads the process table.
             if before.1 != s.info.cwd {
                 s.info.branch = git_branch(&s.info.cwd).unwrap_or_default();
+                lock(&shared.rules).apply(&mut s.info);
                 save_soon(&shared, SAVE_AFTER_CHANGE);
             }
             let settled = if noticed { settle(s, shared.quiet) } else { None };

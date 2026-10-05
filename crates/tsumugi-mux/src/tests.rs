@@ -12,7 +12,7 @@ use crate::{server, Client, RemotePane};
 /// A server for a test: no state file, so nothing of the machine's own is
 /// read or written.
 fn serve(at: &Address) -> std::io::Result<server::ServerHandle> {
-    server::start_with(at, server::Options { state: None })
+    server::start_with(at, server::Options { state: None, settings: None })
 }
 
 /// An address no other test, and no real server, is using.
@@ -146,6 +146,30 @@ fn tags_go_on_and_come_off() {
     pane.kill();
 }
 
+/// The settings' folder rules tag a session as it starts, and a rule
+/// written while the server runs is read and applied.
+#[test]
+fn folder_rules_tag_sessions() {
+    let dir = std::env::temp_dir().join(format!("tsumugi-rules-test-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(dir.join("proj")).unwrap();
+    let settings = dir.join("settings.toml");
+    let rule = |folder: &std::path::Path, tag: &str| format!("[[tags.rule]]\nfolder = '{}'\ntag = '{tag}'\n", folder.display());
+    std::fs::write(&settings, rule(&dir, "here")).unwrap();
+    let at = address();
+    let _srv = server::start_with(&at, server::Options { state: None, settings: Some(settings.clone()) }).expect("the server starts");
+    let c = Client::connect(&at, || {}).expect("a client connects");
+    let pane = c.spawn(dir.join("proj"), None, Size::new(80, 24), (8, 16)).expect("a shell starts");
+    let tags = || c.sessions().into_iter().find(|i| i.id == pane.id()).map(|i| i.tags).unwrap_or_default();
+    eventually("the rule's tag", || tags() == ["here"]);
+    // A file's time can be as coarse as a second: written a moment later.
+    std::thread::sleep(Duration::from_millis(1100));
+    std::fs::write(&settings, rule(&dir, "here") + &rule(&dir.join("*"), "{name}")).unwrap();
+    eventually("the new rule's tag", || tags() == ["here", "proj"]);
+    pane.kill();
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 /// Killing one of two sessions leaves the other, and the server answering.
 #[test]
 fn killing_one_session_leaves_the_rest() {
@@ -253,7 +277,7 @@ fn a_restart_brings_the_tabs_back() {
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
     let state = dir.join("state");
-    let options = || server::Options { state: Some(state.clone()) };
+    let options = || server::Options { state: Some(state.clone()), settings: None };
 
     let at = address();
     let _before = server::start_with(&at, options()).expect("the first server starts");
@@ -311,7 +335,7 @@ fn a_restore_can_leave_panes_out() {
     std::fs::create_dir_all(&dir).unwrap();
     let state = dir.join("state");
     let at = address();
-    let _before = server::start_with(&at, server::Options { state: Some(state.clone()) }).unwrap();
+    let _before = server::start_with(&at, server::Options { state: Some(state.clone()), settings: None }).unwrap();
     let c = Client::connect(&at, || {}).unwrap();
     let a = c.spawn(dir.clone(), None, Size::new(80, 24), (8, 16)).unwrap();
     let b = c.spawn_at(dir.clone(), None, Size::new(80, 24), (8, 16), Place::Split { beside: a.id(), dir: Dir::Right }).unwrap();
@@ -321,7 +345,7 @@ fn a_restore_can_leave_panes_out() {
         std::thread::sleep(Duration::from_millis(50));
     }
     let at2 = address();
-    let _after = server::start_with(&at2, server::Options { state: Some(state.clone()) }).unwrap();
+    let _after = server::start_with(&at2, server::Options { state: Some(state.clone()), settings: None }).unwrap();
     let c2 = Client::connect(&at2, || {}).unwrap();
     assert_eq!(c2.restore_only(Some(vec![b.id()])).unwrap(), 1);
     let ws = c2.workspaces();

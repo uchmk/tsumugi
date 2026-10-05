@@ -16,6 +16,9 @@ serde = { version = "1", features = ["derive"] }
 # QUESTIONS.md Q4.
 postcard = { version = "1", default-features = false, features = ["alloc"] }
 crossbeam-channel = "0.5"
+# settings.toml (QUESTIONS.md Q6): Pure Rust, and what filer reads yazi's
+# settings with.
+toml = "1.1"
 
 [target."cfg(windows)".dependencies]
 windows = { version = "0.62", features = ["Win32_Foundation", "Win32_Security", "Win32_Security_Authorization", "Win32_Storage_FileSystem", "Win32_System_IO", "Win32_System_Pipes", "Win32_System_Threading"] }

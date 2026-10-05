@@ -67,8 +67,8 @@ user; tsumugi writes it at the first notification
 (`HKEY_CURRENT_USER\Software\Classes\AppUserModelId\uchmk.tsumugi`). On
 Linux it goes through `notify-send` (a click is seen with libnotify 0.7.12 or
 later), on macOS through AppleScript. Which
-states tell in which way will be in the settings screen; for now it is the
-defaults above, and the taskbar does not flash.
+states tell in which way is `[notify]` in the settings (below); by default
+the taskbar does not flash.
 
 ### Tags
 
@@ -78,7 +78,38 @@ a tab and type into **Add a tag**, or from inside it run `tsumugi tag review`
 session). A session has five at most; a tab shows three and `+N`. The tags in
 use line up under SESSIONS: click one to show only its tabs, click it again
 for all, and right-click it to mute the notifications of every session
-wearing it.
+wearing it. Folder rules in the settings tag sessions by themselves.
+
+### Settings
+
+`settings.toml` is read from `%APPDATA%\tsumugi\` on Windows,
+`~/Library/Application Support/tsumugi/` on macOS and `~/.config/tsumugi/`
+elsewhere (`TSUMUGI_SETTINGS` names another file). Changes apply within a
+couple of seconds, without restarting; a mistake shows above the status bar
+with its line, and the last good settings stay in force.
+
+```toml
+# Tag a session by the folder it is in, or anywhere under it.
+[[tags.rule]]
+folder = "~/dev/filer"
+tag = "filer"
+
+# Every folder under ~/dev, by its own name.
+[[tags.rule]]
+folder = "~/dev/*"
+tag = "{name}"
+
+# Which states tell you in which way while you are not at the window:
+# waiting, error, done (done only after a run of a minute or more).
+[notify]
+system = ["waiting", "error", "done"]   # the system's notification
+taskbar = ["waiting", "error"]          # the number on the taskbar
+flash = []                              # flash the taskbar button
+```
+
+A folder rule adds its tag when a session starts or moves into the folder;
+it never takes one off, so a tag removed by hand stays off until the session
+moves again.
 
 ### Claude Code hooks
 

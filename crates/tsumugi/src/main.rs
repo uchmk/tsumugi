@@ -402,6 +402,10 @@ struct App {
     tag_filter: Option<String>,
     /// What is being typed into a tab menu's "Add a tag".
     tag_input: String,
+    /// `settings.toml` as read again whenever it changes, and what is wrong
+    /// with it.
+    settings: std::sync::mpsc::Receiver<Result<tsumugi_mux::settings::Settings, String>>,
+    settings_error: Option<String>,
 }
 
 /// A change asked for from the sidebar, made once it is drawn.
@@ -455,6 +459,8 @@ impl App {
             focus_sent: None,
             tag_filter: None,
             tag_input: String::new(),
+            settings: watch_settings(cc.egui_ctx.clone()),
+            settings_error: None,
         }
     }
 
@@ -945,6 +951,29 @@ pub(crate) fn home_short(path: &std::path::Path) -> String {
     }
 }
 
+/// Read `settings.toml` now and whenever it changes, on a thread of its own
+/// (no disk on the window's thread).
+fn watch_settings(ctx: egui::Context) -> std::sync::mpsc::Receiver<Result<tsumugi_mux::settings::Settings, String>> {
+    use tsumugi_mux::settings;
+    let (tx, rx) = std::sync::mpsc::channel();
+    let _ = std::thread::Builder::new().name("settings".into()).spawn(move || {
+        let Some(path) = settings::default_path() else { return };
+        let mut seen = None;
+        loop {
+            let stamp = settings::stamp(&path);
+            if seen != Some(stamp) {
+                seen = Some(stamp);
+                if tx.send(settings::load(&path)).is_err() {
+                    return;
+                }
+                ctx.request_repaint();
+            }
+            std::thread::sleep(Duration::from_secs(2));
+        }
+    });
+    rx
+}
+
 /// Told of in the bell only: muted itself, or one of its tags is.
 fn quiet(i: &Info, muted_tags: &[String]) -> bool {
     i.muted || i.tags.iter().any(|t| muted_tags.contains(t))
@@ -979,6 +1008,24 @@ impl eframe::App for App {
             self.had_tabs = true;
         } else if self.had_tabs && self.pending.is_none() {
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+        }
+        for read in self.settings.try_iter() {
+            match read {
+                Ok(s) => {
+                    self.alerts.rules = alert::Rules::from(&s.notify);
+                    self.settings_error = None;
+                }
+                Err(e) => self.settings_error = Some(e),
+            }
+        }
+        if let Some(e) = &self.settings_error {
+            // Above the status bar until the file is fixed; the server keeps
+            // its tag rules from before too.
+            egui::Area::new(egui::Id::new("settings-error")).anchor(egui::Align2::CENTER_BOTTOM, egui::vec2(0.0, -32.0)).show(&ctx, |ui| {
+                egui::Frame::NONE.fill(egui::Color32::from_rgb(0x3a, 0x1e, 0x22)).corner_radius(6.0).inner_margin(egui::Margin::symmetric(10, 5)).show(ui, |ui| {
+                    ui.label(egui::RichText::new(e).size(12.0).color(chrome::RED));
+                });
+            });
         }
         let here = ctx.input(|i| i.viewport().focused).unwrap_or(true);
         if self.focus_sent != Some(here) {

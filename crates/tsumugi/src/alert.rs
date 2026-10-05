@@ -10,8 +10,7 @@ use std::sync::{Arc, mpsc};
 
 use tsumugi_mux::{Notice, SessionId, State};
 
-/// Which ways to tell, per state. The settings screen (1m) will set these;
-/// until then they are the design's defaults.
+/// Which ways to tell, per state: `[notify]` in `settings.toml`.
 #[derive(Clone, Copy, Debug)]
 pub struct Rules {
     /// The system's notification.
@@ -41,13 +40,24 @@ impl Kinds {
     }
 }
 
+impl Kinds {
+    /// From the settings' words (checked there): `waiting`, `error`, `done`.
+    fn from_words(words: &[String]) -> Self {
+        let has = |w: &str| words.iter().any(|x| x == w);
+        Self { waiting: has("waiting"), error: has("error"), done: has("done") }
+    }
+}
+
+impl From<&tsumugi_mux::settings::Notify> for Rules {
+    fn from(n: &tsumugi_mux::settings::Notify) -> Self {
+        Self { notify: Kinds::from_words(&n.system), badge: Kinds::from_words(&n.taskbar), flash: Kinds::from_words(&n.flash) }
+    }
+}
+
 impl Default for Rules {
-    /// The design's 1h: notifications for all three, the number for the two
-    /// that want a person, no flashing.
+    /// The settings' defaults (the design's 1h).
     fn default() -> Self {
-        let all = Kinds { waiting: true, error: true, done: true };
-        let none = Kinds { waiting: false, error: false, done: false };
-        Self { notify: all, badge: Kinds { done: false, ..all }, flash: none }
+        Self::from(&tsumugi_mux::settings::Notify::default())
     }
 }
 
