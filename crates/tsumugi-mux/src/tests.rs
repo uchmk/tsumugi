@@ -128,6 +128,24 @@ fn one_window_tells() {
     eventually("a had it last", || a.attention() == (false, true) && b.attention() == (false, false));
 }
 
+/// A tag is kept the one way however it is typed, a session has at most
+/// five (`f` came in once `c` went), and taking one off leaves the rest.
+#[test]
+fn tags_go_on_and_come_off() {
+    let at = address();
+    let _srv = serve(&at).expect("the server starts");
+    let c = Client::connect(&at, || {}).expect("a client connects");
+    let pane = c.spawn(std::env::temp_dir(), None, Size::new(80, 24), (8, 16)).expect("a shell starts");
+    for t in ["#a", "b", " c ", "d", "e", "f", "a", "#"] {
+        c.tag(vec![pane.id()], t.into(), true);
+    }
+    c.tag(vec![pane.id()], "c".into(), false);
+    c.tag(vec![pane.id()], "f".into(), true);
+    let tags = || c.sessions().into_iter().find(|i| i.id == pane.id()).map(|i| i.tags).unwrap_or_default();
+    eventually("the tags settle", || tags() == ["a", "b", "d", "e", "f"].map(String::from));
+    pane.kill();
+}
+
 /// Killing one of two sessions leaves the other, and the server answering.
 #[test]
 fn killing_one_session_leaves_the_rest() {
@@ -244,6 +262,9 @@ fn a_restart_brings_the_tabs_back() {
     let a = c.spawn(dir.clone(), None, size, (8, 16)).expect("a starts");
     let b = c.spawn_at(dir.clone(), None, size, (8, 16), Place::Split { beside: a.id(), dir: Dir::Down }).expect("b starts");
     c.mute(vec![a.id()], true);
+    c.tag(vec![a.id(), b.id()], "#review".into(), true);
+    c.tag(vec![b.id()], "ci run".into(), true);
+    c.mute_tag("ci-run".into(), true);
     c.notify(b.id(), State::Done, String::new(), Some("conv-1234".into())).unwrap();
     let deadline = Instant::now() + Duration::from_secs(10);
     while crate::state::load(&state).is_none_or(|s| s.workspaces.first().is_none_or(|w| w.panes.iter().all(|p| p.claude.is_none()))) {
@@ -266,6 +287,9 @@ fn a_restart_brings_the_tabs_back() {
     assert!(infos.iter().all(|i| i.cwd == dir), "each in its folder: {infos:?}");
     let muted: Vec<_> = infos.iter().filter(|i| i.muted).map(|i| i.id).collect();
     assert_eq!(muted, vec![leaves[0]], "the muted pane stays muted");
+    let tags: Vec<_> = leaves.iter().map(|id| infos.iter().find(|i| i.id == *id).unwrap().tags.clone()).collect();
+    assert_eq!(tags, vec![vec!["review".to_owned()], vec!["review".to_owned(), "ci-run".to_owned()]], "tags come back");
+    eventually("the muted tag comes back", || c2.muted_tags() == vec!["ci-run".to_owned()]);
     let resumed = c2.attach(leaves[1]);
     until(&resumed, "claude --resume typed", |t| t.contains("claude --resume conv-1234"));
     assert_eq!(c2.restore().unwrap(), 0, "a server with sessions restores nothing");

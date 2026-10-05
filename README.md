@@ -70,6 +70,16 @@ later), on macOS through AppleScript. Which
 states tell in which way will be in the settings screen; for now it is the
 defaults above, and the taskbar does not flash.
 
+### Tags
+
+Put name tags on a session to tell them apart and pick them out: right-click
+a tab and type into **Add a tag**, or from inside it run `tsumugi tag review`
+(`--remove` takes one off, no tag lists them, `--session N` names another
+session). A session has five at most; a tab shows three and `+N`. The tags in
+use line up under SESSIONS: click one to show only its tabs, click it again
+for all, and right-click it to mute the notifications of every session
+wearing it.
+
 ### Claude Code hooks
 
 An agent can say for itself that it is waiting. With `tsumugi` on the `PATH`,

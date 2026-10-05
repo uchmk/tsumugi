@@ -44,6 +44,7 @@ struct State {
     /// `ToClient::Attention`: someone is at a window, and this one tells.
     looking: bool,
     teller: bool,
+    muted_tags: Vec<String>,
     /// The connection is gone (the server stopped, or never answered).
     lost: bool,
 }
@@ -208,6 +209,22 @@ impl Client {
         self.0.send(ToServer::Mute { ids, on });
     }
 
+    /// Put a tag on these sessions (`on`), or take it off.
+    pub fn tag(&self, ids: Vec<SessionId>, tag: String, on: bool) {
+        self.0.send(ToServer::Tag { ids, tag, on });
+    }
+
+    /// Tell of the sessions with this tag only in the bell (`on`), or
+    /// everywhere again.
+    pub fn mute_tag(&self, tag: String, on: bool) {
+        self.0.send(ToServer::MuteTag { tag, on });
+    }
+
+    /// The tags muted, as the server last told them.
+    pub fn muted_tags(&self) -> Vec<String> {
+        self.0.lock().muted_tags.clone()
+    }
+
     /// Mark notifications read: these, or all.
     pub fn read_notices(&self, ids: Option<Vec<u64>>) {
         self.0.send(ToServer::ReadNotices { ids });
@@ -267,6 +284,7 @@ fn receive(inner: &Inner, msg: ToClient) {
         ToClient::Exited { id } => st.screens.entry(id).or_default().exited = true,
         ToClient::Clipboard(text) => st.clipboard.push(text),
         ToClient::Attention { looking, teller } => (st.looking, st.teller) = (looking, teller),
+        ToClient::MutedTags(list) => st.muted_tags = list,
         // An error answers the request waiting on one (a spawn), if any.
         ToClient::Error(e) => st.spawned.push_back(Err(e)),
     }

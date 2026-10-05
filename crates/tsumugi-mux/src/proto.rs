@@ -7,7 +7,7 @@ use tsumugi_pane::Size;
 
 /// Bumped whenever a message changes shape: a client and a server that
 /// disagree say so at `Hello` instead of misreading each other.
-pub const VERSION: u32 = 8;
+pub const VERSION: u32 = 9;
 
 pub type SessionId = u64;
 pub type WorkspaceId = u64;
@@ -95,6 +95,19 @@ pub struct Info {
     /// Its notices go to the bell only: no system notification, no number
     /// on the taskbar.
     pub muted: bool,
+    /// Name tags put on it (`review`, `ci`), at most [`MAX_TAGS`], in the
+    /// order they were put on.
+    pub tags: Vec<String>,
+}
+
+/// How many tags a session can have (the design's 1o).
+pub const MAX_TAGS: usize = 5;
+
+/// A tag as it is kept: without a leading `#`, spaces made dashes, at most
+/// 24 characters. `None` when nothing is left.
+pub fn tag_name(s: &str) -> Option<String> {
+    let t: String = s.trim().trim_start_matches('#').trim().chars().map(|c| if c.is_whitespace() { '-' } else { c }).take(24).collect();
+    (!t.is_empty()).then_some(t)
 }
 
 /// One entry of the notification list (the bell): a session that came to
@@ -163,6 +176,11 @@ pub enum ToServer {
     Focus { focused: bool },
     /// Tell of these sessions only in the bell, or again everywhere.
     Mute { ids: Vec<SessionId>, on: bool },
+    /// Put a tag on these sessions (`on`), or take it off.
+    Tag { ids: Vec<SessionId>, tag: String, on: bool },
+    /// Tell of the sessions with this tag only in the bell, or again
+    /// everywhere; answered, to every client, with `MutedTags`.
+    MuteTag { tag: String, on: bool },
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -189,5 +207,7 @@ pub enum ToClient {
     /// client is the one to tell them otherwise (`teller`: the window that
     /// had the keyboard last), so two windows do not tell twice.
     Attention { looking: bool, teller: bool },
+    /// The tags whose sessions are told of in the bell only.
+    MutedTags(Vec<String>),
     Error(String),
 }

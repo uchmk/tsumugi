@@ -14,13 +14,15 @@ use crate::proto::SessionId;
 
 /// Bumped when the shape below changes; a file of another version is left
 /// alone rather than misread.
-const VERSION: u32 = 3;
+const VERSION: u32 = 4;
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Saved {
     pub workspaces: Vec<SavedWorkspace>,
     /// When it was written, in Unix milliseconds: "when tsumugi stopped".
     pub at_ms: u64,
+    /// Tags whose sessions are told of in the bell only (v4).
+    pub muted_tags: Vec<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -45,28 +47,30 @@ pub struct SavedPane {
     pub state: crate::proto::State,
     /// Told of in the bell only (v3).
     pub muted: bool,
+    /// Its tags (v4).
+    pub tags: Vec<String>,
 }
 
-/// The shape before `muted` (v2, tsumugi 0.5 and 0.6), read so that an
-/// update does not lose the tabs.
-mod v2 {
+/// The shapes before this one, read so that an update does not lose the
+/// tabs: v2 (tsumugi 0.5 to 0.7) had no `muted`, v3 (0.8) no tags.
+mod old {
     use super::*;
 
     #[derive(Deserialize)]
-    pub struct Saved {
-        workspaces: Vec<SavedWorkspace>,
+    pub struct Saved<P> {
+        workspaces: Vec<SavedWorkspace<P>>,
         at_ms: u64,
     }
 
     #[derive(Deserialize)]
-    struct SavedWorkspace {
+    struct SavedWorkspace<P> {
         layout: Node<SessionId>,
         focus: SessionId,
-        panes: Vec<SavedPane>,
+        panes: Vec<P>,
     }
 
     #[derive(Deserialize)]
-    struct SavedPane {
+    pub struct V2 {
         id: SessionId,
         cwd: PathBuf,
         shell: Option<(String, Vec<String>)>,
@@ -75,22 +79,39 @@ mod v2 {
         state: crate::proto::State,
     }
 
-    impl From<Saved> for super::Saved {
-        fn from(s: Saved) -> Self {
+    /// Field by field: postcard is not self-describing, so `flatten` would
+    /// not read it.
+    #[derive(Deserialize)]
+    pub struct V3 {
+        id: SessionId,
+        cwd: PathBuf,
+        shell: Option<(String, Vec<String>)>,
+        claude: Option<String>,
+        title: String,
+        state: crate::proto::State,
+        muted: bool,
+    }
+
+    impl From<V2> for super::SavedPane {
+        fn from(p: V2) -> Self {
+            Self { id: p.id, cwd: p.cwd, shell: p.shell, claude: p.claude, title: p.title, state: p.state, muted: false, tags: Vec::new() }
+        }
+    }
+
+    impl From<V3> for super::SavedPane {
+        fn from(p: V3) -> Self {
+            Self { id: p.id, cwd: p.cwd, shell: p.shell, claude: p.claude, title: p.title, state: p.state, muted: p.muted, tags: Vec::new() }
+        }
+    }
+
+    impl<P: Into<super::SavedPane>> From<Saved<P>> for super::Saved {
+        fn from(s: Saved<P>) -> Self {
             let workspaces = s
                 .workspaces
                 .into_iter()
-                .map(|w| super::SavedWorkspace {
-                    layout: w.layout,
-                    focus: w.focus,
-                    panes: w
-                        .panes
-                        .into_iter()
-                        .map(|p| super::SavedPane { id: p.id, cwd: p.cwd, shell: p.shell, claude: p.claude, title: p.title, state: p.state, muted: false })
-                        .collect(),
-                })
+                .map(|w| super::SavedWorkspace { layout: w.layout, focus: w.focus, panes: w.panes.into_iter().map(Into::into).collect() })
                 .collect();
-            Self { workspaces, at_ms: s.at_ms }
+            Self { workspaces, at_ms: s.at_ms, muted_tags: Vec::new() }
         }
     }
 }
@@ -120,7 +141,8 @@ pub fn load(path: &Path) -> Option<Saved> {
     let (version, rest) = bytes.split_first_chunk::<4>()?;
     match u32::from_le_bytes(*version) {
         VERSION => postcard::from_bytes(rest).ok(),
-        2 => postcard::from_bytes::<v2::Saved>(rest).ok().map(Into::into),
+        3 => postcard::from_bytes::<old::Saved<old::V3>>(rest).ok().map(Into::into),
+        2 => postcard::from_bytes::<old::Saved<old::V2>>(rest).ok().map(Into::into),
         _ => None,
     }
 }
@@ -192,9 +214,11 @@ mod tests {
                     title: "t".into(),
                     state: crate::proto::State::Waiting,
                     muted: true,
+                    tags: vec!["review".into()],
                 }],
             }],
             at_ms: 1,
+            muted_tags: vec!["ci".into()],
         };
         store(&path, &saved).unwrap();
         assert_eq!(load(&path), Some(saved));

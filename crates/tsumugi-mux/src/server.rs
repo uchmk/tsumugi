@@ -51,6 +51,8 @@ struct Shared {
     /// Which windows have the keyboard, and the order they last had it in.
     /// Locked after `sessions`, before `clients`.
     attention: Mutex<Attention>,
+    /// Tags muted (`ToServer::MuteTag`), kept across a restart.
+    muted_tags: Mutex<BTreeSet<String>>,
     next: AtomicU64,
     /// A session to look at: its shell said something, or a client asked.
     dirty: Sender<SessionId>,
@@ -129,6 +131,7 @@ pub fn start_with(at: &Address, options: Options) -> io::Result<ServerHandle> {
         workspaces: Mutex::new(BTreeMap::new()),
         clients: Mutex::new(BTreeMap::new()),
         attention: Mutex::new(Attention::default()),
+        muted_tags: Mutex::new(BTreeSet::new()),
         next: AtomicU64::new(1),
         dirty: dirty_tx,
         done: done_tx,
@@ -176,6 +179,7 @@ fn serve(shared: Arc<Shared>, client: ClientId, conn: Conn) {
     let (tx, rx) = crossbeam_channel::unbounded::<ToClient>();
     let _ = tx.send(ToClient::Started { at_ms: shared.started_ms });
     let _ = tx.send(ToClient::Notices(lock(&shared.notices).1.iter().cloned().collect()));
+    let _ = tx.send(ToClient::MutedTags(lock(&shared.muted_tags).iter().cloned().collect()));
     lock(&shared.clients).insert(client, tx.clone());
     // Last in the line to tell: a window that never had the keyboard tells
     // only when it is the only one.
@@ -261,6 +265,36 @@ fn handle(shared: &Arc<Shared>, client: ClientId, tx: &Sender<ToClient>, msg: To
                 }
             }
             broadcast(shared, &sessions);
+            save_soon(shared, SAVE_AFTER_CHANGE);
+        }
+        ToServer::Tag { ids, tag, on } => {
+            let Some(tag) = crate::proto::tag_name(&tag) else { return };
+            for id in ids {
+                let Some(s) = sessions.get_mut(&id) else { continue };
+                let tags = &mut s.info.tags;
+                if !on {
+                    tags.retain(|t| *t != tag);
+                } else if !tags.contains(&tag) && tags.len() < crate::proto::MAX_TAGS {
+                    tags.push(tag.clone());
+                }
+            }
+            broadcast(shared, &sessions);
+            save_soon(shared, SAVE_AFTER_CHANGE);
+        }
+        ToServer::MuteTag { tag, on } => {
+            let Some(tag) = crate::proto::tag_name(&tag) else { return };
+            let list: Vec<String> = {
+                let mut muted = lock(&shared.muted_tags);
+                if on {
+                    muted.insert(tag);
+                } else {
+                    muted.remove(&tag);
+                }
+                muted.iter().cloned().collect()
+            };
+            for tx in lock(&shared.clients).values() {
+                let _ = tx.send(ToClient::MutedTags(list.clone()));
+            }
             save_soon(shared, SAVE_AFTER_CHANGE);
         }
         ToServer::Spawn { cwd, shell, size, cell, place } => {
@@ -439,11 +473,13 @@ fn save_if_due(shared: &Shared) {
                         title: s.info.title.clone(),
                         state: s.info.state,
                         muted: s.info.muted,
+                        tags: s.info.tags.clone(),
                     })
                     .collect(),
             })
             .collect(),
         at_ms: now_ms(),
+        muted_tags: lock(&shared.muted_tags).iter().cloned().collect(),
     };
     drop(workspaces);
     drop(sessions);
@@ -478,7 +514,7 @@ fn spawn_session(
     // window's default palette, filer's colours.
     term.set_colors([0xc8, 0xcd, 0xd8], [0x1b, 0x1e, 0x24]);
     let branch = git_branch(&cwd).unwrap_or_default();
-    let info = Info { id, cwd, title: String::new(), command, state: State::Running, note: String::new(), since_ms: now_ms(), branch, muted: false };
+    let info = Info { id, cwd, title: String::new(), command, state: State::Running, note: String::new(), since_ms: now_ms(), branch, muted: false, tags: Vec::new() };
     let watchers: BTreeSet<ClientId> = client.into_iter().collect();
     sessions.insert(
         id,
@@ -492,6 +528,14 @@ fn spawn_session(
 /// resumed where it ran. The number of sessions started.
 fn restore(shared: &Arc<Shared>, sessions: &mut BTreeMap<SessionId, Session>, only: Option<&[SessionId]>) -> usize {
     let Some(saved) = shared.state.as_deref().and_then(crate::state::load) else { return 0 };
+    let muted: Vec<String> = {
+        let mut m = lock(&shared.muted_tags);
+        m.extend(saved.muted_tags.iter().cloned());
+        m.iter().cloned().collect()
+    };
+    for tx in lock(&shared.clients).values() {
+        let _ = tx.send(ToClient::MutedTags(muted.clone()));
+    }
     let home = std::env::var_os(if cfg!(windows) { "USERPROFILE" } else { "HOME" }).map(PathBuf::from);
     let mut started = 0;
     let mut workspaces = lock(&shared.workspaces);
@@ -504,6 +548,7 @@ fn restore(shared: &Arc<Shared>, sessions: &mut BTreeMap<SessionId, Session>, on
             };
             let s = sessions.get_mut(&id).expect("just started");
             s.info.muted = p.muted;
+            s.info.tags.clone_from(&p.tags);
             if let Some(conversation) = &p.claude {
                 s.claude = Some(conversation.clone());
                 s.pending = Some(format!("claude --resume {conversation}\r").into_bytes());

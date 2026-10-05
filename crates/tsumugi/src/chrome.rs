@@ -180,6 +180,48 @@ pub fn bell(ui: &mut egui::Ui, pal: &Palette, notices: &[Notice]) -> egui::Respo
     resp
 }
 
+/// A tag's colours, fill and text: picked from its name, so a tag is the
+/// same colour in every window and after a restart. The first three are the
+/// design's (`claude`, `review`, `filer`).
+pub fn tag_colors(tag: &str) -> (Color32, Color32) {
+    type Rgb = (u8, u8, u8);
+    const COLORS: [(Rgb, Rgb); 8] = [
+        ((0x4a, 0x4f, 0x5c), (0xee, 0xf0, 0xf4)),
+        ((0x5e, 0x4a, 0x86), (0xf3, 0xec, 0xff)),
+        ((0x2f, 0x6b, 0x66), (0xe6, 0xff, 0xfb)),
+        ((0x7a, 0x5a, 0x22), (0xff, 0xf3, 0xdc)),
+        ((0x2f, 0x4f, 0x7f), (0xe6, 0xef, 0xff)),
+        ((0x7a, 0x34, 0x3a), (0xff, 0xe8, 0xea)),
+        ((0x3d, 0x6b, 0x3a), (0xea, 0xff, 0xe6)),
+        ((0x7a, 0x3a, 0x5e), (0xff, 0xe8, 0xf4)),
+    ];
+    // FNV-1a: the same on every machine, unlike std's hasher.
+    let h = tag.bytes().fold(0x811c_9dc5u32, |h, b| (h ^ u32::from(b)).wrapping_mul(0x0100_0193));
+    let ((r, g, b), (r2, g2, b2)) = COLORS[h as usize % COLORS.len()];
+    (Color32::from_rgb(r, g, b), Color32::from_rgb(r2, g2, b2))
+}
+
+/// A tag's chip at `at` (its left top), filled like the design's; its
+/// rectangle. `faded`: drawn dim, for a muted tag.
+pub fn tag_chip(p: &egui::Painter, at: egui::Pos2, tag: &str, faded: bool) -> egui::Rect {
+    let (fill, text) = tag_colors(tag);
+    let (fill, text) = if faded { (fill.gamma_multiply(0.45), text.gamma_multiply(0.6)) } else { (fill, text) };
+    let galley = p.layout_no_wrap(tag.to_owned(), FontId::proportional(11.0), text);
+    let rect = egui::Rect::from_min_size(at, egui::vec2(galley.size().x + 12.0, 16.0));
+    p.rect_filled(rect, 4.0, fill);
+    p.galley(egui::pos2(rect.left() + 6.0, rect.center().y - galley.size().y / 2.0), galley, text);
+    rect
+}
+
+/// `+N` for the tags that did not fit.
+pub fn more_chip(p: &egui::Painter, at: egui::Pos2, n: usize, color: Color32) -> egui::Rect {
+    let galley = p.layout_no_wrap(format!("+{n}"), FontId::proportional(11.0), color);
+    let rect = egui::Rect::from_min_size(at, egui::vec2(galley.size().x + 12.0, 16.0));
+    p.rect_stroke(rect, 4.0, egui::Stroke::new(1.0, Color32::from_rgb(0x3a, 0x3f, 0x4b)), egui::StrokeKind::Inside);
+    p.galley(egui::pos2(rect.left() + 6.0, rect.center().y - galley.size().y / 2.0), galley, color);
+    rect
+}
+
 /// A small bell struck through: the tab's notifications are muted.
 pub fn muted_mark(p: &egui::Painter, c: egui::Pos2, color: Color32) {
     let stroke = egui::Stroke::new(1.2, color);

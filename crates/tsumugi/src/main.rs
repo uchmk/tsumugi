@@ -48,6 +48,7 @@ fn main() -> std::process::ExitCode {
         Some("server") => server(),
         Some("ls") => ls(),
         Some("notify") => notify(&args[1..]),
+        Some("tag") => tag(&args[1..]),
         Some("shell-hook") => match shellhook::text(args.get(1).map(String::as_str)) {
             Ok(text) => {
                 print!("{text}");
@@ -63,7 +64,7 @@ fn main() -> std::process::ExitCode {
             std::process::ExitCode::SUCCESS
         }
         Some(other) => {
-            eprintln!("tsumugi: unknown command `{other}` (server, ls, notify, shell-hook, --version)");
+            eprintln!("tsumugi: unknown command `{other}` (server, ls, notify, tag, shell-hook, --version)");
             std::process::ExitCode::from(2)
         }
     }
@@ -160,6 +161,54 @@ fn notify(args: &[String]) -> std::process::ExitCode {
         Ok(()) => std::process::ExitCode::SUCCESS,
         Err(e) => {
             eprintln!("tsumugi notify: {e}");
+            std::process::ExitCode::FAILURE
+        }
+    }
+}
+
+/// `tsumugi tag [--session N] [--remove] [TAG...]`: put tags on a session
+/// (by default the one it runs in), take them off, or with no tag print the
+/// session's tags, one a line.
+fn tag(args: &[String]) -> std::process::ExitCode {
+    let mut session = std::env::var("TSUMUGI_SESSION").ok().and_then(|s| s.parse().ok());
+    let mut on = true;
+    let mut tags = Vec::new();
+    let mut it = args.iter();
+    while let Some(a) = it.next() {
+        match a.as_str() {
+            "--session" => session = it.next().and_then(|s| s.parse().ok()),
+            "--remove" | "-r" => on = false,
+            _ => tags.push(a.clone()),
+        }
+    }
+    let Some(id) = session else {
+        eprintln!("tsumugi tag: not inside a tsumugi session (no TSUMUGI_SESSION); give --session N");
+        return std::process::ExitCode::from(2);
+    };
+    let done = Client::connect(&Address::for_user(), || {}).and_then(|c| {
+        for t in tags.iter().filter_map(|t| tsumugi_mux::proto::tag_name(t)) {
+            c.tag(vec![id], t, on);
+        }
+        // Asked after the tags, so it answers once they are on.
+        c.list()
+    });
+    match done {
+        Ok(list) => match list.into_iter().find(|i| i.id == id) {
+            Some(i) => {
+                if tags.is_empty() {
+                    for t in i.tags {
+                        println!("{t}");
+                    }
+                }
+                std::process::ExitCode::SUCCESS
+            }
+            None => {
+                eprintln!("tsumugi tag: no session {id}");
+                std::process::ExitCode::FAILURE
+            }
+        },
+        Err(e) => {
+            eprintln!("tsumugi tag: {e}");
             std::process::ExitCode::FAILURE
         }
     }
@@ -349,6 +398,17 @@ struct App {
     teller: alert::Teller,
     /// Whether the server was last told this window has the keyboard.
     focus_sent: Option<bool>,
+    /// The sidebar shows only the tabs with this tag (the design's 1a).
+    tag_filter: Option<String>,
+    /// What is being typed into a tab menu's "Add a tag".
+    tag_input: String,
+}
+
+/// A change asked for from the sidebar, made once it is drawn.
+enum SideOp {
+    Mute(Vec<SessionId>, bool),
+    Tag(Vec<SessionId>, String, bool),
+    MuteTag(String, bool),
 }
 
 impl App {
@@ -393,6 +453,8 @@ impl App {
                 move || ctx.request_repaint()
             }),
             focus_sent: None,
+            tag_filter: None,
+            tag_input: String::new(),
         }
     }
 
@@ -492,8 +554,23 @@ impl App {
     fn sidebar(&mut self, ui: &mut egui::Ui, workspaces: &[Workspace], sessions: &[Info]) -> Option<WorkspaceId> {
         let pal = self.palette;
         let mut picked = None;
-        let mut mute = None;
+        let mut ops = Vec::new();
         let now = chrome::now_ms();
+        let muted_tags = self.client.as_ref().map(Client::muted_tags).unwrap_or_default();
+        // Every tag in use, in the order the tabs show them.
+        let mut all_tags: Vec<String> = Vec::new();
+        for w in workspaces {
+            for id in w.layout.leaves() {
+                for t in sessions.iter().find(|i| i.id == id).map(|i| i.tags.as_slice()).unwrap_or_default() {
+                    if !all_tags.contains(t) {
+                        all_tags.push(t.clone());
+                    }
+                }
+            }
+        }
+        if self.tag_filter.as_ref().is_some_and(|t| !all_tags.contains(t)) {
+            self.tag_filter = None;
+        }
         ui.add_space(8.0);
         ui.horizontal(|ui| {
             ui.add_space(14.0);
@@ -512,13 +589,56 @@ impl App {
             });
         });
         ui.add_space(4.0);
+        // The tags, to show only the tabs with one (the design's 1a).
+        if !all_tags.is_empty() {
+            // A margin rather than a space, so a second line lines up too.
+            let margin = egui::Margin { left: 14, right: 10, top: 0, bottom: 0 };
+            egui::Frame::NONE.inner_margin(margin).show(ui, |ui| ui.horizontal_wrapped(|ui| {
+                ui.spacing_mut().item_spacing = egui::vec2(5.0, 5.0);
+                for t in &all_tags {
+                    let faded = muted_tags.contains(t);
+                    let size = egui::vec2(ui.fonts_mut(|f| f.layout_no_wrap(t.clone(), egui::FontId::proportional(11.0), pal.fg).size().x) + 12.0, 16.0);
+                    let (rect, resp) = ui.allocate_exact_size(size, egui::Sense::click());
+                    let on = self.tag_filter.as_ref() == Some(t);
+                    let p = ui.painter();
+                    let dim = self.tag_filter.is_some() && !on;
+                    chrome::tag_chip(p, rect.min, t, faded || dim);
+                    if on {
+                        p.rect_stroke(rect.expand(1.5), 5.0, egui::Stroke::new(1.0, pal.fg), egui::StrokeKind::Outside);
+                    }
+                    let hint = if faded { format!("Show only {t} (muted)") } else { format!("Show only {t}") };
+                    let resp = resp.on_hover_text(hint);
+                    if resp.clicked() {
+                        self.tag_filter = if on { None } else { Some(t.clone()) };
+                    }
+                    resp.context_menu(|ui| {
+                        let label = if faded { format!("Unmute notifications for {t}") } else { format!("Mute notifications for {t}") };
+                        if ui.button(label).clicked() {
+                            ops.push(SideOp::MuteTag(t.clone(), !faded));
+                            ui.close();
+                        }
+                    });
+                }
+            }));
+            ui.add_space(6.0);
+        }
         let bottom = 34.0;
         egui::ScrollArea::vertical().max_height(ui.available_height() - bottom).show(ui, |ui| {
             for w in workspaces {
                 let infos: Vec<&Info> = w.layout.leaves().iter().filter_map(|id| sessions.iter().find(|i| i.id == *id)).collect();
                 let Some(focus) = infos.iter().find(|i| i.id == w.focus).or(infos.first()) else { continue };
+                let mut tags: Vec<&String> = Vec::new();
+                for t in infos.iter().flat_map(|i| &i.tags) {
+                    if !tags.contains(&t) {
+                        tags.push(t);
+                    }
+                }
+                if self.tag_filter.as_ref().is_some_and(|f| !tags.contains(&f)) {
+                    continue;
+                }
                 let urgent = infos.iter().max_by_key(|i| (urgency(i.state), std::cmp::Reverse(i.since_ms))).unwrap_or(focus);
-                let (rect, resp) = ui.allocate_exact_size(egui::vec2(ui.available_width(), 62.0), egui::Sense::click());
+                let height = if tags.is_empty() { 62.0 } else { 82.0 };
+                let (rect, resp) = ui.allocate_exact_size(egui::vec2(ui.available_width(), height), egui::Sense::click());
                 let painter = ui.painter_at(rect);
                 let card = rect.shrink2(egui::vec2(6.0, 2.0));
                 if urgent.state == State::Waiting {
@@ -547,6 +667,7 @@ impl App {
                 let left = rect.left() + 32.0;
                 let width = rect.right() - left - 12.0;
                 let muted = infos.iter().all(|i| i.muted);
+                let quiet_tab = infos.iter().all(|i| quiet(i, &muted_tags));
                 let line = |text: String, y: f32, font: egui::FontId, color: egui::Color32, width: f32| {
                     let galley = ui.fonts_mut(|f| {
                         let mut job = egui::text::LayoutJob::simple_singleline(text, font, color);
@@ -555,8 +676,8 @@ impl App {
                     });
                     painter.galley(egui::pos2(left, rect.top() + y), galley, color);
                 };
-                line(name, 6.0, egui::FontId::proportional(13.5), pal.fg, if muted { width - 18.0 } else { width });
-                if muted {
+                line(name, 6.0, egui::FontId::proportional(13.5), pal.fg, if quiet_tab { width - 18.0 } else { width });
+                if quiet_tab {
                     chrome::muted_mark(&painter, egui::pos2(rect.right() - 22.0, rect.top() + 14.0), pal.fg_dim);
                 }
                 // The folder, then the branch after its mark; the folder gives
@@ -593,15 +714,49 @@ impl App {
                     _ => pal.fg_dim,
                 };
                 line(third, 42.0, egui::FontId::proportional(11.5), third_color, width);
+                // Up to three tags, the rest as +N (the design's 1o).
+                let mut x = left;
+                for (k, t) in tags.iter().enumerate() {
+                    let at = egui::pos2(x, rect.top() + 61.0);
+                    let rest = tags.len() - k;
+                    let w_chip = ui.fonts_mut(|f| f.layout_no_wrap(t.to_string(), egui::FontId::proportional(11.0), pal.fg).size().x) + 12.0;
+                    if k == 3 || (rest > 1 && x + w_chip + 34.0 > left + width) || x + w_chip > left + width {
+                        chrome::more_chip(&painter, at, rest, pal.fg_dim);
+                        break;
+                    }
+                    x = chrome::tag_chip(&painter, at, t, muted_tags.contains(*t)).right() + 5.0;
+                }
                 if resp.clicked() {
                     picked = Some(w.id);
                 }
-                // The design's 1j has more here; for now, notifications.
-                resp.context_menu(|ui| {
+                // The design's 1j has more here; for now, notifications and tags.
+                let ids: Vec<SessionId> = infos.iter().map(|i| i.id).collect();
+                // Open until a click outside it: a click into its tag field
+                // must not close it.
+                let menu = egui::Popup::context_menu(&resp).close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside);
+                menu.show(|ui| {
                     let label = if muted { "Unmute notifications" } else { "Mute notifications" };
                     if ui.button(label).on_hover_text("Muted: in the bell only, no system notification or taskbar number").clicked() {
-                        mute = Some((infos.iter().map(|i| i.id).collect::<Vec<_>>(), !muted));
+                        ops.push(SideOp::Mute(ids.clone(), !muted));
                         ui.close();
+                    }
+                    ui.separator();
+                    for t in &tags {
+                        if ui.button(format!("Remove tag {t}")).clicked() {
+                            ops.push(SideOp::Tag(ids.clone(), t.to_string(), false));
+                        }
+                    }
+                    if tags.len() < tsumugi_mux::proto::MAX_TAGS {
+                        let edit = ui.add(egui::TextEdit::singleline(&mut self.tag_input).id(egui::Id::new(("tag-input", w.id))).hint_text("Add a tag").desired_width(150.0));
+                        if edit.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                            if let Some(t) = tsumugi_mux::proto::tag_name(&self.tag_input) {
+                                ops.push(SideOp::Tag(ids.clone(), t, true));
+                            }
+                            self.tag_input.clear();
+                            edit.request_focus();
+                        }
+                    } else {
+                        ui.label(egui::RichText::new(format!("{} tags at most", tsumugi_mux::proto::MAX_TAGS)).color(pal.fg_dim));
                     }
                 });
             }
@@ -620,8 +775,14 @@ impl App {
                 });
             });
         }
-        if let (Some((ids, on)), Some(client)) = (mute, &self.client) {
-            client.mute(ids, on);
+        if let Some(client) = &self.client {
+            for op in ops {
+                match op {
+                    SideOp::Mute(ids, on) => client.mute(ids, on),
+                    SideOp::Tag(ids, tag, on) => client.tag(ids, tag, on),
+                    SideOp::MuteTag(tag, on) => client.mute_tag(tag, on),
+                }
+            }
         }
         picked
     }
@@ -784,6 +945,11 @@ pub(crate) fn home_short(path: &std::path::Path) -> String {
     }
 }
 
+/// Told of in the bell only: muted itself, or one of its tags is.
+fn quiet(i: &Info, muted_tags: &[String]) -> bool {
+    i.muted || i.tags.iter().any(|t| muted_tags.contains(t))
+}
+
 /// The window's own handle, for the taskbar's number (Windows).
 fn window_handle(cc: &eframe::CreationContext<'_>) -> Option<isize> {
     use raw_window_handle::{HasWindowHandle, RawWindowHandle};
@@ -820,7 +986,8 @@ impl eframe::App for App {
             self.focus_sent = Some(here);
         }
         let (anyone, teller) = client.attention();
-        let muted: std::collections::HashSet<SessionId> = sessions.iter().filter(|i| i.muted).map(|i| i.id).collect();
+        let muted_tags = client.muted_tags();
+        let muted: std::collections::HashSet<SessionId> = sessions.iter().filter(|i| quiet(i, &muted_tags)).map(|i| i.id).collect();
         let seen = alert::Seen { looking: here || anyone, teller, muted: &muted };
         for id in self.teller.clicked() {
             // A notification clicked: its pane, in front.
@@ -855,7 +1022,10 @@ impl eframe::App for App {
                 self.title = title;
             }
             let mut actions = Vec::new();
-            if let Some(pane) = self.panes.get(&w.focus) {
+            // A field of the window's own (a menu's "Add a tag") has the
+            // keys while it is focused; the pane gets them otherwise.
+            let field = ctx.memory(|m| m.focused().is_some());
+            if let Some(pane) = self.panes.get(&w.focus).filter(|_| !field) {
                 let events = ctx.input(|i| i.events.clone());
                 tsumugi_pane::input::feed(pane, &events, |key, m| match keys::action(key, m) {
                     Some(a) => {
