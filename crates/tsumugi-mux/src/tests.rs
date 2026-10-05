@@ -76,6 +76,39 @@ fn a_session_outlives_its_client() {
     }
 }
 
+/// Every client hears that a session started, not only the one that asked:
+/// that is what a second window's sidebar is drawn from.
+#[test]
+fn every_client_hears_of_a_new_session() {
+    let at = address();
+    let _srv = server::start(&at).expect("the server starts");
+    let a = Client::connect(&at, || {}).expect("a connects");
+    let b = Client::connect(&at, || {}).expect("b connects");
+    let pane = a.spawn(std::env::temp_dir(), None, Size::new(80, 24), (8, 16)).expect("a shell starts");
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while b.sessions().iter().all(|i| i.id != pane.id()) {
+        assert!(Instant::now() < deadline, "b never heard of session {}", pane.id());
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    pane.kill();
+}
+
+/// Killing one of two sessions leaves the other, and the server answering.
+#[test]
+fn killing_one_session_leaves_the_rest() {
+    let at = address();
+    let _srv = server::start(&at).expect("the server starts");
+    let c = Client::connect(&at, || {}).expect("a client connects");
+    let one = c.spawn(std::env::temp_dir(), None, Size::new(80, 24), (8, 16)).expect("one starts");
+    let two = c.spawn(std::env::temp_dir(), None, Size::new(80, 24), (8, 16)).expect("two starts");
+    until(&one, "a prompt", |t| !t.trim().is_empty());
+    one.kill();
+    let start = Instant::now();
+    let list = c.list().expect("the server still answers");
+    assert_eq!(list.iter().map(|i| i.id).collect::<Vec<_>>(), vec![two.id()], "after {:?}", start.elapsed());
+    assert!(start.elapsed() < Duration::from_secs(3), "the answer took {:?}", start.elapsed());
+}
+
 /// A second server at the same address refuses to start rather than
 /// taking the first one's clients.
 #[test]

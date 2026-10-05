@@ -9,18 +9,20 @@
 //!   tsumugi server     the server (the window starts it by itself)
 //!   tsumugi ls         the sessions, one per line
 //!
-//! Tabs, splits and the waiting marks come after (docs/v1-scope.md).
+//! The sidebar lists the server's sessions; the one picked is drawn beside
+//! it. Splits and the waiting marks come after (docs/v1-scope.md).
 
 // No console window behind the GUI on Windows, in a release build.
 #![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 
 mod fonts;
+mod keys;
 mod spawn;
 
 use std::time::Duration;
 
 use eframe::egui;
-use tsumugi_mux::{Address, Client, RemotePane};
+use tsumugi_mux::{Address, Client, Info, RemotePane, SessionId};
 use tsumugi_pane::{Palette, Size, ViewOptions, ViewState};
 
 /// The pane's text size, in points.
@@ -139,16 +141,26 @@ fn connect(wake: impl Fn() + Send + Sync + Clone + 'static) -> Result<Client, St
     }
 }
 
-/// The session to show: the first one the server has, or a new shell here.
+/// The session to show at first: the first one the server has, or a new
+/// shell here.
 fn open_session(client: &Client) -> Result<RemotePane, String> {
     let list = client.list().map_err(|e| e.to_string())?;
     if let Some(first) = list.first() {
         return Ok(client.attach(first.id));
     }
     let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+    new_session(client, cwd)
+}
+
+fn new_session(client: &Client, cwd: std::path::PathBuf) -> Result<RemotePane, String> {
     let shell = tsumugi_pane::default_shell().map(|s| (s, Vec::new()));
     client.spawn(cwd, shell, Size::new(80, 24), (8, 16)).map_err(|e| format!("the shell did not start: {e}"))
 }
+
+/// The sidebar's width when the window first opens, and how far a drag may
+/// take it (docs/v1-scope.md 1f).
+const SIDEBAR: f32 = 240.0;
+const SIDEBAR_RANGE: std::ops::RangeInclusive<f32> = 200.0..=480.0;
 
 struct App {
     client: Option<Client>,
@@ -182,6 +194,125 @@ impl App {
         };
         Self { client, pane, failed, view: ViewState::default(), palette, font: egui::FontId::monospace(FONT_SIZE), title: String::new() }
     }
+
+    fn active(&self) -> Option<SessionId> {
+        self.pane.as_ref().map(RemotePane::id)
+    }
+
+    /// Show session `id` (dropping the old pane stops its screen coming).
+    fn switch(&mut self, id: SessionId) {
+        if self.active() == Some(id) {
+            return;
+        }
+        if let Some(client) = &self.client {
+            self.pane = Some(client.attach(id));
+            self.view = ViewState::default();
+        }
+    }
+
+    fn act(&mut self, action: keys::Action, ctx: &egui::Context) {
+        let Some(client) = self.client.clone() else { return };
+        let list = client.sessions();
+        let at = self.active().and_then(|id| list.iter().position(|i| i.id == id));
+        match action {
+            keys::Action::NewTab => {
+                // The new shell starts where the shown one is.
+                let cwd = at.map(|i| list[i].cwd.clone()).or_else(|| std::env::current_dir().ok()).unwrap_or_else(|| ".".into());
+                match new_session(&client, cwd) {
+                    Ok(pane) => {
+                        self.pane = Some(pane);
+                        self.view = ViewState::default();
+                    }
+                    Err(e) => self.failed = Some(e),
+                }
+            }
+            keys::Action::CloseTab => {
+                if let Some(pane) = &self.pane {
+                    pane.kill();
+                }
+            }
+            keys::Action::NextTab | keys::Action::PrevTab if !list.is_empty() => {
+                let n = list.len();
+                let i = at.unwrap_or(0);
+                let next = if action == keys::Action::NextTab { (i + 1) % n } else { (i + n - 1) % n };
+                self.switch(list[next].id);
+            }
+            keys::Action::Tab(i) => {
+                if let Some(info) = list.get(i) {
+                    self.switch(info.id);
+                }
+            }
+            _ => {}
+        }
+        ctx.request_repaint();
+    }
+
+    /// The shown session's shell ended: show the next one, or close.
+    fn after_exit(&mut self, ctx: &egui::Context) {
+        let Some(gone) = self.active() else { return };
+        let list = self.client.as_ref().map(Client::sessions).unwrap_or_default();
+        let rest: Vec<&Info> = list.iter().filter(|i| i.id != gone).collect();
+        match rest.first() {
+            Some(next) => {
+                let id = next.id;
+                self.pane = None;
+                self.switch(id);
+            }
+            None => ctx.send_viewport_cmd(egui::ViewportCommand::Close),
+        }
+    }
+
+    fn sidebar(&mut self, ui: &mut egui::Ui) -> Option<SessionId> {
+        let list = self.client.as_ref().map(Client::sessions).unwrap_or_default();
+        let active = self.active();
+        let pal = self.palette;
+        let mut picked = None;
+        ui.add_space(6.0);
+        for info in &list {
+            let (rect, resp) = ui.allocate_exact_size(egui::vec2(ui.available_width(), 44.0), egui::Sense::click());
+            let painter = ui.painter_at(rect);
+            if Some(info.id) == active {
+                painter.rect_filled(rect.shrink2(egui::vec2(6.0, 2.0)), 6.0, pal.selection);
+            } else if resp.hovered() {
+                painter.rect_filled(rect.shrink2(egui::vec2(6.0, 2.0)), 6.0, pal.selection.gamma_multiply(0.4));
+            }
+            // Running, for now: the waiting marks are v0.4.0's.
+            painter.circle_filled(egui::pos2(rect.left() + 18.0, rect.top() + 15.0), 4.0, egui::Color32::from_rgb(0x8e, 0xd0, 0x8e));
+            let name = if info.title.is_empty() { program_name(&info.command) } else { info.title.clone() };
+            let left = rect.left() + 30.0;
+            let width = rect.right() - left - 10.0;
+            let line = |text: String, y: f32, size: f32, color: egui::Color32| {
+                let galley = ui.fonts_mut(|f| {
+                    let mut job = egui::text::LayoutJob::simple_singleline(text, egui::FontId::proportional(size), color);
+                    job.wrap = egui::text::TextWrapping::truncate_at_width(width);
+                    f.layout_job(job)
+                });
+                painter.galley(egui::pos2(left, rect.top() + y), galley, color);
+            };
+            line(name, 7.0, 13.0, pal.fg);
+            line(home_short(&info.cwd), 25.0, 11.0, pal.fg_dim);
+            if resp.clicked() {
+                picked = Some(info.id);
+            }
+        }
+        picked
+    }
+}
+
+/// `pwsh` out of `C:\Program Files\PowerShell\7\pwsh.exe`.
+fn program_name(command: &str) -> String {
+    let name = command.rsplit(['/', '\\']).next().unwrap_or(command);
+    name.strip_suffix(".exe").unwrap_or(name).to_owned()
+}
+
+/// A folder with the home folder said as `~`.
+fn home_short(path: &std::path::Path) -> String {
+    let home = std::env::var_os(if cfg!(windows) { "USERPROFILE" } else { "HOME" }).map(std::path::PathBuf::from);
+    match home.as_deref().and_then(|h| path.strip_prefix(h).ok()) {
+        Some(rest) if rest.as_os_str().is_empty() => "~".to_owned(),
+        Some(rest) => format!("~{}{}", std::path::MAIN_SEPARATOR, rest.display()),
+        None => path.display().to_string(),
+    }
 }
 
 impl eframe::App for App {
@@ -196,10 +327,11 @@ impl eframe::App for App {
                 self.pane = None;
             }
         }
+        if self.pane.as_ref().is_some_and(RemotePane::exited) {
+            self.after_exit(&ctx);
+        }
+        let mut actions = Vec::new();
         if let Some(pane) = &self.pane {
-            if pane.exited() {
-                ctx.send_viewport_cmd(egui::ViewportCommand::Close);
-            }
             let t = pane.title();
             let title = if t.is_empty() { "tsumugi".to_owned() } else { format!("{t} — tsumugi") };
             if title != self.title {
@@ -207,7 +339,28 @@ impl eframe::App for App {
                 self.title = title;
             }
             let events = ctx.input(|i| i.events.clone());
-            tsumugi_pane::input::feed(pane, &events, |_, _| false);
+            tsumugi_pane::input::feed(pane, &events, |key, m| match keys::action(key, m) {
+                Some(a) => {
+                    actions.push(a);
+                    true
+                }
+                None => false,
+            });
+        }
+        for a in actions {
+            self.act(a, &ctx);
+        }
+
+        let side = egui::Frame::NONE.fill(self.palette.on_cursor);
+        let picked = egui::Panel::left("sessions")
+            .resizable(true)
+            .default_size(SIDEBAR)
+            .size_range(SIDEBAR_RANGE)
+            .frame(side)
+            .show(ui, |ui| self.sidebar(ui))
+            .inner;
+        if let Some(id) = picked {
+            self.switch(id);
         }
 
         egui::CentralPanel::default().frame(egui::Frame::NONE.fill(self.palette.bg)).show(ui, |ui| {

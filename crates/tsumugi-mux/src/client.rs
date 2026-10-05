@@ -30,7 +30,10 @@ struct Remote {
 #[derive(Default)]
 struct State {
     screens: HashMap<SessionId, Remote>,
+    /// The answer to `list`, taken by it.
     sessions: Option<Vec<Info>>,
+    /// The latest list the server sent, kept for a sidebar.
+    latest: Vec<Info>,
     spawned: VecDeque<Result<SessionId, String>>,
     clipboard: Vec<String>,
     /// The connection is gone (the server stopped, or never answered).
@@ -134,6 +137,11 @@ impl Client {
         RemotePane { id, inner: self.0.clone(), size: None }
     }
 
+    /// The sessions as the server last told them, without asking.
+    pub fn sessions(&self) -> Vec<Info> {
+        self.0.lock().latest.clone()
+    }
+
     /// Text that arrived for the clipboard since the last call.
     pub fn take_clipboard(&self) -> Vec<String> {
         std::mem::take(&mut self.0.lock().clipboard)
@@ -149,7 +157,10 @@ fn receive(inner: &Inner, msg: ToClient) {
     let mut st = inner.lock();
     match msg {
         ToClient::Hello { .. } => {}
-        ToClient::Sessions(list) => st.sessions = Some(list),
+        ToClient::Sessions(list) => {
+            st.latest = list.clone();
+            st.sessions = Some(list);
+        }
         ToClient::Spawned { id } => st.spawned.push_back(Ok(id)),
         ToClient::Screen { id, screen, scrolled_back, win32_input, title } => {
             let r = st.screens.entry(id).or_default();

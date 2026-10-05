@@ -155,6 +155,7 @@ fn handle(shared: &Arc<Shared>, client: ClientId, tx: &Sender<ToClient>, msg: To
                     let info = Info { id, cwd, title: String::new(), command };
                     sessions.insert(id, Session { term, info, watchers: BTreeSet::from([client]) });
                     let _ = tx.send(ToClient::Spawned { id });
+                    broadcast(shared, &sessions);
                     let _ = shared.dirty.send(id);
                 }
                 Err(e) => {
@@ -176,11 +177,7 @@ fn handle(shared: &Arc<Shared>, client: ClientId, tx: &Sender<ToClient>, msg: To
                 s.watchers.remove(&client);
             }
         }
-        ToServer::Kill { id } => {
-            if let Some(s) = sessions.remove(&id) {
-                end(shared, &mut sessions, s, id);
-            }
-        }
+        ToServer::Kill { id } => end(shared, sessions, id),
         other => {
             let Some(id) = target(&other) else { return };
             let Some(s) = sessions.get_mut(&id) else { return };
@@ -230,17 +227,31 @@ fn scroll(by: ScrollBy) -> tsumugi_pane::alacritty_terminal::grid::Scroll {
     }
 }
 
-/// A session is over: tell its watchers, and stop the server after the last.
-fn end(shared: &Shared, sessions: &mut BTreeMap<SessionId, Session>, s: Session, id: SessionId) {
-    let clients = lock(&shared.clients);
-    for c in &s.watchers {
-        if let Some(tx) = clients.get(c) {
+/// Tell every client the sessions as they are now: one was added, ended, or
+/// changed its title or folder. A sidebar is drawn from this.
+fn broadcast(shared: &Shared, sessions: &BTreeMap<SessionId, Session>) {
+    let list: Vec<Info> = sessions.values().map(|s| s.info.clone()).collect();
+    for tx in lock(&shared.clients).values() {
+        let _ = tx.send(ToClient::Sessions(list.clone()));
+    }
+}
+
+/// A session is over: tell its watchers and every sidebar, then let the
+/// session go -- outside the lock, since ending a shell can take a moment --
+/// and stop the server after the last.
+fn end(shared: &Shared, mut sessions: std::sync::MutexGuard<'_, BTreeMap<SessionId, Session>>, id: SessionId) {
+    let Some(s) = sessions.remove(&id) else { return };
+    let list: Vec<Info> = sessions.values().map(|s| s.info.clone()).collect();
+    let empty = sessions.is_empty();
+    drop(sessions);
+    for (c, tx) in lock(&shared.clients).iter() {
+        if s.watchers.contains(c) {
             let _ = tx.send(ToClient::Exited { id });
         }
+        let _ = tx.send(ToClient::Sessions(list.clone()));
     }
-    drop(clients);
     drop(s);
-    if sessions.is_empty() {
+    if empty {
         let _ = shared.done.try_send(());
     }
 }
@@ -253,13 +264,19 @@ fn run_pump(shared: Arc<Shared>, dirty: Receiver<SessionId>) {
         let mut ids = BTreeSet::from([first]);
         ids.extend(dirty.try_iter());
         let mut sessions = lock(&shared.sessions);
+        let mut ended = Vec::new();
         for id in ids {
             let Some(s) = sessions.get_mut(&id) else { continue };
             let clipboard = s.term.drain();
+            let before = (s.info.title.clone(), s.info.cwd.clone());
             s.info.title = s.term.title.clone();
+            // Where the shell says it is (OSC 7), when it says so.
+            if let Some(cwd) = &s.term.shell_cwd {
+                s.info.cwd = cwd.clone();
+            }
+            let changed = before != (s.info.title.clone(), s.info.cwd.clone());
             if s.term.exited {
-                let s = sessions.remove(&id).expect("just found");
-                end(&shared, &mut sessions, s, id);
+                ended.push(id);
                 continue;
             }
             let msg = ToClient::Screen {
@@ -278,6 +295,14 @@ fn run_pump(shared: Arc<Shared>, dirty: Receiver<SessionId>) {
                     let _ = tx.send(msg.clone());
                 }
             }
+            drop(clients);
+            if changed {
+                broadcast(&shared, &sessions);
+            }
+        }
+        for id in ended {
+            end(&shared, sessions, id);
+            sessions = lock(&shared.sessions);
         }
     }
 }
