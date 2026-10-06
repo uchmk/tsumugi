@@ -3329,7 +3329,7 @@ dependencies = [
 
 [[package]]
 name = "tsumugi"
-version = "0.40.0"
+version = "0.40.1"
 dependencies = [
  "chrono",
  "eframe",
@@ -3345,14 +3345,14 @@ dependencies = [
 
 [[package]]
 name = "tsumugi-layout"
-version = "0.40.0"
+version = "0.40.1"
 dependencies = [
  "serde",
 ]
 
 [[package]]
 name = "tsumugi-mux"
-version = "0.40.0"
+version = "0.40.1"
 dependencies = [
  "crossbeam-channel",
  "postcard",
@@ -3365,7 +3365,7 @@ dependencies = [
 
 [[package]]
 name = "tsumugi-pane"
-version = "0.40.0"
+version = "0.40.1"
 dependencies = [
  "ab_glyph",
  "alacritty_terminal",

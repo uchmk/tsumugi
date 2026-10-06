@@ -7,6 +7,15 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 
+# The checklists' generators; their own tests run with the rest.
+[[example]]
+name = "make-testcheck"
+test = true
+
+[[example]]
+name = "make-keycheck"
+test = true
+
 [dependencies]
 tsumugi-pane = { path = "../tsumugi-pane", features = ["egui", "wgpu"] }
 tsumugi-mux = { path = "../tsumugi-mux" }

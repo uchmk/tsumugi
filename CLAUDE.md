@@ -17,6 +17,15 @@ Claude Code などの AI CLI のセッションを何本も並べて動かすた
 - **`cargo fmt` は走らせない。**filer と同じく手で整形する（`Self { a, b, c }` を 1 行に収める書き方）。整形の確認は `cargo fmt --check` で見るだけ。
 - clippy は `--all-targets -- -D warnings` で警告ゼロを保つ。検証は CI と同じ stable で回す。
 
+## 実機のテスト（TESTING.md）
+
+- 画面の無い環境では確かめられないもの（Windows の ConPTY・トースト・タスクバー・タイトルバー・Mica・音、見た目）は [TESTING.md](TESTING.md) の表に積む。
+  **機能を足したら、そこに行を足してから完了にする。**正は TESTING.md（英語）で、`cargo run -p tsumugi --example make-testcheck` が
+  TESTING-CHECKS.md（印を付ける表）を、`make-keycheck` が keys.rs から TESTING-KEYS.md を作る。印（`[x]`・`[~]`）は作り直しても残る。
+- **動きを変えた行は、印を外して（`[ ]` に戻して）から作り直す。**前の動きを確かめた印なので、残すと嘘になる。
+- `scripts/verify.sh` と CI（`checklists.yml`）が `--check` で、表が TESTING.md と keys.rs に追いついているかを見る。
+- `[x]` は実機で確かめた印で、付けてよいのは実機のセッション（Agent）か持ち主だけ。見た目の行は `[~]`（画面の画像で判断した）まで。
+
 ## 版と変更ログ（コードが入ったら）
 
 filer と同じ。`Cargo.toml` の `version` が正、版の繰り上げと CHANGELOG.md（日本語、Keep a Changelog、日付は JST）はセットでコミットする。

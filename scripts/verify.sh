@@ -30,4 +30,7 @@ tests=$(echo "$last" | grep 'test result' | awk '{p+=$4; f+=$6} END {print p " p
 run cargo +stable clippy -q --workspace --all-targets --all-features -- -D warnings
 run cargo +stable clippy -q --workspace --all-targets --all-features --target x86_64-pc-windows-msvc -- -D warnings
 run cargo +stable clippy -q --workspace --all-targets -- -D warnings
+# The checklists follow TESTING.md and keys.rs.
+run cargo run -q -p tsumugi --example make-testcheck -- --check
+run cargo run -q -p tsumugi --example make-keycheck -- --check
 echo "ALL OK: $tests"

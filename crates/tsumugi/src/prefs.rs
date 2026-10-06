@@ -368,7 +368,7 @@ fn appearance(ui: &mut egui::Ui, c: &Colors, seen: &Seen, out: &mut Vec<Change>)
 }
 
 fn keys(ui: &mut egui::Ui, c: &Colors, screen: &mut Screen, out: &mut Vec<Change>) {
-    use crate::keys::{Action, NAMED, label};
+    use crate::keys::{NAMED, label};
     // A key being changed takes the next press: Esc leaves it as it was.
     if let Some(name) = screen.capturing {
         let pressed = ui.input_mut(|i| {
@@ -392,21 +392,7 @@ fn keys(ui: &mut egui::Ui, c: &Colors, screen: &mut Screen, out: &mut Vec<Change
         }
     }
     let mac = cfg!(target_os = "macos");
-    let title = |a: Action| match a {
-        Action::NewTab => "New session",
-        Action::CloseTab => "Close the session",
-        Action::NextTab => "Next tab",
-        Action::PrevTab => "Previous tab",
-        Action::NextWaiting => "Go to the session waiting longest",
-        Action::SplitRight => "Split right",
-        Action::SplitDown => "Split down",
-        Action::Zoom => "Zoom one pane",
-        Action::Search => "Search",
-        Action::Rail => "Narrow rail",
-        Action::Settings => "Settings",
-        Action::Input => "Input box",
-        _ => "",
-    };
+    let title = crate::keys::title;
     section(ui, c, "CHANGEABLE", |ui| {
         for (k, (a, name, win, m)) in NAMED.iter().enumerate() {
             if k > 0 {

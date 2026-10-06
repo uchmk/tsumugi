@@ -1,0 +1,26 @@
+name: Checklists
+
+# TESTING-CHECKS.md and TESTING-KEYS.md follow TESTING.md and keys.rs. Not
+# skipped for Markdown, unlike CI: a change to TESTING.md alone is what it
+# is for.
+on:
+  push:
+    branches: [main]
+    paths: ['TESTING*.md', 'crates/tsumugi/src/keys.rs', 'crates/tsumugi/examples/**', '.github/workflows/checklists.yml']
+  pull_request:
+    paths: ['TESTING*.md', 'crates/tsumugi/src/keys.rs', 'crates/tsumugi/examples/**', '.github/workflows/checklists.yml']
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - run: cargo run -p tsumugi --example make-testcheck -- --check
+      - run: cargo run -p tsumugi --example make-keycheck -- --check

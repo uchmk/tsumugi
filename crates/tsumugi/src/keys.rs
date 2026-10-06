@@ -68,6 +68,27 @@ pub const NAMED: [(Action, &str, &str, &str); 12] = [
     (Action::Input, "input", "Ctrl+I", "Cmd+I"),
 ];
 
+/// What a changeable action is called on the settings screen and in
+/// TESTING-KEYS.md.
+pub fn title(a: Action) -> &'static str {
+    match a {
+        Action::NewTab => "New session",
+        Action::CloseTab => "Close the session",
+        Action::NextTab => "Next tab",
+        Action::PrevTab => "Previous tab",
+        Action::NextWaiting => "Go to the session waiting longest",
+        Action::SplitRight => "Split right",
+        Action::SplitDown => "Split down",
+        Action::Zoom => "Zoom one pane",
+        Action::Search => "Search",
+        Action::Rail => "Narrow rail",
+        Action::Settings => "Settings",
+        Action::Input => "Input box",
+        Action::Tab(_) => "The Nth tab",
+        Action::Move(_) => "Move between panes",
+    }
+}
+
 /// A key with the modifiers held, as `[keys]` writes it: `Ctrl+Shift+T`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Chord {

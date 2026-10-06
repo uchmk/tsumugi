@@ -5,6 +5,16 @@
 
 ## [未リリース]
 
+## [0.40.1] - 2026-10-06
+
+### 追加
+
+- 実機のテストの表（filer と同じ形）。`TESTING.md`（正。16 節 105 行: 窓とサーバー、分割、サイドバー、状態と知らせ、検索、新しいセッション、入力欄、
+  復元、設定の画面、テーマ、フォント、フック、窓の枠、動き、ステータスバー、キー）から `cargo run -p tsumugi --example make-testcheck` が
+  `TESTING-CHECKS.md` を、`make-keycheck` が keys.rs から `TESTING-KEYS.md`（32 キー）を作る。印は作り直しても残り、`--check` と `--stats` がある。
+- `scripts/verify.sh` と CI（新しい `checklists.yml`、Markdown だけの変更でも走る）が、2 つの表が追いついているかを見る。CLAUDE.md に決まりを書いた。
+- 動作の名前（`keys::title`）を keys.rs に移し、設定の画面とキーの表で共有する。
+
 ## [0.40.0] - 2026-10-06
 
 ### 追加
