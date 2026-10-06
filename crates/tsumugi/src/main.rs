@@ -478,6 +478,8 @@ struct App {
     prefs: Option<prefs::Screen>,
     /// The input box below the panes (the design's 12, 1l).
     input: inputbox::InputBox,
+    /// `TSUMUGI_KEYLOG` is set: print the key presses.
+    key_log: bool,
     settings_error: Option<String>,
     /// From the settings and `profiles.toml`, for the new-session dialog.
     tag_rules: Vec<tsumugi_mux::settings::TagRule>,
@@ -592,6 +594,7 @@ impl App {
             settings_now: tsumugi_mux::settings::Settings::default(),
             prefs: None,
             input: inputbox::InputBox::with_history(load_history()),
+            key_log: std::env::var_os("TSUMUGI_KEYLOG").is_some(),
             settings_error: None,
             tag_rules: Vec::new(),
             profiles: Vec::new(),
@@ -2006,6 +2009,16 @@ impl eframe::App for App {
             // A field of the window's own (a menu's "Add a tag") has the
             // keys while it is focused; the pane gets them otherwise.
             let field = ctx.memory(|m| m.focused().is_some()) || self.new_session.is_some() || self.search.is_some();
+            if self.key_log {
+                // `TSUMUGI_KEYLOG=1`: every key press as the window gets it,
+                // to see on a real machine why a key does nothing.
+                for ev in ctx.input(|i| i.events.clone()) {
+                    if let egui::Event::Key { key, pressed: true, modifiers, .. } = ev {
+                        let held = ctx.memory(|m| m.focused());
+                        eprintln!("key {key:?} {modifiers:?} -> {:?}; a widget has the keys: {held:?}", keys::action(key, modifiers));
+                    }
+                }
+            }
             if let Some(pane) = self.panes.get(&w.focus).filter(|_| !field) {
                 let events = ctx.input(|i| i.events.clone());
                 tsumugi_pane::input::feed(pane, &events, |key, m| match keys::action(key, m) {
