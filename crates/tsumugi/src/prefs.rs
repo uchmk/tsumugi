@@ -64,7 +64,11 @@ impl Page {
 #[derive(Default)]
 pub struct Screen {
     pub page: Page,
+    /// The key the next press goes to (`[keys]`'s name), while one is being
+    /// changed.
+    pub capturing: Option<&'static str>,
 }
+
 
 /// What the screen was asked to change.
 pub enum Change {
@@ -160,7 +164,7 @@ pub fn show(ui: &mut egui::Ui, pal: &Palette, screen: &mut Screen, seen: &Seen) 
             match screen.page {
                 Page::General => general(ui, &c, seen, &mut out),
                 Page::Appearance => appearance(ui, &c, seen, &mut out),
-                Page::Keys => keys(ui, &c),
+                Page::Keys => keys(ui, &c, screen, &mut out),
                 Page::Notifications => notifications(ui, &c, seen, &mut out),
                 Page::Sessions => sessions(ui, &c, seen, &mut out),
                 Page::Tags => tags(ui, &c, &seen.settings.tags.rule, &mut out),
@@ -354,49 +358,80 @@ fn appearance(ui: &mut egui::Ui, c: &Colors, seen: &Seen, out: &mut Vec<Change>)
     });
 }
 
-fn keys(ui: &mut egui::Ui, c: &Colors) {
-    let mac = cfg!(target_os = "macos");
-    let k = |win: &'static str, m: &'static str| if mac { m } else { win };
-    let groups: [(&str, Vec<(&str, &str)>); 2] = [
-        (
-            "SESSIONS",
-            vec![
-                ("New session", k("Ctrl+Shift+T", "Cmd+T")),
-                ("Close the session", k("Ctrl+Shift+W", "Cmd+W")),
-                ("Next / previous tab", "Ctrl+Tab / Ctrl+Shift+Tab"),
-                ("The Nth tab", k("Ctrl+Alt+1 … 9", "Cmd+1 … 9")),
-                ("Go to the session waiting longest", k("Ctrl+Shift+U", "Cmd+Shift+U")),
-                ("Search", k("Ctrl+Shift+P", "Cmd+Shift+P")),
-                ("Narrow rail", k("Ctrl+Shift+B", "Cmd+Shift+B")),
-                ("Settings", k("Ctrl+,", "Cmd+,")),
-                ("Input box", k("Ctrl+I", "Cmd+I")),
-            ],
-        ),
-        (
-            "PANES",
-            vec![
-                ("Split right", k("Alt+Shift+=", "Cmd+D")),
-                ("Split down", k("Alt+Shift+-", "Cmd+Shift+D")),
-                ("Move between panes", k("Alt+Arrows", "Cmd+Option+Arrows")),
-                ("Zoom one pane", k("Ctrl+Shift+Z", "Cmd+Shift+Z")),
-            ],
-        ),
-    ];
-    for (head, list) in groups {
-        section(ui, c, head, |ui| {
-            for (k, (label, key)) in list.iter().enumerate() {
-                if k > 0 {
-                    ui.separator();
-                }
-                row(ui, c, label, "", |ui| {
-                    egui::Frame::NONE.fill(c.side).stroke(egui::Stroke::new(1.0, c.border_strong())).corner_radius(6.0).inner_margin(egui::Margin::symmetric(10, 4)).show(ui, |ui| {
-                        ui.label(RichText::new(*key).font(FontId::monospace(12.0)).color(c.strong()));
-                    });
-                });
+fn keys(ui: &mut egui::Ui, c: &Colors, screen: &mut Screen, out: &mut Vec<Change>) {
+    use crate::keys::{Action, NAMED, label};
+    // A key being changed takes the next press: Esc leaves it as it was.
+    if let Some(name) = screen.capturing {
+        let pressed = ui.input_mut(|i| {
+            // A modifier alone is not a key yet: wait for the one it holds.
+            let found = i.events.iter().find_map(|e| match e {
+                egui::Event::Key { key, pressed: true, modifiers, .. } if !crate::keys::is_modifier(*key) => Some((*key, *modifiers)),
+                _ => None,
+            });
+            if let Some((k, m)) = found {
+                i.consume_key(m, k);
             }
+            found
         });
+        match pressed {
+            Some((egui::Key::Escape, m)) if !m.any() => screen.capturing = None,
+            Some((k, m)) => {
+                out.push(Change::Set(Some("keys"), name, tsumugi_mux::settings::quote(&crate::keys::Chord::pressed(k, m).label())));
+                screen.capturing = None;
+            }
+            None => {}
+        }
     }
-    ui.label(RichText::new("Changing the keys is not in this version.").size(12.0).color(c.dim));
+    let mac = cfg!(target_os = "macos");
+    let title = |a: Action| match a {
+        Action::NewTab => "New session",
+        Action::CloseTab => "Close the session",
+        Action::NextTab => "Next tab",
+        Action::PrevTab => "Previous tab",
+        Action::NextWaiting => "Go to the session waiting longest",
+        Action::SplitRight => "Split right",
+        Action::SplitDown => "Split down",
+        Action::Zoom => "Zoom one pane",
+        Action::Search => "Search",
+        Action::Rail => "Narrow rail",
+        Action::Settings => "Settings",
+        Action::Input => "Input box",
+        _ => "",
+    };
+    section(ui, c, "CHANGEABLE", |ui| {
+        for (k, (a, name, win, m)) in NAMED.iter().enumerate() {
+            if k > 0 {
+                ui.separator();
+            }
+            let own = if mac { *m } else { *win };
+            let now = label(*a);
+            let note = if now == own { String::new() } else { format!("Its own: {own}") };
+            row(ui, c, title(*a), &note, |ui| {
+                if now != own && ui.small_button("Its own").clicked() {
+                    out.push(Change::Set(Some("keys"), name, tsumugi_mux::settings::quote(own)));
+                }
+                let waiting = screen.capturing == Some(*name);
+                let text = if waiting { "Press a key… (Esc: leave it)".to_owned() } else { now };
+                let stroke = if waiting { c.run } else { c.border_strong() };
+                let key = egui::Button::new(RichText::new(text).font(FontId::monospace(12.0)).color(c.strong())).fill(c.side).stroke(egui::Stroke::new(1.0, stroke)).corner_radius(6.0);
+                if ui.add(key).on_hover_text("Click, then press the key to use (Esc: leave it)").clicked() {
+                    screen.capturing = Some(name);
+                }
+            });
+        }
+    });
+    let k = |win: &'static str, m: &'static str| if mac { m } else { win };
+    section(ui, c, "FIXED", |ui| {
+        for (k2, (t, key)) in [("The Nth tab", k("Ctrl+Alt+1 … 9", "Cmd+1 … 9")), ("Move between panes", k("Alt+Arrows", "Cmd+Option+Arrows"))].iter().enumerate() {
+            if k2 > 0 {
+                ui.separator();
+            }
+            row(ui, c, t, "", |ui| {
+                ui.label(RichText::new(*key).font(FontId::monospace(12.0)).color(c.dim));
+            });
+        }
+    });
+    ui.label(RichText::new("A key is written to [keys] in settings.toml; \"none\" there gives it back to the shell.").size(12.0).color(c.dim));
 }
 
 fn notifications(ui: &mut egui::Ui, c: &Colors, seen: &Seen, out: &mut Vec<Change>) {

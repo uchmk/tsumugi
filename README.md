@@ -247,6 +247,13 @@ weekday = true
 titlebar = "tsumugi"
 material = "none"
 
+# The window's keys, moved: an action and a key, or "none" to give its key
+# back to the shell (Settings -> Keys: click a key, press the new one).
+# new_tab, close_tab, next_tab, prev_tab, next_waiting, split_right,
+# split_down, zoom, search, rail, settings, input.
+[keys]
+new_tab = "Ctrl+Shift+N"
+
 # The panes' font: a font file's name (or part of it) or its path, "" for
 # the Nerd Font found; its Bold and Italic files beside it are used too.
 [font]

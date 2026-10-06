@@ -300,8 +300,7 @@ pub fn peek(ui: &mut egui::Ui, pal: &Palette, lines: &[String]) {
 /// The "+" that opens the new-session dialog (the same as `Ctrl+Shift+T`).
 pub fn plus_button(ui: &mut egui::Ui, pal: &Palette) -> egui::Response {
     let (rect, resp) = ui.allocate_exact_size(egui::vec2(26.0, 24.0), egui::Sense::click());
-    let key = if cfg!(target_os = "macos") { "Cmd+T" } else { "Ctrl+Shift+T" };
-    let resp = resp.on_hover_text(format!("New session   {key}"));
+    let resp = resp.on_hover_text(format!("New session   {}", crate::keys::label(crate::keys::Action::NewTab)));
     let p = ui.painter();
     let border = if resp.hovered() { crate::theme::colors().border_strong() } else { crate::theme::colors().border };
     if resp.hovered() {
@@ -466,8 +465,7 @@ pub fn top_band(ui: &mut egui::Ui, pal: &Palette, tags: &[String], muted_tags: &
     p.circle_stroke(glass, 4.0, stroke);
     p.line_segment([glass + egui::vec2(3.0, 3.0), glass + egui::vec2(6.0, 6.0)], stroke);
     if !compact {
-        let key = if cfg!(target_os = "macos") { "Cmd+Shift+P" } else { "Ctrl+Shift+P" };
-        let key = p.layout_no_wrap(key.into(), FontId::monospace(11.0), grey());
+        let key = p.layout_no_wrap(crate::keys::label(crate::keys::Action::Search), FontId::monospace(11.0), grey());
         let key_x = r.right() - 10.0 - key.size().x;
         let mut job = egui::text::LayoutJob::simple_singleline("Search sessions, folders and commands".into(), FontId::proportional(12.0), pal.fg_dim);
         job.wrap = egui::text::TextWrapping::truncate_at_width((key_x - r.left() - 40.0).max(0.0));

@@ -258,7 +258,7 @@ pub fn show(ctx: &egui::Context, pal: &Palette, d: &mut Dialog, recents: &[Recen
                 ui.horizontal(|ui| {
                     ui.label(RichText::new("New session").size(16.0).strong().color(crate::theme::colors().strong()));
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        let key = if cfg!(target_os = "macos") { "Cmd+T" } else { "Ctrl+Shift+T" };
+                        let key = crate::keys::label(crate::keys::Action::NewTab);
                         ui.label(RichText::new(key).font(FontId::monospace(11.5)).color(chrome::grey()));
                     });
                 });

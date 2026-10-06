@@ -64,27 +64,22 @@ impl Command {
         }
     }
 
-    /// The key that does the same, shown beside it.
-    pub fn key(self, mac: bool) -> &'static str {
-        match (self, mac) {
-            (Command::NewSession, false) => "Ctrl+Shift+T",
-            (Command::NewSession, true) => "Cmd+T",
-            (Command::SplitRight, false) => "Alt+Shift+=",
-            (Command::SplitRight, true) => "Cmd+D",
-            (Command::SplitDown, false) => "Alt+Shift+-",
-            (Command::SplitDown, true) => "Cmd+Shift+D",
-            (Command::Zoom, false) => "Ctrl+Shift+Z",
-            (Command::Zoom, true) => "Cmd+Shift+Z",
-            (Command::NextWaiting, false) => "Ctrl+Shift+U",
-            (Command::NextWaiting, true) => "Cmd+Shift+U",
-            (Command::CloseTab, false) => "Ctrl+Shift+W",
-            (Command::CloseTab, true) => "Cmd+W",
-            (Command::InputBox, false) => "Ctrl+I",
-            (Command::InputBox, true) => "Cmd+I",
-            (Command::Settings, false) => "Ctrl+,",
-            (Command::Settings, true) => "Cmd+,",
-            (Command::Sort(_), _) => "",
-        }
+    /// The key that does the same, shown beside it: the settings' key if
+    /// they moved it.
+    pub fn key(self) -> String {
+        use crate::keys::{Action, label};
+        let action = match self {
+            Command::NewSession => Action::NewTab,
+            Command::SplitRight => Action::SplitRight,
+            Command::SplitDown => Action::SplitDown,
+            Command::Zoom => Action::Zoom,
+            Command::NextWaiting => Action::NextWaiting,
+            Command::CloseTab => Action::CloseTab,
+            Command::InputBox => Action::Input,
+            Command::Settings => Action::Settings,
+            Command::Sort(_) => return String::new(),
+        };
+        label(action)
     }
 }
 

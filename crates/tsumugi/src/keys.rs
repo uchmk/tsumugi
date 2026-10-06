@@ -35,9 +35,172 @@ pub enum Action {
     Input,
 }
 
-/// The action for a key press, if it is one of the window's.
+/// The action for a key press, if it is one of the window's: a key the
+/// settings gave it (`[keys]`), else its own key unless the settings moved
+/// that action elsewhere or took it away.
 pub fn action(key: Key, m: Modifiers) -> Option<Action> {
-    action_on(key, m, cfg!(target_os = "macos"))
+    let bound = bindings();
+    action_with(key, m, cfg!(target_os = "macos"), &bound)
+}
+
+fn action_with(key: Key, m: Modifiers, mac: bool, bound: &[(Action, Option<Chord>)]) -> Option<Action> {
+    if let Some((a, _)) = bound.iter().find(|(_, c)| c.as_ref().is_some_and(|c| c.matches(key, m))) {
+        return Some(*a);
+    }
+    let own = action_on(key, m, mac)?;
+    (!bound.iter().any(|(a, _)| *a == own)).then_some(own)
+}
+
+/// The actions the settings can give another key, by the name `[keys]`
+/// uses, with their own keys (elsewhere, then on macOS).
+pub const NAMED: [(Action, &str, &str, &str); 12] = [
+    (Action::NewTab, "new_tab", "Ctrl+Shift+T", "Cmd+T"),
+    (Action::CloseTab, "close_tab", "Ctrl+Shift+W", "Cmd+W"),
+    (Action::NextTab, "next_tab", "Ctrl+Tab", "Ctrl+Tab"),
+    (Action::PrevTab, "prev_tab", "Ctrl+Shift+Tab", "Ctrl+Shift+Tab"),
+    (Action::NextWaiting, "next_waiting", "Ctrl+Shift+U", "Cmd+Shift+U"),
+    (Action::SplitRight, "split_right", "Alt+Shift+=", "Cmd+D"),
+    (Action::SplitDown, "split_down", "Alt+Shift+-", "Cmd+Shift+D"),
+    (Action::Zoom, "zoom", "Ctrl+Shift+Z", "Cmd+Shift+Z"),
+    (Action::Search, "search", "Ctrl+Shift+P", "Cmd+Shift+P"),
+    (Action::Rail, "rail", "Ctrl+Shift+B", "Cmd+Shift+B"),
+    (Action::Settings, "settings", "Ctrl+,", "Cmd+,"),
+    (Action::Input, "input", "Ctrl+I", "Cmd+I"),
+];
+
+/// A key with the modifiers held, as `[keys]` writes it: `Ctrl+Shift+T`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Chord {
+    pub key: Key,
+    pub ctrl: bool,
+    pub shift: bool,
+    pub alt: bool,
+    /// macOS's Cmd.
+    pub cmd: bool,
+}
+
+impl Chord {
+    /// `Ctrl+Shift+T`, `Alt+Shift+=`, `Cmd+,`, `F5`: modifiers (Ctrl, Shift,
+    /// Alt or Opt, Cmd), then the key by its name or its character.
+    pub fn parse(text: &str) -> Result<Chord, String> {
+        let parts: Vec<&str> = text.split('+').map(str::trim).collect();
+        // `Ctrl++` is Ctrl and the plus key.
+        let (mods, key) = match parts.as_slice() {
+            [rest @ .., "", ""] => (rest, "+"),
+            [rest @ .., key] => (rest, *key),
+            [] => return Err("an empty key".into()),
+        };
+        let mut c = Chord { key: Key::A, ctrl: false, shift: false, alt: false, cmd: false };
+        for m in mods {
+            match m.to_ascii_lowercase().as_str() {
+                "ctrl" | "control" => c.ctrl = true,
+                "shift" => c.shift = true,
+                "alt" | "opt" | "option" => c.alt = true,
+                "cmd" | "command" | "super" => c.cmd = true,
+                other => return Err(format!("`{other}` is not Ctrl, Shift, Alt or Cmd")),
+            }
+        }
+        c.key = key_named(key).ok_or_else(|| format!("`{key}` is not a key egui knows (A, F5, Tab, Comma or `,`, …)"))?;
+        Ok(c)
+    }
+
+    fn matches(&self, key: Key, m: Modifiers) -> bool {
+        // With Shift held, a US keyboard says `+` for the `=` key.
+        let same_key = key == self.key || (self.key == Key::Equals && key == Key::Plus);
+        same_key && m.ctrl == self.ctrl && m.shift == self.shift && m.alt == self.alt && m.mac_cmd == self.cmd
+    }
+
+    /// As `[keys]` writes it.
+    pub fn label(&self) -> String {
+        let mut out = String::new();
+        for (on, name) in [(self.cmd, "Cmd"), (self.ctrl, "Ctrl"), (self.alt, "Alt"), (self.shift, "Shift")] {
+            if on {
+                out.push_str(name);
+                out.push('+');
+            }
+        }
+        out.push_str(&key_label(self.key));
+        out
+    }
+
+    /// The key pressed, as a chord, when it is not a modifier alone.
+    pub fn pressed(key: Key, m: Modifiers) -> Chord {
+        Chord { key, ctrl: m.ctrl, shift: m.shift, alt: m.alt, cmd: m.mac_cmd }
+    }
+}
+
+/// Ctrl, Shift, Alt or the Windows / Cmd key pressed alone.
+pub fn is_modifier(key: Key) -> bool {
+    matches!(key, Key::ShiftLeft | Key::ShiftRight | Key::ControlLeft | Key::ControlRight | Key::AltLeft | Key::AltRight | Key::SuperLeft | Key::SuperRight)
+}
+
+fn key_named(name: &str) -> Option<Key> {
+    let symbol = match name {
+        "," => Some(Key::Comma),
+        "-" => Some(Key::Minus),
+        "=" => Some(Key::Equals),
+        "+" => Some(Key::Plus),
+        "." => Some(Key::Period),
+        "/" => Some(Key::Slash),
+        ";" => Some(Key::Semicolon),
+        "`" => Some(Key::Backtick),
+        "[" => Some(Key::OpenBracket),
+        "]" => Some(Key::CloseBracket),
+        "\\" => Some(Key::Backslash),
+        _ => None,
+    };
+    symbol.or_else(|| Key::from_name(name)).or_else(|| Key::from_name(&name.to_ascii_uppercase())).or_else(|| {
+        let mut cs = name.chars();
+        let first = cs.next()?.to_ascii_uppercase();
+        Key::from_name(&format!("{first}{}", cs.as_str().to_ascii_lowercase()))
+    })
+}
+
+fn key_label(key: Key) -> String {
+    match key {
+        Key::Comma => ",".into(),
+        Key::Minus => "-".into(),
+        Key::Equals => "=".into(),
+        Key::Plus => "+".into(),
+        Key::Period => ".".into(),
+        Key::Slash => "/".into(),
+        k => k.name().to_owned(),
+    }
+}
+
+/// The keys the settings gave, or took away (`None`), by action.
+static BINDINGS: std::sync::RwLock<Vec<(Action, Option<Chord>)>> = std::sync::RwLock::new(Vec::new());
+
+fn bindings() -> Vec<(Action, Option<Chord>)> {
+    BINDINGS.read().map(|b| b.clone()).unwrap_or_default()
+}
+
+/// Read `[keys]` from the settings: action name, then a key or `"none"`.
+/// The keys in force change only when all of them read.
+pub fn set_bindings(table: &std::collections::BTreeMap<String, String>) -> Result<(), String> {
+    let mut out = Vec::new();
+    for (name, text) in table {
+        let Some((a, ..)) = NAMED.iter().find(|(_, n, ..)| n == name) else {
+            let names: Vec<&str> = NAMED.iter().map(|(_, n, ..)| *n).collect();
+            return Err(format!("keys.{name}: not one of {}", names.join(", ")));
+        };
+        let chord = if text.trim().eq_ignore_ascii_case("none") { None } else { Some(Chord::parse(text).map_err(|e| format!("keys.{name}: {e}"))?) };
+        out.push((*a, chord));
+    }
+    if let Ok(mut b) = BINDINGS.write() {
+        *b = out;
+    }
+    Ok(())
+}
+
+/// The key an action is on now, as shown beside it: the settings' key,
+/// `none`, or its own.
+pub fn label(action: Action) -> String {
+    let mac = cfg!(target_os = "macos");
+    if let Some((_, c)) = bindings().into_iter().find(|(a, _)| *a == action) {
+        return c.map_or_else(|| "none".into(), |c| c.label());
+    }
+    NAMED.iter().find(|(a, ..)| *a == action).map(|(_, _, win, m)| if mac { *m } else { *win }).unwrap_or_default().to_owned()
 }
 
 fn action_on(key: Key, m: Modifiers, mac: bool) -> Option<Action> {
@@ -150,6 +313,31 @@ mod tests {
         assert_eq!(action_on(Key::W, CTRL, false), None, "readline's word rubout");
         assert_eq!(action_on(Key::Num3, CTRL, false), None);
         assert_eq!(action_on(Key::R, CTRL, false), None);
+    }
+
+    #[test]
+    fn the_settings_move_a_key() {
+        let new = Chord::parse("Ctrl+Shift+N").unwrap();
+        let bound = vec![(Action::NewTab, Some(new)), (Action::Zoom, None)];
+        assert_eq!(action_with(Key::N, CTRL_SHIFT, false, &bound), Some(Action::NewTab), "the key given");
+        assert_eq!(action_with(Key::T, CTRL_SHIFT, false, &bound), None, "its own key is the shell's again");
+        assert_eq!(action_with(Key::Z, CTRL_SHIFT, false, &bound), None, "taken away");
+        assert_eq!(action_with(Key::W, CTRL_SHIFT, false, &bound), Some(Action::CloseTab), "the rest as they were");
+        assert_eq!(Chord::parse("Ctrl+,").unwrap().key, Key::Comma);
+        assert_eq!(Chord::parse("ctrl++").unwrap().key, Key::Plus);
+        assert_eq!(Chord::parse("Alt+Shift+=").unwrap().label(), "Alt+Shift+=");
+        assert_eq!(Chord::parse("F5").unwrap(), Chord { key: Key::F5, ctrl: false, shift: false, alt: false, cmd: false });
+        assert_eq!(Chord::parse("cmd+shift+p").unwrap().label(), "Cmd+Shift+P");
+        assert!(Chord::parse("Hyper+X").is_err());
+        assert!(Chord::parse("Ctrl+Nothing").is_err());
+        // Alt+Shift+= arrives as Plus from a US keyboard.
+        let split = vec![(Action::SplitRight, Some(Chord::parse("Ctrl+Alt+=").unwrap()))];
+        let ctrl_alt = Modifiers { alt: true, ctrl: true, shift: false, mac_cmd: false, command: true };
+        assert_eq!(action_with(Key::Plus, ctrl_alt, false, &split), Some(Action::SplitRight));
+        // Every named action's own key reads.
+        for (_, _, win, mac) in NAMED {
+            assert!(Chord::parse(win).is_ok() && Chord::parse(mac).is_ok(), "{win} {mac}");
+        }
     }
 
     #[test]

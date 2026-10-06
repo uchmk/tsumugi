@@ -973,9 +973,8 @@ impl App {
         for f in folders {
             out.push(palette::Entry { title: format!("New session in {}", home_short(f)), detail: "folder".into(), pick: palette::Pick::Folder(f.to_path_buf()) });
         }
-        let mac = cfg!(target_os = "macos");
         for c in palette::Command::ALL {
-            out.push(palette::Entry { title: c.title(), detail: c.key(mac).into(), pick: palette::Pick::Command(c) });
+            out.push(palette::Entry { title: c.title(), detail: c.key(), pick: palette::Pick::Command(c) });
         }
         out
     }
@@ -1317,7 +1316,7 @@ impl App {
                         self.view.save();
                         ui.close();
                     }
-                    let key = if cfg!(target_os = "macos") { "Cmd+Shift+B" } else { "Ctrl+Shift+B" };
+                    let key = keys::label(keys::Action::Rail);
                     if ui.selectable_label(false, format!("Narrow rail   {key}")).clicked() {
                         self.view.rail = true;
                         self.view.save();
@@ -2866,6 +2865,10 @@ impl App {
             match read {
                 Read::Settings(read) => match *read {
                     Ok(s) => {
+                        if let Err(e) = keys::set_bindings(&s.keys) {
+                            self.settings_error = Some(e);
+                            continue;
+                        }
                         self.font = egui::FontId::monospace(s.font.size);
                         let own = s.window.own_titlebar();
                         if !cfg!(target_os = "macos") {
@@ -2955,7 +2958,9 @@ impl App {
             let mut actions = Vec::new();
             // A field of the window's own (a menu's "Add a tag") has the
             // keys while it is focused; the pane gets them otherwise.
-            let field = ctx.memory(|m| m.focused().is_some()) || self.new_session.is_some() || self.search.is_some();
+            // A key being changed in the settings is the settings'.
+            let capturing = self.prefs.as_ref().is_some_and(|p| p.capturing.is_some());
+            let field = ctx.memory(|m| m.focused().is_some()) || self.new_session.is_some() || self.search.is_some() || capturing;
             if self.key_log {
                 // `TSUMUGI_KEYLOG=1`: every key press as the window gets it,
                 // to see on a real machine why a key does nothing.
