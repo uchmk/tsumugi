@@ -250,6 +250,30 @@ fn a_prompt_is_pasted_and_sent() {
     pane.kill();
 }
 
+/// A search across sessions finds a line in the one that printed it, and
+/// nothing for what no session printed.
+#[test]
+fn every_sessions_scrollback_is_searched() {
+    let at = address();
+    let _srv = serve(&at).expect("the server starts");
+    let c = Client::connect(&at, || {}).expect("a client connects");
+    let quiet = c.spawn(std::env::temp_dir(), None, Size::new(80, 24), (8, 16)).expect("a shell starts");
+    let pane = c.spawn(std::env::temp_dir(), None, Size::new(80, 24), (8, 16)).expect("a shell starts");
+    until(&pane, "a prompt", |t| !t.trim().is_empty());
+    // The line typed has `$((40+2))`; only the answer has `found-42`.
+    c.send_prompt(pane.id(), "echo found-$((40+2))".into());
+    until(&pane, "the answer", |t| t.contains("found-42"));
+    c.search_all("FOUND-42".into());
+    eventually("the lines found", || c.found_all().is_some_and(|(q, _)| q == "FOUND-42"));
+    let (_, hits) = c.found_all().expect("an answer");
+    assert_eq!(hits.len(), 1, "{hits:?}");
+    assert_eq!((hits[0].id, hits[0].text.trim()), (pane.id(), "found-42"));
+    c.search_all("nothing-printed-this".into());
+    eventually("nothing found", || c.found_all().is_some_and(|(q, h)| q == "nothing-printed-this" && h.is_empty()));
+    pane.kill();
+    quiet.kill();
+}
+
 /// A server asked to stop goes, its tabs written down for the next one.
 #[cfg(unix)]
 #[test]

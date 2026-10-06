@@ -1121,6 +1121,10 @@ impl App {
         let Some(client) = self.client.clone() else { return };
         match pick {
             palette::Pick::Session(id) => self.go_to(&client, workspaces, id),
+            palette::Pick::Line { id, line, col, len } => {
+                self.go_to(&client, workspaces, id);
+                client.reveal(id, line, col, len);
+            }
             palette::Pick::Folder(dir) => match new_session(&client, dir, Place::NewWorkspace) {
                 Ok(pane) => self.pending = Some(pane.id()),
                 Err(e) => self.failed = Some(e),
@@ -2868,7 +2872,29 @@ impl App {
         self.show_toast(&ctx);
 
         let answer = match &mut self.search {
-            Some(view) => chrome::search_box(&ctx, &self.palette, view, &Self::search_entries(&workspaces, &sessions)),
+            Some(view) => {
+                // The scrollbacks are asked once typing pauses, for three
+                // letters or more; their answer comes a frame or two later.
+                let q = view.query.trim().to_owned();
+                if q.chars().count() >= 3 && q != view.asked && view.changed.elapsed() > std::time::Duration::from_millis(250) {
+                    client.search_all(q.clone());
+                    view.asked = q.clone();
+                } else if q != view.asked {
+                    ctx.request_repaint_after(std::time::Duration::from_millis(260));
+                }
+                let lines: Vec<palette::Entry> = match client.found_all() {
+                    Some((asked, hits)) if asked == q && q.chars().count() >= 3 => hits
+                        .into_iter()
+                        .map(|h| {
+                            let name = sessions.iter().find(|i| i.id == h.id).map(|i| sort::display_title(&i.title, &i.command)).unwrap_or_default();
+                            let len = q.chars().count();
+                            palette::Entry { title: h.text.trim().to_owned(), detail: name, pick: palette::Pick::Line { id: h.id, line: h.line, col: h.col, len } }
+                        })
+                        .collect(),
+                    _ => Vec::new(),
+                };
+                chrome::search_box(&ctx, &self.palette, view, &Self::search_entries(&workspaces, &sessions), &lines)
+            }
             None => None,
         };
         match answer {

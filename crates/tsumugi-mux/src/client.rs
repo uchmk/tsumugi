@@ -32,6 +32,8 @@ struct State {
     screens: HashMap<SessionId, Remote>,
     /// The answer to `list`, taken by it.
     sessions: Option<Vec<Info>>,
+    /// The last answer to `search_all`.
+    found_all: Option<(String, Vec<crate::proto::Hit>)>,
     /// The latest list the server sent, kept for a sidebar.
     latest: Vec<Info>,
     workspaces: Vec<Workspace>,
@@ -245,6 +247,22 @@ impl Client {
         self.0.send(ToServer::Input { id, bytes: b"\r".to_vec() });
     }
 
+    /// Look for `query` in every session's scrollback; the answer comes to
+    /// `found_all`, without waiting for it here.
+    pub fn search_all(&self, query: String) {
+        self.0.send(ToServer::SearchAll { query });
+    }
+
+    /// The last answer to `search_all`: what was looked for, and the lines.
+    pub fn found_all(&self) -> Option<(String, Vec<crate::proto::Hit>)> {
+        self.0.lock().found_all.clone()
+    }
+
+    /// Show a line `search_all` found, on its session's screen.
+    pub fn reveal(&self, id: SessionId, line: i32, col: usize, len: usize) {
+        self.0.send(ToServer::Reveal { id, line, col, len });
+    }
+
     /// Name a tab; empty gives it back its pane's name.
     pub fn rename_workspace(&self, id: WorkspaceId, name: String) {
         self.0.send(ToServer::RenameWorkspace { id, name });
@@ -324,6 +342,7 @@ fn receive(inner: &Inner, msg: ToClient) {
         }
         ToClient::Spawned { id } => st.spawned.push_back(Ok(id)),
         ToClient::Restored(n) => st.restored = Some(n),
+        ToClient::FoundAll { query, hits } => st.found_all = Some((query, hits)),
         ToClient::Saved(s) => st.saved = Some(s),
         ToClient::Notices(list) => st.notices = list,
         ToClient::Started { at_ms } => st.started_ms = at_ms,

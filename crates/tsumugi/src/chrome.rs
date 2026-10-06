@@ -588,9 +588,10 @@ fn edge_at(r: egui::Rect, p: egui::Pos2) -> Option<egui::ResizeDirection> {
 /// The search box opened (`Ctrl+Shift+P`): a field, and the entries that
 /// match it below, the arrows moving among them, `Enter` picking, `Esc` or a
 /// click elsewhere closing.
-pub fn search_box(ctx: &egui::Context, pal: &Palette, view: &mut crate::palette::View, entries: &[crate::palette::Entry]) -> Option<crate::palette::Answer> {
-    use crate::palette::Answer;
-    let found = crate::palette::search(&view.query, entries);
+/// `lines`: what the sessions' scrollbacks hold of the query, after the rest.
+pub fn search_box(ctx: &egui::Context, pal: &Palette, view: &mut crate::palette::View, entries: &[crate::palette::Entry], lines: &[crate::palette::Entry]) -> Option<crate::palette::Answer> {
+    use crate::palette::{Answer, Pick};
+    let found: Vec<crate::palette::Entry> = crate::palette::search(&view.query, entries).into_iter().take(10).chain(lines.iter().take(10).cloned()).collect();
     let (up, down, enter, esc) = ctx.input_mut(|i| {
         (
             i.consume_key(egui::Modifiers::NONE, egui::Key::ArrowUp),
@@ -602,7 +603,7 @@ pub fn search_box(ctx: &egui::Context, pal: &Palette, view: &mut crate::palette:
     if esc {
         return Some(Answer::Close);
     }
-    let shown = found.len().min(12);
+    let shown = found.len();
     if down && shown > 0 {
         view.selected = (view.selected + 1) % shown;
     }
@@ -630,12 +631,19 @@ pub fn search_box(ctx: &egui::Context, pal: &Palette, view: &mut crate::palette:
                 ui.add(field).request_focus();
                 if view.query != before {
                     view.selected = 0;
+                    view.changed = std::time::Instant::now();
                 }
                 ui.add_space(4.0);
                 if found.is_empty() {
                     ui.label(RichText::new("Nothing matches").color(pal.fg_dim).size(12.0));
                 }
-                for (k, e) in found.iter().take(12).enumerate() {
+                let mut said = false;
+                for (k, e) in found.iter().enumerate() {
+                    if matches!(e.pick, Pick::Line { .. }) && !said {
+                        said = true;
+                        ui.add_space(2.0);
+                        ui.label(RichText::new("IN THE SCROLLBACK").size(10.5).strong().color(pal.fg_dim));
+                    }
                     let (rect, resp) = ui.allocate_exact_size(egui::vec2(ui.available_width(), 26.0), egui::Sense::click());
                     if resp.hovered() && ui.input(|i| i.pointer.delta() != egui::Vec2::ZERO) {
                         view.selected = k;
@@ -649,7 +657,8 @@ pub fn search_box(ctx: &egui::Context, pal: &Palette, view: &mut crate::palette:
                     let mut job = egui::text::LayoutJob::simple_singleline(e.detail.clone(), FontId::proportional(11.5), pal.fg_dim);
                     job.wrap = egui::text::TextWrapping::truncate_at_width(rect.width() * 0.4);
                     let detail = ui.fonts_mut(|f| f.layout_job(job));
-                    let mut job = egui::text::LayoutJob::simple_singleline(e.title.clone(), FontId::proportional(12.5), crate::theme::colors().strong());
+                    let font = if matches!(e.pick, Pick::Line { .. }) { FontId::monospace(12.0) } else { FontId::proportional(12.5) };
+                    let mut job = egui::text::LayoutJob::simple_singleline(e.title.clone(), font, crate::theme::colors().strong());
                     job.wrap = egui::text::TextWrapping::truncate_at_width((rect.width() - detail.size().x - 28.0).max(20.0));
                     let title = ui.fonts_mut(|f| f.layout_job(job));
                     let p = ui.painter();

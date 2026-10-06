@@ -237,10 +237,31 @@ fn serve(shared: Arc<Shared>, client: ClientId, conn: Conn) {
     let _ = writer.join();
 }
 
+/// How many lines a search across sessions gives back from one, and in all.
+const SEARCH_PER_SESSION: usize = 30;
+const SEARCH_MOST: usize = 200;
+
 fn handle(shared: &Arc<Shared>, client: ClientId, tx: &Sender<ToClient>, msg: ToServer) {
     let mut sessions = lock(&shared.sessions);
     match msg {
         ToServer::Hello { .. } => {}
+        ToServer::SearchAll { query } => {
+            // Each session's newest first, the newest sessions' first.
+            let mut hits = Vec::new();
+            let mut ids: Vec<&SessionId> = sessions.keys().collect();
+            ids.sort_by(|a, b| b.cmp(a));
+            for id in ids {
+                let s = &sessions[id];
+                for (line, col, text) in s.term.find_lines(&query, SEARCH_PER_SESSION) {
+                    hits.push(crate::proto::Hit { id: *id, line, col, text });
+                }
+                if hits.len() >= SEARCH_MOST {
+                    hits.truncate(SEARCH_MOST);
+                    break;
+                }
+            }
+            let _ = tx.send(ToClient::FoundAll { query, hits });
+        }
         ToServer::List => {
             let workspaces = lock(&shared.workspaces);
             let _ = tx.send(ToClient::Workspaces(ordered(shared, &workspaces).into_iter().cloned().collect()));
@@ -444,6 +465,7 @@ fn handle(shared: &Arc<Shared>, client: ClientId, tx: &Sender<ToClient>, msg: To
                 ToServer::Select { cell, right_half, start, .. } => term.select(cell, right_half, start),
                 ToServer::SelectWord { cell, .. } => term.select_word(cell),
                 ToServer::ClearSelection { .. } => term.clear_selection(),
+                ToServer::Reveal { line, col, len, .. } => term.reveal(line, col, len),
                 ToServer::Copy { .. } => {
                     if let Some(text) = term.selection() {
                         let _ = tx.send(ToClient::Clipboard(text));
@@ -465,6 +487,7 @@ fn target(msg: &ToServer) -> Option<SessionId> {
         | ToServer::Select { id, .. }
         | ToServer::SelectWord { id, .. }
         | ToServer::ClearSelection { id }
+        | ToServer::Reveal { id, .. }
         | ToServer::Copy { id } => *id,
         _ => return None,
     })

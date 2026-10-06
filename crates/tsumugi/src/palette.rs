@@ -15,6 +15,8 @@ pub enum Pick {
     Session(SessionId),
     /// Start a session in the folder.
     Folder(PathBuf),
+    /// A line found in a session's scrollback: go there and show it.
+    Line { id: SessionId, line: i32, col: usize, len: usize },
     Command(Command),
 }
 
@@ -93,11 +95,15 @@ pub struct View {
     pub selected: usize,
     /// Opened this frame: the click that opened it is not a click outside.
     pub opening: bool,
+    /// What the scrollbacks were last asked for, and when the query last
+    /// changed (asked once typing pauses).
+    pub asked: String,
+    pub changed: std::time::Instant,
 }
 
 impl View {
     pub fn new() -> Self {
-        Self { query: String::new(), selected: 0, opening: true }
+        Self { query: String::new(), selected: 0, opening: true, asked: String::new(), changed: std::time::Instant::now() }
     }
 }
 

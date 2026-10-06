@@ -7,7 +7,7 @@ use tsumugi_pane::Size;
 
 /// Bumped whenever a message changes shape: a client and a server that
 /// disagree say so at `Hello` instead of misreading each other.
-pub const VERSION: u32 = 13;
+pub const VERSION: u32 = 14;
 
 /// A `Hello` with this version asks the server to stop, writing down its
 /// tabs first so the next window can bring them back. `Hello` stays the
@@ -213,6 +213,22 @@ pub enum ToServer {
     /// End the session's shell and start it again in its place, resuming
     /// the Claude Code conversation that ran in it.
     Restart { id: SessionId },
+    /// Find `query` in every session's scrollback and screen; answered
+    /// with `FoundAll`.
+    SearchAll { query: String },
+    /// Put a line found on the session's screen, the match selected.
+    Reveal { id: SessionId, line: i32, col: usize, len: usize },
+}
+
+/// A line `SearchAll` found.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Hit {
+    pub id: SessionId,
+    /// The scrollback above zero.
+    pub line: i32,
+    /// The cell the match starts at.
+    pub col: usize,
+    pub text: String,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -227,6 +243,8 @@ pub enum ToClient {
     Spawned { id: SessionId },
     /// How many sessions `Restore` started.
     Restored(usize),
+    /// What `SearchAll` found for `query`, newest first in each session.
+    FoundAll { query: String, hits: Vec<Hit> },
     Saved(Option<crate::state::Saved>),
     /// The notification list, newest last, whenever it changes.
     Notices(Vec<Notice>),

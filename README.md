@@ -147,6 +147,10 @@ they are in (to start a new session there) and the window's commands. Type
 a few letters in order, move with the arrows, `Enter` to go, `Esc` to close.
 The band also shows the tags of the session with the keys.
 
+Three letters or more also search every session's scrollback: the lines
+found come last, under IN THE SCROLLBACK, and picking one goes to its
+session and scrolls to it, the match selected.
+
 ### Sorting and filtering
 
 The button beside SESSIONS orders the tabs: **Manual** (the default, where a
