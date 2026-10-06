@@ -354,6 +354,7 @@ mod tests {
             muted: false,
             tags: if id == 3 { vec!["ci".into()] } else { vec![] },
             claude: false,
+            conversation: String::new(),
         }
     }
 

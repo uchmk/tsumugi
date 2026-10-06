@@ -168,7 +168,7 @@ pub fn status_bar(
     size: Option<(usize, usize)>,
     extra: &StatusExtra,
 ) -> Option<StatusClick> {
-    let StatusExtra { up_ms, nerd, clock, git } = extra;
+    let StatusExtra { up_ms, nerd, clock, git, tokens } = extra;
     let (up_ms, nerd) = (*up_ms, *nerd);
     let mut click = None;
     let small = |t: String, c: Color32| RichText::new(t).font(FontId::proportional(11.5)).color(c);
@@ -208,6 +208,20 @@ pub fn status_bar(
                 ui.add_space(12.0);
             }
             ui.label(small("UTF-8".into(), pal.fg_dim));
+            if let Some((conversation, today)) = tokens {
+                use crate::usage::short;
+                ui.add_space(12.0);
+                let said = match conversation {
+                    Some(c) => format!("{} tok · today {}", short(c.total()), short(today.total())),
+                    None => format!("today {} tok", short(today.total())),
+                };
+                let detail = |t: &crate::usage::Tokens| format!("in {} · cache write {} · cache read {} · out {}", short(t.input), short(t.cache_write), short(t.cache_read), short(t.output));
+                let mut hover = format!("Claude Code's tokens today: {}", detail(today));
+                if let Some(c) = conversation {
+                    hover = format!("This conversation: {}\n{hover}", detail(c));
+                }
+                ui.label(small(said, pal.fg_dim)).on_hover_text(format!("{hover}\nThe totals leave out the cache's reads."));
+            }
             if let (Some(i), Some((cols, lines))) = (focus, size) {
                 ui.add_space(12.0);
                 ui.label(small(format!("{} · {cols}×{lines}", crate::program_name(&i.command)), pal.fg_dim));
@@ -777,6 +791,9 @@ pub struct StatusExtra {
     pub nerd: bool,
     pub clock: Option<String>,
     pub git: Option<crate::gitinfo::Git>,
+    /// Claude Code's tokens: the focused session's conversation, if it is
+    /// one, and today's in all.
+    pub tokens: Option<(Option<crate::usage::Tokens>, crate::usage::Tokens)>,
 }
 
 /// What the notification list was asked to do.

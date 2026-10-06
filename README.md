@@ -94,6 +94,10 @@ folder and branch of the pane with the keys -- with `↑N` for commits not
 pushed, `↓N` for commits to pull, and the branch's pull request (`PR #42 ✓`,
 green when its checks pass, red when one failed, cyan while they run; a
 click opens it). The pull request needs the GitHub CLI (`gh`) signed in.
+On the right, Claude Code's tokens -- the focused session's conversation
+and today's in all -- read from the transcripts under `~/.claude/projects/`
+(`CLAUDE_CONFIG_DIR` moves them); the totals leave out the cache's reads,
+which the tooltip shows.
 
 A card in a git repository shows what its session has changed and not
 committed -- `+120 −8` lines, or `3 new` files -- with the list of files

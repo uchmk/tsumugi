@@ -34,6 +34,7 @@ mod prefs;
 mod shellhook;
 mod sort;
 mod theme;
+mod usage;
 mod worktree;
 mod spawn;
 
@@ -557,6 +558,8 @@ struct App {
     git: gitinfo::Watcher,
     /// What each tab has changed and not committed (B5).
     changes: gitinfo::Watcher,
+    /// Claude Code's tokens, today's and each conversation's (1d).
+    usage: usage::Watcher,
     /// The window has no system title bar: the band is it. On macOS fixed
     /// when the window opens; elsewhere it follows the settings.
     own_frame: bool,
@@ -710,6 +713,8 @@ impl App {
 
         let git_ctx = cc.egui_ctx.clone();
         let git = gitinfo::Watcher::new(true, move || git_ctx.request_repaint());
+        let usage_ctx = cc.egui_ctx.clone();
+        let usage = usage::Watcher::start(move || usage_ctx.request_repaint());
         let changes_ctx = cc.egui_ctx.clone();
         let changes = gitinfo::Watcher::new(false, move || changes_ctx.request_repaint());
         let ctx = cc.egui_ctx.clone();
@@ -741,6 +746,7 @@ impl App {
             nerd,
             git,
             changes,
+            usage,
             own_frame: first_window.own_titlebar(),
             system_frame: !first_window.own_titlebar(),
             material: cfg!(windows) && first_window.material != "none" && material::apply(window_handle(cc), &first_window.material, theme::colors().light),
@@ -2769,7 +2775,10 @@ impl App {
             .show(ui, |ui| {
                 let clock = &self.settings_now.clock;
                 let git = focus_info.as_ref().and_then(|i| self.git.get(&i.cwd, &i.branch));
-                let extra = chrome::StatusExtra { up_ms: up, nerd: self.nerd, clock: clock.show.then(|| clock.format()), git };
+                let used = self.usage.get();
+                let conversation = focus_info.as_ref().filter(|i| !i.conversation.is_empty()).and_then(|i| used.conversations.get(&i.conversation).copied());
+                let tokens = (used.today.total() > 0 || conversation.is_some()).then_some((conversation, used.today));
+                let extra = chrome::StatusExtra { up_ms: up, nerd: self.nerd, clock: clock.show.then(|| clock.format()), git, tokens };
                 chrome::status_bar(ui, &self.palette, &sessions, focus_info.as_ref(), size, &extra)
             })
             .inner;

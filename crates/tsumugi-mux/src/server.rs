@@ -436,6 +436,7 @@ fn handle(shared: &Arc<Shared>, client: ClientId, tx: &Sender<ToClient>, msg: To
         ToServer::Notify { id, state, note, claude } => {
             if let Some(s) = sessions.get_mut(&id) {
                 if claude.is_some() && claude != s.claude {
+                    s.info.conversation = claude.clone().unwrap_or_default();
                     s.claude = claude;
                     s.info.claude = true;
                     save_soon(shared, SAVE_AFTER_CHANGE);
@@ -642,7 +643,7 @@ fn spawn_session(
     shared.ever.store(true, Ordering::Relaxed);
     let (branch, project) = git(&cwd);
     let branch = branch.unwrap_or_default();
-    let mut info = Info { id, cwd, title: String::new(), command, state: State::Running, note: String::new(), since_ms: now_ms(), branch, project, muted: false, tags: Vec::new(), claude: false };
+    let mut info = Info { id, cwd, title: String::new(), command, state: State::Running, note: String::new(), since_ms: now_ms(), branch, project, muted: false, tags: Vec::new(), claude: false, conversation: String::new() };
     lock(&shared.rules).apply(&mut info);
     let watchers: BTreeSet<ClientId> = client.into_iter().collect();
     sessions.insert(
@@ -704,6 +705,7 @@ fn restore(shared: &Arc<Shared>, sessions: &mut BTreeMap<SessionId, Session>, on
             s.info.muted = p.muted;
             s.info.tags.clone_from(&p.tags);
             s.info.claude = p.claude.is_some();
+            s.info.conversation = p.claude.clone().unwrap_or_default();
             if let Some(conversation) = &p.claude {
                 s.claude = Some(conversation.clone());
                 s.pending = Some(format!("claude --resume {conversation}\r").into_bytes());

@@ -124,6 +124,7 @@ mod tests {
             muted: false,
             tags: tags.iter().map(|t| t.to_string()).collect(),
             claude: false,
+            conversation: String::new(),
         }
     }
 

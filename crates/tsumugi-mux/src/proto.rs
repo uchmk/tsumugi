@@ -7,7 +7,7 @@ use tsumugi_pane::Size;
 
 /// Bumped whenever a message changes shape: a client and a server that
 /// disagree say so at `Hello` instead of misreading each other.
-pub const VERSION: u32 = 14;
+pub const VERSION: u32 = 15;
 
 /// A `Hello` with this version asks the server to stop, writing down its
 /// tabs first so the next window can bring them back. `Hello` stays the
@@ -120,6 +120,8 @@ pub struct Info {
     pub tags: Vec<String>,
     /// Claude Code runs in it: its hooks named a conversation.
     pub claude: bool,
+    /// That conversation's id (its transcript's name), or empty.
+    pub conversation: String,
 }
 
 /// How many tags a session can have (the design's 1o).
