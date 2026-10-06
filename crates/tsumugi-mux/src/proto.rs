@@ -7,7 +7,7 @@ use tsumugi_pane::Size;
 
 /// Bumped whenever a message changes shape: a client and a server that
 /// disagree say so at `Hello` instead of misreading each other.
-pub const VERSION: u32 = 15;
+pub const VERSION: u32 = 16;
 
 /// A `Hello` with this version asks the server to stop, writing down its
 /// tabs first so the next window can bring them back. `Hello` stays the
@@ -208,6 +208,9 @@ pub enum ToServer {
     MuteTag { tag: String, on: bool },
     /// Put a tab at `to` in the sidebar's own order (dragged there).
     MoveWorkspace { id: WorkspaceId, to: usize },
+    /// Take the pane out of its split into a tab of its own, after the
+    /// one it was in (a pane dropped on the sidebar).
+    OwnTab { id: SessionId },
     /// Name a tab; an empty name gives it back its pane's.
     RenameWorkspace { id: WorkspaceId, name: String },
     /// Keep a tab at the top of the sidebar, or not.

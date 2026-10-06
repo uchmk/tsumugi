@@ -5,7 +5,7 @@
 //! bell shows; doing it is the system's part (`os`), on a thread of its own
 //! so a slow notification service never holds up a frame.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, mpsc};
 
 use tsumugi_mux::{Notice, SessionId, State};
@@ -71,7 +71,9 @@ pub enum Out {
     Flash,
     /// The sound for a session that failed (`true`) or wants a person.
     Sound(bool),
-    Badge(usize),
+    /// How many, and whether one of them failed (the number is red then,
+    /// else gold, as the design has it).
+    Badge(usize, bool),
 }
 
 /// What has been told so far.
@@ -81,8 +83,8 @@ pub struct Alerts {
     /// Notices below this id have been seen; `None` before the first list,
     /// whose notices are from before this window and are not told again.
     next: Option<u64>,
-    /// The number last put on the taskbar.
-    badge: usize,
+    /// The number last put on the taskbar, and whether it was red.
+    badge: (usize, bool),
 }
 
 /// Who is where, for [`Alerts::decide`].
@@ -95,12 +97,15 @@ pub struct Seen<'a> {
     pub teller: bool,
     /// Sessions told of in the bell only.
     pub muted: &'a HashSet<SessionId>,
+    /// Each session's folder by name (`filer`), for the notification's
+    /// title; a session missing here is called by its title.
+    pub places: &'a HashMap<SessionId, String>,
 }
 
 impl Alerts {
     /// What the notices that arrived since the last call ask for.
     pub fn decide(&mut self, notices: &[Notice], seen: Seen) -> Vec<Out> {
-        let Seen { looking, teller, muted } = seen;
+        let Seen { looking, teller, muted, places } = seen;
         let heard = |n: &&Notice| !muted.contains(&n.session);
         let mut out = Vec::new();
         let next = notices.iter().map(|n| n.id + 1).max().unwrap_or(0);
@@ -111,7 +116,8 @@ impl Alerts {
         self.next = Some(next.max(self.next.unwrap_or(0)));
         if !looking && teller {
             for n in fresh.iter().filter(|n| self.rules.notify.has(n.state)) {
-                out.push(Out::Notify { session: n.session, title: n.title.clone(), body: body(n) });
+                let (title, body) = wording(n, places.get(&n.session).map(String::as_str));
+                out.push(Out::Notify { session: n.session, title, body });
             }
             if fresh.iter().any(|n| self.rules.flash.has(n.state)) {
                 out.push(Out::Flash);
@@ -121,28 +127,39 @@ impl Alerts {
                 out.push(Out::Sound(sounding.iter().any(|n| n.state == State::Error)));
             }
         }
-        let badge = if looking { 0 } else { notices.iter().filter(heard).filter(|n| !n.read && self.rules.badge.has(n.state)).count() };
+        let counted: Vec<&Notice> = if looking { Vec::new() } else { notices.iter().filter(heard).filter(|n| !n.read && self.rules.badge.has(n.state)).collect() };
+        let badge = (counted.len(), counted.iter().any(|n| n.state == State::Error));
         if badge != self.badge {
             self.badge = badge;
-            out.push(Out::Badge(badge));
+            out.push(Out::Badge(badge.0, badge.1));
         }
         out
     }
 
     /// The number on the taskbar now.
     pub fn badge(&self) -> usize {
-        self.badge
+        self.badge.0
     }
 }
 
-fn body(n: &Notice) -> String {
-    let what = match n.state {
-        State::Waiting | State::MaybeWaiting => "Waiting for you",
-        State::Error => "Error",
-        State::Done => "Done",
-        State::Running => "Running",
+/// The design's words: the folder and what it is doing in the title
+/// (`filer is waiting for you`), the work's name and what it said below.
+/// Without a folder, the work's name is the title.
+fn wording(n: &Notice, place: Option<&str>) -> (String, String) {
+    let who = place.filter(|p| !p.is_empty()).unwrap_or(&n.title);
+    let title = match n.state {
+        State::Waiting | State::MaybeWaiting => format!("{who} is waiting for you"),
+        State::Error => format!("{who} failed"),
+        State::Done => format!("{who} is done"),
+        State::Running => format!("{who} is running"),
     };
-    if n.note.is_empty() { what.to_owned() } else { format!("{what} · {}", n.note) }
+    let named = place.is_some_and(|p| !p.is_empty()) && !n.title.is_empty();
+    let body = match (named, n.note.is_empty()) {
+        (true, true) => n.title.clone(),
+        (true, false) => format!("{} · {}", n.title, n.note),
+        (false, _) => n.note.clone(),
+    };
+    (title, body)
 }
 
 /// Called with the session of a notification that was clicked, from
@@ -189,10 +206,11 @@ impl Teller {
 /// title starts with it, which the taskbar and the window switcher show.
 pub const TASKBAR_NUMBER: bool = cfg!(windows);
 
-/// The number as a 16 × 16 picture, BGRA top-down with alpha: a red disc
-/// with white digits (`99` at most), for the taskbar button's overlay.
+/// The number as a 16 × 16 picture, BGRA top-down with alpha: a gold disc
+/// with dark digits, or a red one with white when one failed (`99` at most), for the taskbar
+/// button's overlay.
 #[cfg_attr(not(windows), allow(dead_code))]
-pub fn badge_pixels(n: usize) -> Vec<u32> {
+pub fn badge_pixels(n: usize, error: bool) -> Vec<u32> {
     const S: usize = 16;
     // 3 × 5 digits, a row per three bits.
     const DIGITS: [[u8; 5]; 10] = [
@@ -215,8 +233,9 @@ pub fn badge_pixels(n: usize) -> Vec<u32> {
             // A soft edge: alpha falls off over the last pixel.
             let a = ((S as f32 / 2.0 - d).clamp(0.0, 1.0) * 255.0) as u32;
             if a > 0 {
-                // Premultiplied, as the icon wants: #e5484d.
-                let (r, g, b) = (0xe5 * a / 255, 0x48 * a / 255, 0x4d * a / 255);
+                // Premultiplied, as the icon wants: #e5484d, or #e8c87a.
+                let (r, g, b) = if error { (0xe5, 0x48, 0x4d) } else { (0xe8, 0xc8, 0x7a) };
+                let (r, g, b) = (r * a / 255, g * a / 255, b * a / 255);
                 px[y * S + x] = a << 24 | r << 16 | g << 8 | b;
             }
         }
@@ -224,12 +243,14 @@ pub fn badge_pixels(n: usize) -> Vec<u32> {
     let text = n.min(99).to_string();
     let width = text.len() * 4 - 1;
     let (x0, y0) = ((S - width) / 2, (S - 5) / 2);
+    // White on red; dark on gold, which white does not read on.
+    let ink = if error { 0xffff_ffff } else { 0xff14_1413 };
     for (i, ch) in text.bytes().enumerate() {
         let glyph = DIGITS[(ch - b'0') as usize];
         for (dy, row) in glyph.iter().enumerate() {
             for dx in 0..3 {
                 if row >> (2 - dx) & 1 == 1 {
-                    px[(y0 + dy) * S + x0 + i * 4 + dx] = 0xffff_ffff;
+                    px[(y0 + dy) * S + x0 + i * 4 + dx] = ink;
                 }
             }
         }
@@ -260,14 +281,14 @@ mod os {
     use tsumugi_mux::SessionId;
     use windows::Data::Xml::Dom::XmlDocument;
     use windows::Foundation::TypedEventHandler;
-    use windows::UI::Notifications::{ToastNotification, ToastNotificationManager};
+    use windows::UI::Notifications::{ToastActivatedEventArgs, ToastNotification, ToastNotificationManager};
     use windows::Win32::Foundation::HWND;
     use windows::Win32::Graphics::Gdi::{BI_RGB, BITMAPINFO, BITMAPINFOHEADER, CreateBitmap, CreateDIBSection, DIB_RGB_COLORS, DeleteObject, HGDIOBJ};
     use windows::Win32::System::Com::{CLSCTX_INPROC_SERVER, COINIT_APARTMENTTHREADED, COINIT_MULTITHREADED, CoCreateInstance, CoInitializeEx};
     use windows::Win32::System::Registry::{HKEY, HKEY_CURRENT_USER, KEY_WRITE, REG_OPTION_NON_VOLATILE, REG_SZ, RegCloseKey, RegCreateKeyExW, RegSetValueExW};
     use windows::Win32::UI::Shell::{ITaskbarList3, SetCurrentProcessExplicitAppUserModelID, TaskbarList};
     use windows::Win32::UI::WindowsAndMessaging::{CreateIconIndirect, DestroyIcon, HICON, ICONINFO};
-    use windows::core::{HSTRING, IInspectable, w};
+    use windows::core::{HSTRING, IInspectable, Interface, w};
 
     /// The app's id to the notification service. It is registered under the
     /// user's own keys (no installer, no shortcut needed), with the name the
@@ -329,18 +350,18 @@ mod os {
                 }
                 // The window does these itself (`RequestUserAttention`, `sound`).
                 Out::Flash | Out::Sound(_) => {}
-                Out::Badge(n) => self.badge(n),
+                Out::Badge(n, error) => self.badge(n, error),
             }
         }
 
-        fn badge(&self, n: usize) {
+        fn badge(&self, n: usize, error: bool) {
             let (Some(taskbar), Some(hwnd)) = (&self.taskbar, self.window) else { return };
             unsafe {
                 if n == 0 {
                     let _ = taskbar.SetOverlayIcon(hwnd, HICON::default(), w!(""));
                     return;
                 }
-                let Some(icon) = icon(&badge_pixels(n)) else { return };
+                let Some(icon) = icon(&badge_pixels(n, error)) else { return };
                 let words = HSTRING::from(format!("{n} waiting"));
                 let _ = taskbar.SetOverlayIcon(hwnd, icon, &words);
                 // The taskbar keeps its own copy.
@@ -362,17 +383,31 @@ mod os {
     }
 
     fn toast(title: &str, body: &str, session: SessionId, click: Click) -> windows::core::Result<ToastNotification> {
+        // Open goes to the session, as a click on the toast does; Later is
+        // the system's own dismiss (the design's Notify).
         let xml = format!(
-            "<toast><visual><binding template=\"ToastGeneric\"><text>{}</text><text>{}</text></binding></visual></toast>",
+            "<toast launch=\"open\"><visual><binding template=\"ToastGeneric\"><text>{}</text><text>{}</text></binding></visual>\
+             <actions><action content=\"Open\" arguments=\"open\"/><action content=\"Later\" arguments=\"dismiss\" activationType=\"system\"/></actions></toast>",
             xml_escape(title),
             xml_escape(body)
         );
         let doc = XmlDocument::new()?;
         doc.LoadXml(&HSTRING::from(xml))?;
         let toast = ToastNotification::CreateToastNotification(&doc)?;
-        // A click on it, while tsumugi runs, goes to the session.
-        toast.Activated(&TypedEventHandler::<ToastNotification, IInspectable>::new(move |_, _| {
-            click(session);
+        // One per session: a newer one replaces the last in the Action
+        // Center rather than piling up.
+        toast.SetTag(&HSTRING::from(session.to_string()))?;
+        toast.SetGroup(&HSTRING::from("sessions"))?;
+        // A click on it or on Open, while tsumugi runs, goes to the session.
+        toast.Activated(&TypedEventHandler::<ToastNotification, IInspectable>::new(move |_, args| {
+            let open = args
+                .as_ref()
+                .and_then(|a| a.cast::<ToastActivatedEventArgs>().ok())
+                .and_then(|a| a.Arguments().ok())
+                .is_none_or(|a| a.is_empty() || a == "open");
+            if open {
+                click(session);
+            }
             Ok(())
         }))?;
         ToastNotificationManager::CreateToastNotifierWithId(&HSTRING::from(APP_ID))?.Show(&toast)?;
@@ -488,8 +523,21 @@ pub use os::name_process;
 mod tests {
     use super::*;
 
-    fn seen(looking: bool, teller: bool, muted: &HashSet<SessionId>) -> Seen<'_> {
-        Seen { looking, teller, muted }
+    fn seen<'a>(looking: bool, teller: bool, muted: &'a HashSet<SessionId>) -> Seen<'a> {
+        static NONE: std::sync::OnceLock<HashMap<SessionId, String>> = std::sync::OnceLock::new();
+        Seen { looking, teller, muted, places: NONE.get_or_init(HashMap::new) }
+    }
+
+    #[test]
+    fn the_folder_names_the_notification() {
+        let mut n = notice(0, State::Waiting, false);
+        n.title = "Fix the split".into();
+        n.note = "Approve the edit".into();
+        assert_eq!(wording(&n, Some("filer")), ("filer is waiting for you".into(), "Fix the split · Approve the edit".into()));
+        n.state = State::Error;
+        n.note.clear();
+        assert_eq!(wording(&n, Some("filer")), ("filer failed".into(), "Fix the split".into()));
+        assert_eq!(wording(&n, None), ("Fix the split failed".into(), String::new()), "no folder: the work's name");
     }
 
     fn notice(id: u64, state: State, read: bool) -> Notice {
@@ -502,10 +550,10 @@ mod tests {
         let none = HashSet::new();
         let old = [notice(0, State::Waiting, false)];
         // Only the number: the notice is unread.
-        assert_eq!(a.decide(&old, seen(false, true, &none)), vec![Out::Badge(1)]);
+        assert_eq!(a.decide(&old, seen(false, true, &none)), vec![Out::Badge(1, false)]);
         let new = [notice(0, State::Waiting, false), notice(1, State::Error, false)];
         let out = a.decide(&new, seen(false, true, &none));
-        assert_eq!(out, vec![Out::Notify { session: 1, title: "claude".into(), body: "Error".into() }, Out::Badge(2)]);
+        assert_eq!(out, vec![Out::Notify { session: 1, title: "claude failed".into(), body: String::new() }, Out::Badge(2, true)]);
         // Told once.
         assert_eq!(a.decide(&new, seen(false, true, &none)), vec![]);
     }
@@ -518,9 +566,9 @@ mod tests {
         let out = a.decide(&[notice(0, State::Waiting, false)], seen(true, true, &none));
         assert_eq!(out, vec![]);
         // Looking away later does not tell it then, but counts it.
-        assert_eq!(a.decide(&[notice(0, State::Waiting, false)], seen(false, true, &none)), vec![Out::Badge(1)]);
+        assert_eq!(a.decide(&[notice(0, State::Waiting, false)], seen(false, true, &none)), vec![Out::Badge(1, false)]);
         // Looking back clears the number.
-        assert_eq!(a.decide(&[notice(0, State::Waiting, false)], seen(true, true, &none)), vec![Out::Badge(0)]);
+        assert_eq!(a.decide(&[notice(0, State::Waiting, false)], seen(true, true, &none)), vec![Out::Badge(0, false)]);
     }
 
     #[test]
@@ -530,20 +578,20 @@ mod tests {
         a.decide(&[], seen(false, true, &none));
         // A long run done: told, not counted, not flashed.
         let out = a.decide(&[notice(0, State::Done, false)], seen(false, true, &none));
-        assert_eq!(out, vec![Out::Notify { session: 1, title: "claude".into(), body: "Done".into() }]);
+        assert_eq!(out, vec![Out::Notify { session: 1, title: "claude is done".into(), body: String::new() }]);
         a.rules.flash.waiting = true;
         a.rules.notify.waiting = false;
         let out = a.decide(&[notice(0, State::Done, false), notice(1, State::Waiting, false)], seen(false, true, &none));
-        assert_eq!(out, vec![Out::Flash, Out::Badge(1)]);
+        assert_eq!(out, vec![Out::Flash, Out::Badge(1, false)]);
         // Read ones are neither told nor counted.
-        assert_eq!(a.decide(&[notice(2, State::Error, true)], seen(false, true, &none)), vec![Out::Badge(0)]);
+        assert_eq!(a.decide(&[notice(2, State::Error, true)], seen(false, true, &none)), vec![Out::Badge(0, false)]);
         // The sound once for all that came together, the error's when one failed.
         a.rules = Rules::default();
         a.rules.notify = Kinds { waiting: false, error: false, done: false };
         a.rules.sound = Kinds { waiting: true, error: true, done: false };
         let out = a.decide(&[notice(3, State::Waiting, false), notice(4, State::Error, false)], seen(false, true, &none));
-        assert_eq!(out, vec![Out::Sound(true), Out::Badge(2)]);
-        assert_eq!(a.decide(&[notice(5, State::Waiting, false)], seen(true, true, &none)), vec![Out::Badge(0)], "no sound while looking");
+        assert_eq!(out, vec![Out::Sound(true), Out::Badge(2, true)]);
+        assert_eq!(a.decide(&[notice(5, State::Waiting, false)], seen(true, true, &none)), vec![Out::Badge(0, false)], "no sound while looking");
     }
 
     #[test]
@@ -552,7 +600,7 @@ mod tests {
         let none = HashSet::new();
         a.decide(&[], seen(false, false, &none));
         // Another window tells; this one only counts.
-        assert_eq!(a.decide(&[notice(0, State::Waiting, false)], seen(false, false, &none)), vec![Out::Badge(1)]);
+        assert_eq!(a.decide(&[notice(0, State::Waiting, false)], seen(false, false, &none)), vec![Out::Badge(1, false)]);
         let mut b = Alerts::default();
         let muted = HashSet::from([1]);
         b.decide(&[], seen(false, true, &muted));
@@ -562,7 +610,7 @@ mod tests {
 
     #[test]
     fn the_badge_draws_its_digits() {
-        let px = badge_pixels(7);
+        let px = badge_pixels(7, true);
         assert_eq!(px.len(), 256);
         let white = px.iter().filter(|&&p| p == 0xffff_ffff).count();
         // The 7 is a top row and a stroke down: 3 + 4 pixels.
@@ -571,7 +619,7 @@ mod tests {
         assert_eq!(px[0] >> 24, 0);
         assert_eq!(px[16 * 2 + 8] >> 24, 255);
         // Two digits fit; more is 99.
-        assert_eq!(badge_pixels(123), badge_pixels(99));
+        assert_eq!(badge_pixels(123, false), badge_pixels(99, false));
     }
 
     #[test]

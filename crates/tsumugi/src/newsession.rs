@@ -175,6 +175,15 @@ impl Dialog {
         self.selected = None;
     }
 
+    /// A session started straight away, as the first-run screen does: in
+    /// `folder`, started as `start`, nothing else chosen.
+    pub fn quick(folder: &std::path::Path, start: Start, rules: &[TagRule]) -> Create {
+        match Self::starting(folder, start).create(rules, false) {
+            Answer::Create(c) => c,
+            Answer::Cancel => unreachable!("create creates"),
+        }
+    }
+
     fn create(&self, rules: &[TagRule], split: bool) -> Answer {
         let mut tags = self.rule_tags(rules);
         for t in &self.tags {

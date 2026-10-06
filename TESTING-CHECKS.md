@@ -11,21 +11,23 @@
 
 ## 1. The window and the server
 
-- [ ] **1.1** Start `tsumugi` → One tab with a shell, in the folder it was started from. The window opens in under a second
-- [ ] **1.2** `tsumugi ls` from another terminal → One line per session: number, state, program, folder, title
+- [ ] **1.1** Start `tsumugi` with no session and nothing to restore → **Start your first session**: the folder it was started from first, the default folder, the last ones closed, **Choose another folder…**; Enter (or a click) starts the settings' program there. The window opens in under a second
+- [ ] **1.2** `tsumugi ls` from another terminal → One line per session: number, state, program, folder, title, what it said, its tags
 - [ ] **1.3** Close the window, then start `tsumugi` again → The same tab and the same shell, its output still there: the server kept it
 - [ ] **1.4** With the window closed, `tsumugi new . -- echo hi` → Prints a number; the next window has a tab with `hi` in it
 - [ ] **1.5** `tsumugi attach <that number>`, and `tsumugi attach <folder name>` → The window opens on that session. A name two sessions share says so and names their numbers
 - [ ] **1.6** With tsumugi running, `cargo build` (Windows) → The build replaces `tsumugi.exe` -- no `アクセスが拒否されました` -- because the server runs from its copy in `%LOCALAPPDATA%\tsumugi\server\`
 - [ ] **1.7** Start the newly built window while the older server runs → It says the server is another version and offers **Stop it and start this version**; pressed, the tabs come back through Welcome back
 - [ ] **1.8** Task Manager after 1.3 → One `tsumugi-<version>-<hash>.exe` server, and no console window anywhere
+- [ ] **1.9** The taskbar, Alt+Tab, and the window's corner → The logo (two threads, cyan and gold, on a dark tile) as the window's icon
+- [ ] **1.10** `tsumugi new . --tag a --tag b --tag c -- bash` → All three tags on the new session (`tsumugi ls`'s last column)
 
 ## 2. Panes and splits
 
 - [ ] **2.1** `Alt+Shift++`, then `Alt+Shift+-` → A shell to the right, then one below it, each in the folder of the pane it split
 - [ ] **2.2** `Alt+Arrows` → The keys move to the pane on that side; its cursor fills, the others' go hollow, and the others are dimmed
 - [ ] **2.3** Bring the pointer to a gap between panes, drag → A cyan line appears, the split follows the pointer; a double-click halves it
-- [ ] **2.4** `Ctrl+Shift+Z` with a hidden pane waiting (notify it) → One pane fills the tab, and a gold badge says how many wait behind the zoom; `Ctrl+Shift+Z` again restores the split
+- [ ] **2.4** `Ctrl+Shift+Z` with a hidden pane waiting (notify it) → One pane fills the tab, its heading says ZOOM with a small split; a gold-ringed note at the bottom right says how many wait behind and the key, and a click goes there; `Ctrl+Shift+Z` again restores the split
 - [ ] **2.5** Drag a pane by its header onto the middle of another → A cyan outline and **Swap** while dragging; on release the two trade places
 - [ ] **2.6** Drag a header to another pane's edge → **Move here** on that half; on release the pane goes to that side and the two share the room
 - [ ] **2.7** Split right until a pane is narrower than 20 columns → It folds into a strip with its state's dot and its name (on its side when tall); a click gives it the keys, a drag carries it
@@ -33,6 +35,8 @@
 - [ ] **2.9** `lazygit` in a pane, move with `j`/`k`, `?` then `Esc`, then `q` → It draws, takes the keys, its menu closes on `Esc`, and quitting leaves a working prompt
 - [ ] **2.10** Type Japanese with the IME in a pane → The candidate window sits at the cursor and the committed text arrives once
 - [ ] **2.11** On a JIS keyboard: `Alt+Shift+;` (`+`), then `Alt+Shift+-` → To the right, then below: neither is taken for the other
+- [ ] **2.12** Drag a pane of a split by its header onto the sidebar → The sidebar lights up, **A tab of its own**, the pane's name with the pointer; dropped, the pane is a tab of its own after the one it left
+- [ ] **2.13** One pane alone, and each pane of a split → Every pane is a card with room round it and a 30px heading: the state's mark, the name, the folder, short words on the right (none for a shell); its ring in the state's colour, the one with the keys too; the heading is not lit for the keys
 
 ## 3. The sidebar
 
@@ -46,6 +50,9 @@
 - [ ] **3.8** Rest the pointer on a card of another tab → Its last 12 lines in a box, the waiting pane's in a tab of several
 - [ ] **3.9** A tab in a repository with uncommitted changes → `+N −M` (or `N new`) on the card's second line; on hover, the files as `git status` lists them
 - [ ] **3.10** Drag the sidebar's edge left past 120px, and back → It becomes the rail; dragged back out, the sidebar
+- [ ] **3.11** One session of each state (notify them) and a plain shell → Each card ringed in its state's colour with its own mark -- a clock (waiting, breathing), a turning arc (running), a dotted circle (probably waiting), a triangle (error), a tick (done, its ground sunken) -- and the shell grey with a small dot and no words; the foot's filters and the status bar count the shell as Shell, not Running
+- [ ] **3.12** Two waiting, then `[keys] next_waiting = "F8"` → Under a line at the foot: the key as a cap (`F8` once changed) and **Jump to waiting · 2** in grey; a click on either jumps
+- [ ] **3.13** Theme tsumugi Light (and each light theme) → The waiting and error words and counts read clearly on white (WCAG 4.5 or more)
 
 ## 4. States, notifications and answering
 
@@ -53,9 +60,9 @@
 - [ ] **4.2** With the hooks (12.x), Claude finishing a reply → The card turns green, **Done**
 - [ ] **4.3** The waiting card's `1 Yes` button, without going to the tab → Claude goes on, as if `1` were typed there; the card leaves the waiting state
 - [ ] **4.4** A card waiting with no menu on screen → No buttons
-- [ ] **4.5** Another window in front while a session starts waiting → A Windows toast with the session's name and words
-- [ ] **4.6** Click the toast → tsumugi comes to the front on that pane
-- [ ] **4.7** The taskbar button while two wait → A gold `2` on the icon; it clears when the window is looked at
+- [ ] **4.5** Another window in front while a session starts waiting → A Windows toast titled `<folder> is waiting for you`, the work's name and words below, with **Open** and **Later**; a second notice from the same session replaces it in the Action Center
+- [ ] **4.6** Click the toast, or Open; then Later on another → tsumugi comes to the front on that pane; Later only puts the toast away
+- [ ] **4.7** The taskbar button while two wait, then one fails → A gold `2` with dark digits; red with white once one has failed; it clears when the window is looked at
 - [ ] **4.8** Settings → Notifications: flash and sound on for waiting, then 4.5 again → The taskbar button flashes and the system's message sound plays once (the error sound for an error)
 - [ ] **4.9** Right-click a tag chip → mute → Sessions with the tag tell only in the bell
 - [ ] **4.10** The bell → The list of notices, newest first; a click goes to the session and marks it read
@@ -97,6 +104,7 @@
 - [ ] **8.1** Split tabs with Claude conversations, then reboot (or stop the server) and start tsumugi → **Welcome back** lists the tabs; Restore brings their splits and folders back
 - [ ] **8.2** A restored Claude Code pane → `claude --resume <id>` was typed: the conversation is back
 - [ ] **8.3** Settings → General → On start → Restore the last sessions, then 8.1 → No Welcome back; the tabs simply return
+- [ ] **8.4** 8.1 with fourteen or more tabs → The list scrolls; Restore and Start fresh stay in sight; the time reads `today at …` or `yesterday at …`
 
 ## 9. The settings screen
 
@@ -126,7 +134,7 @@
 
 ## 12. Claude Code's hooks
 
-- [ ] **12.1** Without the hooks in `~/.claude/settings.json`, start tsumugi → **Let Claude Code tell tsumugi when it waits?** at the bottom right
+- [ ] **12.1** Without the hooks in `~/.claude/settings.json`, start tsumugi → On the first-run screen, the gold-ringed card with the two hooks under the folders; with sessions there already, a short card at the bottom right, above the input box when it is open
 - [ ] **12.2** Add the hooks → Both in the file beside any there, `settings.json.tsumugi-backup` next to it, and a toast
 - [ ] **12.3** Not now / Don't ask again → Asked again at the next start / never again
 - [ ] **12.4** Settings → Shell & hooks → Claude Code hooks → Add → Added, the row says Installed; Remove takes only tsumugi's out, the backup beside it

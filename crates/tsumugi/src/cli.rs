@@ -74,6 +74,10 @@ pub fn new(client: &Client, n: New) -> Result<SessionId, String> {
     for t in n.tags.iter().filter_map(|t| tsumugi_mux::proto::tag_name(t)) {
         client.tag(vec![id], t, true);
     }
+    // The tags go on a thread of the client's, and this process ends next:
+    // a question asked after them is answered once the server has them all
+    // (it took only the first before, or none).
+    client.list().map_err(|e| format!("the tags were not sent: {e}"))?;
     Ok(id)
 }
 

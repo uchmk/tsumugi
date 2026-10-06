@@ -19,17 +19,25 @@ without it the pane runs on the older ConPTY built into Windows, which breaks
 
 Sessions live in a background server (`tsumugi server`, which the window
 starts by itself), so closing the window leaves them running; `tsumugi ls`
-lists them. `tsumugi new [FOLDER] [--tag TAG] [-- claude]` starts one in a tab
+lists them (number, state, program, folder, title, what it said, tags). With
+no session and nothing to bring back, the window shows **Start your first
+session**: the folders to start in, Enter for the first, and the offer of
+Claude Code's hooks. `tsumugi new [FOLDER] [--tag TAG] [-- claude]` starts one in a tab
 of its own (the server too, if it is not running) and prints its number;
 `tsumugi attach NAME` opens a window on one, named by its number, folder,
 program or tag. On Windows the server runs from a copy of the exe kept in
 `%LOCALAPPDATA%\tsumugi\server\`, so a rebuild or an update can replace
 `tsumugi.exe` while sessions run. A window that finds a server of another
 version offers to stop it -- the tabs are written down first -- and to start
-its own, which brings them back. The sidebar marks each one: cyan while it works, yellow when it
-wants you, a yellow ring when its output has stopped for 10 seconds while a
-program runs (`TSUMUGI_QUIET_SECS`, 0 to turn the guess off), green when the
-shell is back at its prompt, red for an error. `Ctrl+Shift+U` (Cmd+Shift+U on
+its own, which brings them back. The sidebar rings each one in its state's
+colour, with a mark that says it without the colour: cyan and a turning arc
+while an agent works, yellow, breathing, and a clock when it wants you, a
+thin yellow ring and a dotted circle when its output has stopped for 10
+seconds while a program runs (`[sessions] quiet`, 0 to turn the guess off),
+green and a tick when it is done, red and a triangle for an error. A plain
+shell -- no Claude Code in it, and nothing that told tsumugi -- is grey, with
+no words: running and done say nothing about a shell. Each pane carries the
+same ring and mark in its heading. `Ctrl+Shift+U` (Cmd+Shift+U on
 macOS) goes to the session that has waited longest.
 
 ### After a restart
@@ -58,12 +66,15 @@ is read from the system anyway.)
 While the window does not have the keyboard, a session that starts waiting,
 hits an error, or finishes after running a minute or more shows the system's
 notification, and the ones waiting or in error are counted on the taskbar
-button (on Windows a red number over the icon; elsewhere the window title
+button (on Windows a gold number over the icon, red once one has failed;
+elsewhere the window title
 starts with it, `(2) …`). Coming back to the window clears the number. The bell
 beside SESSIONS keeps the same list.
 
-Clicking the notification goes to that session's pane and brings the window
-to the front (Windows and Linux; macOS's AppleScript notifications cannot
+The notification says `<folder> is waiting for you` (or `failed`, `is
+done`), the work's name and what it said below; on Windows one per session,
+the newer replacing the older, with **Open** and **Later**. Clicking it (or
+Open) goes to that session's pane and brings the window to the front (Windows and Linux; macOS's AppleScript notifications cannot
 say they were clicked). With several windows open, only the one that had the
 keyboard last tells, and none does while you are at any of them. Right-click
 a tab and choose **Mute notifications** to keep it to the bell: no system
@@ -121,7 +132,9 @@ below (`Cmd+D` and `Cmd+Shift+D` on macOS); `Alt+Arrows` move between them,
 and `Ctrl+Shift+Z` zooms one. Drag a pane by its header onto another: the
 middle trades their places, an edge puts it on that side. A pane narrower
 than 20 columns or lower than 4 rows folds into a strip with its name and
-state.
+state. Dropped on the sidebar, a pane leaves its split for a tab of its own.
+Zoomed, the heading says ZOOM, and a pane hidden behind that waits is said
+at the bottom right with the key to go there.
 
 In the input box, **When done** (or `Ctrl+Shift+Enter`) queues the prompt
 instead: it goes when the session has finished what it is doing -- done,

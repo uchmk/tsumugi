@@ -429,6 +429,32 @@ fn splits_live_in_the_server() {
     a.kill();
 }
 
+/// A pane taken out of its split becomes a tab of its own, right after the
+/// one it left; a pane alone in its tab stays where it is.
+#[test]
+fn a_pane_becomes_a_tab_of_its_own() {
+    use crate::{Dir, Node, Place};
+    let at = address();
+    let _srv = serve(&at).expect("the server starts");
+    let c = Client::connect(&at, || {}).expect("a client connects");
+    let size = Size::new(80, 24);
+    let a = c.spawn(std::env::temp_dir(), None, size, (8, 16)).expect("a starts");
+    let other = c.spawn(std::env::temp_dir(), None, size, (8, 16)).expect("another tab");
+    let b = c.spawn_at(std::env::temp_dir(), None, size, (8, 16), Place::Split { beside: a.id(), dir: Dir::Right }).expect("b starts");
+    c.own_tab(b.id());
+    c.list().unwrap();
+    let ws = c.workspaces();
+    let leaves: Vec<Vec<crate::SessionId>> = ws.iter().map(|w| w.layout.leaves()).collect();
+    assert_eq!(leaves, vec![vec![a.id()], vec![b.id()], vec![other.id()]], "after the tab it left");
+    assert_eq!(ws[0].layout, Node::Leaf(a.id()));
+    c.own_tab(a.id());
+    c.list().unwrap();
+    assert_eq!(c.workspaces().len(), 3, "alone already: nothing changes");
+    for p in [a, b, other] {
+        p.kill();
+    }
+}
+
 /// After a restart: a new server with the old one's state file starts the
 /// same tab again, split the same way, each shell in its folder, and types
 /// `claude --resume` where Claude Code ran.

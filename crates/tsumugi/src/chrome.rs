@@ -35,6 +35,29 @@ pub fn state_color(state: State) -> Color32 {
     }
 }
 
+/// A state's colour as text: as it is where it reads, else moved toward
+/// black on a light theme (white on a dark one) until it reaches WCAG's 4.5
+/// against every ground it is written on. tsumugi Light's gold on white was
+/// 3.6.
+pub fn ink(c: Color32) -> Color32 {
+    let t = crate::theme::colors();
+    let grounds = [t.panel, t.side, t.wait_bg(), t.bg];
+    let toward = if t.light { Color32::BLACK } else { Color32::WHITE };
+    let mut out = c;
+    for step in 1..=20 {
+        if grounds.iter().all(|g| crate::theme::contrast(out, *g) >= 4.5) {
+            break;
+        }
+        out = crate::theme::mix(c, toward, step as f32 * 0.05);
+    }
+    out
+}
+
+/// A state's colour, for its words.
+pub fn state_ink(state: State) -> Color32 {
+    ink(state_color(state))
+}
+
 /// How long a waiting ring takes to brighten and fade, in seconds.
 pub const BREATHE: f64 = 2.4;
 /// How long the running line takes to cross a card, in seconds.
@@ -101,8 +124,136 @@ pub fn elapsed(ms: u64) -> String {
     }
 }
 
-/// The third line of a sidebar row, and a pane's heading: what the session
-/// is doing, in words, and for how long (the design's sidebar, 3).
+/// How a session is drawn (the design's States): by its state, or as a
+/// plain shell -- no agent in it, at its prompt or running a command --
+/// which has a grey ring and no mark or words, since "running" and "done"
+/// say nothing about a shell.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Look {
+    State(State),
+    Shell,
+}
+
+pub fn look(info: &Info) -> Look {
+    if crate::sort::is_shell(info) { Look::Shell } else { Look::State(info.state) }
+}
+
+pub fn look_color(l: Look) -> Color32 {
+    match l {
+        Look::State(s) => state_color(s),
+        Look::Shell => grey(),
+    }
+}
+
+/// The ring round a card or a pane, by how it looks: gold and breathing for
+/// waiting, a thin gold one for probably waiting, cyan with the running
+/// line, red for an error, green on a sunken ground for done, grey for a
+/// shell. `time` moves what moves; `None` holds it still.
+pub fn state_ring(painter: &egui::Painter, rect: egui::Rect, radius: f32, l: Look, time: Option<f64>) {
+    let c = crate::theme::colors();
+    let width = if c.light { 1.5 } else { 1.0 };
+    let ring = |color: Color32| {
+        painter.rect_stroke(rect, radius, egui::Stroke::new(width, color), egui::StrokeKind::Inside);
+    };
+    match l {
+        Look::State(State::Waiting) => wait_ring(painter, rect, radius, time),
+        Look::State(State::MaybeWaiting) => ring(gold().gamma_multiply(0.35)),
+        Look::State(State::Running) => {
+            ring(cyan().gamma_multiply(0.45));
+            if let Some(t) = time {
+                run_line(painter, rect, radius, t);
+            }
+        }
+        Look::State(State::Error) => ring(red().gamma_multiply(0.85)),
+        Look::State(State::Done) => ring(green().gamma_multiply(0.5)),
+        Look::Shell => ring(grey().gamma_multiply(0.6)),
+    }
+}
+
+/// The zoom's mark at the right of the pane's heading, ending at `right`:
+/// `ZOOM` and a small drawing of the split it hides; its rectangle.
+pub fn zoom_mark(p: &egui::Painter, right: egui::Pos2, color: Color32) -> egui::Rect {
+    let icon = egui::Rect::from_min_size(egui::pos2(right.x - 14.0, right.y - 5.0), egui::vec2(14.0, 10.0));
+    let stroke = egui::Stroke::new(1.0, color);
+    p.rect_stroke(icon, 1.5, stroke, egui::StrokeKind::Inside);
+    p.vline(icon.center().x, icon.y_range(), stroke);
+    p.hline(icon.center().x..=icon.right(), icon.center().y, stroke);
+    let word = p.text(egui::pos2(icon.left() - 5.0, right.y), egui::Align2::RIGHT_CENTER, "ZOOM", FontId::proportional(10.0), color);
+    word.union(icon)
+}
+
+/// A finished card's sunken ground, under its ring.
+pub fn done_ground(painter: &egui::Painter, rect: egui::Rect, radius: f32) {
+    let c = crate::theme::colors();
+    painter.rect_filled(rect, radius, crate::theme::mix(c.panel, c.bg, 0.6));
+}
+
+/// The state's mark at `at`, about 10 points across, so the state reads
+/// without its colour: a clock for waiting, a turning arc for running, a
+/// dotted circle for probably waiting, a triangle for an error, a tick for
+/// done, a small grey dot for a shell.
+pub fn state_mark(painter: &egui::Painter, at: egui::Pos2, l: Look, time: Option<f64>) {
+    let color = look_color(l);
+    let stroke = egui::Stroke::new(1.4, color);
+    match l {
+        Look::State(State::Waiting) => {
+            painter.circle_stroke(at, 4.5, stroke);
+            painter.line_segment([at, at + egui::vec2(0.0, -3.0)], stroke);
+            painter.line_segment([at, at + egui::vec2(2.2, 0.0)], stroke);
+        }
+        Look::State(State::Running) => {
+            let start = time.map_or(0.0, |t| (t * std::f64::consts::TAU / 1.2) as f32);
+            let pts: Vec<egui::Pos2> = (0..=18).map(|k| {
+                let a = start + k as f32 / 18.0 * std::f32::consts::TAU * 0.72;
+                at + egui::vec2(a.cos(), a.sin()) * 4.5
+            }).collect();
+            painter.add(egui::Shape::line(pts, stroke));
+        }
+        Look::State(State::MaybeWaiting) => {
+            for k in 0..8 {
+                let a = k as f32 / 8.0 * std::f32::consts::TAU;
+                painter.circle_filled(at + egui::vec2(a.cos(), a.sin()) * 4.5, 0.9, color);
+            }
+        }
+        Look::State(State::Error) => {
+            let pts = vec![at + egui::vec2(0.0, -5.0), at + egui::vec2(5.0, 4.0), at + egui::vec2(-5.0, 4.0)];
+            painter.add(egui::Shape::convex_polygon(pts, color, egui::Stroke::NONE));
+        }
+        Look::State(State::Done) => {
+            let pts = vec![at + egui::vec2(-4.0, 0.0), at + egui::vec2(-1.2, 3.0), at + egui::vec2(4.5, -3.5)];
+            painter.add(egui::Shape::line(pts, egui::Stroke::new(1.8, color)));
+        }
+        Look::Shell => {
+            painter.circle_filled(at, 2.5, color);
+        }
+    }
+}
+
+/// A pane's heading on the right: short, as the design has it (`Waiting ·
+/// 2m`, `Running · 4m 12s`); nothing for a shell.
+pub fn short_words(info: &Info, now: u64) -> String {
+    let t = elapsed(now.saturating_sub(info.since_ms));
+    match look(info) {
+        Look::Shell => String::new(),
+        Look::State(State::Waiting) => format!("Waiting · {t}"),
+        Look::State(State::MaybeWaiting) => format!("Quiet · {t}"),
+        Look::State(State::Running) => format!("Running · {t}"),
+        Look::State(State::Error) => format!("Error · {t}"),
+        Look::State(State::Done) => format!("Done · {t}"),
+    }
+}
+
+/// The third line of a sidebar row: what the session is doing, in words,
+/// and for how long (the design's sidebar, 3). A shell has none: its
+/// folder and branch say it.
+pub fn card_words(info: &Info, now: u64) -> String {
+    if look(info) == Look::Shell {
+        return String::new();
+    }
+    state_words(info, now)
+}
+
+/// What the session is doing, in words, and for how long.
 pub fn state_words(info: &Info, now: u64) -> String {
     let t = elapsed(now.saturating_sub(info.since_ms));
     match info.state {
@@ -176,13 +327,14 @@ pub fn status_bar(
         ui.add_space(10.0);
         ui.label(small(format!("mux · up {}", elapsed(up_ms)), pal.fg_dim));
         ui.add_space(14.0);
-        let count = |s: State| sessions.iter().filter(|i| i.state == s || (s == State::Waiting && i.state == State::MaybeWaiting)).count();
+        // Shells are none of these: they are not running anything of note.
+        let count = |s: State| sessions.iter().filter(|i| !crate::sort::is_shell(i) && (i.state == s || (s == State::Waiting && i.state == State::MaybeWaiting))).count();
         for (state, word) in [(State::Waiting, "waiting"), (State::Running, "running"), (State::Error, "error")] {
             let n = count(state);
             if n == 0 {
                 continue;
             }
-            let r = ui.add(egui::Label::new(small(format!("● {n} {word}"), state_color(state))).sense(egui::Sense::click()));
+            let r = ui.add(egui::Label::new(small(format!("● {n} {word}"), state_ink(state))).sense(egui::Sense::click()));
             if r.on_hover_text("Open the notification list").clicked() {
                 click = Some(StatusClick::Bell);
             }
@@ -949,48 +1101,51 @@ pub fn restore_screen(ui: &mut egui::Ui, pal: &Palette, view: &mut RestoreView) 
         State::Running => 2,
         State::Done => 3,
     });
-    let when = chrono::DateTime::from_timestamp_millis(view.saved.at_ms as i64)
-        .map(|t| t.with_timezone(&chrono::Local).format("%Y/%m/%d %H:%M").to_string())
-        .unwrap_or_default();
+    let when = chrono::DateTime::from_timestamp_millis(view.saved.at_ms as i64).map(|t| when_words(t.with_timezone(&chrono::Local).naive_local(), chrono::Local::now().naive_local())).unwrap_or_default();
     let mut child = ui.new_child(egui::UiBuilder::new().max_rect(egui::Rect::from_center_size(rect.center(), egui::vec2(width, rect.height().min(560.0)))));
     egui::Frame::NONE.fill(crate::theme::colors().panel).corner_radius(12.0).stroke(egui::Stroke::new(1.0, crate::theme::colors().border_strong())).inner_margin(20.0).show(&mut child, |ui| {
         ui.label(RichText::new("Welcome back").size(18.0).strong().color(pal.fg));
         ui.label(RichText::new(format!("{} sessions were open when tsumugi stopped, {when}.", panes.len())).color(pal.fg_dim));
         ui.add_space(10.0);
-        for &i in &order {
-            let p = panes[i];
-            let Some(slot) = view.ticked.iter_mut().find(|(id, _)| *id == p.id) else { continue };
-            let waiting = matches!(p.state, State::Waiting | State::MaybeWaiting);
-            let frame = if waiting { egui::Frame::NONE.fill(crate::theme::colors().wait_bg()).stroke(egui::Stroke::new(1.0, gold().gamma_multiply(0.6))) } else { egui::Frame::NONE };
-            frame.corner_radius(7.0).inner_margin(egui::Margin::symmetric(8, 6)).show(ui, |ui| {
-                ui.horizontal(|ui| {
-                    ui.checkbox(&mut slot.1, "");
-                    let color = if p.claude.is_some() || p.state != State::Done { state_color(p.state) } else { grey() };
-                    ui.label(RichText::new("●").color(color));
-                    let command = p.shell.as_ref().map_or_else(tsumugi_pane::default_program, |(c, _)| c.clone());
-                    let name = if p.title.is_empty() { crate::home_short(&p.cwd) } else { crate::sort::display_title(&p.title, &command) };
-                    // What it will do on the right first; the name gets the
-                    // room left and is cut short in it, never over it.
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        let what = match (&p.claude, p.state) {
-                            (Some(_), _) => "resume conversation".to_owned(),
-                            (None, State::Done) if !slot.1 => "finished · left closed".to_owned(),
-                            (None, _) => format!("new shell in {}", crate::home_short(&p.cwd)),
-                        };
-                        // At most under half the row, so the name always shows.
-                        let room = ui.available_width() * 0.45;
-                        ui.scope(|ui| {
-                            ui.set_max_width(room);
-                            ui.add(egui::Label::new(RichText::new(what).size(12.0).color(pal.fg_dim)).truncate());
-                        });
-                        ui.add_space(12.0);
-                        ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
-                            ui.add(egui::Label::new(RichText::new(name).color(if slot.1 { pal.fg } else { pal.fg_dim })).truncate());
+        // The rows scroll, so Restore and Start fresh stay in sight however
+        // many there were.
+        let room = (ui.available_height() - 60.0).max(80.0);
+        egui::ScrollArea::vertical().id_salt("restore-rows").max_height(room).auto_shrink([false, true]).show(ui, |ui| {
+            for &i in &order {
+                let p = panes[i];
+                let Some(slot) = view.ticked.iter_mut().find(|(id, _)| *id == p.id) else { continue };
+                let waiting = matches!(p.state, State::Waiting | State::MaybeWaiting);
+                let frame = if waiting { egui::Frame::NONE.fill(crate::theme::colors().wait_bg()).stroke(egui::Stroke::new(1.0, gold().gamma_multiply(0.6))) } else { egui::Frame::NONE };
+                frame.corner_radius(7.0).inner_margin(egui::Margin::symmetric(8, 6)).show(ui, |ui| {
+                    ui.horizontal(|ui| {
+                        ui.checkbox(&mut slot.1, "");
+                        let color = if p.claude.is_some() || p.state != State::Done { state_color(p.state) } else { grey() };
+                        ui.label(RichText::new("●").color(color));
+                        let command = p.shell.as_ref().map_or_else(tsumugi_pane::default_program, |(c, _)| c.clone());
+                        let name = if p.title.is_empty() { crate::home_short(&p.cwd) } else { crate::sort::display_title(&p.title, &command) };
+                        // What it will do on the right first; the name gets the
+                        // room left and is cut short in it, never over it.
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            let what = match (&p.claude, p.state) {
+                                (Some(_), _) => "resume conversation".to_owned(),
+                                (None, State::Done) if !slot.1 => "finished · left closed".to_owned(),
+                                (None, _) => format!("new shell in {}", crate::home_short(&p.cwd)),
+                            };
+                            // At most under half the row, so the name always shows.
+                            let room = ui.available_width() * 0.45;
+                            ui.scope(|ui| {
+                                ui.set_max_width(room);
+                                ui.add(egui::Label::new(RichText::new(what).size(12.0).color(pal.fg_dim)).truncate());
+                            });
+                            ui.add_space(12.0);
+                            ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                                ui.add(egui::Label::new(RichText::new(name).color(if slot.1 { pal.fg } else { pal.fg_dim })).truncate());
+                            });
                         });
                     });
                 });
-            });
-        }
+            }
+        });
         ui.add_space(10.0);
         ui.separator();
         ui.horizontal(|ui| {
@@ -1010,9 +1165,43 @@ pub fn restore_screen(ui: &mut egui::Ui, pal: &Palette, view: &mut RestoreView) 
     answer
 }
 
+/// When the tabs were saved, as a person says it: `today at 09:12`,
+/// `yesterday at 23:41`, else the date.
+fn when_words(at: chrono::NaiveDateTime, now: chrono::NaiveDateTime) -> String {
+    let days = (now.date() - at.date()).num_days();
+    match days {
+        0 => format!("today at {}", at.format("%H:%M")),
+        1 => format!("yesterday at {}", at.format("%H:%M")),
+        _ => at.format("%Y/%m/%d %H:%M").to_string(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{BREATHE, SWEEP, breathe, edge_at, elapsed, sweep_at};
+    use super::{BREATHE, SWEEP, breathe, edge_at, elapsed, sweep_at, when_words};
+
+    #[test]
+    fn the_states_read_on_every_theme() {
+        for t in crate::theme::builtin() {
+            crate::theme::set(t.colors);
+            for c in [t.colors.wait, t.colors.err, t.colors.done, t.colors.run] {
+                let ink = super::ink(c);
+                for g in [t.colors.panel, t.colors.side, t.colors.wait_bg(), t.colors.bg] {
+                    let r = crate::theme::contrast(ink, g);
+                    assert!(r >= 4.5, "{}: {c:?} on {g:?} is {r:.2}", t.name);
+                }
+            }
+        }
+        crate::theme::set(crate::theme::builtin()[0].colors);
+    }
+
+    #[test]
+    fn the_save_is_dated_as_a_person_says_it() {
+        let t = |s: &str| chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M").unwrap();
+        assert_eq!(when_words(t("2026-10-05 23:41"), t("2026-10-06 08:00")), "yesterday at 23:41");
+        assert_eq!(when_words(t("2026-10-06 07:02"), t("2026-10-06 08:00")), "today at 07:02");
+        assert_eq!(when_words(t("2026-10-01 07:02"), t("2026-10-06 08:00")), "2026/10/01 07:02");
+    }
     use eframe::egui::{ResizeDirection as D, pos2, Rect};
 
     #[test]

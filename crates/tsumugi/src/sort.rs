@@ -70,13 +70,25 @@ pub enum Kind {
     Running,
     Error,
     Done,
+    /// A plain shell: no agent in it, so running and done say nothing.
+    Shell,
+}
+
+/// No agent in the session: Claude Code is known by its program, any other
+/// by having told tsumugi something (`tsumugi notify`). At its prompt or
+/// running a command, such a session is just a shell.
+pub fn is_shell(info: &Info) -> bool {
+    !info.claude && info.note.is_empty() && matches!(info.state, State::Running | State::Done)
 }
 
 impl Kind {
-    pub const ALL: [Kind; 4] = [Kind::Waiting, Kind::Running, Kind::Error, Kind::Done];
+    pub const ALL: [Kind; 5] = [Kind::Waiting, Kind::Running, Kind::Error, Kind::Done, Kind::Shell];
 
-    pub fn of(state: State) -> Self {
-        match state {
+    pub fn of(info: &Info) -> Self {
+        if is_shell(info) {
+            return Kind::Shell;
+        }
+        match info.state {
             State::Waiting | State::MaybeWaiting => Kind::Waiting,
             State::Running => Kind::Running,
             State::Error => Kind::Error,
@@ -90,16 +102,18 @@ impl Kind {
             Kind::Running => "Running",
             Kind::Error => "Error",
             Kind::Done => "Done",
+            Kind::Shell => "Shell",
         }
     }
 
-    /// The state its dot is coloured as.
-    pub fn state(self) -> State {
+    /// The state its dot is coloured as; `None` for a shell, which is grey.
+    pub fn state(self) -> Option<State> {
         match self {
-            Kind::Waiting => State::Waiting,
-            Kind::Running => State::Running,
-            Kind::Error => State::Error,
-            Kind::Done => State::Done,
+            Kind::Waiting => Some(State::Waiting),
+            Kind::Running => Some(State::Running),
+            Kind::Error => Some(State::Error),
+            Kind::Done => Some(State::Done),
+            Kind::Shell => None,
         }
     }
 }
@@ -136,7 +150,7 @@ impl<'a> Tab<'a> {
     }
 
     pub fn kind(&self) -> Option<Kind> {
-        self.urgent().map(|i| Kind::of(i.state))
+        self.urgent().map(Kind::of)
     }
 
     pub fn project(&self) -> Option<&'a Path> {
@@ -215,7 +229,8 @@ pub fn arrange<'a, 'b>(tabs: &'b [Tab<'a>], sort: Sort, filter: &Filter) -> Vec<
                 Some(Kind::Waiting) => 0,
                 Some(Kind::Error) => 1,
                 Some(Kind::Running) => 2,
-                Some(Kind::Done) | None => 3,
+                Some(Kind::Done) => 3,
+                Some(Kind::Shell) | None => 4,
             };
             // The one that has waited longest first.
             (rank, t.urgent().map_or(u64::MAX, |i| i.since_ms))
@@ -353,9 +368,24 @@ mod tests {
             project: project.into(),
             muted: false,
             tags: if id == 3 { vec!["ci".into()] } else { vec![] },
-            claude: false,
+            // Agents, so running and done are kinds of their own.
+            claude: true,
             conversation: String::new(),
         }
+    }
+
+    #[test]
+    fn a_session_without_an_agent_is_a_shell() {
+        let mut i = info(1, State::Running, 0, "/p/a", "bash");
+        i.claude = false;
+        assert_eq!(Kind::of(&i), Kind::Shell, "a shell running a command");
+        i.state = State::Done;
+        assert_eq!(Kind::of(&i), Kind::Shell, "and at its prompt");
+        i.state = State::Waiting;
+        assert_eq!(Kind::of(&i), Kind::Waiting, "a wait is a wait");
+        i.state = State::Done;
+        i.note = "Wrote the scope".into();
+        assert_eq!(Kind::of(&i), Kind::Done, "it told tsumugi: an agent");
     }
 
     fn order(shown: &[&Tab]) -> Vec<u64> {

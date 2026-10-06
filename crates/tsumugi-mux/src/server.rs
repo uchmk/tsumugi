@@ -316,6 +316,26 @@ fn handle(shared: &Arc<Shared>, client: ClientId, tx: &Sender<ToClient>, msg: To
             broadcast(shared, &sessions);
             save_soon(shared, SAVE_AFTER_CHANGE);
         }
+        ToServer::OwnTab { id } => {
+            let mut workspaces = lock(&shared.workspaces);
+            let holder = workspaces.values().find(|w| w.layout.contains(&id) && w.layout.leaves().len() > 1).map(|w| w.id);
+            if let Some(wid) = holder {
+                let w = workspaces.remove(&wid).expect("just found");
+                if let Some(layout) = w.layout.remove(&id) {
+                    let focus = if w.focus == id { layout.leaves()[0] } else { w.focus };
+                    workspaces.insert(wid, Workspace { layout, focus, ..w });
+                }
+                let ws = shared.next.fetch_add(1, Ordering::Relaxed);
+                workspaces.insert(ws, Workspace::new(ws, tsumugi_layout::Node::Leaf(id), id));
+                // Right after the tab it came from.
+                let mut now: Vec<WorkspaceId> = ordered(shared, &workspaces).iter().map(|w| w.id).filter(|w| *w != ws).collect();
+                let at = now.iter().position(|w| *w == wid).map_or(now.len(), |k| k + 1);
+                now.insert(at, ws);
+                *lock(&shared.order) = now;
+                broadcast_workspaces(shared, &workspaces);
+                save_soon(shared, SAVE_AFTER_CHANGE);
+            }
+        }
         ToServer::MoveWorkspace { id, to } => {
             let workspaces = lock(&shared.workspaces);
             let mut now: Vec<WorkspaceId> = ordered(shared, &workspaces).iter().map(|w| w.id).collect();

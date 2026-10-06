@@ -235,6 +235,11 @@ impl Client {
     }
 
     /// Put a tab at `to` in the sidebar's order.
+    /// Take the pane out of its split into a tab of its own.
+    pub fn own_tab(&self, id: SessionId) {
+        self.0.send(ToServer::OwnTab { id });
+    }
+
     pub fn move_workspace(&self, id: WorkspaceId, to: usize) {
         self.0.send(ToServer::MoveWorkspace { id, to });
     }
