@@ -95,6 +95,10 @@ pushed, `↓N` for commits to pull, and the branch's pull request (`PR #42 ✓`,
 green when its checks pass, red when one failed, cyan while they run; a
 click opens it). The pull request needs the GitHub CLI (`gh`) signed in.
 
+A card in a git repository shows what its session has changed and not
+committed -- `+120 −8` lines, or `3 new` files -- with the list of files
+under the pointer.
+
 When a waiting session has a menu of numbered choices on its screen --
 Claude Code's "Do you want to proceed? 1. Yes 2. … 3. No" -- its card shows
 them as buttons; a click types the number there, so a permission is given

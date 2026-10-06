@@ -555,6 +555,8 @@ struct App {
     nerd: bool,
     /// Commits not pushed and the pull request, for the status bar (1d).
     git: gitinfo::Watcher,
+    /// What each tab has changed and not committed (B5).
+    changes: gitinfo::Watcher,
     /// The window has no system title bar: the band is it. On macOS fixed
     /// when the window opens; elsewhere it follows the settings.
     own_frame: bool,
@@ -707,7 +709,9 @@ impl App {
         cc.egui_ctx.options_mut(|o| o.zoom_with_keyboard = false);
 
         let git_ctx = cc.egui_ctx.clone();
-        let git = gitinfo::Watcher::new(move || git_ctx.request_repaint());
+        let git = gitinfo::Watcher::new(true, move || git_ctx.request_repaint());
+        let changes_ctx = cc.egui_ctx.clone();
+        let changes = gitinfo::Watcher::new(false, move || changes_ctx.request_repaint());
         let ctx = cc.egui_ctx.clone();
         let (client, failed, restore) = match connect(move || ctx.request_repaint()) {
             Ok(client) => match first_session(&client) {
@@ -736,6 +740,7 @@ impl App {
             jump_waiting: false,
             nerd,
             git,
+            changes,
             own_frame: first_window.own_titlebar(),
             system_frame: !first_window.own_titlebar(),
             material: cfg!(windows) && first_window.material != "none" && material::apply(window_handle(cc), &first_window.material, theme::colors().light),
@@ -1405,6 +1410,8 @@ impl App {
                 let painter = ui.painter_at(rect);
                 let muted = infos.iter().all(|i| i.muted);
                 let quiet_tab = infos.iter().all(|i| quiet(i, &muted_tags));
+                // The pointer on the changes' count: their list, not the preview.
+                let mut over_changes = false;
                 if as_card {
                 let card = rect.shrink2(egui::vec2(6.0, 2.0));
                 if urgent.state == State::Waiting {
@@ -1479,7 +1486,22 @@ impl App {
                         f.layout_job(job)
                     })
                 });
-                let room = width - 14.0 - branch.as_ref().map_or(0.0, |b| b.size().x + 20.0);
+                // What it has changed and not committed, on the right: lines
+                // added and removed, or how many files when git counts none.
+                let changed = self.changes.get(&focus.cwd, &focus.branch).and_then(|g| g.changes).filter(|c| !c.files.is_empty());
+                let diff = changed.as_ref().map(|c| {
+                    let mut job = egui::text::LayoutJob::default();
+                    let f = |color| egui::TextFormat::simple(mono.clone(), color);
+                    if c.added + c.removed > 0 {
+                        job.append(&format!("+{}", c.added), 0.0, f(chrome::green()));
+                        job.append(&format!("−{}", c.removed), 4.0, f(chrome::red()));
+                    } else {
+                        job.append(&format!("{} new", c.files.len()), 0.0, f(chrome::green()));
+                    }
+                    ui.fonts_mut(|x| x.layout_job(job))
+                });
+                let diff_w = diff.as_ref().map_or(0.0, |g| g.size().x + 10.0);
+                let room = width - 14.0 - diff_w - branch.as_ref().map_or(0.0, |b| b.size().x + 20.0);
                 let folder = ui.fonts_mut(|f| {
                     let mut job = egui::text::LayoutJob::simple_singleline(home_short(&focus.cwd), mono.clone(), pal.fg_dim);
                     job.wrap = egui::text::TextWrapping::truncate_at_width(room.max(20.0));
@@ -1492,6 +1514,22 @@ impl App {
                     let mark = egui::Rect::from_min_size(egui::pos2(left + folder_w + 6.0, y + 1.0), egui::vec2(11.0, 11.0));
                     chrome::branch_mark(&painter, mark, pal.fg_dim, self.nerd);
                     painter.galley(egui::pos2(mark.right() + 3.0, y), b, pal.fg_dim);
+                }
+                if let (Some(g), Some(c)) = (diff, &changed) {
+                    let at = egui::pos2(rect.right() - 12.0 - g.size().x, y);
+                    let r = egui::Rect::from_min_size(at, g.size());
+                    painter.galley(at, g, pal.fg);
+                    let list: Vec<String> = c.files.iter().take(15).cloned().collect();
+                    let more = c.files.len().saturating_sub(15);
+                    let over = ui.interact(r, egui::Id::new(("changes", w.id)), egui::Sense::hover());
+                    over_changes = over.hovered();
+                    over.on_hover_ui(|ui| {
+                        ui.label(egui::RichText::new(format!("{} file(s) changed, not committed", c.files.len())).strong());
+                        ui.label(egui::RichText::new(list.join("\n")).monospace().size(11.0).color(pal.fg_dim));
+                        if more > 0 {
+                            ui.label(egui::RichText::new(format!("and {more} more")).size(11.0).color(pal.fg_dim));
+                        }
+                    });
                 }
                 let mut third = match urgent.state {
                     State::Waiting | State::Error | State::Done if !urgent.note.is_empty() => format!("{} · {}", chrome::state_words(urgent, now), urgent.note),
@@ -1596,7 +1634,7 @@ impl App {
                     painter.galley(egui::pos2(r.left() + 22.0, r.center().y - g.size().y / 2.0), g, name_color);
                 }
                 // Its last lines on the way past, without going there.
-                let resp = if resp.hovered() && self.dragging_tab.is_none() {
+                let resp = if resp.hovered() && self.dragging_tab.is_none() && !over_changes {
                     let lines = self.peek_lines(urgent.id);
                     resp.on_hover_ui(|ui| chrome::peek(ui, &pal, &lines))
                 } else {

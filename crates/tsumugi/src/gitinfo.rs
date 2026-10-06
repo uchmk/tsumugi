@@ -19,6 +19,18 @@ pub struct Git {
     /// `None` without an upstream.
     pub ahead: Option<(u32, u32)>,
     pub pr: Option<Pr>,
+    /// What is changed and not committed (the cheap watcher's).
+    pub changes: Option<Changes>,
+}
+
+/// The working tree against its last commit: files changed or new, and the
+/// lines added and removed in those git knows.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Changes {
+    /// `git status --porcelain` lines: two letters, then the path.
+    pub files: Vec<String>,
+    pub added: u32,
+    pub removed: u32,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -41,6 +53,9 @@ pub enum Checks {
 type Key = (PathBuf, String);
 
 pub struct Watcher {
+    /// Commits ahead and the pull request (one folder, the focused), or the
+    /// changes not committed (every tab's).
+    full: bool,
     ask: Sender<Key>,
     found: Arc<Mutex<HashMap<Key, (Instant, Git)>>>,
     asked: Mutex<HashSet<Key>>,
@@ -48,12 +63,12 @@ pub struct Watcher {
 
 impl Watcher {
     /// `wake` is called when something new is found.
-    pub fn new(wake: impl Fn() + Send + 'static) -> Self {
+    pub fn new(full: bool, wake: impl Fn() + Send + 'static) -> Self {
         let (ask, questions) = channel();
         let found = Arc::new(Mutex::new(HashMap::new()));
         let store = found.clone();
-        let _ = std::thread::Builder::new().name("git-info".into()).spawn(move || work(&questions, &store, &wake));
-        Self { ask, found, asked: Mutex::new(HashSet::new()) }
+        let _ = std::thread::Builder::new().name("git-info".into()).spawn(move || work(full, &questions, &store, &wake));
+        Self { full, ask, found, asked: Mutex::new(HashSet::new()) }
     }
 
     /// What is known of `cwd` on `branch`, asking again when it is old.
@@ -63,7 +78,9 @@ impl Watcher {
         }
         let key = (cwd.to_path_buf(), branch.to_owned());
         let known = self.found.lock().ok()?.get(&key).cloned();
-        let stale = known.as_ref().is_none_or(|(at, _)| at.elapsed() > FRESH);
+        // The changes are cheap and change often; the pull request is neither.
+        let fresh = if self.full { FRESH } else { Duration::from_secs(10) };
+        let stale = known.as_ref().is_none_or(|(at, _)| at.elapsed() > fresh);
         let mut asked = self.asked.lock().ok()?;
         if stale && !asked.contains(&key) {
             asked.insert(key.clone());
@@ -75,13 +92,28 @@ impl Watcher {
     }
 }
 
-fn work(questions: &Receiver<Key>, store: &Mutex<HashMap<Key, (Instant, Git)>>, wake: &dyn Fn()) {
+fn work(full: bool, questions: &Receiver<Key>, store: &Mutex<HashMap<Key, (Instant, Git)>>, wake: &dyn Fn()) {
     let mut gh = true;
-    while let Ok(mut key) = questions.recv() {
-        // Only the newest matters: the pane with the keys now.
-        while let Ok(newer) = questions.try_recv() {
-            key = newer;
+    while let Ok(first) = questions.recv() {
+        let mut keys = vec![first];
+        while let Ok(more) = questions.try_recv() {
+            keys.push(more);
         }
+        if full {
+            // Only the newest matters: the pane with the keys now.
+            keys.drain(..keys.len() - 1);
+        } else {
+            keys.dedup();
+            for key in keys {
+                let changes = changes(&key.0);
+                if let Ok(mut s) = store.lock() {
+                    s.insert(key, (Instant::now(), Git { changes, ..Git::default() }));
+                }
+            }
+            wake();
+            continue;
+        }
+        let key = keys.pop().expect("one");
         let (cwd, _) = &key;
         let ahead = run(Command::new("git").args(["rev-list", "--left-right", "--count", "@{upstream}...HEAD"]).current_dir(cwd)).and_then(|o| counts(&o));
         let pr = if gh {
@@ -94,7 +126,7 @@ fn work(questions: &Receiver<Key>, store: &Mutex<HashMap<Key, (Instant, Git)>>, 
             None
         };
         if let Ok(mut s) = store.lock() {
-            s.insert(key, (Instant::now(), Git { ahead, pr }));
+            s.insert(key, (Instant::now(), Git { ahead, pr, changes: None }));
         }
         wake();
     }
@@ -116,6 +148,23 @@ fn run(cmd: &mut Command) -> Option<String> {
     }
     let out = cmd.output().ok()?;
     out.status.success().then(|| String::from_utf8_lossy(&out.stdout).into_owned())
+}
+
+/// The changes not committed in the repository `cwd` is in.
+fn changes(cwd: &Path) -> Option<Changes> {
+    let status = run(Command::new("git").args(["status", "--porcelain=v1", "--untracked-files=normal"]).current_dir(cwd))?;
+    let numstat = run(Command::new("git").args(["diff", "--numstat", "HEAD"]).current_dir(cwd)).unwrap_or_default();
+    let (added, removed) = sum_numstat(&numstat);
+    Some(Changes { files: status.lines().filter(|l| !l.trim().is_empty()).map(String::from).collect(), added, removed })
+}
+
+/// `git diff --numstat`: added, removed and path a line; `-` for binary.
+fn sum_numstat(out: &str) -> (u32, u32) {
+    out.lines().fold((0, 0), |(a, r), l| {
+        let mut f = l.split('\t');
+        let n = |s: Option<&str>| s.and_then(|s| s.parse::<u32>().ok()).unwrap_or(0);
+        (a + n(f.next()), r + n(f.next()))
+    })
 }
 
 fn exists(program: &str) -> bool {
@@ -155,6 +204,12 @@ fn pr(out: &str) -> Option<Pr> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_changed_lines_are_added_up() {
+        assert_eq!(sum_numstat("10\t2\tsrc/a.rs\n-\t-\timg.png\n3\t0\tb.md\n"), (13, 2));
+        assert_eq!(sum_numstat(""), (0, 0));
+    }
 
     #[test]
     fn the_counts_and_the_pull_request_are_read() {
