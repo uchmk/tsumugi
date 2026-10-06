@@ -24,6 +24,7 @@ mod keys;
 mod menu;
 mod newsession;
 mod palette;
+mod prefs;
 mod shellhook;
 mod sort;
 mod theme;
@@ -414,7 +415,7 @@ const RAIL_AT: f32 = 120.0;
 const GAP: f32 = 6.0;
 const GRAB: f32 = 12.0;
 /// How much a pane without the keys is dimmed (1e).
-const DIM: f32 = 0.35;
+/// (now `[appearance] dim` in the settings)
 /// The heading over each pane of a split.
 const HEADER: f32 = 22.0;
 
@@ -468,6 +469,12 @@ struct App {
     /// `settings.toml` as read again whenever it changes, and what is wrong
     /// with it.
     settings: std::sync::mpsc::Receiver<Read>,
+    /// For a write of the settings to say what it wrote at once.
+    settings_tx: std::sync::mpsc::Sender<Read>,
+    /// The settings as last read, for the settings screen and the clock.
+    settings_now: tsumugi_mux::settings::Settings,
+    /// The settings screen, while it is open (the design's 1m).
+    prefs: Option<prefs::Screen>,
     settings_error: Option<String>,
     /// From the settings and `profiles.toml`, for the new-session dialog.
     tag_rules: Vec<tsumugi_mux::settings::TagRule>,
@@ -530,6 +537,8 @@ fn drop_index(workspaces: &[Workspace], rows: &[(WorkspaceId, egui::Rect)], drag
 impl App {
     fn new(cc: &eframe::CreationContext<'_>) -> Self {
         let nerd = fonts::install(&cc.egui_ctx);
+        let (settings_tx, settings_rx) = std::sync::mpsc::channel();
+        watch_settings(cc.egui_ctx.clone(), settings_tx.clone());
         // tsumugi Dark until the settings are read (the first frame).
         let first = theme::colors();
         let palette = first.palette();
@@ -575,7 +584,10 @@ impl App {
             dragging_tab: None,
             search: None,
             tag_input: String::new(),
-            settings: watch_settings(cc.egui_ctx.clone()),
+            settings: settings_rx,
+            settings_tx: settings_tx.clone(),
+            settings_now: tsumugi_mux::settings::Settings::default(),
+            prefs: None,
             settings_error: None,
             tag_rules: Vec::new(),
             profiles: Vec::new(),
@@ -683,6 +695,7 @@ impl App {
             }
             keys::Action::Zoom => self.zoom = !self.zoom,
             keys::Action::Search => self.search = Some(palette::View::new()),
+            keys::Action::Settings => self.prefs = Some(prefs::Screen::default()),
             keys::Action::Rail => {
                 self.view.rail = !self.view.rail;
                 self.view.save();
@@ -770,6 +783,73 @@ impl App {
         }
     }
 
+    /// The settings screen in place of the panes, and what it changes.
+    fn settings_screen(&mut self, ui: &mut egui::Ui, client: &Client, workspaces: &[Workspace], sessions: &[Info]) {
+        let mut tags: Vec<String> = Vec::new();
+        for t in workspaces.iter().flat_map(|w| w.layout.leaves()).filter_map(|id| sessions.iter().find(|i| i.id == id)).flat_map(|i| &i.tags) {
+            if !tags.contains(t) {
+                tags.push(t.clone());
+            }
+        }
+        let (themes, _) = self.themes();
+        let shown = |p: Option<std::path::PathBuf>| p.map(|p| p.display().to_string()).unwrap_or_default();
+        let muted_tags = client.muted_tags();
+        let seen = prefs::Seen {
+            settings: &self.settings_now,
+            themes: &themes,
+            current: theme::colors(),
+            profiles: &self.profiles,
+            tags: &tags,
+            muted_tags: &muted_tags,
+            sort: self.view.sort,
+            always_restore: always_restore(),
+            nerd: self.nerd,
+            server_up: chrome::elapsed(chrome::now_ms().saturating_sub(client.started_ms())),
+            settings_path: shown(tsumugi_mux::settings::default_path().and_then(|p| p.parent().map(std::path::Path::to_path_buf))),
+            state_path: shown(tsumugi_mux::state::default_path()),
+        };
+        let Some(screen) = &mut self.prefs else { return };
+        let changes = prefs::show(ui, &self.palette, screen, &seen);
+        for change in changes {
+            match change {
+                prefs::Change::Set(table, key, value) => write_setting(self.settings_tx.clone(), table, key, value),
+                prefs::Change::MuteTag(tag, on) => client.mute_tag(tag, on),
+                prefs::Change::TestNotification => self.teller.send(alert::Out::Notify {
+                    session: 0,
+                    title: "tsumugi".into(),
+                    body: "A test notification: this is how a session tells you".into(),
+                }),
+                prefs::Change::DeleteProfile(name) => {
+                    self.profiles.retain(|p| p.name != name);
+                    let left = self.profiles.clone();
+                    let _ = std::thread::Builder::new().name("profiles".into()).spawn(move || {
+                        if let Some(path) = tsumugi_mux::settings::profiles_path() {
+                            let _ = tsumugi_mux::settings::save_profiles(&path, &left);
+                        }
+                    });
+                }
+                prefs::Change::Sort(s) => {
+                    self.view.sort = s;
+                    self.view.save();
+                }
+                prefs::Change::AlwaysRestore(on) => set_always_restore(on),
+                prefs::Change::OpenFolder => {
+                    if let Some(dir) = tsumugi_mux::settings::default_path().and_then(|p| p.parent().map(std::path::Path::to_path_buf)) {
+                        let _ = std::fs::create_dir_all(&dir);
+                        menu::open_with_system(&dir);
+                    }
+                }
+                prefs::Change::OpenFile => {
+                    if let Some(p) = tsumugi_mux::settings::default_path() {
+                        menu::open_with_system(&p);
+                    }
+                }
+                prefs::Change::Copy(text) => ui.ctx().copy_text(text),
+                prefs::Change::Close => self.prefs = None,
+            }
+        }
+    }
+
     /// The folders the new-session dialog offers: the pane with the keys'
     /// first, then where the other sessions are, the most recently busy
     /// first, each with its branch.
@@ -846,6 +926,7 @@ impl App {
                     palette::Command::Zoom => keys::Action::Zoom,
                     palette::Command::NextWaiting => keys::Action::NextWaiting,
                     palette::Command::CloseTab => keys::Action::CloseTab,
+                    palette::Command::Settings => keys::Action::Settings,
                     palette::Command::Sort(_) => return,
                 };
                 if let Some(w) = current {
@@ -1539,7 +1620,8 @@ impl App {
             let shown = ui.push_id(id, |ui| tsumugi_pane::show(ui, Some(pane), view, rect, &self.font, row_h, &self.palette, opts)).inner;
             if !focused {
                 // The panes without the keys sit back; their marks do not (1e).
-                ui.painter().rect_filled(rect, 0.0, self.palette.on_cursor.gamma_multiply(DIM));
+                let dim = f32::from(self.settings_now.appearance.dim) / 100.0;
+                ui.painter().rect_filled(rect, 0.0, self.palette.on_cursor.gamma_multiply(dim));
             }
             if shown.focus && !focused {
                 focus_to = Some(*id);
@@ -1695,9 +1777,8 @@ fn themes_stamp(dir: &std::path::Path) -> Vec<(std::path::PathBuf, Option<std::t
 /// Read `settings.toml`, `profiles.toml` and the theme files now and
 /// whenever they change, on a thread of its own (no disk on the window's
 /// thread).
-fn watch_settings(ctx: egui::Context) -> std::sync::mpsc::Receiver<Read> {
+fn watch_settings(ctx: egui::Context, tx: std::sync::mpsc::Sender<Read>) {
     use tsumugi_mux::settings;
-    let (tx, rx) = std::sync::mpsc::channel();
     let _ = std::thread::Builder::new().name("settings".into()).spawn(move || {
         let (Some(path), Some(profiles)) = (settings::default_path(), settings::profiles_path()) else { return };
         let (mut seen, mut seen_profiles, mut seen_themes) = (None, None, None);
@@ -1735,7 +1816,22 @@ fn watch_settings(ctx: egui::Context) -> std::sync::mpsc::Receiver<Read> {
             std::thread::sleep(Duration::from_secs(2));
         }
     });
-    rx
+}
+
+/// Change one key of `settings.toml`, on a thread of its own, and say what
+/// the file now holds at once rather than at the next look.
+fn write_setting(tx: std::sync::mpsc::Sender<Read>, table: Option<&'static str>, key: &'static str, value: String) {
+    let _ = std::thread::Builder::new().name("write-setting".into()).spawn(move || {
+        let Some(path) = tsumugi_mux::settings::default_path() else { return };
+        let text = std::fs::read_to_string(&path).unwrap_or_default();
+        let next = tsumugi_mux::settings::set_key(&text, table, key, &value);
+        if let Some(dir) = path.parent() {
+            let _ = std::fs::create_dir_all(dir);
+        }
+        if std::fs::write(&path, next).is_ok() {
+            let _ = tx.send(Read::Settings(Box::new(tsumugi_mux::settings::load(&path))));
+        }
+    });
 }
 
 /// Keep a new profile, on a thread of its own: replaces one of the same name.
@@ -1788,6 +1884,7 @@ impl eframe::App for App {
             match read {
                 Read::Settings(read) => match *read {
                     Ok(s) => {
+                        self.settings_now = s.clone();
                         self.alerts.rules = alert::Rules::from(&s.notify);
                         self.tag_rules = s.tags.rule;
                         self.theme_choice = (s.theme, s.dark_theme, s.light_theme);
@@ -1887,7 +1984,11 @@ impl eframe::App for App {
         let status = egui::Panel::bottom("status")
             .exact_size(24.0)
             .frame(egui::Frame::NONE.fill(crate::theme::colors().side))
-            .show(ui, |ui| chrome::status_bar(ui, &self.palette, &sessions, focus_info.as_ref(), size, up, self.nerd))
+            .show(ui, |ui| {
+                let clock = &self.settings_now.clock;
+                let extra = chrome::StatusExtra { up_ms: up, nerd: self.nerd, clock: clock.show.then(|| clock.format()) };
+                chrome::status_bar(ui, &self.palette, &sessions, focus_info.as_ref(), size, &extra)
+            })
             .inner;
         if let Some(chrome::StatusClick::Bell) = status {
             self.bell_open = Some(egui::pos2(20.0, 60.0));
@@ -2007,6 +2108,10 @@ impl eframe::App for App {
                     }
                     None => {}
                 }
+                return;
+            }
+            if self.prefs.is_some() {
+                self.settings_screen(ui, &client, &workspaces, &sessions);
                 return;
             }
             if let Some(w) = &current {

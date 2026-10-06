@@ -9,6 +9,19 @@
 //! dark_theme = "tsumugi Dark"
 //! light_theme = "tsumugi Light"
 //!
+//! # The clock in the status bar (the design's 1n). date_format is one of
+//! # YYYY/MM/DD, YYYY-MM-DD, MM/DD/YYYY, DD/MM/YYYY.
+//! [clock]
+//! show = true
+//! hour24 = true
+//! date = true
+//! date_format = "YYYY/MM/DD"
+//! weekday = true
+//!
+//! # How much a pane without the keys is dimmed, in percent (1e).
+//! [appearance]
+//! dim = 35
+//!
 //! # Tag a session by the folder it is in (the design's 1a).
 //! [[tags.rule]]
 //! folder = "~/dev/filer"
@@ -49,10 +62,68 @@ pub struct Settings {
     pub theme: String,
     pub dark_theme: String,
     pub light_theme: String,
+    pub clock: Clock,
+    pub appearance: Appearance,
     pub tags: Tags,
     pub notify: Notify,
     pub open: Open,
     pub menu: Menu,
+}
+
+/// The status bar's clock (the design's 1n).
+#[derive(Clone, Debug, PartialEq, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct Clock {
+    pub show: bool,
+    pub hour24: bool,
+    pub date: bool,
+    pub date_format: String,
+    pub weekday: bool,
+}
+
+impl Default for Clock {
+    fn default() -> Self {
+        Self { show: true, hour24: true, date: true, date_format: "YYYY/MM/DD".into(), weekday: true }
+    }
+}
+
+/// The date formats the clock knows.
+pub const DATE_FORMATS: [&str; 4] = ["YYYY/MM/DD", "YYYY-MM-DD", "MM/DD/YYYY", "DD/MM/YYYY"];
+
+impl Clock {
+    /// A `chrono` format string: `2026/10/05 (Mon) 14:32`.
+    pub fn format(&self) -> String {
+        let mut out = Vec::new();
+        if self.date {
+            out.push(
+                match self.date_format.as_str() {
+                    "YYYY-MM-DD" => "%Y-%m-%d",
+                    "MM/DD/YYYY" => "%m/%d/%Y",
+                    "DD/MM/YYYY" => "%d/%m/%Y",
+                    _ => "%Y/%m/%d",
+                }
+                .to_owned(),
+            );
+            if self.weekday {
+                out.push("(%a)".into());
+            }
+        }
+        out.push(if self.hour24 { "%H:%M".into() } else { "%-I:%M %p".into() });
+        out.join(" ")
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct Appearance {
+    /// Percent a pane without the keys is dimmed, 0 to 90.
+    pub dim: u8,
+}
+
+impl Default for Appearance {
+    fn default() -> Self {
+        Self { dim: 35 }
+    }
 }
 
 impl Default for Settings {
@@ -61,6 +132,8 @@ impl Default for Settings {
             theme: "dark".into(),
             dark_theme: "tsumugi Dark".into(),
             light_theme: "tsumugi Light".into(),
+            clock: Clock::default(),
+            appearance: Appearance::default(),
             tags: Tags::default(),
             notify: Notify::default(),
             open: Open::default(),
@@ -187,6 +260,12 @@ pub fn parse(text: &str) -> Result<Settings, String> {
         Some(at) => format!("line {}: {}", text[..at.start].matches('\n').count() + 1, e.message()),
         None => e.message().to_owned(),
     })?;
+    if !DATE_FORMATS.contains(&s.clock.date_format.as_str()) {
+        return Err(format!("clock.date_format: `{}` is not one of {}", s.clock.date_format, DATE_FORMATS.join(", ")));
+    }
+    if s.appearance.dim > 90 {
+        return Err(format!("appearance.dim: {} is more than 90", s.appearance.dim));
+    }
     if let Some(w) = s.menu.hide.iter().find(|w| !MENU_ITEMS.contains(&w.as_str())) {
         return Err(format!("menu.hide: `{w}` is not one of {}", MENU_ITEMS.join(", ")));
     }
@@ -196,6 +275,96 @@ pub fn parse(text: &str) -> Result<Settings, String> {
         }
     }
     Ok(s)
+}
+
+/// `text` with `key` in `table` (`None`: the top, before any table) set to
+/// `value`, already written as TOML. Only that key's line changes (its
+/// array, if it runs over several lines), so what a person wrote around it
+/// -- comments, order, blank lines -- stays. A key not there is added at
+/// the end of its table, and a table not there at the end of the file.
+pub fn set_key(text: &str, table: Option<&str>, key: &str, value: &str) -> String {
+    let lines: Vec<&str> = text.split_inclusive('\n').collect();
+    let header = |l: &str| -> Option<String> {
+        let t = l.trim();
+        let inner = t.strip_prefix("[[").and_then(|r| r.split("]]").next()).or_else(|| t.strip_prefix('[').and_then(|r| r.split(']').next()))?;
+        // An array of tables never takes a plain key from here.
+        Some(if t.starts_with("[[") { format!("[[{}]]", inner.trim()) } else { inner.trim().to_owned() })
+    };
+    let is_key = |l: &str| {
+        let t = l.trim_start();
+        t.strip_prefix(key).is_some_and(|rest| rest.trim_start().starts_with('='))
+    };
+    let mut section: Option<String> = None;
+    let mut start = None;
+    let mut last_in_table = None;
+    let mut first_header = None;
+    for (k, l) in lines.iter().enumerate() {
+        if let Some(h) = header(l) {
+            first_header.get_or_insert(k);
+            section = Some(h);
+            if section.as_deref() == table {
+                last_in_table = Some(k);
+            }
+            continue;
+        }
+        if section.as_deref() != table {
+            continue;
+        }
+        if !l.trim().is_empty() && !l.trim_start().starts_with('#') {
+            last_in_table = Some(k);
+        }
+        if start.is_none() && is_key(l) {
+            start = Some(k);
+        }
+    }
+    let line = format!("{key} = {value}\n");
+    let mut out: Vec<String> = lines.iter().map(|l| (*l).to_owned()).collect();
+    match start {
+        Some(k) => {
+            // An array over several lines ends where its brackets close.
+            let mut end = k;
+            let mut depth: i32 = 0;
+            for (j, l) in lines.iter().enumerate().skip(k) {
+                let v = if j == k { l.split_once('=').map_or("", |(_, v)| v) } else { l };
+                depth += v.matches('[').count() as i32 - v.matches(']').count() as i32;
+                end = j;
+                if depth <= 0 {
+                    break;
+                }
+            }
+            let indent: String = lines[k].chars().take_while(|c| c.is_whitespace()).collect();
+            out.splice(k..=end, [format!("{indent}{line}")]);
+        }
+        None => match (table, last_in_table) {
+            (_, Some(k)) => {
+                if !out[k].ends_with('\n') {
+                    out[k].push('\n');
+                }
+                out.insert(k + 1, line);
+            }
+            (Some(t), None) => {
+                if out.last().is_some_and(|l| !l.ends_with('\n')) {
+                    out.push("\n".into());
+                }
+                if !out.is_empty() {
+                    out.push("\n".into());
+                }
+                out.push(format!("[{t}]\n{line}"));
+            }
+            (None, None) => out.insert(first_header.unwrap_or(out.len()), if first_header.is_some() { format!("{line}\n") } else { line }),
+        },
+    }
+    out.concat()
+}
+
+/// A string as TOML writes it, quoted and escaped.
+pub fn quote(s: &str) -> String {
+    toml::Value::String(s.to_owned()).to_string()
+}
+
+/// A list of strings as TOML writes it.
+pub fn quote_list(items: &[String]) -> String {
+    format!("[{}]", items.iter().map(|s| quote(s)).collect::<Vec<_>>().join(", "))
 }
 
 /// When the file was last changed, to read it again only then; `None` when
@@ -331,6 +500,40 @@ mod tests {
     fn a_command_gets_the_folder_quoted() {
         assert_eq!(fill("code {folder} # {session}", Path::new("/tmp/it's here"), 7), "code '/tmp/it'\\''s here' # 7");
         assert!(parse("[menu]\nhide = [\"nope\"]").unwrap_err().starts_with("menu.hide: `nope`"));
+    }
+
+    #[test]
+    fn one_key_changes_and_the_rest_stays() {
+        let text = "# mine\ntheme = \"dark\" \n\n[notify]\n# the toasts\nsystem = [\n  \"waiting\",\n  \"error\",\n]\nflash = []\n\n[[tags.rule]]\nfolder = \"~\"\ntag = \"home\"\n";
+        let t = set_key(text, None, "theme", &quote("Nord"));
+        assert_eq!(t, text.replace("theme = \"dark\" ", "theme = \"Nord\""));
+        let t = set_key(text, Some("notify"), "system", &quote_list(&["done".into()]));
+        assert_eq!(t, "# mine\ntheme = \"dark\" \n\n[notify]\n# the toasts\nsystem = [\"done\"]\nflash = []\n\n[[tags.rule]]\nfolder = \"~\"\ntag = \"home\"\n");
+        // Added: at the end of its table (the top's too), a new table at
+        // the end of the file.
+        let t = set_key(text, Some("notify"), "taskbar", "[]");
+        assert!(t.contains("flash = []\ntaskbar = []\n\n[[tags.rule]]"), "{t}");
+        let t = set_key(text, Some("clock"), "hour24", "false");
+        assert!(t.ends_with("tag = \"home\"\n\n[clock]\nhour24 = false\n"), "{t}");
+        let t = set_key(text, None, "dark_theme", &quote("Nord"));
+        assert!(t.contains("theme = \"dark\" \ndark_theme = \"Nord\"\n\n[notify]"), "{t}");
+        // An array of tables' key is not a table's.
+        let t = set_key(text, Some("tags.rule"), "tag", &quote("x"));
+        assert!(t.contains("tag = \"home\""), "{t}");
+        // Every result still reads.
+        assert!(parse(&set_key(text, Some("clock"), "hour24", "false")).is_ok());
+        // An empty file.
+        assert_eq!(set_key("", Some("clock"), "date", "true"), "[clock]\ndate = true\n");
+        assert_eq!(set_key("", None, "theme", &quote("light")), "theme = \"light\"\n");
+    }
+
+    #[test]
+    fn the_clock_writes_its_format() {
+        assert_eq!(Clock::default().format(), "%Y/%m/%d (%a) %H:%M");
+        let us = Clock { hour24: false, date_format: "MM/DD/YYYY".into(), weekday: false, ..Clock::default() };
+        assert_eq!(us.format(), "%m/%d/%Y %-I:%M %p");
+        assert_eq!(Clock { date: false, ..Clock::default() }.format(), "%H:%M");
+        assert!(parse("[clock]\ndate_format = \"DD.MM\"").is_err());
     }
 
     #[test]

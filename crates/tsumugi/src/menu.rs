@@ -35,6 +35,19 @@ fn shell(line: &str) -> Command {
     cmd
 }
 
+/// Open a file or folder the way the system would on a double click.
+pub fn open_with_system(path: &std::path::Path) {
+    let quoted = tsumugi_mux::settings::fill("{folder}", path, 0);
+    let line = if cfg!(windows) {
+        format!("start \"\" {quoted}")
+    } else if cfg!(target_os = "macos") {
+        format!("open {quoted}")
+    } else {
+        format!("xdg-open {quoted}")
+    };
+    run(line);
+}
+
 /// The environment variable a new window reads to show a tab first.
 pub const SHOW_TAB: &str = "TSUMUGI_SHOW_TAB";
 

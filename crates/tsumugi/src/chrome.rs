@@ -106,15 +106,19 @@ pub enum StatusClick {
 /// The status bar along the bottom (1d): the server and how long it has been
 /// up, how many sessions are in each state, the folder and branch of the pane
 /// with the keys, its shell and size, and the clock (1n).
+///
+/// `extra`: the server's uptime, whether a Nerd Font is there, and the
+/// clock's `chrono` format (`None`: no clock).
 pub fn status_bar(
     ui: &mut egui::Ui,
     pal: &Palette,
     sessions: &[Info],
     focus: Option<&Info>,
     size: Option<(usize, usize)>,
-    up_ms: u64,
-    nerd: bool,
+    extra: &StatusExtra,
 ) -> Option<StatusClick> {
+    let StatusExtra { up_ms, nerd, clock } = extra;
+    let (up_ms, nerd) = (*up_ms, *nerd);
     let mut click = None;
     let small = |t: String, c: Color32| RichText::new(t).font(FontId::proportional(11.5)).color(c);
     ui.horizontal_centered(|ui| {
@@ -145,8 +149,10 @@ pub fn status_bar(
         }
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             ui.add_space(10.0);
-            ui.label(small(chrono::Local::now().format("%Y/%m/%d (%a) %H:%M").to_string(), pal.fg));
-            ui.add_space(12.0);
+            if let Some(format) = clock {
+                ui.label(small(chrono::Local::now().format(format).to_string(), pal.fg));
+                ui.add_space(12.0);
+            }
             ui.label(small("UTF-8".into(), pal.fg_dim));
             if let (Some(i), Some((cols, lines))) = (focus, size) {
                 ui.add_space(12.0);
@@ -475,6 +481,13 @@ pub fn muted_mark(p: &egui::Painter, c: egui::Pos2, color: Color32) {
     p.line_segment([c + egui::vec2(-5.0, 3.0), c + egui::vec2(5.0, 3.0)], stroke);
     p.circle_filled(c + egui::vec2(0.0, 4.6), 1.0, color);
     p.line_segment([c + egui::vec2(-5.5, -5.0), c + egui::vec2(5.5, 6.0)], stroke);
+}
+
+/// The status bar's other inputs.
+pub struct StatusExtra {
+    pub up_ms: u64,
+    pub nerd: bool,
+    pub clock: Option<String>,
 }
 
 /// What the notification list was asked to do.

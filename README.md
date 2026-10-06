@@ -124,6 +124,13 @@ wearing it. Folder rules in the settings tag sessions by themselves.
 
 ### Settings
 
+`Ctrl+,` (`Cmd+,` on macOS), or **Settings** in the search, opens the
+settings screen: General (the clock, restoring without asking), Appearance,
+Keys, Notifications (the table of which states tell in which way, quiet
+tags, a test), Sessions & profiles, Tags, Theme (the list and a preview,
+applied as you pick), Shell & hooks and Advanced. A change there rewrites
+only its own line of `settings.toml`, so what you wrote by hand stays.
+
 `settings.toml` is read from `%APPDATA%\tsumugi\` on Windows,
 `~/Library/Application Support/tsumugi/` on macOS and `~/.config/tsumugi/`
 elsewhere (`TSUMUGI_SETTINGS` names another file). Changes apply within a
@@ -153,6 +160,19 @@ tag = "{name}"
 system = ["waiting", "error", "done"]   # the system's notification
 taskbar = ["waiting", "error"]          # the number on the taskbar
 flash = []                              # flash the taskbar button
+
+# The status bar's clock; date_format is YYYY/MM/DD, YYYY-MM-DD, MM/DD/YYYY
+# or DD/MM/YYYY.
+[clock]
+show = true
+hour24 = true
+date = true
+date_format = "YYYY/MM/DD"
+weekday = true
+
+# How much a pane without the keys is dimmed, in percent.
+[appearance]
+dim = 35
 
 # What the tab's menu opens its folder with; the system's shell runs it.
 [open]
