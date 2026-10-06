@@ -114,6 +114,8 @@
 - [ ] **9.4** Open settings.toml / Open the settings folder → The system's editor / file manager opens
 - [ ] **9.5** Type `scroll` in Search settings → Only Advanced in the list, with a count; its Scrollback row lit; Enter goes there
 - [ ] **9.6** Next to the design's "Settings: every page" → The same pages, sections and rows in the same order
+- [ ] **9.7** Only the keyboard: `Ctrl+Tab` / `Ctrl+Shift+Tab` through the pages, `Tab` through a page, `Space` on a switch, `Esc` twice → A cyan ring on the control with the keys; Tab never stops on the top band or the list of pages; Space flips the switch (the file changes); the first Esc leaves the control, the second closes the screen; nothing typed reaches the shell behind it
+- [ ] **9.8** Notifications → WHEN A SESSION… → A line between rows; the three state columns the same width, each switch in the middle of its column and row, under its heading's dot
 
 ## 10. Themes
 

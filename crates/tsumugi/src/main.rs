@@ -3504,7 +3504,16 @@ impl App {
                     }
                 }
             }
-            if let Some(pane) = self.panes.get(&w.focus).filter(|_| !field) {
+            // The settings screen has the keys while it is open: none reach
+            // the shell behind it, and of the window's own only its own key,
+            // which closes it again.
+            if self.prefs.is_some() && !capturing {
+                let closing = ctx.input(|i| i.events.iter().any(|e| matches!(e, egui::Event::Key { key, pressed: true, modifiers, .. } if keys::action(*key, *modifiers) == Some(keys::Action::Settings))));
+                if closing {
+                    self.prefs = None;
+                }
+            }
+            if let Some(pane) = self.panes.get(&w.focus).filter(|_| !field && self.prefs.is_none()) {
                 let events = ctx.input(|i| i.events.clone());
                 tsumugi_pane::input::feed(pane, &events, |key, m| match keys::action(key, m) {
                     Some(a) => {

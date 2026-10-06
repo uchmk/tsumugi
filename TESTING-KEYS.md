@@ -62,5 +62,10 @@ Windows and Linux keys first; the macOS key is after `·`.
 
 ## The settings screen
 
-- [ ] `Esc` · `Esc` — Close it, or leave a key being changed as it was
+- [ ] `Esc` · `Esc` — Leave the control that has the keys (a field as it was); with none, close the screen
+- [ ] `Ctrl+Tab / Ctrl+PageDown` · `Ctrl+Tab / Cmd+PageDown` — The next page
+- [ ] `Ctrl+Shift+Tab / Ctrl+PageUp` · `Ctrl+Shift+Tab / Cmd+PageUp` — The page before
+- [ ] `Ctrl+F` · `Cmd+F` — To the search
+- [ ] `Tab / Shift+Tab` · `Tab / Shift+Tab` — The search, the page's controls one by one, then Open settings.toml
+- [ ] `Space / Enter` · `Space / Enter` — Flip the switch or press the button that has the keys
 - [ ] `Ctrl+,` · `Cmd+,` — Open it (the changeable key above, while not moved)

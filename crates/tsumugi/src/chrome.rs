@@ -580,7 +580,9 @@ pub fn top_band(ui: &mut egui::Ui, pal: &Palette, tags: &[String], muted_tags: &
     // As the title bar: the band's empty parts move the window and a double
     // click maximizes it. Taken first, so what is drawn on it comes first.
     if frame.own {
-        let bg = ui.interact(whole, ui.id().with("band-drag"), egui::Sense::click_and_drag());
+        // The band is the mouse's: none of it is a stop for Tab, which goes
+        // to what the window shows under it.
+        let bg = ui.interact(whole, ui.id().with("band-drag"), egui::Sense::CLICK | egui::Sense::DRAG);
         if bg.double_clicked() {
             out.window = Some(WindowOp::ToggleMax);
         } else if bg.drag_started() {
@@ -613,7 +615,7 @@ pub fn top_band(ui: &mut egui::Ui, pal: &Palette, tags: &[String], muted_tags: &
     if frame.settings {
         p.text(whole.center(), egui::Align2::CENTER_CENTER, "Settings", FontId::proportional(13.0), pal.fg_dim);
         let r = egui::Rect::from_min_max(egui::pos2(rect.right() - 44.0, whole.top() + 4.0), egui::pos2(rect.right(), whole.bottom() - 4.0));
-        let resp = ui.interact(r, ui.id().with("close-settings"), egui::Sense::click()).on_hover_text("Close settings (Esc)");
+        let resp = ui.interact(r, ui.id().with("close-settings"), egui::Sense::CLICK).on_hover_text("Close settings (Esc)");
         if resp.hovered() {
             p.rect_filled(r, 4.0, crate::theme::colors().hover());
         }
@@ -648,7 +650,7 @@ pub fn top_band(ui: &mut egui::Ui, pal: &Palette, tags: &[String], muted_tags: &
     let w = if compact { 30.0 } else { box_w };
     let center_x = (name_right + rect.right() - if show_tags { full } else { 0.0 }) / 2.0;
     let r = egui::Rect::from_center_size(egui::pos2(center_x.max(name_right + 12.0 + w / 2.0), rect.center().y), egui::vec2(w, 26.0));
-    let resp = ui.interact(r, ui.id().with("search"), egui::Sense::click()).on_hover_text("Search sessions, folders and commands");
+    let resp = ui.interact(r, ui.id().with("search"), egui::Sense::CLICK).on_hover_text("Search sessions, folders and commands");
     let fill = if resp.hovered() { crate::theme::colors().hover() } else { crate::theme::colors().panel };
     p.rect_filled(r, 6.0, fill);
     p.rect_stroke(r, 6.0, egui::Stroke::new(1.0, crate::theme::colors().border), egui::StrokeKind::Inside);
@@ -710,7 +712,7 @@ fn caption_buttons(ui: &mut egui::Ui, rect: egui::Rect, pal: &Palette, maximized
     let ops = [(WindowOp::Minimize, "Minimize"), (WindowOp::ToggleMax, if maximized { "Restore" } else { "Maximize" }), (WindowOp::Close, "Close")];
     for (k, (op, words)) in ops.into_iter().enumerate() {
         let r = egui::Rect::from_min_size(rect.min + egui::vec2(k as f32 * CAPTION_W, 0.0), egui::vec2(CAPTION_W, rect.height()));
-        let resp = ui.interact(r, ui.id().with(("caption", k)), egui::Sense::click()).on_hover_text(words);
+        let resp = ui.interact(r, ui.id().with(("caption", k)), egui::Sense::CLICK).on_hover_text(words);
         let p = ui.painter();
         let hot = resp.hovered();
         let close = op == WindowOp::Close;

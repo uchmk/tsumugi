@@ -30,7 +30,7 @@ Windows and Linux keys first; the macOS key is after `·`.
 
 /// Fixed keys of the window, and the keys of its boxes: (section, key on
 /// Windows and Linux, on macOS, what it does).
-const FIXED: [(&str, &str, &str, &str); 27] = [
+const FIXED: [(&str, &str, &str, &str); 32] = [
     ("The window, fixed", "Ctrl+Alt+1 … 9", "Cmd+1 … 9", "The Nth tab"),
     ("The window, fixed", "Alt+Left", "Cmd+Option+Left", "The keys to the pane on the left"),
     ("The window, fixed", "Alt+Right", "Cmd+Option+Right", "The keys to the pane on the right"),
@@ -56,7 +56,12 @@ const FIXED: [(&str, &str, &str, &str); 27] = [
     ("The search box", "Up / Down", "Up / Down", "Walk the entries"),
     ("The search box", "Enter", "Enter", "Do the entry picked"),
     ("The search box", "Esc", "Esc", "Close it"),
-    ("The settings screen", "Esc", "Esc", "Close it, or leave a key being changed as it was"),
+    ("The settings screen", "Esc", "Esc", "Leave the control that has the keys (a field as it was); with none, close the screen"),
+    ("The settings screen", "Ctrl+Tab / Ctrl+PageDown", "Ctrl+Tab / Cmd+PageDown", "The next page"),
+    ("The settings screen", "Ctrl+Shift+Tab / Ctrl+PageUp", "Ctrl+Shift+Tab / Cmd+PageUp", "The page before"),
+    ("The settings screen", "Ctrl+F", "Cmd+F", "To the search"),
+    ("The settings screen", "Tab / Shift+Tab", "Tab / Shift+Tab", "The search, the page's controls one by one, then Open settings.toml"),
+    ("The settings screen", "Space / Enter", "Space / Enter", "Flip the switch or press the button that has the keys"),
     ("The settings screen", "Ctrl+,", "Cmd+,", "Open it (the changeable key above, while not moved)"),
 ];
 

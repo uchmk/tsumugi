@@ -148,6 +148,10 @@ pub struct Screen {
     /// What the search field above the pages holds.
     pub query: String,
     pub edit: Edit,
+    /// A control had the keys at the end of the last frame: an Esc then
+    /// leaves it (egui lets go of it before this frame is drawn), and only
+    /// the next Esc leaves the screen.
+    held: bool,
 }
 
 /// What is being changed on the screen and not yet written.
@@ -284,10 +288,27 @@ struct Look<'a> {
 pub fn show(ui: &mut egui::Ui, pal: &Palette, screen: &mut Screen, seen: &Seen) -> Vec<Change> {
     let c = seen.current;
     let mut out = Vec::new();
-    // Esc leaves the screen, unless a field or a key being changed has it.
-    let busy = ui.memory(|m| m.focused().is_some()) || screen.edit.capturing.is_some();
+    // Esc leaves the screen, unless a control or a key being changed has it.
+    let busy = screen.held || ui.memory(|m| m.focused().is_some()) || screen.edit.capturing.is_some();
     if !busy && ui.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape)) {
         out.push(Change::Close);
+    }
+    // The pages by the keys, as tabs are elsewhere: Ctrl+Tab and
+    // Ctrl+PageDown the next, with Shift or PageUp the one before; Ctrl+F
+    // to the search.
+    let (next, back, find) = ui.input_mut(|i| {
+        let ctrl = egui::Modifiers::CTRL;
+        let back = i.consume_key(ctrl | egui::Modifiers::SHIFT, egui::Key::Tab) || i.consume_key(ctrl, egui::Key::PageUp);
+        let next = i.consume_key(ctrl, egui::Key::Tab) || i.consume_key(ctrl, egui::Key::PageDown);
+        (next, back, i.consume_key(egui::Modifiers::COMMAND, egui::Key::F))
+    });
+    if next || back {
+        let k = Page::ALL.iter().position(|p| *p == screen.page).unwrap_or(0);
+        let n = Page::ALL.len();
+        screen.page = Page::ALL[if next { (k + 1) % n } else { (k + n - 1) % n }];
+        screen.query.clear();
+        // The keys to the page's first control with the next Tab.
+        ui.memory_mut(|m| m.surrender_focus(m.focused().unwrap_or(egui::Id::NULL)));
     }
     let rect = ui.max_rect();
     ui.painter().rect_filled(rect, 0.0, c.bg);
@@ -303,6 +324,9 @@ pub fn show(ui: &mut egui::Ui, pal: &Palette, screen: &mut Screen, seen: &Seen) 
         .margin(egui::vec2(10.0, 8.0))
         .font(FontId::proportional(12.5));
     let searched = nav_ui.add(search);
+    if find {
+        searched.request_focus();
+    }
     nav_ui.add_space(10.0);
     let q = screen.query.trim().to_lowercase();
     let hits = |p: Page| -> usize {
@@ -328,7 +352,9 @@ pub fn show(ui: &mut egui::Ui, pal: &Palette, screen: &mut Screen, seen: &Seen) 
     }
     for p in shown {
         let on = screen.page == p;
-        let (r, resp) = nav_ui.allocate_exact_size(egui::vec2(nav_ui.available_width(), 32.0), egui::Sense::click());
+        // Mouse only: the keys go page to page with Ctrl+Tab, and Tab goes
+        // from the search straight into the page.
+        let (r, resp) = nav_ui.allocate_exact_size(egui::vec2(nav_ui.available_width(), 32.0), egui::Sense::CLICK);
         if on {
             nav_ui.painter().rect_filled(r, 6.0, c.chosen());
         } else if resp.hovered() {
@@ -342,11 +368,6 @@ pub fn show(ui: &mut egui::Ui, pal: &Palette, screen: &mut Screen, seen: &Seen) 
         if resp.clicked() {
             screen.page = p;
         }
-    }
-    let foot = egui::Rect::from_min_max(egui::pos2(nav.left() + 10.0, nav.bottom() - 48.0), egui::pos2(nav.right() - 10.0, nav.bottom() - 16.0));
-    let file = egui::Button::new(RichText::new("Open settings.toml").size(12.5).color(c.dim)).fill(Color32::TRANSPARENT).stroke(egui::Stroke::new(1.0, c.border_strong())).corner_radius(6.0);
-    if nav_ui.put(foot, file).clicked() {
-        out.push(Change::OpenFile);
     }
 
     // The page.
@@ -375,6 +396,15 @@ pub fn show(ui: &mut egui::Ui, pal: &Palette, screen: &mut Screen, seen: &Seen) 
             }
         });
     });
+    // The file last, so Tab comes to it after the page.
+    let foot = egui::Rect::from_min_max(egui::pos2(nav.left() + 10.0, nav.bottom() - 48.0), egui::pos2(nav.right() - 10.0, nav.bottom() - 16.0));
+    let file = egui::Button::new(RichText::new("Open settings.toml").size(12.5).color(c.dim)).fill(Color32::TRANSPARENT).stroke(egui::Stroke::new(1.0, c.border_strong())).corner_radius(6.0);
+    let file = nav_ui.put(foot, file);
+    focus_ring(&nav_ui, &file);
+    if file.clicked() {
+        out.push(Change::OpenFile);
+    }
+    screen.held = ui.memory(|m| m.focused().is_some());
     out.retain(|change| match change {
         Change::GoTo(p) => {
             screen.page = *p;
@@ -448,7 +478,15 @@ fn switch(ui: &mut egui::Ui, l: Look, on: bool) -> bool {
     p.rect_filled(rect, 11.0, if on { c.run } else { c.border_strong() });
     let x = if on { rect.right() - 11.0 } else { rect.left() + 11.0 };
     p.circle_filled(egui::pos2(x, rect.center().y), 8.0, if on { c.on_accent() } else { c.dim });
+    focus_ring(ui, &resp);
     resp.clicked()
+}
+
+/// A ring round the control that has the keys, so Tab shows where it is.
+fn focus_ring(ui: &egui::Ui, r: &egui::Response) {
+    if r.has_focus() {
+        ui.painter().rect_stroke(r.rect.expand(3.0), 8.0, egui::Stroke::new(1.5, crate::chrome::cyan()), egui::StrokeKind::Outside);
+    }
 }
 
 /// A list to pick one of: the value picked, when it changed.
@@ -466,7 +504,9 @@ fn select<T: PartialEq + Copy>(ui: &mut egui::Ui, id: &str, now: T, options: &[(
 /// The design's plain button: an outline, words in the text colour.
 fn button(ui: &mut egui::Ui, l: Look, words: &str) -> bool {
     let b = egui::Button::new(RichText::new(words).size(12.5).color(l.c.fg)).fill(Color32::TRANSPARENT).stroke(egui::Stroke::new(1.0, l.c.border_strong())).corner_radius(7.0).min_size(egui::vec2(0.0, 30.0));
-    ui.add(b).clicked()
+    let r = ui.add(b);
+    focus_ring(ui, &r);
+    r.clicked()
 }
 
 fn status(ui: &mut egui::Ui, words: &str, color: Color32) {
@@ -807,40 +847,59 @@ fn notifications(ui: &mut egui::Ui, l: Look, seen: &Seen, _edit: &mut Edit, out:
     });
     ui.add_space(8.0);
     section(ui, l, "WHEN A SESSION…", |ui| {
+        // The design's table: the way to tell, then a column per state, the
+        // label's column 1.6 times as wide as each state's, a line between
+        // rows.
         let states = [("waiting", "waits for you", c.wait), ("error", "fails", c.err), ("done", "finishes", c.done)];
-        egui::Grid::new("notify-table").num_columns(4).min_col_width(120.0).spacing(egui::vec2(16.0, 14.0)).show(ui, |ui| {
-            ui.label("");
-            for (_, words, color) in states {
-                ui.vertical_centered(|ui| ui.label(RichText::new(words).strong().color(color)));
-            }
-            ui.end_row();
-            for (key, label, note, list) in [
-                ("system", "System notification", "The OS's own, which a click brings back here", &n.system),
-                ("taskbar", "Taskbar count", "A number on the window's taskbar button", &n.taskbar),
-                ("flash", "Taskbar flash", "The button lights up until you look", &n.flash),
-                ("sound", "Sound", "Once, the sound picked below", &n.sound),
-            ] {
-                ui.vertical(|ui| {
-                    ui.set_min_width(250.0);
-                    ui.label(RichText::new(label).color(c.strong()));
-                    ui.label(RichText::new(note).size(12.0).color(c.dim));
-                });
-                for (word, _, _) in states {
-                    let on = list.iter().any(|w| w == word);
-                    ui.vertical_centered(|ui| {
-                        if switch(ui, l, on) {
-                            let mut next: Vec<String> = list.iter().filter(|w| *w != word).cloned().collect();
-                            if !on {
-                                next.push(word.to_owned());
-                            }
-                            out.push(Change::Set(Some("notify"), key, cfg::quote_list(&next)));
-                        }
-                    });
+        let gap = 16.0;
+        let width = ui.available_width();
+        let unit = (width - 3.0 * gap) / 4.6;
+        // Each row's room laid out by hand, so every column has its share
+        // and everything sits in the middle of its row.
+        let columns = |row: egui::Rect| -> [egui::Rect; 4] {
+            let mut x = row.left();
+            let mut take = |w: f32| {
+                let r = egui::Rect::from_min_max(egui::pos2(x, row.top()), egui::pos2(x + w, row.bottom()));
+                x += w + gap;
+                r
+            };
+            [take(unit * 1.6), take(unit), take(unit), take(unit)]
+        };
+        let (head, _) = ui.allocate_exact_size(egui::vec2(width, 40.0), egui::Sense::hover());
+        for ((_, words, color), r) in states.iter().zip(&columns(head)[1..]) {
+            let text = ui.fonts_mut(|f| f.layout_no_wrap(words.to_string(), FontId::proportional(13.0), crate::chrome::ink(*color)));
+            let left = r.center().x - (text.size().x + 14.0) / 2.0;
+            ui.painter().circle_filled(egui::pos2(left + 4.0, r.center().y), 4.0, *color);
+            ui.painter().galley(egui::pos2(left + 14.0, r.center().y - text.size().y / 2.0), text, *color);
+        }
+        for (key, label, note, list) in [
+            ("system", "System notification", "The OS's own, which a click brings back here", &n.system),
+            ("taskbar", "Taskbar count", "A number on the window's taskbar button", &n.taskbar),
+            ("flash", "Taskbar flash", "The button lights up until you look", &n.flash),
+            ("sound", "Sound", "Once, the sound picked below", &n.sound),
+        ] {
+            sep(ui, l);
+            let (row, _) = ui.allocate_exact_size(egui::vec2(width, 56.0), egui::Sense::hover());
+            let cols = columns(row);
+            let words = egui::Rect::from_center_size(cols[0].center(), egui::vec2(cols[0].width(), 36.0));
+            ui.scope_builder(egui::UiBuilder::new().max_rect(words), |ui| {
+                ui.spacing_mut().item_spacing.y = 2.0;
+                ui.label(RichText::new(label).size(13.0).color(c.strong()));
+                ui.add(egui::Label::new(RichText::new(note).size(12.0).color(c.dim)).truncate());
+            });
+            for ((word, _, _), r) in states.iter().zip(&cols[1..]) {
+                let on = list.iter().any(|w| w == word);
+                let at = egui::Rect::from_center_size(r.center(), egui::vec2(40.0, 22.0));
+                let flipped = ui.scope_builder(egui::UiBuilder::new().max_rect(at), |ui| switch(ui, l, on)).inner;
+                if flipped {
+                    let mut next: Vec<String> = list.iter().filter(|w| w != word).cloned().collect();
+                    if !on {
+                        next.push(word.to_string());
+                    }
+                    out.push(Change::Set(Some("notify"), key, cfg::quote_list(&next)));
                 }
-                ui.end_row();
             }
-        });
-        ui.add_space(8.0);
+        }
     });
     section(ui, l, "DETAILS", |ui| {
         let mut lengths: Vec<(u64, String)> = [(0, "Any length"), (30, "30 s or more"), (60, "1 min or more"), (300, "5 min or more"), (600, "10 min or more")].iter().map(|(v, t)| (*v, t.to_string())).collect();
@@ -1794,5 +1853,52 @@ mod tests {
         let (_, texts) = run.frame(&mut screen, Vec::new());
         assert!(find(&texts, "lazygit -p {folder}").is_some(), "one's own menu item");
         assert!(find(&texts, "Copy the folder path").is_some(), "the built-in items");
+    }
+
+    #[test]
+    fn the_keys_walk_the_pages_and_the_controls() {
+        let run = Run::new();
+        let ctrl = egui::Modifiers::CTRL;
+        let mut screen = Screen::default();
+        run.frame(&mut screen, Vec::new());
+        run.key(&mut screen, egui::Key::Tab, ctrl);
+        assert_eq!(screen.page, Page::Appearance);
+        run.key(&mut screen, egui::Key::Tab, ctrl | egui::Modifiers::SHIFT);
+        run.key(&mut screen, egui::Key::Tab, ctrl | egui::Modifiers::SHIFT);
+        assert_eq!(screen.page, Page::Advanced, "round from the first");
+        run.key(&mut screen, egui::Key::PageDown, ctrl);
+        assert_eq!(screen.page, Page::General);
+
+        // Tab: the search, then into the page, past the list of pages.
+        run.key(&mut screen, egui::Key::Tab, egui::Modifiers::NONE);
+        run.frame(&mut screen, Vec::new());
+        run.key(&mut screen, egui::Key::Tab, egui::Modifiers::NONE);
+        run.frame(&mut screen, Vec::new());
+        let at = run.ctx.memory(|m| m.focused()).and_then(|id| run.ctx.read_response(id)).map(|r| r.rect).expect("a control has the keys");
+        assert!(at.left() > 240.0, "in the page: {at:?}");
+        // Esc lets go of it first; only the next leaves the screen.
+        let changes = run.key(&mut screen, egui::Key::Escape, egui::Modifiers::NONE);
+        assert!(!changes.contains(&Change::Close), "{changes:?}");
+        let changes = run.key(&mut screen, egui::Key::Escape, egui::Modifiers::NONE);
+        assert!(changes.contains(&Change::Close));
+    }
+
+    #[test]
+    fn a_switch_takes_space() {
+        let run = Run::new();
+        let mut screen = Screen { page: Page::Notifications, ..Screen::default() };
+        run.frame(&mut screen, Vec::new());
+        // Tab along until a switch has the keys: the table's first.
+        let mut changes = Vec::new();
+        for _ in 0..12 {
+            run.key(&mut screen, egui::Key::Tab, egui::Modifiers::NONE);
+            run.frame(&mut screen, Vec::new());
+            let r = run.ctx.memory(|m| m.focused()).and_then(|id| run.ctx.read_response(id)).map(|r| r.rect);
+            if r.is_some_and(|r| r.width() == 40.0 && r.height() == 22.0) {
+                changes = run.key(&mut screen, egui::Key::Space, egui::Modifiers::NONE);
+                break;
+            }
+        }
+        assert_eq!(changes, vec![Change::Set(Some("notify"), "system", "[\"error\", \"done\"]".into())], "the first switch: system, waiting");
     }
 }
