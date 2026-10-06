@@ -28,10 +28,11 @@ pub enum Command {
     CloseTab,
     Sort(Sort),
     Settings,
+    InputBox,
 }
 
 impl Command {
-    pub const ALL: [Command; 12] = [
+    pub const ALL: [Command; 13] = [
         Command::NewSession,
         Command::SplitRight,
         Command::SplitDown,
@@ -44,6 +45,7 @@ impl Command {
         Command::Sort(Sort::Folder),
         Command::Sort(Sort::Name),
         Command::Settings,
+        Command::InputBox,
     ];
 
     pub fn title(self) -> String {
@@ -56,6 +58,7 @@ impl Command {
             Command::CloseTab => "Close the tab".into(),
             Command::Sort(s) => format!("Sort sessions: {}", s.label()),
             Command::Settings => "Settings".into(),
+            Command::InputBox => "Input box: write a prompt".into(),
         }
     }
 
@@ -74,6 +77,8 @@ impl Command {
             (Command::NextWaiting, true) => "Cmd+Shift+U",
             (Command::CloseTab, false) => "Ctrl+Shift+W",
             (Command::CloseTab, true) => "Cmd+W",
+            (Command::InputBox, false) => "Ctrl+I",
+            (Command::InputBox, true) => "Cmd+I",
             (Command::Settings, false) => "Ctrl+,",
             (Command::Settings, true) => "Cmd+,",
             (Command::Sort(_), _) => "",

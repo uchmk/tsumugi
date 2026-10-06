@@ -284,6 +284,7 @@ fn keys(ui: &mut egui::Ui, c: &Colors) {
                 ("Search", k("Ctrl+Shift+P", "Cmd+Shift+P")),
                 ("Narrow rail", k("Ctrl+Shift+B", "Cmd+Shift+B")),
                 ("Settings", k("Ctrl+,", "Cmd+,")),
+                ("Input box", k("Ctrl+I", "Cmd+I")),
             ],
         ),
         (

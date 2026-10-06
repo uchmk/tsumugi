@@ -30,6 +30,9 @@ pub enum Action {
     Rail,
     /// The settings screen (the design's 1m).
     Settings,
+    /// The input box below the panes (the design's 12, 1l). The Tab key
+    /// stays the shell's; only the I key with Ctrl is taken.
+    Input,
 }
 
 /// The action for a key press, if it is one of the window's.
@@ -80,6 +83,7 @@ fn action_on(key: Key, m: Modifiers, mac: bool) -> Option<Action> {
             Key::P if cmd && m.shift => Some(Action::Search),
             Key::B if cmd && m.shift => Some(Action::Rail),
             Key::Comma if cmd && !m.shift => Some(Action::Settings),
+            Key::I if cmd && !m.shift => Some(Action::Input),
             _ if cmd && !m.shift => digit().map(Action::Tab),
             _ => None,
         };
@@ -93,6 +97,7 @@ fn action_on(key: Key, m: Modifiers, mac: bool) -> Option<Action> {
         Key::B if ctrl_shift => Some(Action::Rail),
         // Windows Terminal's and VS Code's.
         Key::Comma if m.ctrl && !m.shift && !m.alt => Some(Action::Settings),
+        Key::I if m.ctrl && !m.shift && !m.alt => Some(Action::Input),
         // Alt+Shift+= / Alt+Shift+-, Windows Terminal's; with Shift held a US
         // keyboard reports `+` for the first.
         Key::Equals | Key::Plus if m.alt && m.shift && !m.ctrl => Some(Action::SplitRight),
@@ -132,6 +137,8 @@ mod tests {
         assert_eq!(action_on(Key::B, CTRL, false), None, "Ctrl+B is Claude Code's and tmux's");
         assert_eq!(action_on(Key::Comma, CTRL, false), Some(Action::Settings));
         assert_eq!(action_on(Key::Comma, CMD, true), Some(Action::Settings));
+        assert_eq!(action_on(Key::I, CTRL, false), Some(Action::Input));
+        assert_eq!(action_on(Key::Tab, Modifiers::NONE, false), None, "Tab is the shell's");
         assert_eq!(action_on(Key::Minus, alt, false), None, "Alt+- is the shell's");
     }
 

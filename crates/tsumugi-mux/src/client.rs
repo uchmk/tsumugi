@@ -228,6 +228,14 @@ impl Client {
         self.0.send(ToServer::MoveWorkspace { id, to });
     }
 
+    /// Give a session a prompt as if typed and sent: pasted (so its lines
+    /// arrive as one, in bracketed paste where the program asked for it),
+    /// then Enter. Its notices are read, as with any key.
+    pub fn send_prompt(&self, id: SessionId, text: String) {
+        self.0.send(ToServer::Paste { id, text });
+        self.0.send(ToServer::Input { id, bytes: b"\r".to_vec() });
+    }
+
     /// Name a tab; empty gives it back its pane's name.
     pub fn rename_workspace(&self, id: WorkspaceId, name: String) {
         self.0.send(ToServer::RenameWorkspace { id, name });

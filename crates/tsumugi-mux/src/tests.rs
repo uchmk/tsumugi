@@ -237,6 +237,19 @@ fn tabs_can_be_named_and_pinned() {
     pane.kill();
 }
 
+/// A prompt from the input box arrives whole and is sent with Enter.
+#[test]
+fn a_prompt_is_pasted_and_sent() {
+    let at = address();
+    let _srv = serve(&at).expect("the server starts");
+    let c = Client::connect(&at, || {}).expect("a client connects");
+    let pane = c.spawn(std::env::temp_dir(), None, Size::new(80, 24), (8, 16)).expect("a shell starts");
+    until(&pane, "a prompt", |t| !t.trim().is_empty());
+    c.send_prompt(pane.id(), "echo sent-$((20+3))".into());
+    until(&pane, "the answer", |t| t.contains("sent-23"));
+    pane.kill();
+}
+
 /// Killing one of two sessions leaves the other, and the server answering.
 #[test]
 fn killing_one_session_leaves_the_rest() {

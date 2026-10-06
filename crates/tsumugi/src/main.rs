@@ -20,6 +20,7 @@
 mod alert;
 mod chrome;
 mod fonts;
+mod inputbox;
 mod keys;
 mod menu;
 mod newsession;
@@ -475,6 +476,8 @@ struct App {
     settings_now: tsumugi_mux::settings::Settings,
     /// The settings screen, while it is open (the design's 1m).
     prefs: Option<prefs::Screen>,
+    /// The input box below the panes (the design's 12, 1l).
+    input: inputbox::InputBox,
     settings_error: Option<String>,
     /// From the settings and `profiles.toml`, for the new-session dialog.
     tag_rules: Vec<tsumugi_mux::settings::TagRule>,
@@ -588,6 +591,7 @@ impl App {
             settings_tx: settings_tx.clone(),
             settings_now: tsumugi_mux::settings::Settings::default(),
             prefs: None,
+            input: inputbox::InputBox::with_history(load_history()),
             settings_error: None,
             tag_rules: Vec::new(),
             profiles: Vec::new(),
@@ -696,6 +700,7 @@ impl App {
             keys::Action::Zoom => self.zoom = !self.zoom,
             keys::Action::Search => self.search = Some(palette::View::new()),
             keys::Action::Settings => self.prefs = Some(prefs::Screen::default()),
+            keys::Action::Input => self.input.toggle(),
             keys::Action::Rail => {
                 self.view.rail = !self.view.rail;
                 self.view.save();
@@ -927,6 +932,7 @@ impl App {
                     palette::Command::NextWaiting => keys::Action::NextWaiting,
                     palette::Command::CloseTab => keys::Action::CloseTab,
                     palette::Command::Settings => keys::Action::Settings,
+                    palette::Command::InputBox => keys::Action::Input,
                     palette::Command::Sort(_) => return,
                 };
                 if let Some(w) = current {
@@ -1834,6 +1840,48 @@ fn write_setting(tx: std::sync::mpsc::Sender<Read>, table: Option<&'static str>,
     });
 }
 
+/// The input box's history, kept beside the state file: one prompt a line,
+/// its backslashes and line breaks escaped.
+fn history_file() -> Option<std::path::PathBuf> {
+    tsumugi_mux::state::default_path().map(|p| p.with_file_name("history"))
+}
+
+fn load_history() -> Vec<String> {
+    let text = history_file().and_then(|p| std::fs::read_to_string(p).ok()).unwrap_or_default();
+    text.lines().map(unescape_line).collect()
+}
+
+fn save_history(list: Vec<String>) {
+    let _ = std::thread::Builder::new().name("history".into()).spawn(move || {
+        let Some(p) = history_file() else { return };
+        if let Some(dir) = p.parent() {
+            let _ = std::fs::create_dir_all(dir);
+        }
+        let text: String = list.iter().map(|l| format!("{}\n", escape_line(l))).collect();
+        let _ = std::fs::write(p, text);
+    });
+}
+
+fn escape_line(s: &str) -> String {
+    s.replace('\\', "\\\\").replace('\n', "\\n").replace('\r', "")
+}
+
+fn unescape_line(s: &str) -> String {
+    let mut out = String::new();
+    let mut chars = s.chars();
+    while let Some(c) = chars.next() {
+        match (c, c == '\\') {
+            (_, true) => match chars.next() {
+                Some('n') => out.push('\n'),
+                Some(other) => out.push(other),
+                None => {}
+            },
+            (c, false) => out.push(c),
+        }
+    }
+    out
+}
+
 /// Keep a new profile, on a thread of its own: replaces one of the same name.
 fn save_profile(mut profiles: Vec<tsumugi_mux::settings::Profile>, new: tsumugi_mux::settings::Profile) {
     profiles.retain(|p| p.name != new.name);
@@ -2085,6 +2133,42 @@ impl eframe::App for App {
         }
 
         self.bell_opening = false;
+        // Files dropped on the window go with the next prompt.
+        let dropped: Vec<std::path::PathBuf> = ctx.input(|i| i.raw.dropped_files.iter().map(|f| f.path().to_path_buf()).filter(|p| !p.as_os_str().is_empty()).collect());
+        if let (false, Some(w)) = (dropped.is_empty(), &current) {
+            self.input.drop_files(w.focus, dropped);
+        }
+        // The input box, below the panes (the design's 12).
+        if let (true, Some(w), None) = (self.input.open, &current, &self.prefs) {
+            let info = sessions.iter().find(|i| i.id == w.focus);
+            let name = info.map(|i| {
+                let n = if i.title.is_empty() { program_name(&i.command) } else { i.title.clone() };
+                let project = i.project.file_name().map(|f| f.to_string_lossy().into_owned()).unwrap_or_default();
+                if project.is_empty() { n } else { format!("{n} · {project}") }
+            });
+            let mut tags: Vec<String> = Vec::new();
+            for t in sessions.iter().flat_map(|i| &i.tags) {
+                if !tags.contains(t) {
+                    tags.push(t.clone());
+                }
+            }
+            let colors = theme::colors();
+            let focus = w.focus;
+            let sent = egui::Panel::bottom("input")
+                .frame(egui::Frame::NONE.fill(self.palette.on_cursor).inner_margin(egui::Margin::symmetric(10, 8)))
+                .show(ui, |ui| self.input.show(ui, &colors, focus, name.as_deref().unwrap_or("this pane"), &tags))
+                .inner;
+            if let Some(send) = sent {
+                let targets: Vec<SessionId> = match &send.to {
+                    inputbox::To::Session(id) => vec![*id],
+                    inputbox::To::Tags(want) => sessions.iter().filter(|i| i.tags.iter().any(|t| want.contains(t))).map(|i| i.id).collect(),
+                };
+                for id in targets {
+                    client.send_prompt(id, send.text.clone());
+                }
+                save_history(self.input.history.clone());
+            }
+        }
         egui::CentralPanel::default().frame(egui::Frame::NONE.fill(self.palette.on_cursor)).show(ui, |ui| {
             if self.failed.is_some() {
                 self.message(ui);
@@ -2132,7 +2216,15 @@ impl App {
 
 #[cfg(test)]
 mod tests {
-    use super::{json_string, View};
+    use super::{escape_line, json_string, unescape_line, View};
+
+    #[test]
+    fn a_prompt_of_several_lines_is_one_line_of_the_history() {
+        let p = "first\nsecond with a \\n written\\";
+        let line = escape_line(p);
+        assert!(!line.contains('\n'));
+        assert_eq!(unescape_line(&line), p);
+    }
 
     #[test]
     fn the_sidebars_choices_come_back() {

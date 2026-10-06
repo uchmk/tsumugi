@@ -70,6 +70,16 @@ later), on macOS through AppleScript. Which
 states tell in which way is `[notify]` in the settings (below); by default
 the taskbar does not flash.
 
+### The input box
+
+`Ctrl+I` (`Cmd+I` on macOS) opens a box below the panes to write a prompt in
+as in any editor: `Enter` is a new line, `Ctrl+Enter` sends it to the pane
+with the keys whole (pasted, then Enter), so there is no fight with
+`Shift+Enter`. Files dropped on the window become chips whose paths go with
+the prompt. `↑` brings back what was sent (kept between runs), a draft
+stays with its session, and choosing a tag under **To** sends the same
+prompt to every session wearing it. `Esc` gives the keys back to the pane.
+
 ### New sessions
 
 `Ctrl+Shift+T` (`Cmd+T` on macOS) opens the new-session dialog with the
