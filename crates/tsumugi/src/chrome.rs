@@ -150,6 +150,8 @@ pub fn branch_mark(p: &egui::Painter, rect: egui::Rect, color: Color32, nerd: bo
 /// What the status bar was clicked for.
 pub enum StatusClick {
     Bell,
+    /// The pull request's page.
+    Open(String),
 }
 
 /// The status bar along the bottom (1d): the server and how long it has been
@@ -166,7 +168,7 @@ pub fn status_bar(
     size: Option<(usize, usize)>,
     extra: &StatusExtra,
 ) -> Option<StatusClick> {
-    let StatusExtra { up_ms, nerd, clock } = extra;
+    let StatusExtra { up_ms, nerd, clock, git } = extra;
     let (up_ms, nerd) = (*up_ms, *nerd);
     let mut click = None;
     let small = |t: String, c: Color32| RichText::new(t).font(FontId::proportional(11.5)).color(c);
@@ -194,6 +196,9 @@ pub fn status_bar(
                 let (r, _) = ui.allocate_exact_size(egui::vec2(12.0, 12.0), egui::Sense::hover());
                 branch_mark(ui.painter(), r, pal.fg_dim, nerd);
                 ui.label(small(i.branch.clone(), pal.fg));
+                if let Some(g) = git {
+                    git_marks(ui, pal, g, &mut click);
+                }
             }
         }
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -210,6 +215,40 @@ pub fn status_bar(
         });
     });
     click
+}
+
+/// After the branch: the commits not pushed (and not pulled), then the pull
+/// request, coloured by its checks, a click away from its page.
+fn git_marks(ui: &mut egui::Ui, pal: &Palette, g: &crate::gitinfo::Git, click: &mut Option<StatusClick>) {
+    use crate::gitinfo::Checks;
+    let small = |t: String, c: Color32| RichText::new(t).font(FontId::proportional(11.5)).color(c);
+    if let Some((ahead, behind)) = g.ahead {
+        if ahead > 0 {
+            ui.label(small(format!("↑{ahead}"), gold())).on_hover_text(format!("{ahead} commit(s) not pushed"));
+        }
+        if behind > 0 {
+            ui.label(small(format!("↓{behind}"), pal.fg_dim)).on_hover_text(format!("{behind} commit(s) to pull"));
+        }
+    }
+    if let Some(pr) = &g.pr {
+        ui.add_space(8.0);
+        let (mark, color, words) = match pr.checks {
+            Checks::Pass => ("✓", green(), "checks passed"),
+            Checks::Fail => ("✗", red(), "checks failed"),
+            Checks::Running => ("●", cyan(), "checks running"),
+            Checks::None => ("", pal.fg_dim, "no checks"),
+        };
+        let state = match pr.state.as_str() {
+            "MERGED" => " merged",
+            "CLOSED" => " closed",
+            _ => "",
+        };
+        let text = format!("PR #{}{state} {mark}", pr.number);
+        let r = ui.add(egui::Label::new(small(text.trim_end().to_owned(), color)).sense(egui::Sense::click()));
+        if r.on_hover_text(format!("{words} · click to open {}", pr.url)).clicked() {
+            *click = Some(StatusClick::Open(pr.url.clone()));
+        }
+    }
 }
 
 /// The bell: a button with the number of unread notifications on it, gold,
@@ -559,6 +598,7 @@ pub struct StatusExtra {
     pub up_ms: u64,
     pub nerd: bool,
     pub clock: Option<String>,
+    pub git: Option<crate::gitinfo::Git>,
 }
 
 /// What the notification list was asked to do.

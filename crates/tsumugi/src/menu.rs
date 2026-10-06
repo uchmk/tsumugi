@@ -48,6 +48,22 @@ pub fn open_with_system(path: &std::path::Path) {
     run(line);
 }
 
+/// Open a web page in the system's browser.
+pub fn open_url(url: &str) {
+    // Only what a pull request's address is made of reaches the shell.
+    if !url.starts_with("https://") || url.contains(|c: char| c.is_whitespace() || "\"'`$&|;<>^%".contains(c)) {
+        return;
+    }
+    let line = if cfg!(windows) {
+        format!("start \"\" \"{url}\"")
+    } else if cfg!(target_os = "macos") {
+        format!("open '{url}'")
+    } else {
+        format!("xdg-open '{url}'")
+    };
+    run(line);
+}
+
 /// The environment variable a new window reads to show a tab first.
 pub const SHOW_TAB: &str = "TSUMUGI_SHOW_TAB";
 

@@ -87,6 +87,14 @@ the prompt. `↑` brings back what was sent (kept between runs), a draft
 stays with its session, and choosing a tag under **To** sends the same
 prompt to every session wearing it. `Esc` gives the keys back to the pane.
 
+### The status bar
+
+Along the bottom: the server, how many sessions wait, run or failed, and the
+folder and branch of the pane with the keys -- with `↑N` for commits not
+pushed, `↓N` for commits to pull, and the branch's pull request (`PR #42 ✓`,
+green when its checks pass, red when one failed, cyan while they run; a
+click opens it). The pull request needs the GitHub CLI (`gh`) signed in.
+
 ### Splits
 
 `Alt+Shift+=` splits the pane with the keys to the right, `Alt+Shift+-`

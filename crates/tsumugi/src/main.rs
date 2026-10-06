@@ -22,6 +22,7 @@ mod chrome;
 mod cli;
 mod drop;
 mod fonts;
+mod gitinfo;
 mod inputbox;
 mod keys;
 mod menu;
@@ -539,6 +540,8 @@ struct App {
     jump_waiting: bool,
     /// A Nerd Font is installed: the branch mark is its character, not drawn.
     nerd: bool,
+    /// Commits not pushed and the pull request, for the status bar (1d).
+    git: gitinfo::Watcher,
     /// The bell list opened this frame: the click that opened it is not a
     /// click outside it.
     bell_opening: bool,
@@ -645,6 +648,8 @@ impl App {
         // egui zooms on Ctrl +/-/0 by itself; in a terminal those are keys.
         cc.egui_ctx.options_mut(|o| o.zoom_with_keyboard = false);
 
+        let git_ctx = cc.egui_ctx.clone();
+        let git = gitinfo::Watcher::new(move || git_ctx.request_repaint());
         let ctx = cc.egui_ctx.clone();
         let (client, failed, restore) = match connect(move || ctx.request_repaint()) {
             Ok(client) => match first_session(&client) {
@@ -672,6 +677,7 @@ impl App {
             restore,
             jump_waiting: false,
             nerd,
+            git,
             bell_opening: false,
             alerts: alert::Alerts::default(),
             teller: alert::Teller::start(window_handle(cc), {
@@ -2331,13 +2337,18 @@ impl App {
             .frame(egui::Frame::NONE.fill(crate::theme::colors().side))
             .show(ui, |ui| {
                 let clock = &self.settings_now.clock;
-                let extra = chrome::StatusExtra { up_ms: up, nerd: self.nerd, clock: clock.show.then(|| clock.format()) };
+                let git = focus_info.as_ref().and_then(|i| self.git.get(&i.cwd, &i.branch));
+                let extra = chrome::StatusExtra { up_ms: up, nerd: self.nerd, clock: clock.show.then(|| clock.format()), git };
                 chrome::status_bar(ui, &self.palette, &sessions, focus_info.as_ref(), size, &extra)
             })
             .inner;
-        if let Some(chrome::StatusClick::Bell) = status {
-            self.bell_open = Some(egui::pos2(20.0, 60.0));
-            self.bell_opening = true;
+        match status {
+            Some(chrome::StatusClick::Bell) => {
+                self.bell_open = Some(egui::pos2(20.0, 60.0));
+                self.bell_opening = true;
+            }
+            Some(chrome::StatusClick::Open(url)) => menu::open_url(&url),
+            None => {}
         }
         // The clock and the elapsed times move on without any output.
         ctx.request_repaint_after(std::time::Duration::from_secs(1));
