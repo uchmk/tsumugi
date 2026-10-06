@@ -288,7 +288,12 @@ One Dark and Rosé Pine. A theme is twelve colours -- `bg`, `side`, `panel`,
 terminal's `blue` and `magenta` -- written as `"#rrggbb"`, and `light`.
 `theme.toml` beside the settings changes any of them in the theme in force;
 a file in `themes/` there is a theme of one's own, named by its `name` or
-its file, its missing colours taken from tsumugi Dark or Light.
+its file, its missing colours taken from tsumugi Dark or Light. `ansi`, a
+list of sixteen, sets the terminal's colours outright (black to bright
+white). Other terminals' schemes go in `themes/` as they come: Windows
+Terminal's `.json` (one scheme, a list, or a whole `settings.json`, whose
+`schemes` are read) and iTerm2's `.itermcolors`; the panes take the
+scheme's own colours and the window is mixed from them.
 
 A folder rule adds its tag when a session starts or moves into the folder;
 it never takes one off, so a tag removed by hand stays off until the session

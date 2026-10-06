@@ -28,6 +28,9 @@ pub struct Colors {
     pub done: Color32,
     pub blue: Color32,
     pub magenta: Color32,
+    /// The terminal's sixteen as a scheme gives them (`ansi` in a theme
+    /// file, or an imported scheme); else they are mixed from the above.
+    pub ansi16: Option<[Color32; 16]>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -67,7 +70,7 @@ fn rgb(x: u32) -> Color32 {
 impl Colors {
     fn from_list(light: bool, c: [u32; 12]) -> Self {
         let [bg, side, panel, border, fg, dim, wait, run, err, done, blue, magenta] = c.map(rgb);
-        Self { light, bg, side, panel, border, fg, dim, wait, run, err, done, blue, magenta }
+        Self { light, bg, side, panel, border, fg, dim, wait, run, err, done, blue, magenta, ansi16: None }
     }
 
     fn slot(&mut self, key: &str) -> Option<&mut Color32> {
@@ -134,6 +137,9 @@ impl Colors {
     /// The terminal's sixteen: black and white from the theme's own text
     /// and panel, the brights a little lighter (darker on a light theme).
     pub fn ansi(&self) -> [Color32; 16] {
+        if let Some(own) = self.ansi16 {
+            return own;
+        }
         let normal = [self.panel, self.err, self.done, self.wait, self.blue, self.magenta, self.run, self.fg];
         let toward = if self.light { Color32::BLACK } else { Color32::WHITE };
         let bright = |c: Color32| mix(c, toward, 0.25);
@@ -196,7 +202,6 @@ pub fn mix(a: Color32, b: Color32, t: f32) -> Color32 {
 }
 
 /// WCAG's contrast ratio between two colours, 1 to 21.
-#[cfg(test)]
 pub fn contrast(a: Color32, b: Color32) -> f32 {
     let lum = |c: Color32| {
         let ch = |v: u8| {
@@ -221,8 +226,15 @@ pub fn from_table(base: Colors, table: &BTreeMap<String, toml::Value>) -> Result
         match (k.as_str(), v) {
             ("name", _) => {}
             ("light", toml::Value::Boolean(b)) => c.light = *b,
+            ("ansi", toml::Value::Array(list)) => {
+                let colors: Option<Vec<Color32>> = list.iter().map(|v| v.as_str().and_then(parse_hex)).collect();
+                match colors.and_then(|c| <[Color32; 16]>::try_from(c).ok()) {
+                    Some(sixteen) => c.ansi16 = Some(sixteen),
+                    None => return Err("ansi: sixteen colours like \"#1b1e24\", black to bright white".into()),
+                }
+            }
             (key, toml::Value::String(s)) => {
-                let Some(slot) = c.slot(key) else { return Err(format!("`{key}` is not one of light, {}", KEYS.join(", "))) };
+                let Some(slot) = c.slot(key) else { return Err(format!("`{key}` is not one of light, {}, ansi", KEYS.join(", "))) };
                 *slot = parse_hex(s).ok_or_else(|| format!("{key}: `{s}` is not a colour like \"#1b1e24\""))?;
             }
             (key, _) => return Err(format!("`{key}`: a colour is written as \"#rrggbb\"")),

@@ -23,6 +23,7 @@ mod chrome;
 mod cli;
 mod drop;
 mod fonts;
+mod import;
 mod gitinfo;
 mod inputbox;
 mod keys;
@@ -2442,9 +2443,26 @@ fn read_themes(dir: &std::path::Path) -> Result<ThemeFiles, String> {
         out.changes = Some(table(&changes)?);
     }
     if let Ok(entries) = std::fs::read_dir(dir.join("themes")) {
-        let mut files: Vec<std::path::PathBuf> = entries.filter_map(|e| e.ok().map(|e| e.path())).filter(|p| p.extension().is_some_and(|x| x == "toml")).collect();
+        let mut files: Vec<std::path::PathBuf> = entries.filter_map(|e| e.ok().map(|e| e.path())).filter(|p| p.extension().is_some_and(|x| x == "toml" || x == "json" || x == "itermcolors")).collect();
         files.sort();
         for f in files {
+            // Other terminals' schemes, as they come (1k).
+            let stem = f.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+            let read = || std::fs::read_to_string(&f).map_err(|e| format!("{}: {e}", f.display()));
+            match f.extension().and_then(|x| x.to_str()) {
+                Some("json") => {
+                    for s in import::windows_terminal(&read()?, &stem).map_err(|e| format!("{}: {e}", f.display()))? {
+                        out.own.push((s.name.clone(), import::table(&s)));
+                    }
+                    continue;
+                }
+                Some("itermcolors") => {
+                    let s = import::iterm(&read()?, &stem).map_err(|e| format!("{}: {e}", f.display()))?;
+                    out.own.push((s.name.clone(), import::table(&s)));
+                    continue;
+                }
+                _ => {}
+            }
             let t = table(&f)?;
             let name = t.get("name").and_then(|v| v.as_str()).map(str::to_owned).unwrap_or_else(|| f.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default());
             out.own.push((name, t));
