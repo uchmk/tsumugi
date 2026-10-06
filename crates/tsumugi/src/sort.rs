@@ -153,7 +153,7 @@ impl<'a> Tab<'a> {
         if !self.workspace.name.is_empty() {
             return self.workspace.name.clone();
         }
-        self.focus().map(|i| if i.title.is_empty() { program_name(&i.command) } else { i.title.clone() }).unwrap_or_default()
+        self.focus().map(|i| display_title(&i.title, &i.command)).unwrap_or_default()
     }
 
     /// When any of its panes last changed state.
@@ -173,9 +173,29 @@ pub fn urgency(state: State) -> u8 {
     }
 }
 
+/// What a session is called: its title, but a title that is only the path
+/// of the program run (pwsh and cmd set the window's title to their exe,
+/// `C:\Program Files\WindowsApps\…\pwsh.exe`) as the program's name, and
+/// no title as the program.
+pub fn display_title(title: &str, command: &str) -> String {
+    let t = title.trim();
+    if t.is_empty() {
+        return program_name(command);
+    }
+    let path_like = (t.contains('\\') || t.contains('/')) && !t.contains(' ') || t.to_ascii_lowercase().ends_with(".exe");
+    let is_program = t == command || program_name(t).eq_ignore_ascii_case(&program_name(command));
+    if path_like && (is_program || t.to_ascii_lowercase().ends_with(".exe")) { program_name(t) } else { t.to_owned() }
+}
+
 /// A program's name without its folder or `.exe`.
+/// Both separators, whatever the system: a Windows path can come to a
+/// window on another machine's server, and the other way round.
 pub fn program_name(command: &str) -> String {
-    Path::new(command).file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| command.to_owned())
+    let name = command.rsplit(['/', '\\']).next().unwrap_or(command);
+    match name.len().checked_sub(4).filter(|&at| name.is_char_boundary(at) && name[at..].eq_ignore_ascii_case(".exe")) {
+        Some(at) => name[..at].to_owned(),
+        None => name.to_owned(),
+    }
 }
 
 /// The tabs to show, in the order to show them. `tabs` is in the server's
@@ -413,6 +433,19 @@ mod tests {
         // Not by folder: no headings, lines but for the one shown.
         let flat = items(&shown, Sort::Manual, Density::Lines, &[], &[], Some(102));
         assert_eq!(words(&flat), ["1-", "2", "3-", "4-"]);
+    }
+
+    #[test]
+    fn a_title_that_is_the_programs_path_is_its_name() {
+        let pwsh = r"C:\Program Files\WindowsApps\Microsoft.PowerShell_7.6.6.0_x64__8wekyb3d8bbwe\pwsh.exe";
+        assert_eq!(display_title(pwsh, pwsh), "pwsh");
+        assert_eq!(display_title(r"C:\WINDOWS\system32\cmd.exe", "cmd.exe"), "cmd");
+        assert_eq!(display_title("/bin/bash", "/bin/bash"), "bash");
+        assert_eq!(display_title("", "/usr/bin/zsh"), "zsh");
+        // A title of its own stays, paths and all.
+        assert_eq!(display_title("root@vm: /tmp/proj", "/bin/bash"), "root@vm: /tmp/proj");
+        assert_eq!(display_title("✳ Fix the zoom badge", "pwsh.exe"), "✳ Fix the zoom badge");
+        assert_eq!(display_title("~/dev/filer", "/bin/bash"), "~/dev/filer");
     }
 
     #[test]

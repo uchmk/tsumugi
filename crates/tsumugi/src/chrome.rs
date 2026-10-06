@@ -369,12 +369,16 @@ pub fn search_box(ctx: &egui::Context, pal: &Palette, view: &mut crate::palette:
                     if k == view.selected {
                         p.rect_filled(rect, 5.0, crate::theme::colors().chosen());
                     }
-                    let title = p.layout_no_wrap(e.title.clone(), FontId::proportional(12.5), crate::theme::colors().strong());
-                    let title_w = title.size().x;
-                    p.galley(egui::pos2(rect.left() + 8.0, rect.center().y - title.size().y / 2.0), title, Color32::WHITE);
+                    // The detail at most 40% of the line, the title the rest;
+                    // both cut short, so nothing runs out of the box.
                     let mut job = egui::text::LayoutJob::simple_singleline(e.detail.clone(), FontId::proportional(11.5), pal.fg_dim);
-                    job.wrap = egui::text::TextWrapping::truncate_at_width((rect.width() - title_w - 28.0).max(0.0));
+                    job.wrap = egui::text::TextWrapping::truncate_at_width(rect.width() * 0.4);
                     let detail = ui.fonts_mut(|f| f.layout_job(job));
+                    let mut job = egui::text::LayoutJob::simple_singleline(e.title.clone(), FontId::proportional(12.5), crate::theme::colors().strong());
+                    job.wrap = egui::text::TextWrapping::truncate_at_width((rect.width() - detail.size().x - 28.0).max(20.0));
+                    let title = ui.fonts_mut(|f| f.layout_job(job));
+                    let p = ui.painter();
+                    p.galley(egui::pos2(rect.left() + 8.0, rect.center().y - title.size().y / 2.0), title, Color32::WHITE);
                     p.galley(egui::pos2(rect.right() - 8.0 - detail.size().x, rect.center().y - detail.size().y / 2.0), detail, pal.fg_dim);
                     if resp.clicked() {
                         answer = Some(Answer::Pick(e.pick.clone()));
@@ -618,15 +622,26 @@ pub fn restore_screen(ui: &mut egui::Ui, pal: &Palette, view: &mut RestoreView) 
                     ui.checkbox(&mut slot.1, "");
                     let color = if p.claude.is_some() || p.state != State::Done { state_color(p.state) } else { grey() };
                     ui.label(RichText::new("●").color(color));
-                    let name = if p.title.is_empty() { crate::home_short(&p.cwd) } else { p.title.clone() };
-                    ui.label(RichText::new(name).color(if slot.1 { pal.fg } else { pal.fg_dim }));
+                    let command = p.shell.as_ref().map_or_else(tsumugi_pane::default_program, |(c, _)| c.clone());
+                    let name = if p.title.is_empty() { crate::home_short(&p.cwd) } else { crate::sort::display_title(&p.title, &command) };
+                    // What it will do on the right first; the name gets the
+                    // room left and is cut short in it, never over it.
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         let what = match (&p.claude, p.state) {
                             (Some(_), _) => "resume conversation".to_owned(),
                             (None, State::Done) if !slot.1 => "finished · left closed".to_owned(),
                             (None, _) => format!("new shell in {}", crate::home_short(&p.cwd)),
                         };
-                        ui.label(RichText::new(what).size(12.0).color(pal.fg_dim));
+                        // At most under half the row, so the name always shows.
+                        let room = ui.available_width() * 0.45;
+                        ui.scope(|ui| {
+                            ui.set_max_width(room);
+                            ui.add(egui::Label::new(RichText::new(what).size(12.0).color(pal.fg_dim)).truncate());
+                        });
+                        ui.add_space(12.0);
+                        ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                            ui.add(egui::Label::new(RichText::new(name).color(if slot.1 { pal.fg } else { pal.fg_dim })).truncate());
+                        });
                     });
                 });
             });

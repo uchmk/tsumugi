@@ -718,7 +718,7 @@ impl App {
         for w in workspaces {
             for id in w.layout.leaves() {
                 let Some(i) = sessions.iter().find(|i| i.id == id) else { continue };
-                let name = if i.title.is_empty() { program_name(&i.command) } else { i.title.clone() };
+                let name = sort::display_title(&i.title, &i.command);
                 let mut detail = home_short(&i.cwd);
                 if !i.branch.is_empty() {
                     detail.push_str(&format!(" · {}", i.branch));
@@ -1611,7 +1611,7 @@ impl App {
                     // what is left, cut short rather than run into it.
                     let words = chrome::state_words(info, now);
                     let right = p.text(head.right_center() - egui::vec2(8.0, 0.0), egui::Align2::RIGHT_CENTER, words, egui::FontId::proportional(11.5), state_color(info.state));
-                    let name = if info.title.is_empty() { program_name(&info.command) } else { info.title.clone() };
+                    let name = sort::display_title(&info.title, &info.command);
                     let color = if focused { self.palette.fg } else { self.palette.fg_dim };
                     let room = (right.left() - head.left() - 24.0).max(0.0);
                     let galley = ui.fonts_mut(|f| {
@@ -1994,7 +1994,7 @@ impl eframe::App for App {
         }
 
         if let Some(w) = &current {
-            let t = sessions.iter().find(|i| i.id == w.focus).map(|i| i.title.clone()).unwrap_or_default();
+            let t = sessions.iter().find(|i| i.id == w.focus).map(|i| sort::display_title(&i.title, &i.command)).unwrap_or_default();
             let mut title = if t.is_empty() { "tsumugi".to_owned() } else { format!("{t} — tsumugi") };
             // Where the taskbar cannot carry the number, the title does.
             let n = self.alerts.badge();
@@ -2155,7 +2155,7 @@ impl eframe::App for App {
         if let (true, Some(w), None) = (self.input.open, &current, &self.prefs) {
             let info = sessions.iter().find(|i| i.id == w.focus);
             let name = info.map(|i| {
-                let n = if i.title.is_empty() { program_name(&i.command) } else { i.title.clone() };
+                let n = sort::display_title(&i.title, &i.command);
                 let project = i.project.file_name().map(|f| f.to_string_lossy().into_owned()).unwrap_or_default();
                 if project.is_empty() { n } else { format!("{n} · {project}") }
             });
