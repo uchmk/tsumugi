@@ -5,6 +5,16 @@
 
 ## [未リリース]
 
+## [0.35.0] - 2026-10-06
+
+### 追加
+
+- Claude Code のフックが `~/.claude/settings.json` に無ければ、窓の右下で 1 回だけ「足しますか」と聞く（v1-scope の順番 5 の残り）。
+  「Add the hooks」で `Notification` に `tsumugi notify --stdin`、`Stop` に `tsumugi notify --state done` を、そこにあるフックの隣に足す。
+  元のファイルは `settings.json.tsumugi-backup` に残す。「Not now」は次に開いたときにまた聞き、「Don't ask again」はもう聞かない。
+  設定の画面の Shell & hooks にも「Add them for me」。`CLAUDE_CONFIG_DIR` に従う。
+- JSON の読み書きを `json.rs` にまとめた（配色の読み込みと共用。新しいクレートは足していない）。
+
 ## [0.34.0] - 2026-10-06
 
 ### 追加

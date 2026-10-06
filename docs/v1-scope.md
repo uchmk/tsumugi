@@ -185,6 +185,7 @@ tmux や zellij のように、**セッションを持つのは裏で動くサ�
   Windows 11 の Mica / Acrylic は `[window] material`（既定は none。開き直すと効く）。macOS の vibrancy は Q9 で待っている。
   Linux は openbox の上で動かし方を確かめた。Windows と macOS の実機ではまだ動かしていない。
 - v0.32.0: 今日のトークン（1d の残り）とセッションごとの使用量（構想の 5）。Claude Code の会話の記録から数える。
+- v0.35.0: Claude Code のフックを足すかを、無いときに最初の窓で 1 回聞く（順番の 5 の残り）。設定の画面からも足せる。
 - v0.34.0: Windows Terminal（`.json`）と iTerm2（`.itermcolors`）の配色ファイルを `themes/` に置けば読む（1k の「後で決める」を、読む形で決めた）。
 - v0.33.0: 音（1h の 4 つ目、`[notify] sound`、既定は OFF）と、閉じたセッションのフォルダを新しいセッションのダイアログの「最近」に残す（1g の残り）。
 - これで順番の 1〜7 の最初の形がそろった。残りは見本の細部（v1-scope の 1a〜1o）と、窓の外への知らせ（1h）。

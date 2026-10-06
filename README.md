@@ -302,7 +302,10 @@ moves again.
 ### Claude Code hooks
 
 An agent can say for itself that it is waiting. With `tsumugi` on the `PATH`,
-add to Claude Code's settings (`~/.claude/settings.json`):
+add to Claude Code's settings (`~/.claude/settings.json`) -- or let tsumugi
+do it: the first window offers to while they are missing, and **Add them
+for me** in Settings → Shell & hooks does it any time (beside the hooks you
+have; the old file is kept as `settings.json.tsumugi-backup`):
 
 ```json
 {

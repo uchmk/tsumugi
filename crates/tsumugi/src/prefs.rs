@@ -80,6 +80,8 @@ pub enum Change {
     OpenFolder,
     OpenFile,
     Copy(String),
+    /// Put Claude Code's hooks in its settings.
+    AddHooks,
     Close,
 }
 
@@ -668,9 +670,14 @@ fn shell(ui: &mut egui::Ui, c: &Colors, out: &mut Vec<Change>) {
         ui.label(RichText::new("In ~/.claude/settings.json, so Claude Code says when it waits or is done, and which conversation to resume after a restart.").size(12.0).color(c.dim));
         ui.add_space(6.0);
         ui.label(RichText::new(hooks).font(FontId::monospace(11.5)).color(c.fg));
-        if ui.button("Copy").clicked() {
-            out.push(Change::Copy(hooks.to_owned()));
-        }
+        ui.horizontal(|ui| {
+            if ui.button("Add them for me").on_hover_text("Into ~/.claude/settings.json, beside what is there; the old file is kept as settings.json.tsumugi-backup").clicked() {
+                out.push(Change::AddHooks);
+            }
+            if ui.button("Copy").clicked() {
+                out.push(Change::Copy(hooks.to_owned()));
+            }
+        });
     });
     let line = if cfg!(windows) { "tsumugi shell-hook pwsh >> $PROFILE" } else { "tsumugi shell-hook bash >> ~/.bashrc" };
     section(ui, c, "SHELL INTEGRATION", |ui| {

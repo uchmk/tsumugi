@@ -23,7 +23,9 @@ mod chrome;
 mod cli;
 mod drop;
 mod fonts;
+mod hooks;
 mod import;
+mod json;
 mod gitinfo;
 mod inputbox;
 mod keys;
@@ -440,6 +442,8 @@ struct View {
     rail: bool,
     /// Asked once, past twelve tabs, whether to go to one line each.
     asked: bool,
+    /// Told not to offer Claude Code's hooks again.
+    hooks_asked: bool,
 }
 
 impl View {
@@ -467,6 +471,7 @@ impl View {
                 ("density", w) => v.density = sort::Density::from_word(w).unwrap_or_default(),
                 ("rail", w) => v.rail = w == "yes",
                 ("asked", w) => v.asked = w == "yes",
+                ("hooks_asked", w) => v.hooks_asked = w == "yes",
                 _ => {}
             }
         }
@@ -475,7 +480,7 @@ impl View {
 
     fn text(self) -> String {
         let yes = |b: bool| if b { "yes" } else { "no" };
-        format!("sort={}\ndensity={}\nrail={}\nasked={}\n", self.sort.word(), self.density.word(), yes(self.rail), yes(self.asked))
+        format!("sort={}\ndensity={}\nrail={}\nasked={}\nhooks_asked={}\n", self.sort.word(), self.density.word(), yes(self.rail), yes(self.asked), yes(self.hooks_asked))
     }
 
     /// Written on a thread of its own: no disk on the window's thread.
@@ -575,6 +580,10 @@ struct App {
     closed: Vec<std::path::PathBuf>,
     /// The session whose card the pointer is on: watched for its preview.
     peek: Option<SessionId>,
+    /// Claude Code's hooks: being looked for, offered, being added.
+    hooks_check: Option<std::sync::mpsc::Receiver<bool>>,
+    hooks_offered: bool,
+    hooks_adding: Option<std::sync::mpsc::Receiver<Result<std::path::PathBuf, String>>>,
     /// Prompts to send when their sessions are done, oldest first; and the
     /// sessions just sent one, held until they have run again.
     queue: Vec<Queued>,
@@ -761,6 +770,17 @@ impl App {
             peek: None,
             watching: Vec::new(),
             queue: Vec::new(),
+            hooks_check: {
+                let (tx, rx) = std::sync::mpsc::channel();
+                let ctx = cc.egui_ctx.clone();
+                let _ = std::thread::Builder::new().name("hooks".into()).spawn(move || {
+                    let _ = tx.send(hooks::installed());
+                    ctx.request_repaint();
+                });
+                Some(rx)
+            },
+            hooks_offered: false,
+            hooks_adding: None,
             queue_hold: HashMap::new(),
             worktrees: worktree::ours(),
             ctx: cc.egui_ctx.clone(),
@@ -1059,6 +1079,7 @@ impl App {
                     }
                 }
                 prefs::Change::Copy(text) => ui.ctx().copy_text(text),
+                prefs::Change::AddHooks => self.add_hooks(),
                 prefs::Change::Close => self.prefs = None,
             }
         }
@@ -2089,6 +2110,76 @@ impl App {
         self.ctx.request_repaint_after(std::time::Duration::from_secs(1));
     }
 
+    /// Claude Code's hooks: whether they are there (asked once at the start,
+    /// on a thread), the offer to add them while they are not, and adding.
+    fn hooks_offer(&mut self, ctx: &egui::Context) {
+        if let Some(rx) = &self.hooks_check {
+            if let Ok(there) = rx.try_recv() {
+                self.hooks_check = None;
+                self.hooks_offered = !there && !self.view.hooks_asked;
+            }
+        }
+        if let Some(rx) = &self.hooks_adding {
+            if let Ok(done) = rx.try_recv() {
+                self.hooks_adding = None;
+                match done {
+                    Ok(path) => self.say(format!("Claude Code's hooks added to {} (the old file kept beside it)", home_short(&path)), false),
+                    Err(e) => self.say(e, true),
+                }
+            }
+        }
+        if !self.hooks_offered {
+            return;
+        }
+        let mut answer = None;
+        egui::Area::new(egui::Id::new("hooks-offer")).order(egui::Order::Foreground).anchor(egui::Align2::RIGHT_BOTTOM, egui::vec2(-16.0, -40.0)).show(ctx, |ui| {
+            let c = theme::colors();
+            egui::Frame::NONE.fill(c.raised()).stroke(egui::Stroke::new(1.0, c.border_strong())).corner_radius(10.0).inner_margin(egui::Margin::symmetric(16, 12)).show(ui, |ui| {
+                ui.set_max_width(380.0);
+                ui.label(egui::RichText::new("Let Claude Code tell tsumugi when it waits?").size(14.0).strong().color(c.strong()));
+                ui.add_space(2.0);
+                ui.label(egui::RichText::new("Adds two hooks to ~/.claude/settings.json: Notification runs `tsumugi notify --stdin`, Stop runs `tsumugi notify --state done`. Sessions are then marked the moment Claude asks, and resume their conversation after a restart. tsumugi needs to be on the PATH.").size(12.0).color(c.dim));
+                ui.add_space(8.0);
+                ui.horizontal(|ui| {
+                    if ui.add(egui::Button::new(egui::RichText::new("Add the hooks").color(c.on_accent()).strong()).fill(c.run)).clicked() {
+                        answer = Some(0);
+                    }
+                    if ui.button("Not now").clicked() {
+                        answer = Some(1);
+                    }
+                    if ui.button("Don't ask again").clicked() {
+                        answer = Some(2);
+                    }
+                });
+            });
+        });
+        match answer {
+            Some(0) => {
+                self.add_hooks();
+                self.view.hooks_asked = true;
+                self.view.save();
+            }
+            Some(1) => self.hooks_offered = false,
+            Some(_) => {
+                self.hooks_offered = false;
+                self.view.hooks_asked = true;
+                self.view.save();
+            }
+            None => {}
+        }
+    }
+
+    fn add_hooks(&mut self) {
+        self.hooks_offered = false;
+        let (tx, rx) = std::sync::mpsc::channel();
+        let ctx = self.ctx.clone();
+        let _ = std::thread::Builder::new().name("hooks".into()).spawn(move || {
+            let _ = tx.send(hooks::install());
+            ctx.request_repaint();
+        });
+        self.hooks_adding = Some(rx);
+    }
+
     /// Show `words` under the band for a while.
     fn say(&mut self, words: String, error: bool) {
         self.toast = Some((words, std::time::Instant::now(), error));
@@ -2948,6 +3039,7 @@ impl App {
         }
         self.worktrees(&ctx, &client, &sessions, current.as_ref());
         self.remember_closed(&sessions);
+        self.hooks_offer(&ctx);
         self.send_queued(&client, &sessions);
         self.show_toast(&ctx);
 
@@ -3119,7 +3211,7 @@ mod tests {
 
     #[test]
     fn the_sidebars_choices_come_back() {
-        let v = View { sort: crate::sort::Sort::Needs, density: crate::sort::Density::Lines, rail: true, asked: true };
+        let v = View { sort: crate::sort::Sort::Needs, density: crate::sort::Density::Lines, rail: true, asked: true, hooks_asked: true };
         assert_eq!(View::parse(&v.text()), v);
         assert_eq!(View::parse("nonsense\nsort=nope"), View::default());
     }
