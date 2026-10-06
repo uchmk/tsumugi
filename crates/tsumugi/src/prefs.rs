@@ -406,7 +406,7 @@ fn notifications(ui: &mut egui::Ui, c: &Colors, seen: &Seen, out: &mut Vec<Chang
             }
             if ui.button("Reset to defaults").clicked() {
                 let d = tsumugi_mux::settings::Notify::default();
-                for (key, list) in [("system", d.system), ("taskbar", d.taskbar), ("flash", d.flash)] {
+                for (key, list) in [("system", d.system), ("taskbar", d.taskbar), ("flash", d.flash), ("sound", d.sound)] {
                     out.push(Change::Set(Some("notify"), key, tsumugi_mux::settings::quote_list(&list)));
                 }
             }
@@ -424,6 +424,7 @@ fn notifications(ui: &mut egui::Ui, c: &Colors, seen: &Seen, out: &mut Vec<Chang
                 ("system", "System notification", "The OS's own, which a click brings back here", &n.system),
                 ("taskbar", "Taskbar count", "A number on the window's taskbar button", &n.taskbar),
                 ("flash", "Taskbar flash", "The button lights up until you look", &n.flash),
+                ("sound", "Sound", "The system's own sound, once", &n.sound),
             ] {
                 ui.vertical(|ui| {
                     ui.label(RichText::new(label).color(c.strong()));

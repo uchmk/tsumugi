@@ -5,6 +5,15 @@
 
 ## [未リリース]
 
+## [0.33.0] - 2026-10-06
+
+### 追加
+
+- 窓の外への知らせの 4 つ目、音（v1-scope 1h）。`[notify] sound = ["waiting", "error", "done"]` のうち選んだ状態で、OS の音を 1 回鳴らす
+  （Windows はメッセージの音、エラーは別の音。macOS は `afplay` で Glass / Basso。Linux は `canberra-gtk-play` か `paplay` があれば）。
+  既定は OFF。設定の画面の Notifications の表に「Sound」の行。
+- 新しいセッションのダイアログのフォルダの一覧に、終わったセッションのフォルダを「closed」として残す（新しい順に 20 個、状態のファイルの隣の `closed-folders`）。
+
 ## [0.32.0] - 2026-10-06
 
 ### 追加

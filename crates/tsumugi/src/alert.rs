@@ -19,6 +19,8 @@ pub struct Rules {
     pub badge: Kinds,
     /// Flash the taskbar button.
     pub flash: Kinds,
+    /// Play the system's sound.
+    pub sound: Kinds,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -50,7 +52,7 @@ impl Kinds {
 
 impl From<&tsumugi_mux::settings::Notify> for Rules {
     fn from(n: &tsumugi_mux::settings::Notify) -> Self {
-        Self { notify: Kinds::from_words(&n.system), badge: Kinds::from_words(&n.taskbar), flash: Kinds::from_words(&n.flash) }
+        Self { notify: Kinds::from_words(&n.system), badge: Kinds::from_words(&n.taskbar), flash: Kinds::from_words(&n.flash), sound: Kinds::from_words(&n.sound) }
     }
 }
 
@@ -67,6 +69,8 @@ pub enum Out {
     /// `session`: where a click on it goes.
     Notify { session: SessionId, title: String, body: String },
     Flash,
+    /// The sound for a session that failed (`true`) or wants a person.
+    Sound(bool),
     Badge(usize),
 }
 
@@ -111,6 +115,10 @@ impl Alerts {
             }
             if fresh.iter().any(|n| self.rules.flash.has(n.state)) {
                 out.push(Out::Flash);
+            }
+            let sounding: Vec<&&Notice> = fresh.iter().filter(|n| self.rules.sound.has(n.state)).collect();
+            if !sounding.is_empty() {
+                out.push(Out::Sound(sounding.iter().any(|n| n.state == State::Error)));
             }
         }
         let badge = if looking { 0 } else { notices.iter().filter(heard).filter(|n| !n.read && self.rules.badge.has(n.state)).count() };
@@ -319,8 +327,8 @@ mod os {
                 Out::Notify { session, title, body } => {
                     let _ = self.toasts.send((session, title, body));
                 }
-                // The window asks for this itself (`RequestUserAttention`).
-                Out::Flash => {}
+                // The window does these itself (`RequestUserAttention`, `sound`).
+                Out::Flash | Out::Sound(_) => {}
                 Out::Badge(n) => self.badge(n),
             }
         }
@@ -529,6 +537,13 @@ mod tests {
         assert_eq!(out, vec![Out::Flash, Out::Badge(1)]);
         // Read ones are neither told nor counted.
         assert_eq!(a.decide(&[notice(2, State::Error, true)], seen(false, true, &none)), vec![Out::Badge(0)]);
+        // The sound once for all that came together, the error's when one failed.
+        a.rules = Rules::default();
+        a.rules.notify = Kinds { waiting: false, error: false, done: false };
+        a.rules.sound = Kinds { waiting: true, error: true, done: false };
+        let out = a.decide(&[notice(3, State::Waiting, false), notice(4, State::Error, false)], seen(false, true, &none));
+        assert_eq!(out, vec![Out::Sound(true), Out::Badge(2)]);
+        assert_eq!(a.decide(&[notice(5, State::Waiting, false)], seen(true, true, &none)), vec![Out::Badge(0)], "no sound while looking");
     }
 
     #[test]

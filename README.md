@@ -219,7 +219,8 @@ tag = "filer"
 folder = "~/dev/*"
 tag = "{name}"
 
-# Which states tell you in which way while you are not at the window:
+# Which states tell you in which way while you are not at the window
+# (sound: the system's own sound, once):
 # waiting, error, done (done only after a run of a minute or more).
 [notify]
 system = ["waiting", "error", "done"]   # the system's notification

@@ -55,6 +55,7 @@
 //! system = ["waiting", "error", "done"]
 //! taskbar = ["waiting", "error"]
 //! flash = []
+//! sound = []
 //!
 //! # What a tab's menu runs to open its folder; {folder} is the folder.
 //! [open]
@@ -279,6 +280,8 @@ pub struct Notify {
     pub taskbar: Vec<String>,
     /// Flash the taskbar button.
     pub flash: Vec<String>,
+    /// Play the system's sound.
+    pub sound: Vec<String>,
 }
 
 impl Default for Notify {
@@ -286,7 +289,7 @@ impl Default for Notify {
     /// two that want a person, no flashing.
     fn default() -> Self {
         let words = |w: &[&str]| w.iter().map(|s| (*s).to_owned()).collect();
-        Self { system: words(&["waiting", "error", "done"]), taskbar: words(&["waiting", "error"]), flash: Vec::new() }
+        Self { system: words(&["waiting", "error", "done"]), taskbar: words(&["waiting", "error"]), flash: Vec::new(), sound: Vec::new() }
     }
 }
 
@@ -345,7 +348,7 @@ pub fn parse(text: &str) -> Result<Settings, String> {
     if let Some(w) = s.menu.hide.iter().find(|w| !MENU_ITEMS.contains(&w.as_str())) {
         return Err(format!("menu.hide: `{w}` is not one of {}", MENU_ITEMS.join(", ")));
     }
-    for (key, words) in [("system", &s.notify.system), ("taskbar", &s.notify.taskbar), ("flash", &s.notify.flash)] {
+    for (key, words) in [("system", &s.notify.system), ("taskbar", &s.notify.taskbar), ("flash", &s.notify.flash), ("sound", &s.notify.sound)] {
         if let Some(w) = words.iter().find(|w| !matches!(w.as_str(), "waiting" | "error" | "done")) {
             return Err(format!("notify.{key}: `{w}` is not waiting, error or done"));
         }

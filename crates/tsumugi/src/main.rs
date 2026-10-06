@@ -33,6 +33,7 @@ mod palette;
 mod prefs;
 mod shellhook;
 mod sort;
+mod sound;
 mod theme;
 mod usage;
 mod worktree;
@@ -567,6 +568,10 @@ struct App {
     system_frame: bool,
     /// The desktop shows through the chrome (Mica or Acrylic, Windows 11).
     material: bool,
+    /// Each session's folder as last seen, and the folders of those that
+    /// ended (the new-session dialog's "closed" ones).
+    known_cwds: HashMap<SessionId, std::path::PathBuf>,
+    closed: Vec<std::path::PathBuf>,
     /// The session whose card the pointer is on: watched for its preview.
     peek: Option<SessionId>,
     /// Prompts to send when their sessions are done, oldest first; and the
@@ -750,6 +755,8 @@ impl App {
             own_frame: first_window.own_titlebar(),
             system_frame: !first_window.own_titlebar(),
             material: cfg!(windows) && first_window.material != "none" && material::apply(window_handle(cc), &first_window.material, theme::colors().light),
+            known_cwds: HashMap::new(),
+            closed: closed_file().and_then(|p| std::fs::read_to_string(p).ok()).map(|t| t.lines().filter(|l| !l.is_empty()).map(std::path::PathBuf::from).collect()).unwrap_or_default(),
             peek: None,
             watching: Vec::new(),
             queue: Vec::new(),
@@ -1059,7 +1066,7 @@ impl App {
     /// The folders the new-session dialog offers: the pane with the keys'
     /// first, then where the other sessions are, the most recently busy
     /// first, each with its branch.
-    fn recents(sessions: &[Info], current: Option<&Workspace>) -> Vec<newsession::Recent> {
+    fn recents(sessions: &[Info], current: Option<&Workspace>, closed: &[std::path::PathBuf]) -> Vec<newsession::Recent> {
         let mut by_time: Vec<&Info> = sessions.iter().collect();
         by_time.sort_by_key(|i| std::cmp::Reverse(i.since_ms));
         if let Some(focus) = current.and_then(|w| sessions.iter().find(|i| i.id == w.focus)) {
@@ -1074,7 +1081,43 @@ impl App {
                 }
             }
         }
+        // Then where sessions ended, newest first.
+        for f in closed {
+            if !out.iter().any(|r| r.folder == *f) {
+                out.push(newsession::Recent { folder: f.clone(), note: "closed".into() });
+            }
+        }
         out
+    }
+
+    /// Note the folders of sessions that have ended, for the new-session
+    /// dialog's list: kept beside the state, the newest first.
+    fn remember_closed(&mut self, sessions: &[Info]) {
+        let mut ended = Vec::new();
+        self.known_cwds.retain(|id, cwd| {
+            let alive = sessions.iter().any(|i| i.id == *id);
+            if !alive {
+                ended.push(cwd.clone());
+            }
+            alive
+        });
+        for i in sessions {
+            self.known_cwds.insert(i.id, i.cwd.clone());
+        }
+        if ended.is_empty() {
+            return;
+        }
+        for f in ended {
+            self.closed.retain(|c| *c != f);
+            self.closed.insert(0, f);
+        }
+        self.closed.truncate(CLOSED_KEPT);
+        let list = self.closed.clone();
+        let _ = std::thread::Builder::new().name("closed".into()).spawn(move || {
+            let Some(p) = closed_file() else { return };
+            let text: String = list.iter().map(|f| format!("{}\n", f.display())).collect();
+            let _ = std::fs::write(p, text);
+        });
     }
 
     /// Start what the new-session dialog asked for.
@@ -2482,6 +2525,14 @@ fn write_setting(tx: std::sync::mpsc::Sender<Read>, table: Option<&'static str>,
     });
 }
 
+/// How many folders of ended sessions are kept.
+const CLOSED_KEPT: usize = 20;
+
+/// The folders of sessions that ended, beside the state file.
+fn closed_file() -> Option<std::path::PathBuf> {
+    tsumugi_mux::state::default_path().map(|p| p.with_file_name("closed-folders"))
+}
+
 /// The input box's history, kept beside the state file: one prompt a line,
 /// its backslashes and line breaks escaped.
 fn history_file() -> Option<std::path::PathBuf> {
@@ -2709,6 +2760,7 @@ impl App {
         for out in self.alerts.decide(&client.notices(), seen) {
             match out {
                 alert::Out::Flash => ctx.send_viewport_cmd(egui::ViewportCommand::RequestUserAttention(egui::UserAttentionType::Informational)),
+                alert::Out::Sound(error) => sound::play(error),
                 out => self.teller.send(out),
             }
         }
@@ -2865,7 +2917,7 @@ impl App {
         }
 
         let made = match &mut self.new_session {
-            Some(d) => newsession::show(&ctx, &self.palette, d, &Self::recents(&sessions, current.as_ref()), &self.profiles, &self.tag_rules),
+            Some(d) => newsession::show(&ctx, &self.palette, d, &Self::recents(&sessions, current.as_ref(), &self.closed), &self.profiles, &self.tag_rules),
             None => None,
         };
         match made {
@@ -2877,6 +2929,7 @@ impl App {
             None => {}
         }
         self.worktrees(&ctx, &client, &sessions, current.as_ref());
+        self.remember_closed(&sessions);
         self.send_queued(&client, &sessions);
         self.show_toast(&ctx);
 
