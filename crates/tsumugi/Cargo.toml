@@ -17,6 +17,8 @@ chrono = { version = "0.4", default-features = false, features = ["clock", "std"
 egui = "0.36"
 # The window's handle, for the taskbar's number; eframe already builds it.
 raw-window-handle = "0.6"
+# Theme files (themes/*.toml, theme.toml); already built for the settings.
+toml = "1.1"
 
 [target."cfg(windows)".dependencies]
 windows = { version = "0.62", features = [

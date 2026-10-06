@@ -228,8 +228,10 @@ fn handle(shared: &Arc<Shared>, client: ClientId, tx: &Sender<ToClient>, msg: To
     match msg {
         ToServer::Hello { .. } => {}
         ToServer::List => {
-            let _ = tx.send(ToClient::Workspaces(lock(&shared.workspaces).values().cloned().collect()));
-            let _ = tx.send(ToClient::Sessions(sessions.values().map(|s| s.info.clone()).collect()));
+            let workspaces = lock(&shared.workspaces);
+            let _ = tx.send(ToClient::Workspaces(ordered(shared, &workspaces).into_iter().cloned().collect()));
+            drop(workspaces);
+            let _ = tx.send(ToClient::Listed(sessions.values().map(|s| s.info.clone()).collect()));
         }
         ToServer::SetLayout { id, layout, focus } => {
             // Only panes that are still sessions: the window may have sent

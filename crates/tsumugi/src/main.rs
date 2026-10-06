@@ -26,6 +26,7 @@ mod newsession;
 mod palette;
 mod shellhook;
 mod sort;
+mod theme;
 mod spawn;
 
 use std::time::Duration;
@@ -473,6 +474,15 @@ struct App {
     profiles: Vec<tsumugi_mux::settings::Profile>,
     /// The new-session dialog, while it is open (the design's 1g).
     new_session: Option<newsession::Dialog>,
+    /// The theme (1k): what the settings chose, the theme files, and what
+    /// was last put in force.
+    theme_choice: (String, String, String),
+    theme_files: ThemeFiles,
+    /// What is wrong with the theme files as read, and with the theme as
+    /// chosen (worked out each frame).
+    theme_file_error: Option<String>,
+    theme_error: Option<String>,
+    theme_applied: Option<theme::Colors>,
     /// The settings' `[open]` and `[menu]`, for the tab's menu (1j).
     open: tsumugi_mux::settings::Open,
     menu: tsumugi_mux::settings::Menu,
@@ -520,10 +530,10 @@ fn drop_index(workspaces: &[Workspace], rows: &[(WorkspaceId, egui::Rect)], drag
 impl App {
     fn new(cc: &eframe::CreationContext<'_>) -> Self {
         let nerd = fonts::install(&cc.egui_ctx);
-        let palette = Palette::default();
-        let mut visuals = egui::Visuals::dark();
-        visuals.panel_fill = palette.bg;
-        cc.egui_ctx.set_visuals(visuals);
+        // tsumugi Dark until the settings are read (the first frame).
+        let first = theme::colors();
+        let palette = first.palette();
+        cc.egui_ctx.set_visuals(first.visuals());
         // egui zooms on Ctrl +/-/0 by itself; in a terminal those are keys.
         cc.egui_ctx.options_mut(|o| o.zoom_with_keyboard = false);
 
@@ -570,6 +580,11 @@ impl App {
             tag_rules: Vec::new(),
             profiles: Vec::new(),
             new_session: None,
+            theme_choice: ("dark".into(), "tsumugi Dark".into(), "tsumugi Light".into()),
+            theme_files: ThemeFiles::default(),
+            theme_file_error: None,
+            theme_error: None,
+            theme_applied: None,
             open: Default::default(),
             menu: Default::default(),
             renaming: None,
@@ -709,6 +724,50 @@ impl App {
             out.push(palette::Entry { title: c.title(), detail: c.key(mac).into(), pick: palette::Pick::Command(c) });
         }
         out
+    }
+
+    /// Every theme: the built-in ones and one's own (a file's missing
+    /// colours from tsumugi Dark or Light), and what is wrong with a file.
+    fn themes(&self) -> (Vec<theme::Theme>, Option<String>) {
+        let mut all = theme::builtin();
+        let mut problem = None;
+        for (name, table) in &self.theme_files.own {
+            let light = table.get("light").and_then(toml::Value::as_bool).unwrap_or(false);
+            let base = all[usize::from(light)].colors;
+            match theme::from_table(base, table) {
+                Ok(colors) => all.push(theme::Theme { name: name.clone(), colors }),
+                Err(e) => problem = Some(format!("themes/{name}: {e}")),
+            }
+        }
+        (all, problem)
+    }
+
+    /// Put the chosen theme in force when it changed: the drawing code's
+    /// colours, the panes' palette and egui's own widgets.
+    fn apply_theme(&mut self, ctx: &egui::Context) {
+        let os_light = ctx.system_theme() == Some(egui::Theme::Light);
+        let (all, problem) = self.themes();
+        self.theme_error = self.theme_file_error.clone().or(problem);
+        let (choice, dark, light) = &self.theme_choice;
+        let mut colors = match theme::pick(&all, choice, dark, light, os_light) {
+            Ok(t) => t.colors,
+            Err(e) => {
+                self.theme_error = Some(e);
+                all[0].colors
+            }
+        };
+        if let Some(changes) = &self.theme_files.changes {
+            match theme::from_table(colors, changes) {
+                Ok(c) => colors = c,
+                Err(e) => self.theme_error = Some(format!("theme.toml: {e}")),
+            }
+        }
+        if self.theme_applied != Some(colors) {
+            self.theme_applied = Some(colors);
+            theme::set(colors);
+            self.palette = colors.palette();
+            ctx.set_visuals(colors.visuals());
+        }
     }
 
     /// The folders the new-session dialog offers: the pane with the keys'
@@ -907,7 +966,7 @@ impl App {
         // key away (the design's sidebar foot).
         egui::Panel::bottom("side-foot").frame(egui::Frame::NONE).show(ui, |ui| {
             let (line, _) = ui.allocate_exact_size(egui::vec2(ui.available_width(), 1.0), egui::Sense::hover());
-            ui.painter().rect_filled(line, 0.0, egui::Color32::from_rgb(0x23, 0x26, 0x2e));
+            ui.painter().rect_filled(line, 0.0, crate::theme::colors().border);
             ui.add_space(8.0);
             let margin = egui::Margin { left: 12, right: 8, top: 0, bottom: 0 };
             egui::Frame::NONE.inner_margin(margin).show(ui, |ui| {
@@ -948,7 +1007,7 @@ impl App {
             if waiting > 0 {
                 ui.horizontal(|ui| {
                     ui.add_space(12.0);
-                    let text = egui::RichText::new(format!("Jump to waiting ({waiting})   Ctrl+Shift+U")).size(12.0).color(chrome::GOLD);
+                    let text = egui::RichText::new(format!("Jump to waiting ({waiting})   Ctrl+Shift+U")).size(12.0).color(chrome::gold());
                     if ui.add(egui::Button::new(text).frame(false)).clicked() {
                         self.jump_waiting = true;
                     }
@@ -961,7 +1020,7 @@ impl App {
         if !self.view.asked && tabs.len() > 12 && self.view.density == sort::Density::Cards {
             let margin = egui::Margin { left: 12, right: 10, top: 2, bottom: 6 };
             egui::Frame::NONE.inner_margin(margin).show(ui, |ui| {
-                egui::Frame::NONE.fill(egui::Color32::from_rgb(0x1b, 0x1e, 0x24)).corner_radius(8.0).inner_margin(egui::Margin::same(8)).show(ui, |ui| {
+                egui::Frame::NONE.fill(crate::theme::colors().panel).corner_radius(8.0).inner_margin(egui::Margin::same(8)).show(ui, |ui| {
                     ui.label(egui::RichText::new(format!("{} sessions: show one line each?", tabs.len())).size(12.0).color(pal.fg));
                     ui.horizontal(|ui| {
                         if ui.button("One line each").clicked() {
@@ -996,13 +1055,13 @@ impl App {
                         }
                         chrome::triangle(&p, egui::pos2(rect.left() + 18.0, rect.center().y), *open, pal.fg_dim);
                         let name = project.file_name().map_or_else(|| project.display().to_string(), |f| f.to_string_lossy().into_owned());
-                        let name = p.layout_no_wrap(name, egui::FontId::proportional(13.0), egui::Color32::from_rgb(0xe4, 0xe8, 0xf0));
+                        let name = p.layout_no_wrap(name, egui::FontId::proportional(13.0), crate::theme::colors().strong());
                         let x = rect.left() + 30.0 + name.size().x;
                         p.galley(egui::pos2(rect.left() + 28.0, rect.center().y - name.size().y / 2.0), name, egui::Color32::WHITE);
                         p.text(egui::pos2(x + 8.0, rect.center().y), egui::Align2::LEFT_CENTER, total.to_string(), egui::FontId::proportional(12.0), pal.fg_dim);
                         let mut right = rect.right() - 14.0;
                         if *open {
-                            for (k, color) in [(sort::Kind::Error, chrome::RED), (sort::Kind::Waiting, chrome::GOLD)] {
+                            for (k, color) in [(sort::Kind::Error, chrome::red()), (sort::Kind::Waiting, chrome::gold())] {
                                 let n = kinds.iter().filter(|x| **x == k).count();
                                 if n > 0 {
                                     let r = p.text(egui::pos2(right, rect.center().y), egui::Align2::RIGHT_CENTER, format!("{n} {}", k.label().to_lowercase()), egui::FontId::proportional(11.5), color);
@@ -1057,8 +1116,8 @@ impl App {
                 let card = rect.shrink2(egui::vec2(6.0, 2.0));
                 if urgent.state == State::Waiting {
                     // Ringed in gold: the one to look at (the design's sidebar).
-                    painter.rect_filled(card, 8.0, egui::Color32::from_rgb(0x1f, 0x1d, 0x18));
-                    painter.rect_stroke(card, 8.0, egui::Stroke::new(1.0, chrome::GOLD.gamma_multiply(0.8)), egui::StrokeKind::Inside);
+                    painter.rect_filled(card, 8.0, crate::theme::colors().wait_bg());
+                    painter.rect_stroke(card, 8.0, egui::Stroke::new(1.0, chrome::gold().gamma_multiply(0.8)), egui::StrokeKind::Inside);
                 }
                 if Some(w.id) == self.active {
                     painter.rect_filled(card, 8.0, pal.selection.gamma_multiply(0.85));
@@ -1066,7 +1125,7 @@ impl App {
                     painter.rect_filled(card, 8.0, pal.selection.gamma_multiply(0.4));
                 }
                 if self.dragging_tab == Some(w.id) {
-                    painter.rect_stroke(card, 8.0, egui::Stroke::new(1.0, chrome::CYAN), egui::StrokeKind::Inside);
+                    painter.rect_stroke(card, 8.0, egui::Stroke::new(1.0, chrome::cyan()), egui::StrokeKind::Inside);
                 }
                 let dot = egui::pos2(rect.left() + 20.0, rect.top() + 14.0);
                 let color = state_color(urgent.state);
@@ -1134,8 +1193,8 @@ impl App {
                     _ => chrome::state_words(urgent, now),
                 };
                 let third_color = match urgent.state {
-                    State::Waiting => chrome::GOLD,
-                    State::Error => chrome::RED,
+                    State::Waiting => chrome::gold(),
+                    State::Error => chrome::red(),
                     _ => pal.fg_dim,
                 };
                 line(third, 42.0, egui::FontId::proportional(11.5), third_color, width);
@@ -1157,11 +1216,11 @@ impl App {
                     let r = rect.shrink2(egui::vec2(6.0, 1.0));
                     match urgent.state {
                         State::Waiting => {
-                            painter.rect_filled(r, 6.0, egui::Color32::from_rgb(0x1f, 0x1d, 0x18));
-                            painter.rect_stroke(r, 6.0, egui::Stroke::new(1.0, chrome::GOLD.gamma_multiply(0.85)), egui::StrokeKind::Inside);
+                            painter.rect_filled(r, 6.0, crate::theme::colors().wait_bg());
+                            painter.rect_stroke(r, 6.0, egui::Stroke::new(1.0, chrome::gold().gamma_multiply(0.85)), egui::StrokeKind::Inside);
                         }
                         State::Error => {
-                            painter.rect_stroke(r, 6.0, egui::Stroke::new(1.0, chrome::RED.gamma_multiply(0.6)), egui::StrokeKind::Inside);
+                            painter.rect_stroke(r, 6.0, egui::Stroke::new(1.0, chrome::red().gamma_multiply(0.6)), egui::StrokeKind::Inside);
                         }
                         _ => {}
                     }
@@ -1169,16 +1228,16 @@ impl App {
                         painter.rect_filled(r, 6.0, pal.selection.gamma_multiply(0.4));
                     }
                     if self.dragging_tab == Some(w.id) {
-                        painter.rect_stroke(r, 6.0, egui::Stroke::new(1.0, chrome::CYAN), egui::StrokeKind::Inside);
+                        painter.rect_stroke(r, 6.0, egui::Stroke::new(1.0, chrome::cyan()), egui::StrokeKind::Inside);
                     }
                     painter.circle_filled(egui::pos2(r.left() + 12.0, r.center().y), 3.5, state_color(urgent.state));
                     let since = if matches!(urgent.state, State::Running) { String::new() } else { chrome::elapsed(now.saturating_sub(urgent.since_ms)) };
-                    let time_color = if urgent.state == State::Waiting { chrome::GOLD } else { chrome::GREY };
+                    let time_color = if urgent.state == State::Waiting { chrome::gold() } else { chrome::grey() };
                     let t = painter.text(egui::pos2(r.right() - 8.0, r.center().y), egui::Align2::RIGHT_CENTER, since, egui::FontId::proportional(11.0), time_color);
                     let project = focus.project.file_name().map(|f| f.to_string_lossy().into_owned()).unwrap_or_default();
-                    let pj = painter.text(egui::pos2(t.left() - 8.0, r.center().y), egui::Align2::RIGHT_CENTER, project, egui::FontId::proportional(11.0), chrome::GREY);
+                    let pj = painter.text(egui::pos2(t.left() - 8.0, r.center().y), egui::Align2::RIGHT_CENTER, project, egui::FontId::proportional(11.0), chrome::grey());
                     let name_color = match urgent.state {
-                        State::Waiting => egui::Color32::from_rgb(0xf1, 0xea, 0xd6),
+                        State::Waiting => crate::theme::colors().wait_text(),
                         State::Done => pal.fg_dim,
                         _ => pal.fg,
                     };
@@ -1297,7 +1356,7 @@ impl App {
                         let busy = infos.iter().any(|i| matches!(i.state, State::Running | State::MaybeWaiting));
                         let armed = self.close_armed == Some(w.id);
                         let label = if armed { "Click again to close: it is running" } else { "Close the session" };
-                        if ui.button(egui::RichText::new(label).color(egui::Color32::from_rgb(0xf4, 0xa3, 0xa8))).clicked() {
+                        if ui.button(egui::RichText::new(label).color(crate::theme::colors().err)).clicked() {
                             if busy && !armed {
                                 self.close_armed = Some(w.id);
                             } else {
@@ -1321,7 +1380,7 @@ impl App {
                 };
                 let x = first.x_range();
                 ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
-                ui.painter().line_segment([egui::pos2(x.min + 8.0, y), egui::pos2(x.max - 8.0, y)], egui::Stroke::new(2.0, chrome::CYAN));
+                ui.painter().line_segment([egui::pos2(x.min + 8.0, y), egui::pos2(x.max - 8.0, y)], egui::Stroke::new(2.0, chrome::cyan()));
             }
             if ui.input(|i| !i.pointer.any_down()) {
                 if let Some(gap) = gap {
@@ -1383,18 +1442,18 @@ impl App {
             let resp = ui.interact(rect, egui::Id::new(("rail-tab", tab.workspace.id)), egui::Sense::click());
             let p = ui.painter();
             let fill = if urgent.state == State::Waiting {
-                egui::Color32::from_rgb(0x1f, 0x1d, 0x18)
+                crate::theme::colors().wait_bg()
             } else if Some(tab.workspace.id) == self.active {
                 pal.selection
             } else if resp.hovered() {
-                egui::Color32::from_rgb(0x22, 0x26, 0x2e)
+                crate::theme::colors().hover()
             } else {
-                egui::Color32::from_rgb(0x1b, 0x1e, 0x24)
+                crate::theme::colors().panel
             };
             p.rect_filled(rect, 9.0, fill);
             p.rect_stroke(rect, 9.0, egui::Stroke::new(1.2, state_color(urgent.state).gamma_multiply(0.85)), egui::StrokeKind::Inside);
             let letter = focus.project.file_name().and_then(|f| f.to_string_lossy().chars().next()).map_or('?', |c| c.to_ascii_uppercase());
-            let color = if urgent.state == State::Done { pal.fg_dim } else { egui::Color32::from_rgb(0xf1, 0xea, 0xd6) };
+            let color = if urgent.state == State::Done { pal.fg_dim } else { crate::theme::colors().wait_text() };
             p.text(rect.center(), egui::Align2::CENTER_CENTER, letter, egui::FontId::proportional(14.0), color);
             let resp = resp.on_hover_ui(|ui| {
                 ui.label(egui::RichText::new(tab.name()).strong());
@@ -1415,8 +1474,8 @@ impl App {
         if waiting > 0 {
             let pill = egui::Rect::from_center_size(egui::pos2(area.center().x, foot + 18.0), egui::vec2(36.0, 22.0));
             let resp = ui.interact(pill, egui::Id::new("rail-waiting"), egui::Sense::click()).on_hover_text("Jump to waiting");
-            ui.painter().rect_filled(pill, 11.0, chrome::GOLD);
-            ui.painter().text(pill.center(), egui::Align2::CENTER_CENTER, waiting.to_string(), egui::FontId::proportional(12.0), egui::Color32::from_rgb(0x1a, 0x16, 0x08));
+            ui.painter().rect_filled(pill, 11.0, chrome::gold());
+            ui.painter().text(pill.center(), egui::Align2::CENTER_CENTER, waiting.to_string(), egui::FontId::proportional(12.0), crate::theme::colors().on_accent());
             if resp.clicked() {
                 self.jump_waiting = true;
             }
@@ -1456,7 +1515,7 @@ impl App {
                 let head = egui::Rect::from_min_size(rect.min, egui::vec2(rect.width(), HEADER));
                 rect.min.y += HEADER;
                 let p = ui.painter_at(head);
-                p.rect_filled(head, 0.0, if focused { egui::Color32::from_rgb(0x22, 0x26, 0x2e) } else { self.palette.on_cursor });
+                p.rect_filled(head, 0.0, if focused { crate::theme::colors().hover() } else { self.palette.on_cursor });
                 if let Some(info) = sessions.iter().find(|i| i.id == *id) {
                     // The state on the right first; the name and folder get
                     // what is left, cut short rather than run into it.
@@ -1505,7 +1564,7 @@ impl App {
                 let at = egui::pos2(area.right() - 8.0, area.y + 6.0);
                 let galley = ui.fonts_mut(|f| f.layout_no_wrap(text, egui::FontId::proportional(12.0), self.palette.on_cursor));
                 let r = egui::Rect::from_min_size(egui::pos2(at.x - galley.size().x, at.y), galley.size());
-                ui.painter().rect_filled(r.expand(2.0), 4.0, egui::Color32::from_rgb(0xe8, 0xc8, 0x7a));
+                ui.painter().rect_filled(r.expand(2.0), 4.0, chrome::gold());
                 ui.painter().galley(r.min, galley, self.palette.on_cursor);
             }
             return;
@@ -1581,29 +1640,74 @@ pub(crate) fn home_short(path: &std::path::Path) -> String {
     }
 }
 
-/// Read `settings.toml` now and whenever it changes, on a thread of its own
-/// (no disk on the window's thread).
 /// What the settings thread read.
 enum Read {
-    Settings(Result<tsumugi_mux::settings::Settings, String>),
+    // Boxed: the settings are much the largest.
+    Settings(Box<Result<tsumugi_mux::settings::Settings, String>>),
     Profiles(Result<Vec<tsumugi_mux::settings::Profile>, String>),
+    /// Themes of one's own (`themes/*.toml`) and the changes to the theme
+    /// in force (`theme.toml`), as their files' tables.
+    Themes(Result<ThemeFiles, String>),
 }
 
-/// Read `settings.toml` and `profiles.toml` now and whenever they change, on
-/// a thread of its own (no disk on the window's thread).
+#[derive(Default)]
+struct ThemeFiles {
+    own: Vec<(String, std::collections::BTreeMap<String, toml::Value>)>,
+    changes: Option<std::collections::BTreeMap<String, toml::Value>>,
+}
+
+/// `theme.toml` and `themes/*.toml` beside the settings; a theme's name is
+/// its `name`, else its file's.
+fn read_themes(dir: &std::path::Path) -> Result<ThemeFiles, String> {
+    let table = |p: &std::path::Path| -> Result<std::collections::BTreeMap<String, toml::Value>, String> {
+        let text = std::fs::read_to_string(p).map_err(|e| format!("{}: {e}", p.display()))?;
+        toml::from_str(&text).map_err(|e| format!("{}: {}", p.display(), e.message()))
+    };
+    let mut out = ThemeFiles::default();
+    let changes = dir.join("theme.toml");
+    if changes.exists() {
+        out.changes = Some(table(&changes)?);
+    }
+    if let Ok(entries) = std::fs::read_dir(dir.join("themes")) {
+        let mut files: Vec<std::path::PathBuf> = entries.filter_map(|e| e.ok().map(|e| e.path())).filter(|p| p.extension().is_some_and(|x| x == "toml")).collect();
+        files.sort();
+        for f in files {
+            let t = table(&f)?;
+            let name = t.get("name").and_then(|v| v.as_str()).map(str::to_owned).unwrap_or_else(|| f.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default());
+            out.own.push((name, t));
+        }
+    }
+    Ok(out)
+}
+
+/// When the theme files last changed, to read them again only then.
+fn themes_stamp(dir: &std::path::Path) -> Vec<(std::path::PathBuf, Option<std::time::SystemTime>)> {
+    let mut out = vec![(dir.join("theme.toml"), tsumugi_mux::settings::stamp(&dir.join("theme.toml")))];
+    if let Ok(entries) = std::fs::read_dir(dir.join("themes")) {
+        for e in entries.flatten() {
+            out.push((e.path(), tsumugi_mux::settings::stamp(&e.path())));
+        }
+    }
+    out.sort();
+    out
+}
+
+/// Read `settings.toml`, `profiles.toml` and the theme files now and
+/// whenever they change, on a thread of its own (no disk on the window's
+/// thread).
 fn watch_settings(ctx: egui::Context) -> std::sync::mpsc::Receiver<Read> {
     use tsumugi_mux::settings;
     let (tx, rx) = std::sync::mpsc::channel();
     let _ = std::thread::Builder::new().name("settings".into()).spawn(move || {
         let (Some(path), Some(profiles)) = (settings::default_path(), settings::profiles_path()) else { return };
-        let (mut seen, mut seen_profiles) = (None, None);
+        let (mut seen, mut seen_profiles, mut seen_themes) = (None, None, None);
         loop {
             let stamp = settings::stamp(&path);
             let mut sent = false;
             if seen != Some(stamp) {
                 seen = Some(stamp);
                 sent = true;
-                if tx.send(Read::Settings(settings::load(&path))).is_err() {
+                if tx.send(Read::Settings(Box::new(settings::load(&path)))).is_err() {
                     return;
                 }
             }
@@ -1613,6 +1717,16 @@ fn watch_settings(ctx: egui::Context) -> std::sync::mpsc::Receiver<Read> {
                 sent = true;
                 if tx.send(Read::Profiles(settings::load_profiles(&profiles))).is_err() {
                     return;
+                }
+            }
+            if let Some(dir) = path.parent() {
+                let stamp = themes_stamp(dir);
+                if seen_themes.as_ref() != Some(&stamp) {
+                    seen_themes = Some(stamp);
+                    sent = true;
+                    if tx.send(Read::Themes(read_themes(dir))).is_err() {
+                        return;
+                    }
                 }
             }
             if sent {
@@ -1672,23 +1786,33 @@ impl eframe::App for App {
         }
         for read in self.settings.try_iter() {
             match read {
-                Read::Settings(Ok(s)) => {
-                    self.alerts.rules = alert::Rules::from(&s.notify);
-                    self.tag_rules = s.tags.rule;
-                    self.open = s.open;
-                    self.menu = s.menu;
-                    self.settings_error = None;
-                }
+                Read::Settings(read) => match *read {
+                    Ok(s) => {
+                        self.alerts.rules = alert::Rules::from(&s.notify);
+                        self.tag_rules = s.tags.rule;
+                        self.theme_choice = (s.theme, s.dark_theme, s.light_theme);
+                        self.open = s.open;
+                        self.menu = s.menu;
+                        self.settings_error = None;
+                    }
+                    Err(e) => self.settings_error = Some(e),
+                },
                 Read::Profiles(Ok(p)) => self.profiles = p,
-                Read::Settings(Err(e)) | Read::Profiles(Err(e)) => self.settings_error = Some(e),
+                Read::Themes(Ok(t)) => {
+                    self.theme_files = t;
+                    self.theme_file_error = None;
+                }
+                Read::Themes(Err(e)) => self.theme_file_error = Some(e),
+                Read::Profiles(Err(e)) => self.settings_error = Some(e),
             }
         }
-        if let Some(e) = &self.settings_error {
+        self.apply_theme(&ctx);
+        if let Some(e) = self.settings_error.as_ref().or(self.theme_error.as_ref()) {
             // Above the status bar until the file is fixed; the server keeps
             // its tag rules from before too.
             egui::Area::new(egui::Id::new("settings-error")).anchor(egui::Align2::CENTER_BOTTOM, egui::vec2(0.0, -32.0)).show(&ctx, |ui| {
-                egui::Frame::NONE.fill(egui::Color32::from_rgb(0x3a, 0x1e, 0x22)).corner_radius(6.0).inner_margin(egui::Margin::symmetric(10, 5)).show(ui, |ui| {
-                    ui.label(egui::RichText::new(e).size(12.0).color(chrome::RED));
+                egui::Frame::NONE.fill(crate::theme::mix(crate::theme::colors().panel, crate::theme::colors().err, 0.15)).corner_radius(6.0).inner_margin(egui::Margin::symmetric(10, 5)).show(ui, |ui| {
+                    ui.label(egui::RichText::new(e).size(12.0).color(chrome::red()));
                 });
             });
         }
@@ -1762,7 +1886,7 @@ impl eframe::App for App {
         let up = chrome::now_ms().saturating_sub(client.started_ms());
         let status = egui::Panel::bottom("status")
             .exact_size(24.0)
-            .frame(egui::Frame::NONE.fill(egui::Color32::from_rgb(0x12, 0x14, 0x18)))
+            .frame(egui::Frame::NONE.fill(crate::theme::colors().side))
             .show(ui, |ui| chrome::status_bar(ui, &self.palette, &sessions, focus_info.as_ref(), size, up, self.nerd))
             .inner;
         if let Some(chrome::StatusClick::Bell) = status {
@@ -1778,7 +1902,7 @@ impl eframe::App for App {
         let muted_tags_now = client.muted_tags();
         let open_search = egui::Panel::top("band")
             .exact_size(40.0)
-            .frame(egui::Frame::NONE.fill(egui::Color32::from_rgb(0x12, 0x14, 0x18)))
+            .frame(egui::Frame::NONE.fill(crate::theme::colors().side))
             .show(ui, |ui| chrome::top_band(ui, &self.palette, &focus_tags, &muted_tags_now))
             .inner;
         if open_search {

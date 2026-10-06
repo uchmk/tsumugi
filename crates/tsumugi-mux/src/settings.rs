@@ -3,6 +3,12 @@
 //! the window the ways to tell; both read it again when it changes.
 //!
 //! ```toml
+//! # A theme's name, or "dark", "light" or "system" (following the OS
+//! # between dark_theme and light_theme). The design's 1k.
+//! theme = "dark"
+//! dark_theme = "tsumugi Dark"
+//! light_theme = "tsumugi Light"
+//!
 //! # Tag a session by the folder it is in (the design's 1a).
 //! [[tags.rule]]
 //! folder = "~/dev/filer"
@@ -37,13 +43,30 @@ use std::path::{Component, Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Debug, Default, PartialEq, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Settings {
+    pub theme: String,
+    pub dark_theme: String,
+    pub light_theme: String,
     pub tags: Tags,
     pub notify: Notify,
     pub open: Open,
     pub menu: Menu,
+}
+
+impl Default for Settings {
+    fn default() -> Self {
+        Self {
+            theme: "dark".into(),
+            dark_theme: "tsumugi Dark".into(),
+            light_theme: "tsumugi Light".into(),
+            tags: Tags::default(),
+            notify: Notify::default(),
+            open: Open::default(),
+            menu: Menu::default(),
+        }
+    }
 }
 
 /// The commands the tab's menu opens a folder with: `{folder}` is the

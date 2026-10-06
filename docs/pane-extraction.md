@@ -57,6 +57,7 @@ PTY のログの環境変数は `Terminal::spawn` に渡す（filer は `FILER_P
   `【pane】` が付いていて、filer の開発の Routine は取らない（filer にしか push できないため）。今は 3 件: 起動に失敗したシェルが残す `OpenConsole.exe`、
   `FILER_PTY_LOG` のキーを読める形に、何もしない窓の CPU（x64）。誰が取るかは QUESTIONS.md の Q3（tsumugi のセッションが取る）。
   3 件とも v0.0.5 / filer v0.78.130 で片付いた（CPU の件は v0.75.0 で Windows の既定を GL にしたことで済んでいた。#243 で 0.000 CPU 秒）。
+- **`Palette` に `ansi` を足した**（tsumugi v0.16.0、テーマの 16 色）。filer は `rev` を上げるときに、`Palette { … }` に `ansi: None` を足す（今までの色のまま）。
 - **名前の整理**は、tsumugi の窓（v0.1.0）が使い始めてから。今はルートに filer の頃の名前がそのまま並んでいる（`encode`、`snapshot`、`children` など）。
 - **macOS** の型検査をしていない（`sys/unix.rs` の `hang_up_children`）。CI に macOS を足すかは filer と同じく費用で決める（filer は止めている）。
 - 修飾キーの抽象化（Cmd と Ctrl）は、filer では `keys::from_egui` の側にあり、このクレートには来ていない。tsumugi の窓を作るときに決める。

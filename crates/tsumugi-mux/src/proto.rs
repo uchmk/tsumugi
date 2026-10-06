@@ -7,7 +7,7 @@ use tsumugi_pane::Size;
 
 /// Bumped whenever a message changes shape: a client and a server that
 /// disagree say so at `Hello` instead of misreading each other.
-pub const VERSION: u32 = 12;
+pub const VERSION: u32 = 13;
 
 pub type SessionId = u64;
 pub type WorkspaceId = u64;
@@ -212,6 +212,10 @@ pub enum ToServer {
 pub enum ToClient {
     Hello { version: u32 },
     Sessions(Vec<Info>),
+    /// The answer to `List`: the sessions after everything sent before it.
+    /// Not `Sessions`, which any change sends and which could answer a
+    /// `List` with a list from before.
+    Listed(Vec<Info>),
     Workspaces(Vec<Workspace>),
     Spawned { id: SessionId },
     /// How many sessions `Restore` started.

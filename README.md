@@ -131,6 +131,12 @@ couple of seconds, without restarting; a mistake shows above the status bar
 with its line, and the last good settings stay in force.
 
 ```toml
+# A theme's name, or "dark", "light" or "system" (following the OS between
+# dark_theme and light_theme).
+theme = "dark"
+dark_theme = "tsumugi Dark"
+light_theme = "tsumugi Light"
+
 # Tag a session by the folder it is in, or anywhere under it.
 [[tags.rule]]
 folder = "~/dev/filer"
@@ -171,6 +177,15 @@ conversation), **Duplicate in the same folder**, **Move to a new window**;
 while something is running in it. `[menu] hide` leaves out any of rename,
 tags, mute, pin, restart, duplicate, new-window, filer, editor, copy-path,
 close.
+
+Themes: tsumugi Dark (the default) and Light, Tokyo Night, Catppuccin Mocha
+and Latte, Dracula, Nord, Gruvbox Dark and Light, Solarized Dark and Light,
+One Dark and Rosé Pine. A theme is twelve colours -- `bg`, `side`, `panel`,
+`border`, `fg`, `dim`, the states' `wait`, `run`, `err` and `done`, and the
+terminal's `blue` and `magenta` -- written as `"#rrggbb"`, and `light`.
+`theme.toml` beside the settings changes any of them in the theme in force;
+a file in `themes/` there is a theme of one's own, named by its `name` or
+its file, its missing colours taken from tsumugi Dark or Light.
 
 A folder rule adds its tag when a session starts or moves into the folder;
 it never takes one off, so a tag removed by hand stays off until the session

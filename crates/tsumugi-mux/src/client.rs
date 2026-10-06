@@ -300,7 +300,8 @@ fn receive(inner: &Inner, msg: ToClient) {
     match msg {
         ToClient::Hello { .. } => {}
         ToClient::Workspaces(list) => st.workspaces = list,
-        ToClient::Sessions(list) => {
+        ToClient::Sessions(list) => st.latest = list,
+        ToClient::Listed(list) => {
             st.latest = list.clone();
             st.sessions = Some(list);
         }

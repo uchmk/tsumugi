@@ -6,20 +6,32 @@ use eframe::egui::{self, Color32, FontId, RichText};
 use tsumugi_mux::{Info, Notice, SessionId, State};
 use tsumugi_pane::Palette;
 
-pub const GOLD: Color32 = Color32::from_rgb(0xe8, 0xc8, 0x7a);
-pub const CYAN: Color32 = Color32::from_rgb(0x6f, 0xd0, 0xd0);
-pub const RED: Color32 = Color32::from_rgb(0xf0, 0x71, 0x78);
-pub const GREEN: Color32 = Color32::from_rgb(0x8e, 0xd0, 0x8e);
-pub const GREY: Color32 = Color32::from_rgb(0x7f, 0x87, 0x98);
+/// The four state colours and the faintest text, from the theme in force
+/// (1k): waiting gold, running cyan, error red, done green.
+pub fn gold() -> Color32 {
+    crate::theme::colors().wait
+}
+pub fn cyan() -> Color32 {
+    crate::theme::colors().run
+}
+pub fn red() -> Color32 {
+    crate::theme::colors().err
+}
+pub fn green() -> Color32 {
+    crate::theme::colors().done
+}
+pub fn grey() -> Color32 {
+    crate::theme::colors().faint()
+}
 
 /// The four state colours (docs/v1-scope.md 1k): waiting yellow, running
 /// cyan, error red, done green -- filer's own yellow, cyan, red and green.
 pub fn state_color(state: State) -> Color32 {
     match state {
-        State::Waiting | State::MaybeWaiting => GOLD,
-        State::Running => CYAN,
-        State::Error => RED,
-        State::Done => GREEN,
+        State::Waiting | State::MaybeWaiting => gold(),
+        State::Running => cyan(),
+        State::Error => red(),
+        State::Done => green(),
     }
 }
 
@@ -171,11 +183,11 @@ pub fn bell(ui: &mut egui::Ui, pal: &Palette, notices: &[Notice]) -> egui::Respo
     p.line_segment([c + egui::vec2(-6.5, 4.0), c + egui::vec2(6.5, 4.0)], stroke);
     p.circle_filled(c + egui::vec2(0.0, 6.2), 1.4, stroke.color);
     if !unread.is_empty() {
-        let color = if unread.iter().any(|n| n.state == State::Error) { RED } else { GOLD };
+        let color = if unread.iter().any(|n| n.state == State::Error) { red() } else { gold() };
         let text = if unread.len() > 9 { "9+".to_owned() } else { unread.len().to_string() };
         let at = rect.right_top() + egui::vec2(-5.0, 5.0);
         p.circle_filled(at, 7.0, color);
-        p.text(at, egui::Align2::CENTER_CENTER, text, FontId::proportional(10.0), Color32::from_rgb(0x1a, 0x16, 0x08));
+        p.text(at, egui::Align2::CENTER_CENTER, text, FontId::proportional(10.0), crate::theme::colors().on_accent());
     }
     resp
 }
@@ -217,7 +229,7 @@ pub fn tag_chip(p: &egui::Painter, at: egui::Pos2, tag: &str, faded: bool) -> eg
 pub fn more_chip(p: &egui::Painter, at: egui::Pos2, n: usize, color: Color32) -> egui::Rect {
     let galley = p.layout_no_wrap(format!("+{n}"), FontId::proportional(11.0), color);
     let rect = egui::Rect::from_min_size(at, egui::vec2(galley.size().x + 12.0, 16.0));
-    p.rect_stroke(rect, 4.0, egui::Stroke::new(1.0, Color32::from_rgb(0x3a, 0x3f, 0x4b)), egui::StrokeKind::Inside);
+    p.rect_stroke(rect, 4.0, egui::Stroke::new(1.0, crate::theme::colors().border_strong()), egui::StrokeKind::Inside);
     p.galley(egui::pos2(rect.left() + 6.0, rect.center().y - galley.size().y / 2.0), galley, color);
     rect
 }
@@ -230,7 +242,7 @@ pub fn more_chip(p: &egui::Painter, at: egui::Pos2, n: usize, color: Color32) ->
 pub fn top_band(ui: &mut egui::Ui, pal: &Palette, tags: &[String], muted_tags: &[String]) -> bool {
     let rect = ui.max_rect();
     let p = ui.painter().clone();
-    p.line_segment([rect.left_bottom(), rect.right_bottom()], egui::Stroke::new(1.0, Color32::from_rgb(0x23, 0x26, 0x2e)));
+    p.line_segment([rect.left_bottom(), rect.right_bottom()], egui::Stroke::new(1.0, crate::theme::colors().border));
     // The mark: two threads, cyan and gold (the design's 10 A).
     let o = egui::pos2(rect.left() + 16.0, rect.center().y);
     let wave = |amp: f32, color: Color32| {
@@ -240,9 +252,9 @@ pub fn top_band(ui: &mut egui::Ui, pal: &Palette, tags: &[String], muted_tags: &
         }).collect();
         p.add(egui::Shape::line(pts, egui::Stroke::new(1.6, color)));
     };
-    wave(4.0, CYAN);
-    wave(2.0, GOLD);
-    let name = p.layout_no_wrap("tsumugi".into(), FontId::proportional(13.0), Color32::from_rgb(0xe4, 0xe8, 0xf0));
+    wave(4.0, cyan());
+    wave(2.0, gold());
+    let name = p.layout_no_wrap("tsumugi".into(), FontId::proportional(13.0), crate::theme::colors().strong());
     let name_right = o.x + 24.0 + name.size().x;
     p.galley(egui::pos2(o.x + 24.0, rect.center().y - name.size().y / 2.0), name, Color32::WHITE);
 
@@ -270,16 +282,16 @@ pub fn top_band(ui: &mut egui::Ui, pal: &Palette, tags: &[String], muted_tags: &
     let center_x = (name_right + rect.right() - if show_tags { full } else { 0.0 }) / 2.0;
     let r = egui::Rect::from_center_size(egui::pos2(center_x.max(name_right + 12.0 + w / 2.0), rect.center().y), egui::vec2(w, 26.0));
     let resp = ui.interact(r, ui.id().with("search"), egui::Sense::click()).on_hover_text("Search sessions, folders and commands");
-    let fill = if resp.hovered() { Color32::from_rgb(0x22, 0x26, 0x2e) } else { Color32::from_rgb(0x1b, 0x1e, 0x24) };
+    let fill = if resp.hovered() { crate::theme::colors().hover() } else { crate::theme::colors().panel };
     p.rect_filled(r, 6.0, fill);
-    p.rect_stroke(r, 6.0, egui::Stroke::new(1.0, Color32::from_rgb(0x2c, 0x30, 0x39)), egui::StrokeKind::Inside);
+    p.rect_stroke(r, 6.0, egui::Stroke::new(1.0, crate::theme::colors().border), egui::StrokeKind::Inside);
     let glass = egui::pos2(r.left() + 15.0, r.center().y - 1.0);
     let stroke = egui::Stroke::new(1.3, pal.fg_dim);
     p.circle_stroke(glass, 4.0, stroke);
     p.line_segment([glass + egui::vec2(3.0, 3.0), glass + egui::vec2(6.0, 6.0)], stroke);
     if !compact {
         let key = if cfg!(target_os = "macos") { "Cmd+Shift+P" } else { "Ctrl+Shift+P" };
-        let key = p.layout_no_wrap(key.into(), FontId::monospace(11.0), GREY);
+        let key = p.layout_no_wrap(key.into(), FontId::monospace(11.0), grey());
         let key_x = r.right() - 10.0 - key.size().x;
         let mut job = egui::text::LayoutJob::simple_singleline("Search sessions, folders and commands".into(), FontId::proportional(12.0), pal.fg_dim);
         job.wrap = egui::text::TextWrapping::truncate_at_width((key_x - r.left() - 40.0).max(0.0));
@@ -287,7 +299,7 @@ pub fn top_band(ui: &mut egui::Ui, pal: &Palette, tags: &[String], muted_tags: &
         if key_x - r.left() > 140.0 {
             p.galley(egui::pos2(r.left() + 28.0, r.center().y - 7.0), words, pal.fg_dim);
         }
-        p.galley(egui::pos2(key_x, r.center().y - key.size().y / 2.0), key, GREY);
+        p.galley(egui::pos2(key_x, r.center().y - key.size().y / 2.0), key, grey());
     }
     resp.clicked()
 }
@@ -323,8 +335,8 @@ pub fn search_box(ctx: &egui::Context, pal: &Palette, view: &mut crate::palette:
     let mut answer = None;
     let area = egui::Area::new(egui::Id::new("search-box")).order(egui::Order::Foreground).anchor(egui::Align2::CENTER_TOP, egui::vec2(0.0, 46.0)).show(ctx, |ui| {
         egui::Frame::NONE
-            .fill(Color32::from_rgb(0x20, 0x23, 0x2b))
-            .stroke(egui::Stroke::new(1.0, Color32::from_rgb(0x3a, 0x3f, 0x4b)))
+            .fill(crate::theme::colors().raised())
+            .stroke(egui::Stroke::new(1.0, crate::theme::colors().border_strong()))
             .corner_radius(8.0)
             .inner_margin(egui::Margin::same(6))
             .show(ui, |ui| {
@@ -349,9 +361,9 @@ pub fn search_box(ctx: &egui::Context, pal: &Palette, view: &mut crate::palette:
                     }
                     let p = ui.painter();
                     if k == view.selected {
-                        p.rect_filled(rect, 5.0, Color32::from_rgb(0x2a, 0x2e, 0x37));
+                        p.rect_filled(rect, 5.0, crate::theme::colors().chosen());
                     }
-                    let title = p.layout_no_wrap(e.title.clone(), FontId::proportional(12.5), Color32::from_rgb(0xe4, 0xe8, 0xf0));
+                    let title = p.layout_no_wrap(e.title.clone(), FontId::proportional(12.5), crate::theme::colors().strong());
                     let title_w = title.size().x;
                     p.galley(egui::pos2(rect.left() + 8.0, rect.center().y - title.size().y / 2.0), title, Color32::WHITE);
                     let mut job = egui::text::LayoutJob::simple_singleline(e.detail.clone(), FontId::proportional(11.5), pal.fg_dim);
@@ -378,7 +390,7 @@ pub fn sort_button(ui: &mut egui::Ui, pal: &Palette, label: &str) -> egui::Respo
     let (rect, resp) = ui.allocate_exact_size(size, egui::Sense::click());
     let resp = resp.on_hover_text("Sort sessions");
     let p = ui.painter();
-    let border = if resp.hovered() { Color32::from_rgb(0x4a, 0x50, 0x60) } else { Color32::from_rgb(0x2c, 0x30, 0x39) };
+    let border = if resp.hovered() { crate::theme::colors().border_strong() } else { crate::theme::colors().border };
     p.rect_stroke(rect, 6.0, egui::Stroke::new(1.0, border), egui::StrokeKind::Inside);
     // Down on the left, up on the right, as in the design.
     let stroke = egui::Stroke::new(1.3, pal.fg_dim);
@@ -395,18 +407,18 @@ pub fn sort_button(ui: &mut egui::Ui, pal: &Palette, label: &str) -> egui::Respo
 /// A filter's toggle at the sidebar's foot: outlined, and filled while on;
 /// `dot`, a state's colour before the words.
 pub fn filter_button(ui: &mut egui::Ui, pal: &Palette, label: &str, dot: Option<Color32>, on: bool) -> egui::Response {
-    let color = if on { Color32::from_rgb(0xe4, 0xe8, 0xf0) } else { Color32::from_rgb(0x9a, 0xa3, 0xb5) };
+    let color = if on { crate::theme::colors().strong() } else { crate::theme::colors().dim };
     let galley = ui.painter().layout_no_wrap(label.to_owned(), FontId::proportional(11.5), color);
     let pad = if dot.is_some() { 21.0 } else { 9.0 };
     let size = egui::vec2(galley.size().x + pad + 9.0, 22.0);
     let (rect, resp) = ui.allocate_exact_size(size, egui::Sense::click());
     let p = ui.painter();
     if on {
-        p.rect_filled(rect, 6.0, Color32::from_rgb(0x2a, 0x2e, 0x37));
+        p.rect_filled(rect, 6.0, crate::theme::colors().chosen());
     } else if resp.hovered() {
         p.rect_filled(rect, 6.0, pal.selection.gamma_multiply(0.4));
     }
-    let border = if on { Color32::from_rgb(0x4a, 0x50, 0x60) } else { Color32::from_rgb(0x2c, 0x30, 0x39) };
+    let border = if on { crate::theme::colors().border_strong() } else { crate::theme::colors().border };
     p.rect_stroke(rect, 6.0, egui::Stroke::new(1.0, border), egui::StrokeKind::Inside);
     if let Some(c) = dot {
         p.circle_filled(rect.left_center() + egui::vec2(12.0, 0.0), 3.0, c);
@@ -481,8 +493,8 @@ pub fn bell_list(ctx: &egui::Context, pal: &Palette, at: egui::Pos2, notices: &[
     let area = egui::Area::new(egui::Id::new("bell-list")).order(egui::Order::Foreground).fixed_pos(at);
     let resp = area.show(ctx, |ui| {
         egui::Frame::NONE
-            .fill(Color32::from_rgb(0x1b, 0x1e, 0x24))
-            .stroke(egui::Stroke::new(1.0, Color32::from_rgb(0x3a, 0x3f, 0x4b)))
+            .fill(crate::theme::colors().panel)
+            .stroke(egui::Stroke::new(1.0, crate::theme::colors().border_strong()))
             .corner_radius(10.0)
             .inner_margin(10.0)
             .show(ui, |ui| {
@@ -579,7 +591,7 @@ pub fn restore_screen(ui: &mut egui::Ui, pal: &Palette, view: &mut RestoreView) 
         .map(|t| t.with_timezone(&chrono::Local).format("%Y/%m/%d %H:%M").to_string())
         .unwrap_or_default();
     let mut child = ui.new_child(egui::UiBuilder::new().max_rect(egui::Rect::from_center_size(rect.center(), egui::vec2(width, rect.height().min(560.0)))));
-    egui::Frame::NONE.fill(Color32::from_rgb(0x1b, 0x1e, 0x24)).corner_radius(12.0).stroke(egui::Stroke::new(1.0, Color32::from_rgb(0x3a, 0x3f, 0x4b))).inner_margin(20.0).show(&mut child, |ui| {
+    egui::Frame::NONE.fill(crate::theme::colors().panel).corner_radius(12.0).stroke(egui::Stroke::new(1.0, crate::theme::colors().border_strong())).inner_margin(20.0).show(&mut child, |ui| {
         ui.label(RichText::new("Welcome back").size(18.0).strong().color(pal.fg));
         ui.label(RichText::new(format!("{} sessions were open when tsumugi stopped, {when}.", panes.len())).color(pal.fg_dim));
         ui.add_space(10.0);
@@ -587,11 +599,11 @@ pub fn restore_screen(ui: &mut egui::Ui, pal: &Palette, view: &mut RestoreView) 
             let p = panes[i];
             let Some(slot) = view.ticked.iter_mut().find(|(id, _)| *id == p.id) else { continue };
             let waiting = matches!(p.state, State::Waiting | State::MaybeWaiting);
-            let frame = if waiting { egui::Frame::NONE.fill(Color32::from_rgb(0x1f, 0x1d, 0x18)).stroke(egui::Stroke::new(1.0, GOLD.gamma_multiply(0.6))) } else { egui::Frame::NONE };
+            let frame = if waiting { egui::Frame::NONE.fill(crate::theme::colors().wait_bg()).stroke(egui::Stroke::new(1.0, gold().gamma_multiply(0.6))) } else { egui::Frame::NONE };
             frame.corner_radius(7.0).inner_margin(egui::Margin::symmetric(8, 6)).show(ui, |ui| {
                 ui.horizontal(|ui| {
                     ui.checkbox(&mut slot.1, "");
-                    let color = if p.claude.is_some() || p.state != State::Done { state_color(p.state) } else { GREY };
+                    let color = if p.claude.is_some() || p.state != State::Done { state_color(p.state) } else { grey() };
                     ui.label(RichText::new("●").color(color));
                     let name = if p.title.is_empty() { crate::home_short(&p.cwd) } else { p.title.clone() };
                     ui.label(RichText::new(name).color(if slot.1 { pal.fg } else { pal.fg_dim }));
@@ -612,7 +624,7 @@ pub fn restore_screen(ui: &mut egui::Ui, pal: &Palette, view: &mut RestoreView) 
             ui.checkbox(&mut view.always, RichText::new("Always restore without asking").size(12.5).color(pal.fg_dim));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 let picked: Vec<SessionId> = view.ticked.iter().filter(|(_, on)| *on).map(|(id, _)| *id).collect();
-                let restore = egui::Button::new(RichText::new(format!("Restore {}", picked.len())).strong().color(Color32::from_rgb(0x0f, 0x1d, 0x1d))).fill(CYAN);
+                let restore = egui::Button::new(RichText::new(format!("Restore {}", picked.len())).strong().color(crate::theme::colors().on_accent())).fill(cyan());
                 if ui.add_enabled(!picked.is_empty(), restore).clicked() {
                     answer = Some(RestoreAnswer::Restore(picked));
                 }

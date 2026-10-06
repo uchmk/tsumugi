@@ -212,21 +212,21 @@ pub fn show(ctx: &egui::Context, pal: &Palette, d: &mut Dialog, recents: &[Recen
             answer = Some(Answer::Cancel);
         }
     });
-    let label = |t: &str| RichText::new(t).size(11.0).strong().color(Color32::from_rgb(0x9a, 0xa3, 0xb5));
+    let label = |t: &str| RichText::new(t).size(11.0).strong().color(crate::theme::colors().dim);
     egui::Area::new(egui::Id::new("new-session")).order(egui::Order::Foreground).anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0)).show(ctx, |ui| {
         egui::Frame::NONE
-            .fill(Color32::from_rgb(0x1b, 0x1e, 0x24))
-            .stroke(egui::Stroke::new(1.0, Color32::from_rgb(0x3a, 0x3f, 0x4b)))
+            .fill(crate::theme::colors().panel)
+            .stroke(egui::Stroke::new(1.0, crate::theme::colors().border_strong()))
             .corner_radius(12.0)
             .inner_margin(egui::Margin::symmetric(20, 16))
             .show(ui, |ui| {
                 ui.set_width(560.0);
                 ui.spacing_mut().item_spacing = egui::vec2(6.0, 6.0);
                 ui.horizontal(|ui| {
-                    ui.label(RichText::new("New session").size(16.0).strong().color(Color32::from_rgb(0xe4, 0xe8, 0xf0)));
+                    ui.label(RichText::new("New session").size(16.0).strong().color(crate::theme::colors().strong()));
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         let key = if cfg!(target_os = "macos") { "Cmd+T" } else { "Ctrl+Shift+T" };
-                        ui.label(RichText::new(key).font(FontId::monospace(11.5)).color(chrome::GREY));
+                        ui.label(RichText::new(key).font(FontId::monospace(11.5)).color(chrome::grey()));
                     });
                 });
                 ui.add_space(8.0);
@@ -245,9 +245,9 @@ pub fn show(ctx: &egui::Context, pal: &Palette, d: &mut Dialog, recents: &[Recen
                     let (rect, resp) = ui.allocate_exact_size(egui::vec2(ui.available_width(), 26.0), egui::Sense::click());
                     let p = ui.painter();
                     if d.selected == Some(k) || resp.hovered() {
-                        p.rect_filled(rect, 6.0, Color32::from_rgb(0x2a, 0x2e, 0x37));
+                        p.rect_filled(rect, 6.0, crate::theme::colors().chosen());
                     }
-                    let name = p.layout_no_wrap(crate::home_short(&r.folder), FontId::monospace(12.5), Color32::from_rgb(0xe4, 0xe8, 0xf0));
+                    let name = p.layout_no_wrap(crate::home_short(&r.folder), FontId::monospace(12.5), crate::theme::colors().strong());
                     let w = name.size().x;
                     p.galley(egui::pos2(rect.left() + 10.0, rect.center().y - name.size().y / 2.0), name, Color32::WHITE);
                     let note = p.layout_no_wrap(r.note.clone(), FontId::proportional(12.0), pal.fg_dim);
@@ -293,7 +293,7 @@ pub fn show(ctx: &egui::Context, pal: &Palette, d: &mut Dialog, recents: &[Recen
                         let p = ui.painter();
                         chrome::tag_chip(p, rect.min, &t, false);
                         if auto {
-                            chrome::dashed_outline(p, rect.expand(2.0), Color32::from_rgb(0x9f, 0xe0, 0xe0));
+                            chrome::dashed_outline(p, rect.expand(2.0), crate::theme::colors().run);
                         }
                         let hint = if auto { "From the folder's rule; click to leave it off" } else { "Click to take it off" };
                         if resp.on_hover_text(hint).clicked() {
@@ -318,7 +318,7 @@ pub fn show(ctx: &egui::Context, pal: &Palette, d: &mut Dialog, recents: &[Recen
                 ui.add_space(10.0);
 
                 ui.horizontal(|ui| {
-                    ui.checkbox(&mut d.save, RichText::new("Save as a profile").color(Color32::from_rgb(0x9a, 0xa3, 0xb5)));
+                    ui.checkbox(&mut d.save, RichText::new("Save as a profile").color(crate::theme::colors().dim));
                     if d.save {
                         ui.add(egui::TextEdit::singleline(&mut d.name).id(egui::Id::new("ns-name")).hint_text("Its name").desired_width(200.0));
                     }
@@ -326,11 +326,11 @@ pub fn show(ctx: &egui::Context, pal: &Palette, d: &mut Dialog, recents: &[Recen
                 ui.add_space(12.0);
 
                 ui.horizontal(|ui| {
-                    ui.label(RichText::new("Alt+Enter").font(FontId::monospace(12.0)).color(Color32::from_rgb(0xc8, 0xcd, 0xd8)));
+                    ui.label(RichText::new("Alt+Enter").font(FontId::monospace(12.0)).color(crate::theme::colors().fg));
                     ui.label(RichText::new("split right").size(12.0).color(pal.fg_dim));
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        let create = egui::Button::new(RichText::new("Create").color(Color32::from_rgb(0x0f, 0x1d, 0x1d)).strong())
-                            .fill(chrome::CYAN)
+                        let create = egui::Button::new(RichText::new("Create").color(crate::theme::colors().on_accent()).strong())
+                            .fill(chrome::cyan())
                             .min_size(egui::vec2(90.0, 30.0));
                         if ui.add(create).clicked() {
                             answer = Some(d.create(rules, false));
@@ -348,9 +348,9 @@ pub fn show(ctx: &egui::Context, pal: &Palette, d: &mut Dialog, recents: &[Recen
 
 fn start_button(ui: &mut egui::Ui, text: &str, on: bool) -> egui::Response {
     let (fill, stroke, color) = if on {
-        (Color32::from_rgba_unmultiplied(0x6f, 0xd0, 0xd0, 30), chrome::CYAN, Color32::from_rgb(0xe4, 0xe8, 0xf0))
+        (crate::theme::colors().run.gamma_multiply(0.12), chrome::cyan(), crate::theme::colors().strong())
     } else {
-        (Color32::TRANSPARENT, Color32::from_rgb(0x2c, 0x30, 0x39), Color32::from_rgb(0xc8, 0xcd, 0xd8))
+        (Color32::TRANSPARENT, crate::theme::colors().border, crate::theme::colors().fg)
     };
     let b = egui::Button::new(RichText::new(text).size(12.5).color(color)).fill(fill).stroke(egui::Stroke::new(1.0, stroke)).min_size(egui::vec2(128.0, 32.0));
     ui.add(b)
