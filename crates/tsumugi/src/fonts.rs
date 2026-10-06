@@ -241,11 +241,16 @@ mod tests {
 
     #[test]
     fn a_bold_face_is_looked_for_beside_the_regular_one() {
-        let s = |p: &str, st| siblings(std::path::Path::new(p), st).into_iter().map(|p| p.display().to_string()).collect::<Vec<_>>();
-        assert_eq!(s("/f/JetBrainsMono-Regular.ttf", Style::Bold)[0], "/f/JetBrainsMono-Bold.ttf");
-        assert!(s("/f/Hack.ttf", Style::Italic).contains(&"/f/Hack-Italic.ttf".to_owned()));
-        assert!(s("/f/consola.ttf", Style::BoldItalic).contains(&"/f/consolaz.ttf".to_owned()));
-        assert!(s("/f/DejaVuSansMono.ttf", Style::BoldItalic).contains(&"/f/DejaVuSansMono-BoldOblique.ttf".to_owned()));
+        // The names only: the folder is joined with the system's separator.
+        let s = |p: &str, st| {
+            let found = siblings(&std::path::Path::new("f").join(p), st);
+            assert!(found.iter().all(|f| f.parent() == Some(std::path::Path::new("f"))), "beside the regular one");
+            found.into_iter().map(|p| p.file_name().unwrap().to_string_lossy().into_owned()).collect::<Vec<_>>()
+        };
+        assert_eq!(s("JetBrainsMono-Regular.ttf", Style::Bold)[0], "JetBrainsMono-Bold.ttf");
+        assert!(s("Hack.ttf", Style::Italic).contains(&"Hack-Italic.ttf".to_owned()));
+        assert!(s("consola.ttf", Style::BoldItalic).contains(&"consolaz.ttf".to_owned()));
+        assert!(s("DejaVuSansMono.ttf", Style::BoldItalic).contains(&"DejaVuSansMono-BoldOblique.ttf".to_owned()));
         assert_eq!(rank(&squash("JetBrainsMono-Regular")), 0);
         assert_eq!(rank(&squash("JetBrainsMono-Bold")), 2);
     }
