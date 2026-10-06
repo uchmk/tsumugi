@@ -30,12 +30,16 @@ Windows and Linux keys first; the macOS key is after `·`.
 
 /// Fixed keys of the window, and the keys of its boxes: (section, key on
 /// Windows and Linux, on macOS, what it does).
-const FIXED: [(&str, &str, &str, &str); 20] = [
+const FIXED: [(&str, &str, &str, &str); 24] = [
     ("The window, fixed", "Ctrl+Alt+1 … 9", "Cmd+1 … 9", "The Nth tab"),
     ("The window, fixed", "Alt+Left", "Cmd+Option+Left", "The keys to the pane on the left"),
     ("The window, fixed", "Alt+Right", "Cmd+Option+Right", "The keys to the pane on the right"),
     ("The window, fixed", "Alt+Up", "Cmd+Option+Up", "The keys to the pane above"),
     ("The window, fixed", "Alt+Down", "Cmd+Option+Down", "The keys to the pane below"),
+    ("The window, fixed", "Alt+Shift+Left", "Cmd+Ctrl+Left", "Move the divider nearest the pane with the keys to the left"),
+    ("The window, fixed", "Alt+Shift+Right", "Cmd+Ctrl+Right", "Move the divider nearest the pane with the keys to the right"),
+    ("The window, fixed", "Alt+Shift+Up", "Cmd+Ctrl+Up", "Move the divider nearest the pane with the keys up"),
+    ("The window, fixed", "Alt+Shift+Down", "Cmd+Ctrl+Down", "Move the divider nearest the pane with the keys down"),
     ("The new-session dialog", "Enter", "Enter", "Create in a new tab"),
     ("The new-session dialog", "Alt+Enter", "Option+Enter", "Create split to the right of the pane with the keys"),
     ("The new-session dialog", "Tab", "Tab", "Complete the folder from the list"),

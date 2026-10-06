@@ -44,11 +44,13 @@ impl Start {
         Start::ALL.into_iter().find(|s| s.word() == w)
     }
 
-    /// The line typed into the new shell, if any.
-    pub fn typed(self) -> Option<String> {
+    /// The line typed into the new shell, if any: `claude` is Claude
+    /// Code's command (`[sessions] claude`).
+    pub fn typed(self, claude: &str) -> Option<String> {
+        let claude = if claude.trim().is_empty() { "claude" } else { claude.trim() };
         match self {
-            Start::Claude => Some("claude".into()),
-            Start::Resume => Some("claude --continue".into()),
+            Start::Claude => Some(claude.to_owned()),
+            Start::Resume => Some(format!("{claude} --continue")),
             Start::Shell => None,
         }
     }
@@ -121,10 +123,16 @@ pub fn more_place(k: usize, first: u64, made: &[u64]) -> (u64, tsumugi_layout::D
 pub const MORE_MOST: usize = 3;
 
 impl Dialog {
+    #[cfg(test)]
     pub fn new(folder: &std::path::Path) -> Self {
+        Self::starting(folder, Start::Claude)
+    }
+
+    /// The dialog with `start` chosen first (`[sessions] start`).
+    pub fn starting(folder: &std::path::Path, start: Start) -> Self {
         Self {
             folder: crate::home_short(folder),
-            start: Start::Claude,
+            start,
             tags: Vec::new(),
             dropped: Vec::new(),
             tag_input: String::new(),
@@ -433,8 +441,9 @@ mod tests {
         for s in Start::ALL {
             assert_eq!(Start::from_word(s.word()), Some(s));
         }
-        assert_eq!(Start::Claude.typed().as_deref(), Some("claude"));
-        assert_eq!(Start::Shell.typed(), None);
+        assert_eq!(Start::Claude.typed("").as_deref(), Some("claude"));
+        assert_eq!(Start::Resume.typed("C:\\tools\\claude.exe").as_deref(), Some("C:\\tools\\claude.exe --continue"));
+        assert_eq!(Start::Shell.typed("claude"), None);
     }
 
     #[test]
@@ -457,7 +466,7 @@ mod tests {
 
     #[test]
     fn rule_tags_follow_the_folder_less_those_taken_off() {
-        let rules = vec![TagRule { folder: "/srv/*".into(), tag: "{name}".into() }, TagRule { folder: "/srv/ci".into(), tag: "ci".into() }];
+        let rules = vec![TagRule { folder: "/srv/*".into(), tag: "{name}".into(), ..TagRule::default() }, TagRule { folder: "/srv/ci".into(), tag: "ci".into(), ..TagRule::default() }];
         let mut d = Dialog::new(std::path::Path::new("/srv/ci"));
         assert_eq!(d.rule_tags(&rules), ["ci"], "the same tag from two rules, once");
         d.dropped.push("ci".into());

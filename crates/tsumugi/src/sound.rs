@@ -1,20 +1,45 @@
-//! The fourth way to tell (the design's 1h): the system's own sound, once,
-//! on a thread of its own. Windows' message beep; on macOS a sound of the
-//! system's played by `afplay`; elsewhere the freedesktop sound theme's, by
-//! `canberra-gtk-play` or `paplay`, when either is there.
+//! The fourth way to tell (the design's 1h): a sound of the system's, once,
+//! on a thread of its own. `[notify] sound_waiting` and `sound_error` name
+//! one of four (`settings::SOUNDS`): `chime`, `low`, `alert`, `default`.
+//! Windows plays its message sounds; macOS a sound of the system's by
+//! `afplay`; elsewhere the freedesktop sound theme's, by `canberra-gtk-play`
+//! or `paplay`, when either is there.
 
-/// Play the sound for something that wants a person, or (`error`) failed.
-pub fn play(error: bool) {
-    let _ = std::thread::Builder::new().name("sound".into()).spawn(move || os::play(error));
+/// Play the sound named `name`.
+pub fn play(name: &str) {
+    let name = name.to_owned();
+    let _ = std::thread::Builder::new().name("sound".into()).spawn(move || os::play(&name));
+}
+
+/// Windows' focus mode (do not disturb), a presentation or a full-screen
+/// game is on: nothing should sound or flash. Best effort: what the shell
+/// says of the user's state.
+pub fn quiet_time() -> bool {
+    os::quiet_time()
 }
 
 #[cfg(windows)]
 mod os {
-    pub fn play(error: bool) {
+    pub fn play(name: &str) {
         use windows::Win32::System::Diagnostics::Debug::MessageBeep;
-        use windows::Win32::UI::WindowsAndMessaging::{MB_ICONASTERISK, MB_ICONHAND};
+        use windows::Win32::UI::WindowsAndMessaging::{MB_ICONASTERISK, MB_ICONEXCLAMATION, MB_ICONHAND, MB_OK};
+        let kind = match name {
+            "chime" => MB_ICONASTERISK,
+            "low" => MB_ICONHAND,
+            "alert" => MB_ICONEXCLAMATION,
+            _ => MB_OK,
+        };
         // SAFETY: no pointers; the sound is the system's.
-        let _ = unsafe { MessageBeep(if error { MB_ICONHAND } else { MB_ICONASTERISK }) };
+        let _ = unsafe { MessageBeep(kind) };
+    }
+
+    pub fn quiet_time() -> bool {
+        use windows::Win32::UI::Shell::{QUNS_BUSY, QUNS_PRESENTATION_MODE, QUNS_QUIET_TIME, QUNS_RUNNING_D3D_FULL_SCREEN, SHQueryUserNotificationState};
+        // SAFETY: no arguments; it answers a value.
+        match unsafe { SHQueryUserNotificationState() } {
+            Ok(s) => [QUNS_BUSY, QUNS_RUNNING_D3D_FULL_SCREEN, QUNS_PRESENTATION_MODE, QUNS_QUIET_TIME].contains(&s),
+            Err(_) => false,
+        }
     }
 }
 
@@ -27,16 +52,30 @@ mod os {
     }
 
     #[cfg(target_os = "macos")]
-    pub fn play(error: bool) {
-        let name = if error { "Basso" } else { "Glass" };
-        run("afplay", &[&format!("/System/Library/Sounds/{name}.aiff")]);
+    pub fn play(name: &str) {
+        let file = match name {
+            "chime" => "Glass",
+            "low" => "Basso",
+            "alert" => "Sosumi",
+            _ => "Tink",
+        };
+        run("afplay", &[&format!("/System/Library/Sounds/{file}.aiff")]);
     }
 
     #[cfg(not(target_os = "macos"))]
-    pub fn play(error: bool) {
-        let (event, file) = if error { ("dialog-error", "dialog-error.oga") } else { ("message-new-instant", "message.oga") };
+    pub fn play(name: &str) {
+        let (event, file) = match name {
+            "chime" => ("message-new-instant", "message.oga"),
+            "low" => ("dialog-error", "dialog-error.oga"),
+            "alert" => ("dialog-warning", "dialog-warning.oga"),
+            _ => ("bell", "bell.oga"),
+        };
         if !run("canberra-gtk-play", &["-i", event]) {
             run("paplay", &[&format!("/usr/share/sounds/freedesktop/stereo/{file}")]);
         }
+    }
+
+    pub fn quiet_time() -> bool {
+        false
     }
 }

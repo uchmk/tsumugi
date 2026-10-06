@@ -5,6 +5,44 @@
 
 ## [未リリース]
 
+## [0.41.0] - 2026-10-06
+
+### 追加
+
+- 設定の画面を見本（「Settings: every page」）どおりに作り直し、どの行も実際に効くようにした。
+  - 画面: ページの一覧の上に「Search settings」（語を含む行のあるページだけが件数付きで残り、その行が光る。Enter でそのページへ）。
+    開いている間、帯は中央に「Settings」と閉じる ✕ を出し、サイドバーとステータスバーは隠れる。文字の欄は Enter か欄を離れたときに書き、Esc で元に戻す。
+  - General: Language、On start（復元するか Welcome back か）、Default folder、Start the server at sign-in（Windows はレジストリの Run、
+    macOS は LaunchAgent、Linux は autostart の .desktop）、Keep sessions running（切ると窓を閉じたときにセッションを止める）、
+    Ask before closing a running session（動いているセッションがあれば閉じる前に聞く）、Check for updates（起動ごとに GitHub のリリースを見て、新しければ知らせる）。
+  - Appearance: Size と Line height を欄に、Nerd Font icons、Cursor（Block / Bar / Underline、点滅の有無。`tsumugi-pane` の `CursorStyle`）。
+  - Keys: Preset、Use Cmd on macOS（`[general] cmd_on_mac`）、見本の SESSIONS と PANES の並び、Resize。押したキーがほかの動作や Claude Code・シェルのキー
+    （Ctrl+C など）とぶつかれば行にそう書き、別のキーか「Use it anyway」まで書かない。
+  - Notifications: DETAILS（終わりを知らせる長さ `long_run`、待ちと失敗の音 `sound_waiting` / `sound_error` を 4 つから選んで ▶ で試せる、
+    Windows の集中モード中は鳴らさない `focus_mode`）と、タグのページへの「Edit tags…」。
+  - Sessions & profiles: Default program、Claude Code command、Resume conversations after a restart、「probably waiting」の秒数、
+    compact rows を勧めるタブの数（これまで 12 で固定）、プロファイルの Edit と Add（名前・フォルダー・始め方・タグ・ペイン）、
+    `[open]` の editor と filer のコマンド、タブの右クリックメニューの項目ごとの表示・順番（`[menu] order`）・自分の項目の追加と削除。
+  - Tags: 規則の追加（フォルダーかブランチの型）と削除、タグの名前の変更（規則・色・セッション・静かな印についていく）、色（自動か 8 色、`[tags.colors]`）、静かにする。
+  - Shell & hooks: 既定のシェル（入っているものから選ぶ）、引数、環境変数の編集、Claude Code のフックとシェル統合の状態と入れる・外す
+    （シェル統合はプロファイルに印の付いた塊で書き、外すときはその塊だけを消す）、Windows では ConPTY が同梱かどうか。
+  - Advanced: サーバーの再起動（セッションは書き残して戻る）、描画のバックエンド、スクロールバック、ペインの入出力のログ、設定の書き出しと読み込み
+    （設定・テーマ・プロファイルを 1 つのファイルに。読み込むときは前のファイルを `.bak` に残す）。
+- 設定のキー: `[general]`（default_folder、keep_sessions、ask_before_close、check_updates、cmd_on_mac）、`[sessions]`（start、claude、resume、quiet、
+  compact_after）、`[shell]`（program、args、`[shell.env]`）、`[advanced]`（backend、scrollback、pane_log）、`[appearance]` の nerd_icons と cursor、
+  `[notify]` の long_run・sound_waiting・sound_error・focus_mode、`[tags.colors]`、`[[tags.rule]]` の branch、`[menu] order`。
+  サーバーは `[sessions]`・`[shell]`・`[advanced]`・`[notify] long_run` を設定の変更のたびに読み直す。
+- `Alt+Shift+Arrows`（macOS は `Cmd+Ctrl+Arrows`）: キーのあるペインに一番近い仕切りをその向きに動かす（`tsumugi-layout` の `nudge`）。
+- 設定の画面のテスト: 窓なしで egui に描かせ、各ページに検索の索引の行が全部あること、ナビのクリック、検索での絞り込み、スイッチ・文字の欄・
+  キーの取り込み（ぶつかったときを含む）・Esc・規則の削除が出す変更を確かめる（7 件）。
+- TESTING.md に 9.5、9.6 と 17 節（30 行）を足し、TESTING-KEYS.md に Resize の 4 行を足した。
+
+### 変更
+
+- 8.3、9.1、11.4、12.4 の行を新しい画面に合わせて書き換えた（動きが変わったので印は付いていない）。
+- 新しいセッションのシェルは、窓ではなくサーバーが設定から選ぶ。
+- フックの申し出のカードは設定の画面の上には出さない（同じことが Shell & hooks にある）。
+
 ## [0.40.1] - 2026-10-06
 
 ### 追加

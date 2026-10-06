@@ -51,6 +51,34 @@ pub fn add(text: &str) -> Result<String, String> {
     Ok(v.pretty())
 }
 
+/// The settings with tsumugi's hooks taken out, and an event left empty by
+/// that taken out too; the rest as it was.
+pub fn remove(text: &str) -> Result<String, String> {
+    let mut v = Json::parse(text).map_err(|e| format!("Claude Code's settings.json does not read: {e}"))?;
+    let Json::Object(top) = &mut v else { return Err("Claude Code's settings.json is not an object".into()) };
+    if let Some((_, Json::Object(events))) = top.iter_mut().find(|(k, _)| k == "hooks") {
+        for (_, list) in events.iter_mut() {
+            if let Json::Array(list) = list {
+                list.retain(|x| !mentions(x, "tsumugi notify"));
+            }
+        }
+        events.retain(|(_, list)| !matches!(list, Json::Array(a) if a.is_empty()));
+    }
+    top.retain(|(k, v)| !(k == "hooks" && matches!(v, Json::Object(e) if e.is_empty())));
+    Ok(v.pretty())
+}
+
+/// Take them out of the file on disk (a thread's work), the old file kept
+/// beside it first.
+pub fn uninstall() -> Result<PathBuf, String> {
+    let path = settings_path().ok_or("no home folder")?;
+    let old = std::fs::read_to_string(&path).map_err(|e| format!("{}: {e}", path.display()))?;
+    let new = remove(&old)?;
+    std::fs::write(path.with_extension("json.tsumugi-backup"), &old).map_err(|e| format!("the backup: {e}"))?;
+    std::fs::write(&path, new).map_err(|e| format!("{}: {e}", path.display()))?;
+    Ok(path)
+}
+
 /// The value at `key`, put there as `empty` when there is none.
 fn entry<'a>(fields: &'a mut Vec<(String, Json)>, key: &str, empty: Json) -> &'a mut Json {
     let at = match fields.iter().position(|(k, _)| k == key) {
@@ -102,5 +130,17 @@ mod tests {
         assert!(present(&add("").unwrap()), "no file: one with only them");
         assert!(add("[1]").is_err());
         assert!(add("{not json").is_err());
+    }
+
+    #[test]
+    fn removing_takes_out_only_tsumugis() {
+        let mine = r#"{"model": "opus", "hooks": {"Stop": [{"hooks": [{"type": "command", "command": "say done"}]}]}}"#;
+        let back = remove(&add(mine).unwrap()).unwrap();
+        assert!(!present(&back));
+        let v = Json::parse(&back).unwrap();
+        assert_eq!(v.get("hooks").and_then(|h| h.get("Stop")).and_then(Json::array).map(Vec::len), Some(1), "{back}");
+        assert!(v.get("hooks").and_then(|h| h.get("Notification")).is_none(), "an emptied event goes: {back}");
+        let only = remove(&add("").unwrap()).unwrap();
+        assert!(Json::parse(&only).unwrap().get("hooks").is_none(), "{only}");
     }
 }

@@ -60,6 +60,84 @@ pub fn text(shell: Option<&str>) -> Result<&'static str, String> {
     }
 }
 
+/// The lines that mark the hook in a profile, so it can be found and taken
+/// out again (Settings, Shell & hooks).
+const BEGIN: &str = "# >>> tsumugi shell integration >>>";
+const END: &str = "# <<< tsumugi shell integration <<<";
+
+/// The profile with the hook between the marks: added at the end, or put in
+/// place of the one there.
+pub fn with_hook(profile: &str, hook: &str) -> String {
+    let mut out = without_hook(profile);
+    if !out.is_empty() && !out.ends_with('\n') {
+        out.push('\n');
+    }
+    out.push_str(BEGIN);
+    out.push_str(hook);
+    out.push_str(END);
+    out.push('\n');
+    out
+}
+
+/// The profile with the marked hook taken out.
+pub fn without_hook(profile: &str) -> String {
+    let (Some(a), Some(b)) = (profile.find(BEGIN), profile.find(END)) else { return profile.to_string() };
+    if b < a {
+        return profile.to_string();
+    }
+    let rest = &profile[b + END.len()..];
+    let mut out = profile[..a].to_string();
+    out.push_str(rest.strip_prefix('\n').unwrap_or(rest));
+    out
+}
+
+/// The marked hook is in the profile.
+pub fn has_hook(profile: &str) -> bool {
+    profile.contains(BEGIN)
+}
+
+/// The profile file a shell reads at start, by the shell's program name.
+/// PowerShell is asked for its `$PROFILE` (it moves with OneDrive), so this
+/// is a thread's work.
+pub fn profile(shell: &str) -> Option<std::path::PathBuf> {
+    let home = tsumugi_mux::settings::home()?;
+    let name = std::path::Path::new(shell).file_stem()?.to_string_lossy().to_ascii_lowercase();
+    match name.as_str() {
+        "bash" => Some(home.join(".bashrc")),
+        "zsh" => Some(std::env::var_os("ZDOTDIR").map(std::path::PathBuf::from).unwrap_or(home).join(".zshrc")),
+        "pwsh" => {
+            let mut cmd = std::process::Command::new(shell);
+            cmd.args(["-NoLogo", "-NoProfile", "-Command", "$PROFILE.CurrentUserCurrentHost"]).stdin(std::process::Stdio::null());
+            #[cfg(windows)]
+            {
+                use std::os::windows::process::CommandExt;
+                cmd.creation_flags(0x0800_0000);
+            }
+            let asked = cmd.output().ok().map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string()).filter(|p| !p.is_empty());
+            asked.map(std::path::PathBuf::from).or_else(|| {
+                Some(if cfg!(windows) { home.join("Documents/PowerShell/Microsoft.PowerShell_profile.ps1") } else { home.join(".config/powershell/Microsoft.PowerShell_profile.ps1") })
+            })
+        }
+        _ => None,
+    }
+}
+
+/// Add the hook to the shell's profile, or take it out (a thread's work).
+pub fn set_installed(shell: &str, on: bool) -> Result<std::path::PathBuf, String> {
+    let name = std::path::Path::new(shell).file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+    let hook = text(Some(&name))?;
+    let path = profile(shell).ok_or_else(|| format!("no profile known for {name}"))?;
+    let old = std::fs::read_to_string(&path).unwrap_or_default();
+    let new = if on { with_hook(&old, hook) } else { without_hook(&old) };
+    if new != old {
+        if let Some(dir) = path.parent() {
+            std::fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+        }
+        std::fs::write(&path, new).map_err(|e| format!("{}: {e}", path.display()))?;
+    }
+    Ok(path)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -75,5 +153,16 @@ mod tests {
             assert!(hook.starts_with("\n#") && hook.ends_with('\n') && hook.contains("]7;file://"), "{hook:?}");
             assert!(!hook.contains("filer"), "{hook:?}");
         }
+    }
+
+    #[test]
+    fn the_marked_hook_goes_in_once_and_comes_out_clean() {
+        let mine = "alias ll='ls -l'";
+        let once = with_hook(mine, BASH);
+        assert!(has_hook(&once) && once.starts_with("alias ll='ls -l'\n# >>> tsumugi"), "{once}");
+        assert_eq!(with_hook(&once, BASH), once, "twice is once");
+        assert_eq!(without_hook(&once), "alias ll='ls -l'\n");
+        assert_eq!(without_hook(mine), mine);
+        assert!(has_hook(&with_hook("", ZSH)));
     }
 }

@@ -115,7 +115,8 @@ without going there.
 ### Splits
 
 `Alt+Shift+=` splits the pane with the keys to the right, `Alt+Shift+-`
-below (`Cmd+D` and `Cmd+Shift+D` on macOS); `Alt+Arrows` move between them
+below (`Cmd+D` and `Cmd+Shift+D` on macOS); `Alt+Arrows` move between them,
+`Alt+Shift+Arrows` move the nearest divider (`Cmd+Ctrl+Arrows` on macOS)
 and `Ctrl+Shift+Z` zooms one. Drag a pane by its header onto another: the
 middle trades their places, an edge puts it on that side. A pane narrower
 than 20 columns or lower than 4 rows folds into a strip with its name and
@@ -193,11 +194,22 @@ wearing it. Folder rules in the settings tag sessions by themselves.
 ### Settings
 
 `Ctrl+,` (`Cmd+,` on macOS), or **Settings** in the search, opens the
-settings screen: General (the clock, restoring without asking), Appearance,
-Keys, Notifications (the table of which states tell in which way, quiet
-tags, a test), Sessions & profiles, Tags, Theme (the list and a preview,
-applied as you pick), Shell & hooks and Advanced. A change there rewrites
-only its own line of `settings.toml`, so what you wrote by hand stays.
+settings screen, nine pages under a search field: General (what the window
+shows first, the default folder, starting the server at sign-in, what
+closing the window does, checking for updates, the clock), Appearance (the
+font, the cursor, the title bar, the material, motion), Keys (click one,
+press the new one; a clash with another key or with Claude Code is named),
+Notifications (the table of which states tell in which way, how long a run
+counts as finished, the sounds, Windows' focus mode, quiet tags), Sessions
+& profiles (what a new session runs, the `claude` command, resuming,
+"probably waiting", profiles to edit and add, the tab menu's items and
+order), Tags (rules by folder or branch, a tag's name, colour and quiet),
+Theme, Shell & hooks (the shell, its arguments and variables, Claude Code's
+hooks and the shell integration put in or taken out) and Advanced
+(restarting the server, the graphics backend, scrollback, a log of the
+panes' traffic, exporting and importing the settings). A change there
+rewrites only its own line or table of `settings.toml`, so what you wrote
+by hand stays; a field writes on Enter, and Esc leaves it as it was.
 
 `settings.toml` is read from `%APPDATA%\tsumugi\` on Windows,
 `~/Library/Application Support/tsumugi/` on macOS and `~/.config/tsumugi/`
@@ -222,6 +234,43 @@ tag = "filer"
 folder = "~/dev/*"
 tag = "{name}"
 
+# A session on a branch like this (with a folder too, both must match).
+[[tags.rule]]
+branch = "claude/*"
+tag = "claude"
+
+# A tag's own colour, over the one picked from its name.
+[tags.colors]
+claude = "#5e4a86"
+
+[general]
+default_folder = "~/dev"   # where a session starts with no pane open
+keep_sessions = true       # off: closing the window stops the sessions
+ask_before_close = true    # ask when something is still running
+check_updates = true       # a note when a newer release is out
+cmd_on_mac = true          # macOS: Cmd+T rather than Ctrl+Shift+T
+
+[sessions]
+start = "claude"           # what the new-session dialog picks: claude, resume, shell
+claude = "claude"          # the command that is Claude Code
+resume = true              # claude --resume in restored sessions
+quiet = 10                 # seconds of silence before "probably waiting"; 0: never
+compact_after = 12         # tabs before one line each is offered
+
+# The shell sessions start (empty: pwsh where it is, else the system's),
+# with its arguments and variables.
+[shell]
+program = "pwsh"
+args = ["-NoLogo"]
+
+[shell.env]
+EDITOR = "code --wait"
+
+[advanced]
+backend = "auto"           # auto, gl, vulkan, dx12, metal (when the window opens next)
+scrollback = 10000         # lines kept per pane
+pane_log = false           # what each pane sends and receives, beside the saved tabs
+
 # Which states tell you in which way while you are not at the window
 # (sound: the system's own sound, once):
 # waiting, error, done (done only after a run of a minute or more).
@@ -229,6 +278,11 @@ tag = "{name}"
 system = ["waiting", "error", "done"]   # the system's notification
 taskbar = ["waiting", "error"]          # the number on the taskbar
 flash = []                              # flash the taskbar button
+sound = []                              # a sound, once
+long_run = 60                           # a finish counts after this many seconds
+sound_waiting = "chime"                 # chime, low, alert or default
+sound_error = "low"
+focus_mode = true                       # nothing while Windows' focus mode is on
 
 # The status bar's clock; date_format is YYYY/MM/DD, YYYY-MM-DD, MM/DD/YYYY
 # or DD/MM/YYYY.
@@ -270,15 +324,19 @@ ligatures = true
 [appearance]
 dim = 35
 animations = true
+nerd_icons = true          # the Nerd Font's icons where one is installed
+cursor = "block-blink"     # block, bar or underline, -blink to blink
 
 # What the tab's menu opens its folder with; the system's shell runs it.
 [open]
 editor = "code {folder}"
 filer = "filer {folder}"
 
-# The tab's menu: items left out, and your own ({folder}, {session}).
+# The tab's menu: items left out, the built-in items' order (those not
+# named follow), and your own ({folder}, {session}).
 [menu]
 hide = ["new-window"]
+order = ["rename", "close"]
 
 [[menu.session]]
 name = "Open lazygit here"

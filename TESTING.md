@@ -165,16 +165,18 @@ what happened, and the steps.
 | --- | --- | --- |
 | 8.1 | Split tabs with Claude conversations, then reboot (or stop the server) and start tsumugi | **Welcome back** lists the tabs; Restore brings their splits and folders back |
 | 8.2 | A restored Claude Code pane | `claude --resume <id>` was typed: the conversation is back |
-| 8.3 | Settings → General → Restore without asking, then 8.1 | No Welcome back; the tabs simply return |
+| 8.3 | Settings → General → On start → Restore the last sessions, then 8.1 | No Welcome back; the tabs simply return |
 
 ## 9. The settings screen
 
 | # | Do | Expect |
 | --- | --- | --- |
-| 9.1 | `Ctrl+,` | The screen with its nine pages; `Esc` closes it |
+| 9.1 | `Ctrl+,` | The screen with its nine pages and the search field over them; the band says Settings in the middle with an X; no sidebar or status bar; `Esc` and the X close it |
 | 9.2 | Change something on each page | Only that line of `settings.toml` changes (diff the file); comments stay |
 | 9.3 | Write a mistake into `settings.toml` by hand | A red line above the status bar says what and where, until it is fixed; nothing else changes |
 | 9.4 | Open settings.toml / Open the settings folder | The system's editor / file manager opens |
+| 9.5 | Type `scroll` in Search settings | Only Advanced in the list, with a count; its Scrollback row lit; Enter goes there |
+| 9.6 | Next to the design's "Settings: every page" | The same pages, sections and rows in the same order |
 
 ## 10. Themes
 
@@ -193,7 +195,7 @@ what happened, and the steps.
 | 11.1 | Settings → Appearance → Font list | The installed monospace fonts (Cascadia, Consolas, any Nerd Font) |
 | 11.2 | Pick Cascadia Code; `printf '\e[1mbold\e[0m \e[3mitalic\e[0m'` | The pane in Cascadia; bold and italic in their own faces; the line under the list names the files found |
 | 11.3 | Consolas | Its bold and italic found too (`consolab.ttf`, `consolai.ttf`) |
-| 11.4 | Size and line height sliders | The grid re-fits; text in the middle of taller rows; `tsumugi ls` shows the new columns × rows after a moment |
+| 11.4 | Size and line height: type a value, Enter | The grid re-fits; text in the middle of taller rows; `tsumugi ls` shows the new columns × rows after a moment; `Esc` in the field leaves it as it was |
 | 11.5 | Cascadia Code or Fira Code, `echo '-> != == >= => |> www'` | Each shown as one sign, on the grid; Ligatures off draws them as plain characters |
 | 11.6 | Japanese text and a Nerd Font icon in a prompt | Japanese from the system font, icons from the Nerd Font, neither as boxes |
 
@@ -204,7 +206,7 @@ what happened, and the steps.
 | 12.1 | Without the hooks in `~/.claude/settings.json`, start tsumugi | **Let Claude Code tell tsumugi when it waits?** at the bottom right |
 | 12.2 | Add the hooks | Both in the file beside any there, `settings.json.tsumugi-backup` next to it, and a toast |
 | 12.3 | Not now / Don't ask again | Asked again at the next start / never again |
-| 12.4 | Settings → Shell & hooks → Add them for me, twice | Added once; the second changes nothing |
+| 12.4 | Settings → Shell & hooks → Claude Code hooks → Add | Added, the row says Installed; Remove takes only tsumugi's out, the backup beside it |
 
 ## 13. The window's frame
 
@@ -248,3 +250,38 @@ what happened, and the steps.
 | 16.2 | Its own | The key goes back; the search box and the dialog name the key in force |
 | 16.3 | `zoom = "none"` | `Ctrl+Shift+Z` reaches the shell |
 | 16.4 | Press only Ctrl while a key is being changed | Nothing is written until a real key comes |
+
+## 17. What the settings' rows do
+
+| # | Do | Expect |
+| --- | --- | --- |
+| 17.1 | General → Start the server at sign-in on; sign out and in | `tsumugi ls` answers before the window is opened; the `tsumugi` value under `HKCU\…\Run` (macOS: the LaunchAgent; Linux: `~/.config/autostart/tsumugi-server.desktop`); off takes it away |
+| 17.2 | Keep sessions running off; close the window with a shell open | `tsumugi ls` is empty afterwards |
+| 17.3 | Ask before closing on; `sleep 100` in a pane; close the window | "A session is still running"; Cancel keeps the window; Close closes it |
+| 17.4 | Check for updates on, with a build older than the latest release | A toast names the newer version, once a start |
+| 17.5 | Default folder `~/dev`; start with no session | The first shell starts in `~/dev` |
+| 17.6 | Appearance → Cursor, each of the six | The focused pane's cursor is a block, a bar or a line under, blinking when asked; a pane without the keys shows an outline |
+| 17.7 | Nerd Font icons off, with a Nerd Font installed | The branch mark is drawn, not the font's icon |
+| 17.8 | Keys → New session → press `Ctrl+Shift+W`, then `Ctrl+C` | The row says whose each is; nothing written; another key, or Use it anyway, writes it |
+| 17.9 | `Alt+Shift+Arrows` in a split | The nearest divider moves that way a step at a time; the split is kept after a restart |
+| 17.10 | Notifications → ▶ beside each sound, each of the four | Four different system sounds |
+| 17.11 | Focus mode on in Windows; a session waits while the window is behind | No sound, flash or toast; the taskbar number still comes |
+| 17.12 | Tell about a finish → 5 min; a 1-minute command finishes behind | No notice for it |
+| 17.13 | Sessions → Default program → Shell | The new-session dialog opens with Shell picked |
+| 17.14 | Claude Code command: a full path to `claude` | New Claude Code sessions run that program |
+| 17.15 | Resume conversations off; restart with a Claude Code pane | It comes back as a plain shell, nothing typed |
+| 17.16 | "Probably waiting" after 3; a program that prints nothing | Its card turns to probably waiting after about 3 s |
+| 17.17 | Offer compact rows above 3; four tabs | The offer of one line each comes |
+| 17.18 | Profiles → Edit: another folder and a pane on the right; Add a new one | `profiles.toml` has them; the new-session dialog's profile opens both panes |
+| 17.19 | Tab menu: hide Pin, move Close the session up, add `lazygit -p {folder}` | The right-click menu follows; the item runs lazygit in the session's folder |
+| 17.20 | Open with → Editor command `code {folder}` | Open in the editor opens VS Code in the session's folder |
+| 17.21 | Tags → New rule → Branch `claude/*`, tag `claude` | A session on a `claude/…` branch gets the tag |
+| 17.22 | Edit a tag: rename it, pick a colour, Quiet | Renamed on the sessions and in the rules; the chip recoloured everywhere; its notices go to the bell only |
+| 17.23 | Shell → Default shell, Arguments `-NoLogo`, Environment `FOO=1` | A new shell session runs that shell with the argument; `echo $env:FOO` prints 1 |
+| 17.24 | Shell integration → Install, then Remove (pwsh) | A marked block appears in `$PROFILE`, and goes; a new session with it reports its folder |
+| 17.25 | Windows → ConPTY | Bundled, with the zip's build; the system's, with a bare exe |
+| 17.26 | Advanced → Restart the server | The window says it is restarting; the tabs come back (or Welcome back); the uptime starts again |
+| 17.27 | Graphics backend → Vulkan, then a name the machine has no adapter for, restart | Draws with it; for the missing one, the automatic choice and a line on stderr |
+| 17.28 | Scrollback 200; a new session; `seq 1000` | Only about 200 lines to scroll back |
+| 17.29 | Log what each pane sends and receives on; a new session | `pane-logs/session-N.log` beside the saved tabs grows as it runs |
+| 17.30 | Export…, then Import on another machine (or after changing things) | One file in Downloads; importing brings the settings, themes and profiles back, the old ones kept as `.bak` |

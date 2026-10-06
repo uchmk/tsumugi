@@ -41,6 +41,10 @@ mod theme;
 mod usage;
 mod worktree;
 mod spawn;
+mod autostart;
+mod facts;
+mod update;
+mod export;
 
 use std::time::Duration;
 
@@ -320,7 +324,7 @@ fn window() -> std::process::ExitCode {
     if (cfg!(windows) || cfg!(target_os = "macos")) && first.window.material != "none" {
         viewport = viewport.with_transparent(true);
     }
-    let options = eframe::NativeOptions { viewport, wgpu_options: wgpu_options(), ..Default::default() };
+    let options = eframe::NativeOptions { viewport, wgpu_options: wgpu_options(&first.advanced.backend), ..Default::default() };
     match eframe::run_native("tsumugi", options, Box::new(|cc| Ok(Box::new(App::new(cc))))) {
         Ok(()) => std::process::ExitCode::SUCCESS,
         Err(e) => {
@@ -331,15 +335,23 @@ fn window() -> std::process::ExitCode {
 }
 
 /// GL first on Windows, where Vulkan and DX12 spin a core on AMD for an idle
-/// window (filer #232); `WGPU_BACKEND` overrides, as it does for wgpu itself.
-fn wgpu_options() -> eframe::WgpuConfiguration {
+/// window (filer #232); `[advanced] backend` names another, and
+/// `WGPU_BACKEND` overrides both, as it does for wgpu itself.
+fn wgpu_options(backend: &str) -> eframe::WgpuConfiguration {
     use eframe::egui_wgpu::WgpuSetup;
     let mut options = eframe::WgpuConfiguration::default();
     if std::env::var_os("WGPU_BACKEND").is_some_and(|v| !v.is_empty()) {
         return options;
     }
-    let picked = tsumugi_pane::gpu::pick_backends(None, cfg!(windows), tsumugi_pane::gpu::has_adapter);
-    if let (Ok(Some(backends)), WgpuSetup::CreateNew(setup)) = (picked, &mut options.wgpu_setup) {
+    let named = (backend != "auto").then_some(backend);
+    let picked = match tsumugi_pane::gpu::pick_backends(named, cfg!(windows), tsumugi_pane::gpu::has_adapter) {
+        Ok(b) => b,
+        Err(auto) => {
+            eprintln!("tsumugi: no `{backend}` adapter on this machine; drawing with the automatic choice");
+            auto
+        }
+    };
+    if let (Some(backends), WgpuSetup::CreateNew(setup)) = (picked, &mut options.wgpu_setup) {
         setup.instance_descriptor.backends = backends;
     }
     options
@@ -365,6 +377,10 @@ fn connect(wake: impl Fn() + Send + Sync + Clone + 'static) -> Result<Client, St
         }
     }
 }
+
+/// What a settings job says when it is done: words for the toast, or why
+/// it failed.
+type JobDone = Result<String, String>;
 
 /// How a failure to connect to a server of another version starts.
 const OTHER_VERSION: &str = "A tsumugi server of another version is running: ";
@@ -508,7 +524,7 @@ fn set_always_restore(on: bool) {
 }
 
 fn new_session(client: &Client, cwd: std::path::PathBuf, place: Place) -> Result<RemotePane, String> {
-    let shell = tsumugi_pane::default_shell().map(|s| (s, Vec::new()));
+    let shell = None;
     client.spawn_at(cwd, shell, Size::new(80, 24), (8, 16), place).map_err(|e| format!("the shell did not start: {e}"))
 }
 
@@ -605,6 +621,20 @@ struct App {
     worktree_making: Option<(std::sync::mpsc::Receiver<Result<std::path::PathBuf, String>>, newsession::Create)>,
     worktree_lived: std::collections::HashSet<std::path::PathBuf>,
     worktree_ask: Option<std::path::PathBuf>,
+    /// The window was asked to close while sessions were running: how many,
+    /// until the question is answered.
+    closing: Option<usize>,
+    /// What the settings screen says of the machine, and its reading.
+    facts: Option<facts::Facts>,
+    facts_rx: Option<std::sync::mpsc::Receiver<facts::Facts>>,
+    /// The settings screen's work on threads (hooks, export, starting at
+    /// sign-in): what to say when each is done.
+    jobs: (std::sync::mpsc::Sender<JobDone>, std::sync::mpsc::Receiver<JobDone>),
+    /// The check for a newer release, once a start (`[general] check_updates`).
+    update: Option<std::sync::mpsc::Receiver<Option<String>>>,
+    update_asked: bool,
+    /// The question was answered "Close": the next request goes through.
+    close_ok: bool,
     worktree_removing: Option<(std::path::PathBuf, std::sync::mpsc::Receiver<Result<(), String>>)>,
     /// A few words above the status bar for a few seconds: what was done,
     /// or (true) what went wrong.
@@ -799,6 +829,13 @@ impl App {
             worktree_making: None,
             worktree_lived: std::collections::HashSet::new(),
             worktree_ask: None,
+            closing: None,
+            facts: None,
+            facts_rx: None,
+            jobs: std::sync::mpsc::channel(),
+            update: None,
+            update_asked: false,
+            close_ok: false,
             worktree_removing: None,
             toast: None,
             font_family: first_font.family.clone(),
@@ -899,7 +936,7 @@ impl App {
         };
         match action {
             // The dialog, with this pane's folder in it (the design's 1g).
-            keys::Action::NewTab => self.new_session = Some(newsession::Dialog::new(&here)),
+            keys::Action::NewTab => self.new_session = Some(self.dialog(&here)),
             keys::Action::SplitRight => self.pending = start(Place::Split { beside: w.focus, dir: Dir::Right }),
             keys::Action::SplitDown => self.pending = start(Place::Split { beside: w.focus, dir: Dir::Down }),
             keys::Action::CloseTab => {
@@ -936,9 +973,18 @@ impl App {
                     self.set_focus(w, next);
                 }
             }
+            keys::Action::Resize(toward) => {
+                // A twentieth of the split a press.
+                let mut layout = w.layout.clone();
+                if layout.nudge(&w.focus, toward, 0.05) {
+                    if let Some(client) = &self.client {
+                        client.set_layout(w.id, layout, w.focus);
+                    }
+                }
+            }
             keys::Action::Zoom => self.zoom = !self.zoom,
             keys::Action::Search => self.search = Some(palette::View::new()),
-            keys::Action::Settings => self.prefs = Some(prefs::Screen::default()),
+            keys::Action::Settings => self.open_settings(),
             keys::Action::Input => self.input.toggle(),
             keys::Action::Rail => {
                 self.view.rail = !self.view.rail;
@@ -1046,19 +1092,60 @@ impl App {
             muted_tags: &muted_tags,
             sort: self.view.sort,
             always_restore: always_restore(),
-            nerd: self.nerd,
+            nerd: self.nerd(),
             font_names: fonts::names(),
             font_file: self.font_file.as_ref().map(|p| p.display().to_string()),
             faces: self.faces_found,
             server_up: chrome::elapsed(chrome::now_ms().saturating_sub(client.started_ms())),
             settings_path: shown(tsumugi_mux::settings::default_path().and_then(|p| p.parent().map(std::path::Path::to_path_buf))),
             state_path: shown(tsumugi_mux::state::default_path()),
+            address: Address::for_user().0.display().to_string(),
+            facts: self.facts.as_ref(),
         };
         let Some(screen) = &mut self.prefs else { return };
         let changes = prefs::show(ui, &self.palette, screen, &seen);
         for change in changes {
             match change {
-                prefs::Change::Set(table, key, value) => write_setting(self.settings_tx.clone(), table, key, value),
+                prefs::Change::Set(table, key, value) => edit_settings(self.settings_tx.clone(), move |t| tsumugi_mux::settings::set_key(t, table, key, &value)),
+                prefs::Change::SetIn(table, key, value) => edit_settings(self.settings_tx.clone(), move |t| match &value {
+                    Some(v) => tsumugi_mux::settings::set_key(t, Some(&table), &key, v),
+                    None => tsumugi_mux::settings::remove_key(t, Some(&table), &key),
+                }),
+                prefs::Change::Rules(rules) => edit_settings(self.settings_tx.clone(), move |t| write_rules(t, &rules)),
+                prefs::Change::MenuItems(items) => edit_settings(self.settings_tx.clone(), move |t| {
+                    let blocks: Vec<Vec<(&str, String)>> = items.iter().map(|i| vec![("name", tsumugi_mux::settings::quote(&i.name)), ("command", tsumugi_mux::settings::quote(&i.command))]).collect();
+                    tsumugi_mux::settings::set_tables(t, "menu.session", &blocks)
+                }),
+                prefs::Change::RenameTag(old, new) => self.rename_tag(client, sessions, old, new),
+                prefs::Change::PlaySound(name) => sound::play(&name),
+                prefs::Change::SaveProfile(was, profile) => {
+                    match self.profiles.iter_mut().find(|p| Some(&p.name) == was.as_ref()) {
+                        Some(p) => *p = profile,
+                        None => self.profiles.push(profile),
+                    }
+                    self.save_profiles();
+                }
+                prefs::Change::Autostart(on) => self.job(move || {
+                    autostart::set(on)?;
+                    Ok(if on { "The server now starts when you sign in".into() } else { "The server no longer starts at sign-in".into() })
+                }),
+                prefs::Change::Hooks(true) => self.add_hooks(),
+                prefs::Change::Hooks(false) => self.job(|| hooks::uninstall().map(|p| format!("tsumugi's hooks are out of {}; the old file is beside it", home_short(&p)))),
+                prefs::Change::ShellHook(shell, on) => self.job(move || {
+                    let p = shellhook::set_installed(&shell, on)?;
+                    Ok(if on { format!("The shell integration is in {}: new sessions have it", home_short(&p)) } else { format!("The shell integration is out of {}", home_short(&p)) })
+                }),
+                prefs::Change::RestartServer => self.restart_server(ui.ctx()),
+                prefs::Change::Export => self.job(|| {
+                    let dir = tsumugi_mux::settings::default_path().and_then(|p| p.parent().map(std::path::Path::to_path_buf)).ok_or("no settings folder")?;
+                    let to = export::place().ok_or("no home folder")?;
+                    export::export(&dir, &to).map(|f| format!("Exported to {}", home_short(&f)))
+                }),
+                prefs::Change::Import(from) => self.job(move || {
+                    let dir = tsumugi_mux::settings::default_path().and_then(|p| p.parent().map(std::path::Path::to_path_buf)).ok_or("no settings folder")?;
+                    export::import(&dir, std::path::Path::new(&from)).map(|n| format!("Read {n} files back; those there before are kept as .bak. Profiles come back when the window opens next"))
+                }),
+                prefs::Change::GoTo(_) => {}
                 prefs::Change::MuteTag(tag, on) => client.mute_tag(tag, on),
                 prefs::Change::TestNotification => self.teller.send(alert::Out::Notify {
                     session: 0,
@@ -1067,12 +1154,7 @@ impl App {
                 }),
                 prefs::Change::DeleteProfile(name) => {
                     self.profiles.retain(|p| p.name != name);
-                    let left = self.profiles.clone();
-                    let _ = std::thread::Builder::new().name("profiles".into()).spawn(move || {
-                        if let Some(path) = tsumugi_mux::settings::profiles_path() {
-                            let _ = tsumugi_mux::settings::save_profiles(&path, &left);
-                        }
-                    });
+                    self.save_profiles();
                 }
                 prefs::Change::Sort(s) => {
                     self.view.sort = s;
@@ -1091,7 +1173,6 @@ impl App {
                     }
                 }
                 prefs::Change::Copy(text) => ui.ctx().copy_text(text),
-                prefs::Change::AddHooks => self.add_hooks(),
                 prefs::Change::Close => self.prefs = None,
             }
         }
@@ -1172,8 +1253,8 @@ impl App {
             Some(w) if c.split => Place::Split { beside: w.focus, dir: Dir::Right },
             _ => Place::NewWorkspace,
         };
-        let shell = tsumugi_pane::default_shell().map(|s| (s, Vec::new()));
-        match client.spawn_typing(c.folder.clone(), shell, Size::new(80, 24), (8, 16), place, c.start.typed()) {
+        let shell = None;
+        match client.spawn_typing(c.folder.clone(), shell, Size::new(80, 24), (8, 16), place, c.start.typed(&self.settings_now.sessions.claude)) {
             Ok(pane) => {
                 let id = pane.id();
                 self.pending = Some(id);
@@ -1189,8 +1270,8 @@ impl App {
                 let mut made = Vec::new();
                 for (k, s) in c.more.iter().enumerate() {
                     let (beside, dir) = newsession::more_place(k, id, &made);
-                    let shell = tsumugi_pane::default_shell().map(|s| (s, Vec::new()));
-                    match client.spawn_typing(c.folder.clone(), shell, Size::new(80, 24), (8, 16), Place::Split { beside, dir }, s.typed()) {
+                    let shell = None;
+                    match client.spawn_typing(c.folder.clone(), shell, Size::new(80, 24), (8, 16), Place::Split { beside, dir }, s.typed(&self.settings_now.sessions.claude)) {
                         Ok(pane) => {
                             made.push(pane.id());
                             for t in c.tags.iter().cloned() {
@@ -1301,7 +1382,7 @@ impl App {
                 let button = chrome::sort_button(ui, &pal, self.view.sort.short());
                 ui.add_space(2.0);
                 if chrome::plus_button(ui, &pal).clicked() {
-                    self.new_session = Some(newsession::Dialog::new(&self.here(workspaces, sessions)));
+                    self.new_session = Some(self.dialog(&self.here(workspaces, sessions)));
                 }
                 egui::Popup::menu(&button).show(|ui| {
                     for s in sort::Sort::ALL {
@@ -1418,7 +1499,7 @@ impl App {
         });
 
         // Past twelve tabs, once: one line each? (the design's 1i)
-        if !self.view.asked && tabs.len() > 12 && self.view.density == sort::Density::Cards {
+        if !self.view.asked && tabs.len() > self.settings_now.sessions.compact_after && self.view.density == sort::Density::Cards {
             let margin = egui::Margin { left: 12, right: 10, top: 2, bottom: 6 };
             egui::Frame::NONE.inner_margin(margin).show(ui, |ui| {
                 egui::Frame::NONE.fill(crate::theme::colors().panel).corner_radius(8.0).inner_margin(egui::Margin::same(8)).show(ui, |ui| {
@@ -1615,7 +1696,7 @@ impl App {
                 painter.galley(egui::pos2(left, y), folder, pal.fg_dim);
                 if let Some(b) = branch {
                     let mark = egui::Rect::from_min_size(egui::pos2(left + folder_w + 6.0, y + 1.0), egui::vec2(11.0, 11.0));
-                    chrome::branch_mark(&painter, mark, pal.fg_dim, self.nerd);
+                    chrome::branch_mark(&painter, mark, pal.fg_dim, self.nerd());
                     painter.galley(egui::pos2(mark.right() + 3.0, y), b, pal.fg_dim);
                 }
                 if let (Some(g), Some(c)) = (diff, &changed) {
@@ -1758,109 +1839,133 @@ impl App {
                 let menu = egui::Popup::context_menu(&resp).close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside);
                 menu.show(|ui| {
                     ui.set_min_width(240.0);
-                    if shown_item("rename") {
-                        match &mut self.renaming {
-                            Some((id, text)) if *id == w.id => {
-                                let edit = ui.add(egui::TextEdit::singleline(text).id(egui::Id::new(("rename", w.id))).hint_text("The tab's name").desired_width(220.0));
-                                edit.request_focus();
-                                if ui.input(|i| i.key_pressed(egui::Key::Enter)) {
-                                    ops.push(SideOp::Rename(w.id, text.clone()));
-                                    self.renaming = None;
+                    // In the settings' order (`[menu] order`), a line between
+                    // groups; one's own items before "Close the session".
+                    let mut last_group = None;
+                    for word in tsumugi_mux::settings::menu_words(&self.menu.order) {
+                        if word == "close" && !self.menu.session.is_empty() {
+                            ui.separator();
+                            for item in &self.menu.session {
+                                if ui.button(&item.name).on_hover_text(&item.command).clicked() {
+                                    menu::run(tsumugi_mux::settings::fill(&item.command, &focus.cwd, focus.id));
                                     ui.close();
                                 }
                             }
-                            _ => {
-                                if ui.button("Rename…").clicked() {
-                                    self.renaming = Some((w.id, w.name.clone()));
+                            last_group = Some("own");
+                        }
+                        if !shown_item(word) {
+                            continue;
+                        }
+                        let group = tsumugi_mux::settings::menu_group(word);
+                        if last_group.is_some_and(|g| g != group) {
+                            ui.separator();
+                        }
+                        last_group = Some(group);
+                        match word {
+                            "rename" => {
+                                match &mut self.renaming {
+                                    Some((id, text)) if *id == w.id => {
+                                        let edit = ui.add(egui::TextEdit::singleline(text).id(egui::Id::new(("rename", w.id))).hint_text("The tab's name").desired_width(220.0));
+                                        edit.request_focus();
+                                        if ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                                            ops.push(SideOp::Rename(w.id, text.clone()));
+                                            self.renaming = None;
+                                            ui.close();
+                                        }
+                                    }
+                                    _ => {
+                                        if ui.button("Rename…").clicked() {
+                                            self.renaming = Some((w.id, w.name.clone()));
+                                        }
+                                    }
                                 }
                             }
-                        }
-                    }
-                    if shown_item("tags") {
-                        for t in &tags {
-                            if ui.button(format!("Remove tag {t}")).clicked() {
-                                ops.push(SideOp::Tag(ids.clone(), t.to_string(), false));
-                            }
-                        }
-                        if tags.len() < tsumugi_mux::proto::MAX_TAGS {
-                            let edit = ui.add(egui::TextEdit::singleline(&mut self.tag_input).id(egui::Id::new(("tag-input", w.id))).hint_text("Add a tag").desired_width(220.0));
-                            if edit.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
-                                if let Some(t) = tsumugi_mux::proto::tag_name(&self.tag_input) {
-                                    ops.push(SideOp::Tag(ids.clone(), t, true));
+                            "tags" => {
+                                for t in &tags {
+                                    if ui.button(format!("Remove tag {t}")).clicked() {
+                                        ops.push(SideOp::Tag(ids.clone(), t.to_string(), false));
+                                    }
                                 }
-                                self.tag_input.clear();
-                                edit.request_focus();
+                                if tags.len() < tsumugi_mux::proto::MAX_TAGS {
+                                    let edit = ui.add(egui::TextEdit::singleline(&mut self.tag_input).id(egui::Id::new(("tag-input", w.id))).hint_text("Add a tag").desired_width(220.0));
+                                    if edit.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                                        if let Some(t) = tsumugi_mux::proto::tag_name(&self.tag_input) {
+                                            ops.push(SideOp::Tag(ids.clone(), t, true));
+                                        }
+                                        self.tag_input.clear();
+                                        edit.request_focus();
+                                    }
+                                } else {
+                                    ui.label(egui::RichText::new(format!("{} tags at most", tsumugi_mux::proto::MAX_TAGS)).color(pal.fg_dim));
+                                }
                             }
-                        } else {
-                            ui.label(egui::RichText::new(format!("{} tags at most", tsumugi_mux::proto::MAX_TAGS)).color(pal.fg_dim));
-                        }
-                    }
-                    if shown_item("mute") {
-                        let label = if muted { "Unmute notifications" } else { "Mute notifications" };
-                        if ui.button(label).on_hover_text("Muted: in the bell only, no system notification or taskbar number").clicked() {
-                            ops.push(SideOp::Mute(ids.clone(), !muted));
-                            ui.close();
-                        }
-                    }
-                    if shown_item("pin") {
-                        let label = if w.pinned { "Unpin" } else { "Pin to top" };
-                        if ui.button(label).clicked() {
-                            ops.push(SideOp::Pin(w.id, !w.pinned));
-                            ui.close();
-                        }
-                    }
-                    ui.separator();
-                    if shown_item("restart") {
-                        let label = if focus.claude { "Restart (resume the conversation)" } else { "Restart" };
-                        if ui.button(label).clicked() {
-                            ops.push(SideOp::Restart(focus.id));
-                            ui.close();
-                        }
-                    }
-                    if shown_item("duplicate") && ui.button("Duplicate in the same folder").clicked() {
-                        ops.push(SideOp::Duplicate(focus.cwd.clone(), focus.claude));
-                        ui.close();
-                    }
-                    if shown_item("new-window") && ui.button("Move to a new window").clicked() {
-                        menu::new_window(w.id);
-                        ui.close();
-                    }
-                    ui.separator();
-                    if shown_item("filer") && ui.button("Open the folder in filer").clicked() {
-                        menu::run(tsumugi_mux::settings::fill(&self.open.filer, &focus.cwd, focus.id));
-                        ui.close();
-                    }
-                    if shown_item("editor") && ui.button("Open in the editor").clicked() {
-                        menu::run(tsumugi_mux::settings::fill(&self.open.editor, &focus.cwd, focus.id));
-                        ui.close();
-                    }
-                    if shown_item("copy-path") && ui.button("Copy the folder path").clicked() {
-                        ui.ctx().copy_text(focus.cwd.display().to_string());
-                        ui.close();
-                    }
-                    if !self.menu.session.is_empty() {
-                        ui.separator();
-                        for item in &self.menu.session {
-                            if ui.button(&item.name).on_hover_text(&item.command).clicked() {
-                                menu::run(tsumugi_mux::settings::fill(&item.command, &focus.cwd, focus.id));
-                                ui.close();
+                            "mute" => {
+                                let label = if muted { "Unmute notifications" } else { "Mute notifications" };
+                                if ui.button(label).on_hover_text("Muted: in the bell only, no system notification or taskbar number").clicked() {
+                                    ops.push(SideOp::Mute(ids.clone(), !muted));
+                                    ui.close();
+                                }
                             }
-                        }
-                    }
-                    if shown_item("close") {
-                        ui.separator();
-                        // Something running in it: a second click, to be sure.
-                        let busy = infos.iter().any(|i| matches!(i.state, State::Running | State::MaybeWaiting));
-                        let armed = self.close_armed == Some(w.id);
-                        let label = if armed { "Click again to close: it is running" } else { "Close the session" };
-                        if ui.button(egui::RichText::new(label).color(crate::theme::colors().err)).clicked() {
-                            if busy && !armed {
-                                self.close_armed = Some(w.id);
-                            } else {
-                                ops.push(SideOp::Close(ids.clone()));
-                                self.close_armed = None;
-                                ui.close();
+                            "pin" => {
+                                let label = if w.pinned { "Unpin" } else { "Pin to top" };
+                                if ui.button(label).clicked() {
+                                    ops.push(SideOp::Pin(w.id, !w.pinned));
+                                    ui.close();
+                                }
                             }
+                            "restart" => {
+                                let label = if focus.claude { "Restart (resume the conversation)" } else { "Restart" };
+                                if ui.button(label).clicked() {
+                                    ops.push(SideOp::Restart(focus.id));
+                                    ui.close();
+                                }
+                            }
+                            "duplicate" => {
+                                if ui.button("Duplicate in the same folder").clicked() {
+                                    ops.push(SideOp::Duplicate(focus.cwd.clone(), focus.claude));
+                                    ui.close();
+                                }
+                            }
+                            "new-window" => {
+                                if ui.button("Move to a new window").clicked() {
+                                    menu::new_window(w.id);
+                                    ui.close();
+                                }
+                            }
+                            "filer" => {
+                                if ui.button("Open the folder in filer").clicked() {
+                                    menu::run(tsumugi_mux::settings::fill(&self.open.filer, &focus.cwd, focus.id));
+                                    ui.close();
+                                }
+                            }
+                            "editor" => {
+                                if ui.button("Open in the editor").clicked() {
+                                    menu::run(tsumugi_mux::settings::fill(&self.open.editor, &focus.cwd, focus.id));
+                                    ui.close();
+                                }
+                            }
+                            "copy-path" => {
+                                if ui.button("Copy the folder path").clicked() {
+                                    ui.ctx().copy_text(focus.cwd.display().to_string());
+                                    ui.close();
+                                }
+                            }
+                            "close" => {
+                                // Something running in it: a second click, to be sure.
+                                let busy = infos.iter().any(|i| matches!(i.state, State::Running | State::MaybeWaiting));
+                                let armed = self.close_armed == Some(w.id);
+                                let label = if armed { "Click again to close: it is running" } else { "Close the session" };
+                                if ui.button(egui::RichText::new(label).color(crate::theme::colors().err)).clicked() {
+                                    if busy && !armed {
+                                        self.close_armed = Some(w.id);
+                                    } else {
+                                        ops.push(SideOp::Close(ids.clone()));
+                                        self.close_armed = None;
+                                        ui.close();
+                                    }
+                                }
+                            }
+                            _ => {}
                         }
                     }
                 });
@@ -1899,8 +2004,8 @@ impl App {
                     SideOp::Pin(id, on) => client.pin_workspace(id, on),
                     SideOp::Restart(id) => client.restart(id),
                     SideOp::Duplicate(cwd, claude) => {
-                        let shell = tsumugi_pane::default_shell().map(|s| (s, Vec::new()));
-                        let typed = claude.then(|| "claude".to_owned());
+                        let shell = None;
+                        let typed = claude.then(|| newsession::Start::Claude.typed(&self.settings_now.sessions.claude)).flatten();
                         if let Ok(pane) = client.spawn_typing(cwd, shell, Size::new(80, 24), (8, 16), Place::NewWorkspace, typed) {
                             self.pending = Some(pane.id());
                         }
@@ -1919,10 +2024,26 @@ impl App {
     /// The narrow rail (the design's 1i A): a square per tab with its
     /// project's first letter, ringed in its state's colour, its card on
     /// hover, and how many wait at the foot.
-    /// Where a new session starts: the folder of the pane with the keys.
+    /// Where a new session starts: the folder of the pane with the keys,
+    /// else `[general] default_folder`, else the home folder.
     fn here(&self, workspaces: &[Workspace], sessions: &[Info]) -> std::path::PathBuf {
         let w = self.active.and_then(|id| workspaces.iter().find(|w| w.id == id));
-        w.and_then(|w| sessions.iter().find(|i| i.id == w.focus)).map(|i| i.cwd.clone()).or_else(|| std::env::current_dir().ok()).unwrap_or_else(|| ".".into())
+        w.and_then(|w| sessions.iter().find(|i| i.id == w.focus)).map(|i| i.cwd.clone()).unwrap_or_else(|| self.default_folder())
+    }
+
+    fn default_folder(&self) -> std::path::PathBuf {
+        let set = self.settings_now.general.default_folder.trim();
+        if set.is_empty() {
+            tsumugi_mux::settings::home().or_else(|| std::env::current_dir().ok()).unwrap_or_else(|| ".".into())
+        } else {
+            newsession::expand(set)
+        }
+    }
+
+    /// The new-session dialog in `folder`, the settings' start chosen.
+    fn dialog(&self, folder: &std::path::Path) -> newsession::Dialog {
+        let start = newsession::Start::from_word(&self.settings_now.sessions.start).unwrap_or(newsession::Start::Claude);
+        newsession::Dialog::starting(folder, start)
     }
 
     fn rail(&mut self, ui: &mut egui::Ui, workspaces: &[Workspace], sessions: &[Info]) -> Option<WorkspaceId> {
@@ -1936,7 +2057,7 @@ impl App {
         // A new session, at the top as in the sidebar's header.
         let plus = egui::Rect::from_center_size(egui::pos2(area.center().x, area.top() + 22.0), egui::vec2(26.0, 24.0));
         if ui.scope_builder(egui::UiBuilder::new().max_rect(plus), |ui| chrome::plus_button(ui, &pal)).inner.clicked() {
-            self.new_session = Some(newsession::Dialog::new(&self.here(workspaces, sessions)));
+            self.new_session = Some(self.dialog(&self.here(workspaces, sessions)));
         }
         let mut y = area.top() + 44.0;
         for (k, tab) in shown.iter().enumerate() {
@@ -2095,6 +2216,64 @@ impl App {
         }
     }
 
+    /// The window is closing: ask first when sessions are still running and
+    /// `[general] ask_before_close` is on, and stop them all when
+    /// `keep_sessions` is off (else the server keeps them for next time).
+    fn close_window(&mut self, ctx: &egui::Context, client: &Client, sessions: &[Info]) {
+        let general = self.settings_now.general.clone();
+        if ctx.input(|i| i.viewport().close_requested()) {
+            let running = sessions.iter().filter(|s| s.state == tsumugi_mux::proto::State::Running).count();
+            if general.ask_before_close && running > 0 && !self.close_ok {
+                ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
+                self.closing = Some(running);
+            } else if !general.keep_sessions {
+                for s in sessions {
+                    client.attach(s.id).kill();
+                }
+            }
+        }
+        let Some(running) = self.closing else { return };
+        let mut answer = None;
+        egui::Area::new(egui::Id::new("close-ask")).order(egui::Order::Foreground).anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0)).show(ctx, |ui| {
+            egui::Frame::NONE
+                .fill(crate::theme::colors().panel)
+                .stroke(egui::Stroke::new(1.0, crate::theme::colors().border_strong()))
+                .corner_radius(12.0)
+                .inner_margin(egui::Margin::symmetric(20, 16))
+                .show(ui, |ui| {
+                    ui.set_max_width(460.0);
+                    let title = if running == 1 { "A session is still running".to_string() } else { format!("{running} sessions are still running") };
+                    ui.label(egui::RichText::new(title).size(15.0).strong().color(crate::theme::colors().strong()));
+                    ui.add_space(4.0);
+                    let words = if general.keep_sessions {
+                        "They go on in the background; open tsumugi again to see them."
+                    } else {
+                        "Closing stops them. Turn on \"Keep sessions running\" in Settings to keep them going."
+                    };
+                    ui.label(egui::RichText::new(words).size(12.5).color(crate::theme::colors().dim));
+                    ui.add_space(10.0);
+                    ui.horizontal(|ui| {
+                        let fill = if general.keep_sessions { chrome::gold() } else { chrome::red() };
+                        if ui.add(egui::Button::new(egui::RichText::new("Close").color(crate::theme::colors().on_accent()).strong()).fill(fill).min_size(egui::vec2(90.0, 28.0))).clicked() {
+                            answer = Some(true);
+                        }
+                        if ui.add(egui::Button::new("Cancel").min_size(egui::vec2(80.0, 28.0))).clicked() || ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+                            answer = Some(false);
+                        }
+                    });
+                });
+        });
+        match answer {
+            Some(true) => {
+                self.closing = None;
+                self.close_ok = true;
+                ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+            }
+            Some(false) => self.closing = None,
+            None => {}
+        }
+    }
+
     /// Queued prompts go to sessions that have finished: done, or waiting
     /// with no question on their screens (a prompt into Claude Code's
     /// permission menu would answer it). One at a time: after one goes, the
@@ -2154,9 +2333,13 @@ impl App {
                     Ok(path) => self.say(format!("Claude Code's hooks added to {} (the old file kept beside it)", home_short(&path)), false),
                     Err(e) => self.say(e, true),
                 }
+                if self.prefs.is_some() {
+                    self.read_facts();
+                }
             }
         }
-        if !self.hooks_offered {
+        // Not over the settings, which have the same question on a page.
+        if !self.hooks_offered || self.prefs.is_some() {
             return;
         }
         let mut answer = None;
@@ -2195,6 +2378,80 @@ impl App {
             }
             None => {}
         }
+    }
+
+    /// Open the settings screen, and read what it says of the machine.
+    fn open_settings(&mut self) {
+        self.prefs = Some(prefs::Screen::default());
+        self.read_facts();
+    }
+
+    fn read_facts(&mut self) {
+        let ctx = self.ctx.clone();
+        let shell = Some(self.settings_now.shell.program.clone());
+        self.facts_rx = Some(facts::read(shell, move || ctx.request_repaint()));
+    }
+
+    /// Work of the settings screen's on a thread: what it says goes to the
+    /// toast, and the screen's facts are read again.
+    fn job(&self, work: impl FnOnce() -> Result<String, String> + Send + 'static) {
+        let (tx, ctx) = (self.jobs.0.clone(), self.ctx.clone());
+        let _ = std::thread::Builder::new().name("settings-job".into()).spawn(move || {
+            let _ = tx.send(work());
+            ctx.request_repaint();
+        });
+    }
+
+    fn save_profiles(&self) {
+        let all = self.profiles.clone();
+        let _ = std::thread::Builder::new().name("profiles".into()).spawn(move || {
+            if let Some(path) = tsumugi_mux::settings::profiles_path() {
+                let _ = tsumugi_mux::settings::save_profiles(&path, &all);
+            }
+        });
+    }
+
+    /// A tag's new name: in the rules and the colours of the settings, on the
+    /// sessions that have it, and quiet if it was.
+    fn rename_tag(&mut self, client: &Client, sessions: &[Info], old: String, new: String) {
+        let ids: Vec<SessionId> = sessions.iter().filter(|i| i.tags.contains(&old)).map(|i| i.id).collect();
+        if !ids.is_empty() {
+            client.tag(ids.clone(), old.clone(), false);
+            client.tag(ids, new.clone(), true);
+        }
+        if client.muted_tags().contains(&old) {
+            client.mute_tag(old.clone(), false);
+            client.mute_tag(new.clone(), true);
+        }
+        let s = &self.settings_now.tags;
+        let rules: Vec<tsumugi_mux::settings::TagRule> = s.rule.iter().cloned().map(|mut r| {
+            if r.tag == old {
+                r.tag = new.clone();
+            }
+            r
+        }).collect();
+        let colour = s.colors.get(&old).cloned();
+        let key = |n: &str| if n.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-') { n.to_owned() } else { tsumugi_mux::settings::quote(n) };
+        let (old_key, new_key) = (key(&old), key(&new));
+        edit_settings(self.settings_tx.clone(), move |t| {
+            let mut t = write_rules(t, &rules);
+            if let Some(c) = colour {
+                t = tsumugi_mux::settings::remove_key(&t, Some("tags.colors"), &old_key);
+                t = tsumugi_mux::settings::set_key(&t, Some("tags.colors"), &new_key, &tsumugi_mux::settings::quote(&c));
+            }
+            t
+        });
+    }
+
+    /// Stop the server and start it again: the sessions are written down and
+    /// come back, as after an update.
+    fn restart_server(&mut self, ctx: &egui::Context) {
+        self.prefs = None;
+        self.panes.clear();
+        self.client = None;
+        self.failed = Some("Restarting the server…".into());
+        let ctx = ctx.clone();
+        self.replacing = Some(replace_server(move || ctx.request_repaint()));
     }
 
     fn add_hooks(&mut self) {
@@ -2262,7 +2519,7 @@ impl App {
         let size = self.font.size;
         let face = |k: usize, name: &str| self.faces_found[k].then(|| egui::FontId::new(size, egui::FontFamily::Name(name.into())));
         let shaper = self.shaper.clone().filter(|_| self.settings_now.font.ligatures);
-        tsumugi_pane::Faces { regular: self.font.clone(), bold: face(0, fonts::BOLD), italic: face(1, fonts::ITALIC), bold_italic: face(2, fonts::BOLD_ITALIC), shaper }
+        tsumugi_pane::Faces { regular: self.font.clone(), bold: face(0, fonts::BOLD), italic: face(1, fonts::ITALIC), bold_italic: face(2, fonts::BOLD_ITALIC), shaper, cursor: tsumugi_pane::CursorStyle::from_word(&self.settings_now.appearance.cursor) }
     }
 
     /// A pane too small for a terminal: its state's dot and its name, along
@@ -2679,11 +2936,11 @@ fn watch_settings(ctx: egui::Context, tx: std::sync::mpsc::Sender<Read>) {
 
 /// Change one key of `settings.toml`, on a thread of its own, and say what
 /// the file now holds at once rather than at the next look.
-fn write_setting(tx: std::sync::mpsc::Sender<Read>, table: Option<&'static str>, key: &'static str, value: String) {
+fn edit_settings(tx: std::sync::mpsc::Sender<Read>, change: impl FnOnce(&str) -> String + Send + 'static) {
     let _ = std::thread::Builder::new().name("write-setting".into()).spawn(move || {
         let Some(path) = tsumugi_mux::settings::default_path() else { return };
         let text = std::fs::read_to_string(&path).unwrap_or_default();
-        let next = tsumugi_mux::settings::set_key(&text, table, key, &value);
+        let next = change(&text);
         if let Some(dir) = path.parent() {
             let _ = std::fs::create_dir_all(dir);
         }
@@ -2691,6 +2948,26 @@ fn write_setting(tx: std::sync::mpsc::Sender<Read>, table: Option<&'static str>,
             let _ = tx.send(Read::Settings(Box::new(tsumugi_mux::settings::load(&path))));
         }
     });
+}
+
+/// The settings with every `[[tags.rule]]` replaced by `rules`.
+fn write_rules(text: &str, rules: &[tsumugi_mux::settings::TagRule]) -> String {
+    use tsumugi_mux::settings::quote;
+    let blocks: Vec<Vec<(&str, String)>> = rules
+        .iter()
+        .map(|r| {
+            let mut b = Vec::new();
+            if !r.folder.is_empty() {
+                b.push(("folder", quote(&r.folder)));
+            }
+            if !r.branch.is_empty() {
+                b.push(("branch", quote(&r.branch)));
+            }
+            b.push(("tag", quote(&r.tag)));
+            b
+        })
+        .collect();
+    tsumugi_mux::settings::set_tables(text, "tags.rule", &blocks)
 }
 
 /// How many folders of ended sessions are kept.
@@ -2827,6 +3104,12 @@ impl eframe::App for App {
 }
 
 impl App {
+    /// The branch mark is the Nerd Font's character: one is installed and
+    /// the settings did not turn it off.
+    fn nerd(&self) -> bool {
+        self.nerd && self.settings_now.appearance.nerd_icons
+    }
+
     /// The clock for something that moves, when the animations are on; and
     /// a note to draw the next frame soon.
     fn moving(&mut self, ui: &egui::Ui) -> Option<f64> {
@@ -2866,7 +3149,29 @@ impl App {
             self.shaper = loaded.shaper;
             self.fonts_rx = None;
         }
-        for read in self.settings.try_iter() {
+        if let Some(Ok(f)) = self.facts_rx.as_ref().map(|rx| rx.try_recv()) {
+            self.facts = Some(f);
+            self.facts_rx = None;
+        }
+        let done: Vec<Result<String, String>> = self.jobs.1.try_iter().collect();
+        for r in done {
+            match r {
+                Ok(words) => self.say(words, false),
+                Err(e) => self.say(e, true),
+            }
+            if self.prefs.is_some() {
+                self.read_facts();
+            }
+        }
+        if let Some(Ok(answer)) = self.update.as_ref().map(|rx| rx.try_recv()) {
+            self.update = None;
+            if let Some(v) = answer {
+                self.say(format!("tsumugi {v} is out (this is {}): github.com/uchmk/tsumugi/releases", env!("CARGO_PKG_VERSION")), false);
+            }
+        }
+        let mut facts_again = false;
+        let reads: Vec<Read> = self.settings.try_iter().collect();
+        for read in reads {
             match read {
                 Read::Settings(read) => match *read {
                     Ok(s) => {
@@ -2874,6 +3179,13 @@ impl App {
                             self.settings_error = Some(e);
                             continue;
                         }
+                        keys::set_cmd_on_mac(s.general.cmd_on_mac);
+                        if s.general.check_updates && !self.update_asked {
+                            self.update_asked = true;
+                            let wake = ctx.clone();
+                            self.update = Some(update::check(move || wake.request_repaint()));
+                        }
+                        chrome::set_tag_colors(&s.tags.colors);
                         self.font = egui::FontId::monospace(s.font.size);
                         let own = s.window.own_titlebar();
                         if !cfg!(target_os = "macos") {
@@ -2889,7 +3201,9 @@ impl App {
                             });
                             self.fonts_rx = Some(rx);
                         }
+                        let shell_changed = s.shell.program != self.settings_now.shell.program;
                         self.settings_now = s.clone();
+                        facts_again |= shell_changed && self.prefs.is_some();
                         self.alerts.rules = alert::Rules::from(&s.notify);
                         self.tag_rules = s.tags.rule;
                         self.theme_choice = (s.theme, s.dark_theme, s.light_theme);
@@ -2907,6 +3221,9 @@ impl App {
                 Read::Themes(Err(e)) => self.theme_file_error = Some(e),
                 Read::Profiles(Err(e)) => self.settings_error = Some(e),
             }
+        }
+        if facts_again {
+            self.read_facts();
         }
         self.apply_theme(&ctx);
         if let Some(e) = self.settings_error.as_ref().or(self.theme_error.as_ref()) {
@@ -2933,10 +3250,18 @@ impl App {
             ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(false));
             ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
         }
-        for out in self.alerts.decide(&client.notices(), seen) {
+        let outs = self.alerts.decide(&client.notices(), seen);
+        // Focus mode on: the number on the taskbar only (`[notify] focus_mode`).
+        let hush = !outs.is_empty() && self.settings_now.notify.focus_mode && sound::quiet_time();
+        for out in outs {
             match out {
+                alert::Out::Badge(_) => self.teller.send(out),
+                _ if hush => {}
                 alert::Out::Flash => ctx.send_viewport_cmd(egui::ViewportCommand::RequestUserAttention(egui::UserAttentionType::Informational)),
-                alert::Out::Sound(error) => sound::play(error),
+                alert::Out::Sound(error) => {
+                    let n = &self.settings_now.notify;
+                    sound::play(if error { &n.sound_error } else { &n.sound_waiting });
+                }
                 out => self.teller.send(out),
             }
         }
@@ -2964,7 +3289,7 @@ impl App {
             // A field of the window's own (a menu's "Add a tag") has the
             // keys while it is focused; the pane gets them otherwise.
             // A key being changed in the settings is the settings'.
-            let capturing = self.prefs.as_ref().is_some_and(|p| p.capturing.is_some());
+            let capturing = self.prefs.as_ref().is_some_and(|p| p.edit.capturing.is_some());
             let field = ctx.memory(|m| m.focused().is_some()) || self.new_session.is_some() || self.search.is_some() || capturing;
             if self.key_log {
                 // `TSUMUGI_KEYLOG=1`: every key press as the window gets it,
@@ -2999,7 +3324,11 @@ impl App {
             (rows.first().map_or(0, Vec::len), rows.len())
         });
         let up = chrome::now_ms().saturating_sub(client.started_ms());
-        let status = egui::Panel::bottom("status")
+        // Not under the settings, which are a screen of their own (the design).
+        let status = if self.prefs.is_some() {
+            None
+        } else {
+            egui::Panel::bottom("status")
             .exact_size(24.0)
             .frame(egui::Frame::NONE.fill(self.chrome_fill(crate::theme::colors().side)))
             .show(ui, |ui| {
@@ -3008,10 +3337,11 @@ impl App {
                 let used = self.usage.get();
                 let conversation = focus_info.as_ref().filter(|i| !i.conversation.is_empty()).and_then(|i| used.conversations.get(&i.conversation).copied());
                 let tokens = (used.today.total() > 0 || conversation.is_some()).then_some((conversation, used.today));
-                let extra = chrome::StatusExtra { up_ms: up, nerd: self.nerd, clock: clock.show.then(|| clock.format()), git, tokens };
+                let extra = chrome::StatusExtra { up_ms: up, nerd: self.nerd(), clock: clock.show.then(|| clock.format()), git, tokens };
                 chrome::status_bar(ui, &self.palette, &sessions, focus_info.as_ref(), size, &extra)
             })
-            .inner;
+            .inner
+        };
         match status {
             Some(chrome::StatusClick::Bell) => {
                 self.bell_open = Some(egui::pos2(20.0, 60.0));
@@ -3028,7 +3358,7 @@ impl App {
         let focus_tags = focus_info.as_ref().map(|i| i.tags.clone()).unwrap_or_default();
         let muted_tags_now = client.muted_tags();
         let maximized = ctx.input(|i| i.viewport().maximized.unwrap_or(false));
-        let band_frame = chrome::BandFrame { own: self.own_frame && !self.system_frame, left: if self.own_frame && cfg!(target_os = "macos") { 76.0 } else { 0.0 }, maximized };
+        let band_frame = chrome::BandFrame { own: self.own_frame && !self.system_frame, left: if self.own_frame && cfg!(target_os = "macos") { 76.0 } else { 0.0 }, maximized, settings: self.prefs.is_some() };
         let band = egui::Panel::top("band")
             .exact_size(40.0)
             .frame(egui::Frame::NONE.fill(self.chrome_fill(crate::theme::colors().side)))
@@ -3036,6 +3366,9 @@ impl App {
             .inner;
         if band.search {
             self.search = Some(palette::View::new());
+        }
+        if band.close_settings {
+            self.prefs = None;
         }
         match band.window {
             Some(chrome::WindowOp::Drag) => ctx.send_viewport_cmd(egui::ViewportCommand::StartDrag),
@@ -3049,7 +3382,9 @@ impl App {
         let side = egui::Frame::NONE.fill(self.chrome_fill(self.palette.on_cursor));
         // Each switch between the two starts the panel at its own width: a
         // fresh id, since egui keeps a panel's width by its id.
-        let picked = if self.view.rail {
+        let picked = if self.prefs.is_some() {
+            None
+        } else if self.view.rail {
             let shown = egui::Panel::left(egui::Id::new(("rail", self.side_gen)))
                 .resizable(true)
                 .default_size(RAIL)
@@ -3107,6 +3442,7 @@ impl App {
             None => {}
         }
         self.worktrees(&ctx, &client, &sessions, current.as_ref());
+        self.close_window(&ctx, &client, &sessions);
         self.remember_closed(&sessions);
         self.hooks_offer(&ctx);
         self.send_queued(&client, &sessions);
@@ -3237,6 +3573,10 @@ impl App {
         inner.add_space((rect.height() / 2.0 - 80.0).max(0.0));
         inner.label(egui::RichText::new(&why).font(self.font.clone()).color(self.palette.fg));
         if !other {
+            self.replaced();
+            if self.replacing.is_some() {
+                inner.ctx().request_repaint_after(Duration::from_millis(200));
+            }
             return;
         }
         // A server of another version (an update, a new build): stopped,
@@ -3250,18 +3590,21 @@ impl App {
             let ctx = inner.ctx().clone();
             self.replacing = Some(replace_server(move || ctx.request_repaint()));
         }
-        if let Some(rx) = &self.replacing {
-            if let Ok(answer) = rx.try_recv() {
-                self.replacing = None;
-                match answer.and_then(|client| first_session(&client).map(|restore| (client, restore))) {
-                    Ok((client, restore)) => {
-                        self.client = Some(client);
-                        self.restore = restore;
-                        self.failed = None;
-                    }
-                    Err(e) => self.failed = Some(e),
-                }
+        self.replaced();
+    }
+
+    /// The server replaced (another version's, or a restart): this window
+    /// takes the new one.
+    fn replaced(&mut self) {
+        let Some(answer) = self.replacing.as_ref().and_then(|rx| rx.try_recv().ok()) else { return };
+        self.replacing = None;
+        match answer.and_then(|client| first_session(&client).map(|restore| (client, restore))) {
+            Ok((client, restore)) => {
+                self.client = Some(client);
+                self.restore = restore;
+                self.failed = None;
             }
+            Err(e) => self.failed = Some(e),
         }
     }
 }

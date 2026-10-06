@@ -78,6 +78,44 @@
 //! [[menu.session]]
 //! name = "Open lazygit here"
 //! command = "wt -d {folder} lazygit"
+//!
+//! # A session on a branch like this gets the tag (with a folder too, both
+//! # must match); a tag's own colour.
+//! [[tags.rule]]
+//! branch = "claude/*"
+//! tag = "claude"
+//!
+//! [tags.colors]
+//! claude = "#5e4a86"
+//!
+//! # Startup and closing (the settings screen's General).
+//! [general]
+//! default_folder = "~/dev"
+//! keep_sessions = true
+//! ask_before_close = true
+//! check_updates = true
+//! cmd_on_mac = true
+//!
+//! # What a new session runs, and how waiting is told.
+//! [sessions]
+//! start = "claude"
+//! claude = "claude"
+//! resume = true
+//! quiet = 10
+//! compact_after = 12
+//!
+//! # The shell sessions start, its arguments and its variables.
+//! [shell]
+//! program = "pwsh"
+//! args = ["-NoLogo"]
+//!
+//! [shell.env]
+//! EDITOR = "code --wait"
+//!
+//! [advanced]
+//! backend = "auto"
+//! scrollback = 10000
+//! pane_log = false
 //! ```
 
 use std::path::{Component, Path, PathBuf};
@@ -90,6 +128,10 @@ pub struct Settings {
     pub theme: String,
     pub dark_theme: String,
     pub light_theme: String,
+    pub general: General,
+    pub sessions: Sessions,
+    pub shell: Shell,
+    pub advanced: Advanced,
     pub clock: Clock,
     pub appearance: Appearance,
     pub font: Font,
@@ -101,6 +143,93 @@ pub struct Settings {
     pub notify: Notify,
     pub open: Open,
     pub menu: Menu,
+}
+
+/// Startup and closing (the settings screen's General).
+#[derive(Clone, Debug, PartialEq, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct General {
+    /// Where a new session starts when no pane is open; empty: the home folder.
+    pub default_folder: String,
+    /// Closing the window leaves the sessions running in the server; off,
+    /// closing it ends them.
+    pub keep_sessions: bool,
+    /// Closing a session with a program running in it asks first.
+    pub ask_before_close: bool,
+    /// Look once a day for a newer release on GitHub.
+    pub check_updates: bool,
+    /// macOS: the window's keys with Cmd (Ctrl+Shift+T is Cmd+T); off, the
+    /// same keys as elsewhere.
+    pub cmd_on_mac: bool,
+}
+
+impl Default for General {
+    fn default() -> Self {
+        Self { default_folder: String::new(), keep_sessions: true, ask_before_close: true, check_updates: true, cmd_on_mac: true }
+    }
+}
+
+/// New sessions and how waiting is told (the settings screen's Sessions).
+#[derive(Clone, Debug, PartialEq, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct Sessions {
+    /// What the new-session dialog has chosen first: `claude`, `resume`, `shell`.
+    pub start: String,
+    /// The command that is Claude Code (`claude`, or a path to it).
+    pub claude: String,
+    /// After a restart, run `claude --resume` where Claude Code ran.
+    pub resume: bool,
+    /// Seconds of silence after which a running program reads as probably
+    /// waiting; 0 turns the guess off. Unset: `TSUMUGI_QUIET_SECS`, else 10.
+    pub quiet: Option<u64>,
+    /// How many tabs before asking whether to show one line each.
+    pub compact_after: usize,
+}
+
+impl Default for Sessions {
+    fn default() -> Self {
+        Self { start: "claude".into(), claude: "claude".into(), resume: true, quiet: None, compact_after: 12 }
+    }
+}
+
+/// The shell sessions start (the settings screen's Shell & hooks).
+#[derive(Clone, Debug, Default, PartialEq, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct Shell {
+    /// A program on the `PATH` or its path; empty: the system's (`pwsh`
+    /// when installed on Windows, else `$SHELL`).
+    pub program: String,
+    pub args: Vec<String>,
+    /// Variables every session gets.
+    pub env: std::collections::BTreeMap<String, String>,
+}
+
+impl Shell {
+    /// The program and its arguments, when one is set.
+    pub fn command(&self) -> Option<(String, Vec<String>)> {
+        let p = self.program.trim();
+        (!p.is_empty()).then(|| (p.to_owned(), self.args.clone()))
+    }
+}
+
+/// Things to touch rarely (the settings screen's Advanced).
+#[derive(Clone, Debug, PartialEq, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct Advanced {
+    /// The graphics backend: `auto`, `gl`, `vulkan`, `dx12`, `metal`
+    /// (when the window next opens).
+    pub backend: String,
+    /// Lines of scrollback kept per pane.
+    pub scrollback: usize,
+    /// Record what each pane sends and receives, for bug reports, in a file
+    /// beside the state.
+    pub pane_log: bool,
+}
+
+impl Default for Advanced {
+    fn default() -> Self {
+        Self { backend: "auto".into(), scrollback: 10_000, pane_log: false }
+    }
 }
 
 /// The status bar's clock (the design's 1n).
@@ -153,6 +282,11 @@ pub struct Appearance {
     pub dim: u8,
     /// Waiting rings breathe and running tabs show a moving line.
     pub animations: bool,
+    /// The Nerd Font's icons in prompts and the sidebar, when one is found.
+    pub nerd_icons: bool,
+    /// The cursor of the pane with the keys: `block`, `bar` or `underline`,
+    /// with `-blink` to blink.
+    pub cursor: String,
 }
 
 /// The window's frame.
@@ -199,7 +333,7 @@ impl Default for Font {
 
 impl Default for Appearance {
     fn default() -> Self {
-        Self { dim: 35, animations: true }
+        Self { dim: 35, animations: true, nerd_icons: true, cursor: "block-blink".into() }
     }
 }
 
@@ -209,6 +343,10 @@ impl Default for Settings {
             theme: "dark".into(),
             dark_theme: "tsumugi Dark".into(),
             light_theme: "tsumugi Light".into(),
+            general: General::default(),
+            sessions: Sessions::default(),
+            shell: Shell::default(),
+            advanced: Advanced::default(),
             clock: Clock::default(),
             appearance: Appearance::default(),
             font: Font::default(),
@@ -246,6 +384,9 @@ impl Default for Open {
 pub struct Menu {
     pub hide: Vec<String>,
     pub session: Vec<MenuItem>,
+    /// The built-in items' order, by their words; those not named follow
+    /// in their own order.
+    pub order: Vec<String>,
 }
 
 /// An item of one's own: `{folder}` and `{session}` (its number) are put
@@ -260,6 +401,48 @@ pub struct MenuItem {
 /// The words of the menu's own items, for `menu.hide`.
 pub const MENU_ITEMS: [&str; 11] = ["rename", "tags", "mute", "pin", "restart", "duplicate", "new-window", "filer", "editor", "copy-path", "close"];
 
+/// The menu's items in the order `order` asks for: those it names first,
+/// in its order, then the rest in their own.
+pub fn menu_words(order: &[String]) -> Vec<&'static str> {
+    let mut out: Vec<&'static str> = Vec::new();
+    for w in order.iter().filter_map(|w| MENU_ITEMS.iter().copied().find(|m| m == w)) {
+        if !out.contains(&w) {
+            out.push(w);
+        }
+    }
+    let rest: Vec<&'static str> = MENU_ITEMS.iter().copied().filter(|m| !out.contains(m)).collect();
+    out.extend(rest);
+    out
+}
+
+/// The group an item is drawn in; a line goes between two groups.
+pub fn menu_group(word: &str) -> &'static str {
+    match word {
+        "rename" | "tags" | "mute" | "pin" => "look",
+        "restart" | "duplicate" | "new-window" => "start",
+        "filer" | "editor" | "copy-path" => "folder",
+        _ => "close",
+    }
+}
+
+/// What an item says, for the settings screen.
+pub fn menu_label(word: &str) -> &'static str {
+    match word {
+        "rename" => "Rename",
+        "tags" => "Tags",
+        "mute" => "Mute notifications",
+        "pin" => "Pin to top",
+        "restart" => "Restart",
+        "duplicate" => "Duplicate in the same folder",
+        "new-window" => "Move to a new window",
+        "filer" => "Open the folder in filer",
+        "editor" => "Open in the editor",
+        "copy-path" => "Copy the folder path",
+        "close" => "Close the session",
+        _ => "",
+    }
+}
+
 /// A command line with `{folder}` (quoted for the system's shell) and
 /// `{session}` put in.
 pub fn fill(command: &str, folder: &Path, session: u64) -> String {
@@ -272,15 +455,22 @@ pub fn fill(command: &str, folder: &Path, session: u64) -> String {
 #[serde(default, deny_unknown_fields)]
 pub struct Tags {
     pub rule: Vec<TagRule>,
+    /// A tag's own colour (`"#rrggbb"`), over the one picked from its name.
+    pub colors: std::collections::BTreeMap<String, String>,
 }
 
 /// A session in `folder`, or anywhere under it, gets `tag`. A `folder`
 /// ending in `*` matches each folder in the one before it, and `{name}` in
-/// `tag` is that folder's name.
-#[derive(Clone, Debug, PartialEq, Deserialize)]
+/// `tag` is that folder's name. A rule with `branch` (`claude/*`: `*` any
+/// run of characters) asks for that git branch too, or alone without a
+/// folder.
+#[derive(Clone, Debug, Default, PartialEq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct TagRule {
+    #[serde(default)]
     pub folder: String,
+    #[serde(default)]
+    pub branch: String,
     pub tag: String,
 }
 
@@ -297,14 +487,31 @@ pub struct Notify {
     pub flash: Vec<String>,
     /// Play the system's sound.
     pub sound: Vec<String>,
+    /// A session done is told only after a run this many seconds long.
+    pub long_run: u64,
+    /// The sounds for one that waits and one that fails: see [`SOUNDS`].
+    pub sound_waiting: String,
+    pub sound_error: String,
+    /// Windows: nothing shows or sounds while focus mode (do not disturb) is on.
+    pub focus_mode: bool,
 }
+
+/// The sounds `sound_waiting` and `sound_error` name.
+pub const SOUNDS: [&str; 4] = ["chime", "low", "alert", "default"];
 
 impl Default for Notify {
     /// The design's 1h: notifications for all three, the number for the
     /// two that want a person, no flashing.
     fn default() -> Self {
         let words = |w: &[&str]| w.iter().map(|s| (*s).to_owned()).collect();
-        Self { system: words(&["waiting", "error", "done"]), taskbar: words(&["waiting", "error"]), flash: Vec::new(), sound: Vec::new() }
+        Self { system: words(&["waiting", "error", "done"]), taskbar: words(&["waiting", "error"]),
+            flash: Vec::new(),
+            sound: Vec::new(),
+            long_run: 60,
+            sound_waiting: "chime".into(),
+            sound_error: "low".into(),
+            focus_mode: true,
+        }
     }
 }
 
@@ -350,6 +557,30 @@ pub fn parse(text: &str) -> Result<Settings, String> {
     }
     if !matches!(s.window.material.as_str(), "none" | "mica" | "acrylic" | "vibrancy") {
         return Err(format!("window.material: `{}` is not none, mica, acrylic or vibrancy", s.window.material));
+    }
+    if !matches!(s.sessions.start.as_str(), "claude" | "resume" | "shell") {
+        return Err(format!("sessions.start: `{}` is not claude, resume or shell", s.sessions.start));
+    }
+    if !matches!(s.advanced.backend.as_str(), "auto" | "gl" | "vulkan" | "dx12" | "metal") {
+        return Err(format!("advanced.backend: `{}` is not auto, gl, vulkan, dx12 or metal", s.advanced.backend));
+    }
+    if !(100..=1_000_000).contains(&s.advanced.scrollback) {
+        return Err(format!("advanced.scrollback: {} is not between 100 and 1000000", s.advanced.scrollback));
+    }
+    let shapes = ["block", "bar", "underline"];
+    if !shapes.contains(&s.appearance.cursor.trim_end_matches("-blink")) {
+        return Err(format!("appearance.cursor: `{}` is not block, bar or underline (with -blink to blink)", s.appearance.cursor));
+    }
+    for (key, v) in [("notify.sound_waiting", &s.notify.sound_waiting), ("notify.sound_error", &s.notify.sound_error)] {
+        if !SOUNDS.contains(&v.as_str()) {
+            return Err(format!("{key}: `{v}` is not one of {}", SOUNDS.join(", ")));
+        }
+    }
+    if let Some(w) = s.menu.order.iter().find(|w| !MENU_ITEMS.contains(&w.as_str())) {
+        return Err(format!("menu.order: `{w}` is not one of {}", MENU_ITEMS.join(", ")));
+    }
+    if let Some(r) = s.tags.rule.iter().find(|r| r.folder.trim().is_empty() && r.branch.trim().is_empty()) {
+        return Err(format!("tags.rule for `{}`: a folder, a branch or both", r.tag));
     }
     if !(8.0..=32.0).contains(&s.font.size) {
         return Err(format!("font.size: {} is not between 8 and 32", s.font.size));
@@ -451,6 +682,53 @@ pub fn set_key(text: &str, table: Option<&str>, key: &str, value: &str) -> Strin
     out.concat()
 }
 
+/// `text` without `key` in `table` (its line, or its lines for an array
+/// over several); the same text when it is not there.
+pub fn remove_key(text: &str, table: Option<&str>, key: &str) -> String {
+    // Set it to a value no file holds, then take that line out.
+    const MARK: &str = "\u{0}tsumugi-remove\u{0}";
+    let marked = set_key(text, table, key, MARK);
+    let had = marked.lines().count() == text.lines().count();
+    let out: String = marked.split_inclusive('\n').filter(|l| !l.contains(MARK)).collect();
+    if had { out } else { text.to_owned() }
+}
+
+/// `text` with every `[[name]]` block taken out and `blocks` written at the
+/// end in their place, each a list of keys and their values as TOML.
+/// Comments inside the old blocks go with them; the rest stays.
+pub fn set_tables(text: &str, name: &str, blocks: &[Vec<(&str, String)>]) -> String {
+    let head = format!("[[{name}]]");
+    let mut out: Vec<&str> = Vec::new();
+    let mut inside = false;
+    for l in text.split_inclusive('\n') {
+        let t = l.trim();
+        if t.starts_with('[') {
+            inside = t == head;
+        }
+        if !inside {
+            out.push(l);
+        }
+    }
+    let mut s: String = out.concat();
+    while s.ends_with("\n\n") {
+        s.pop();
+    }
+    for b in blocks {
+        if !s.is_empty() {
+            if !s.ends_with('\n') {
+                s.push('\n');
+            }
+            s.push('\n');
+        }
+        s.push_str(&head);
+        s.push('\n');
+        for (k, v) in b {
+            s.push_str(&format!("{k} = {v}\n"));
+        }
+    }
+    s
+}
+
 /// A string as TOML writes it, quoted and escaped.
 pub fn quote(s: &str) -> String {
     toml::Value::String(s.to_owned()).to_string()
@@ -517,8 +795,25 @@ pub fn home() -> Option<PathBuf> {
 }
 
 impl TagRule {
-    /// The tag this rule gives a session in `cwd`, if any.
+    /// The tag this rule gives a session in `cwd` on `branch`, if any.
+    pub fn tag_for_session(&self, cwd: &Path, branch: &str, home: Option<&Path>) -> Option<String> {
+        if self.folder.trim().is_empty() && self.branch.trim().is_empty() {
+            return None;
+        }
+        if !self.branch.trim().is_empty() && !glob(self.branch.trim(), branch) {
+            return None;
+        }
+        if self.folder.trim().is_empty() {
+            return crate::proto::tag_name(&self.tag);
+        }
+        self.tag_for(cwd, home)
+    }
+
+    /// The tag this rule's folder gives a session in `cwd`, if any.
     pub fn tag_for(&self, cwd: &Path, home: Option<&Path>) -> Option<String> {
+        if self.folder.trim().is_empty() {
+            return None;
+        }
         let folder = match self.folder.strip_prefix('~') {
             Some(rest) => home?.join(rest.trim_start_matches(['/', '\\'])),
             None => PathBuf::from(&self.folder),
@@ -543,6 +838,26 @@ impl TagRule {
     }
 }
 
+/// Whether `text` fits `pattern`, where `*` is any run of characters.
+pub fn glob(pattern: &str, text: &str) -> bool {
+    let parts: Vec<&str> = pattern.split('*').collect();
+    if parts.len() == 1 {
+        return pattern == text;
+    }
+    let (first, last) = (parts[0], parts[parts.len() - 1]);
+    if !text.starts_with(first) || !text[first.len()..].ends_with(last) || text.len() < first.len() + last.len() {
+        return false;
+    }
+    let mut rest = &text[first.len()..text.len() - last.len()];
+    for p in &parts[1..parts.len() - 1] {
+        match rest.find(p) {
+            Some(at) => rest = &rest[at + p.len()..],
+            None => return false,
+        }
+    }
+    true
+}
+
 /// A path's parts to compare: the prefix and the names, without `.`, and
 /// without case on Windows, where folder names are compared that way.
 fn parts(p: &Path) -> Vec<String> {
@@ -565,7 +880,7 @@ mod tests {
     use super::*;
 
     fn rule(folder: &str, tag: &str) -> TagRule {
-        TagRule { folder: folder.into(), tag: tag.into() }
+        TagRule { folder: folder.into(), tag: tag.into(), ..TagRule::default() }
     }
 
     #[test]
@@ -582,11 +897,46 @@ mod tests {
     }
 
     #[test]
+    fn keys_go_and_tables_are_rewritten() {
+        let text = "# mine\n[shell.env]\nA = \"1\"\nB = \"2\"\n\n[[tags.rule]]\n# old\nfolder = \"~/a\"\ntag = \"a\"\n\n[clock]\nshow = true\n";
+        let t = remove_key(text, Some("shell.env"), "A");
+        assert_eq!(t, "# mine\n[shell.env]\nB = \"2\"\n\n[[tags.rule]]\n# old\nfolder = \"~/a\"\ntag = \"a\"\n\n[clock]\nshow = true\n");
+        assert_eq!(remove_key(text, Some("shell.env"), "Z"), text, "not there: as it was");
+        let rules = vec![vec![("folder", quote("~/b")), ("tag", quote("b"))], vec![("branch", quote("claude/*")), ("tag", quote("claude"))]];
+        let t = set_tables(text, "tags.rule", &rules);
+        assert!(t.starts_with("# mine\n[shell.env]\nA = \"1\"\nB = \"2\"\n\n[clock]\nshow = true\n\n[[tags.rule]]\nfolder = \"~/b\""), "{t}");
+        let s = parse(&t).expect("reads");
+        assert_eq!(s.tags.rule.len(), 2);
+        assert_eq!(s.tags.rule[1].branch, "claude/*");
+        assert_eq!(set_tables(&t, "tags.rule", &rules), t, "the same twice");
+        assert!(parse(&set_tables(&t, "tags.rule", &[])).unwrap().tags.rule.is_empty());
+    }
+
+    #[test]
+    fn a_rule_by_branch_tags_its_sessions() {
+        let r = TagRule { branch: "claude/*".into(), tag: "claude".into(), ..TagRule::default() };
+        assert_eq!(r.tag_for_session(Path::new("/x"), "claude/task-1", None).as_deref(), Some("claude"));
+        assert_eq!(r.tag_for_session(Path::new("/x"), "main", None), None);
+        let both = TagRule { folder: "/srv".into(), branch: "main".into(), tag: "prod".into() };
+        assert_eq!(both.tag_for_session(Path::new("/srv/app"), "main", None).as_deref(), Some("prod"));
+        assert_eq!(both.tag_for_session(Path::new("/srv/app"), "dev", None), None);
+        assert!(glob("a*b*c", "aXXbYc") && !glob("a*b", "ac") && glob("*", "") && glob("x", "x"));
+        assert!(parse("[[tags.rule]]\ntag = \"t\"\n").is_err(), "neither folder nor branch");
+    }
+
+    #[test]
     fn the_example_reads() {
         let text = include_str!("settings.rs").lines().filter_map(|l| l.strip_prefix("//! ")).skip_while(|l| !l.starts_with("# Tag")).take_while(|l| !l.starts_with("```")).collect::<Vec<_>>().join("\n");
         let s = parse(&text).expect("the example in the module's comment reads");
-        assert_eq!(s.tags.rule, vec![rule("~/dev/filer", "filer"), rule("~/dev/*", "{name}")]);
+        let by_branch = TagRule { branch: "claude/*".into(), tag: "claude".into(), ..TagRule::default() };
+        assert_eq!(s.tags.rule, vec![rule("~/dev/filer", "filer"), rule("~/dev/*", "{name}"), by_branch]);
+        assert_eq!(s.tags.colors.get("claude").map(String::as_str), Some("#5e4a86"));
         assert_eq!(s.notify, Notify { flash: vec![], ..Notify::default() });
+        assert_eq!(s.general.default_folder, "~/dev");
+        assert_eq!(s.sessions.quiet, Some(10));
+        assert_eq!(s.shell.command(), Some(("pwsh".to_string(), vec!["-NoLogo".to_string()])));
+        assert_eq!(s.shell.env.get("EDITOR").map(String::as_str), Some("code --wait"));
+        assert_eq!(s.advanced, Advanced::default());
         assert_eq!(s.open, Open::default());
         assert_eq!(s.menu.hide, ["new-window"]);
         assert_eq!(s.menu.session[0].command, "wt -d {folder} lazygit");
@@ -686,5 +1036,15 @@ mod tests {
         assert_eq!(each.tag_for(Path::new(r"c:\users\U\dev\Filer\src"), Some(home)).as_deref(), Some("Filer"));
         let fwd = rule("~/dev/filer", "filer");
         assert_eq!(fwd.tag_for(Path::new(r"C:\Users\u\dev\filer"), Some(home)).as_deref(), Some("filer"));
+    }
+
+    #[test]
+    fn the_menu_order_puts_the_named_first() {
+        let order: Vec<String> = ["close", "editor", "close", "nope"].iter().map(|s| s.to_string()).collect();
+        let words = menu_words(&order);
+        assert_eq!(&words[..3], &["close", "editor", "rename"]);
+        assert_eq!(words.len(), MENU_ITEMS.len());
+        assert_eq!(menu_words(&[]), MENU_ITEMS.to_vec());
+        assert!(MENU_ITEMS.iter().all(|w| !menu_label(w).is_empty()));
     }
 }

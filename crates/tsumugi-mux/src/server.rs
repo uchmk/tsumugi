@@ -355,7 +355,7 @@ fn handle(shared: &Arc<Shared>, client: ClientId, tx: &Sender<ToClient>, msg: To
                     s.info.state = State::Running;
                     s.info.since_ms = now_ms();
                     s.info.note.clear();
-                    s.pending = s.claude.as_ref().map(|c| format!("claude --resume {c}\r").into_bytes());
+                    s.pending = s.claude.as_ref().and_then(|c| lock(&shared.rules).resume_line(c));
                     // Ending a shell can take a moment: not under the lock.
                     std::thread::spawn(move || drop(old));
                     broadcast(shared, &sessions);
@@ -445,7 +445,7 @@ fn handle(shared: &Arc<Shared>, client: ClientId, tx: &Sender<ToClient>, msg: To
                 if !note.is_empty() {
                     s.info.note = note;
                 }
-                if let Some(before) = settle(s, shared.quiet) {
+                if let Some(before) = settle(s, quiet_of(shared)) {
                     record_notice(shared, s, before);
                     broadcast(shared, &sessions);
                 }
@@ -514,27 +514,54 @@ fn broadcast(shared: &Shared, sessions: &BTreeMap<SessionId, Session>) {
     }
 }
 
-/// The settings' tag rules, and when the file was read.
+/// What the server takes from the settings -- the tag rules, the shell,
+/// how sessions are watched and resumed -- and when the file was read.
 struct Rules {
     stamp: Option<std::time::SystemTime>,
     tags: Vec<crate::settings::TagRule>,
     home: Option<PathBuf>,
+    /// `[sessions] quiet`, when set (else `Shared::quiet`).
+    quiet: Option<Duration>,
+    /// `[notify] long_run`, in milliseconds.
+    long_run: u64,
+    /// `[sessions] resume` and `claude`: what a restored Claude Code pane types.
+    resume: bool,
+    claude: String,
+    shell: crate::settings::Shell,
+    scrollback: usize,
+    pane_log: bool,
 }
 
 impl Rules {
-    /// A file that cannot be read gives no rules; the window says what is
-    /// wrong with it.
+    /// A file that cannot be read gives the defaults; the window says what
+    /// is wrong with it.
     fn read(path: Option<&Path>) -> Self {
         let stamp = path.and_then(crate::settings::stamp);
-        let tags = path.and_then(|p| crate::settings::load(p).ok()).map(|s| s.tags.rule).unwrap_or_default();
-        Self { stamp, tags, home: crate::settings::home() }
+        let s = path.and_then(|p| crate::settings::load(p).ok()).unwrap_or_default();
+        Self {
+            stamp,
+            tags: s.tags.rule,
+            home: crate::settings::home(),
+            quiet: s.sessions.quiet.map(Duration::from_secs),
+            long_run: s.notify.long_run.saturating_mul(1000),
+            resume: s.sessions.resume,
+            claude: if s.sessions.claude.trim().is_empty() { "claude".into() } else { s.sessions.claude.trim().to_owned() },
+            shell: s.shell,
+            scrollback: s.advanced.scrollback,
+            pane_log: s.advanced.pane_log,
+        }
     }
 
-    /// Put on `info` the tags its folder's rules give it. Only ever adds: a
-    /// tag taken off by hand comes back only when the folder changes.
+    /// The line a restored or restarted Claude Code pane types, if any.
+    fn resume_line(&self, conversation: &str) -> Option<Vec<u8>> {
+        self.resume.then(|| format!("{} --resume {conversation}\r", self.claude).into_bytes())
+    }
+
+    /// Put on `info` the tags its folder's and branch's rules give it. Only
+    /// ever adds: a tag taken off by hand comes back only when the folder changes.
     fn apply(&self, info: &mut Info) -> bool {
         let mut added = false;
-        for t in self.tags.iter().filter_map(|r| r.tag_for(&info.cwd, self.home.as_deref())) {
+        for t in self.tags.iter().filter_map(|r| r.tag_for_session(&info.cwd, &info.branch, self.home.as_deref())) {
             if !info.tags.contains(&t) && info.tags.len() < crate::proto::MAX_TAGS {
                 info.tags.push(t);
                 added = true;
@@ -638,6 +665,8 @@ fn spawn_session(
     cell: (u16, u16),
 ) -> io::Result<SessionId> {
     let id = shared.next.fetch_add(1, Ordering::Relaxed);
+    // No shell asked for: the settings' `[shell]`, else the system's.
+    let shell = shell.or_else(|| lock(&shared.rules).shell.command());
     let command = shell.as_ref().map_or_else(tsumugi_pane::default_program, |(p, _)| p.clone());
     let term = start_terminal(shared, id, &cwd, size, cell, shell.clone())?;
     shared.ever.store(true, Ordering::Relaxed);
@@ -664,14 +693,25 @@ fn start_terminal(
     shell: Option<(String, Vec<String>)>,
 ) -> io::Result<Terminal> {
     let dirty = shared.dirty.clone();
-    let log = std::env::var_os("TSUMUGI_PTY_LOG").map(PathBuf::from);
-    let env = vec![
-        ("TSUMUGI_SESSION".to_owned(), id.to_string()),
-        ("TSUMUGI_ADDRESS".to_owned(), shared.address.to_string_lossy().into_owned()),
-    ];
+    let (own, scrollback, pane_log) = {
+        let r = lock(&shared.rules);
+        (r.shell.clone(), r.scrollback, r.pane_log)
+    };
+    // `[advanced] pane_log`: a file a session beside the state, for bug reports.
+    let log = std::env::var_os("TSUMUGI_PTY_LOG").map(PathBuf::from).or_else(|| {
+        let dir = shared.state.as_deref()?.parent()?.join("pane-logs");
+        (pane_log && std::fs::create_dir_all(&dir).is_ok()).then(|| dir.join(format!("session-{id}.log")))
+    });
+    // The settings' variables first: tsumugi's own win.
+    let mut env: Vec<(String, String)> = own.env.clone().into_iter().collect();
+    env.push(("TSUMUGI_SESSION".to_owned(), id.to_string()));
+    env.push(("TSUMUGI_ADDRESS".to_owned(), shared.address.to_string_lossy().into_owned()));
+    // No shell asked for: the settings' `[shell]`, else the system's.
+    let shell = shell.or_else(|| own.command());
     let mut term = Terminal::spawn_with_env(cwd, size, cell, shell, log.as_deref(), env, move || {
         let _ = dirty.send(id);
     })?;
+    term.set_scrollback(scrollback);
     // What a program asking for the colours (OSC 10 / 11) is told: the
     // window's default palette, filer's colours.
     term.set_colors([0xc8, 0xcd, 0xd8], [0x1b, 0x1e, 0x24]);
@@ -708,7 +748,7 @@ fn restore(shared: &Arc<Shared>, sessions: &mut BTreeMap<SessionId, Session>, on
             s.info.conversation = p.claude.clone().unwrap_or_default();
             if let Some(conversation) = &p.claude {
                 s.claude = Some(conversation.clone());
-                s.pending = Some(format!("claude --resume {conversation}\r").into_bytes());
+                s.pending = lock(&shared.rules).resume_line(conversation);
             }
             ids.insert(p.id, id);
             started += 1;
@@ -826,14 +866,19 @@ fn settle(s: &mut Session, quiet: Duration) -> Option<(State, u64)> {
 
 /// How long a session has to have run for its finishing to be worth a
 /// notification (docs/v1-scope.md 1h: "1 分以上動いたときだけ").
-const LONG_RUN: u64 = 60_000;
+/// How long a quiet program must be silent to read as waiting: the
+/// settings' `[sessions] quiet`, else `TSUMUGI_QUIET_SECS`, else 10 s.
+fn quiet_of(shared: &Shared) -> Duration {
+    lock(&shared.rules).quiet.unwrap_or(shared.quiet)
+}
 
 /// Put a session's new state on the bell's list when it is one a person
 /// should hear of: it wants them, it failed, or it finished a long run.
 fn record_notice(shared: &Shared, s: &Session, (was, since): (State, u64)) {
+    let long_run = lock(&shared.rules).long_run;
     let worth = match s.info.state {
         State::Waiting | State::Error => true,
-        State::Done => was == State::Running && now_ms().saturating_sub(since) >= LONG_RUN,
+        State::Done => was == State::Running && now_ms().saturating_sub(since) >= long_run,
         _ => false,
     };
     if !worth {
@@ -944,7 +989,7 @@ fn run_pump(shared: Arc<Shared>, dirty: Receiver<SessionId>) {
             }
             drop(rules);
             for s in sessions.values_mut() {
-                if let Some(before) = settle(s, shared.quiet) {
+                if let Some(before) = settle(s, quiet_of(&shared)) {
                     record_notice(&shared, s, before);
                     changed = true;
                 }
@@ -992,7 +1037,7 @@ fn run_pump(shared: Arc<Shared>, dirty: Receiver<SessionId>) {
                 lock(&shared.rules).apply(&mut s.info);
                 save_soon(&shared, SAVE_AFTER_CHANGE);
             }
-            let settled = if noticed { settle(s, shared.quiet) } else { None };
+            let settled = if noticed { settle(s, quiet_of(&shared)) } else { None };
             if let Some(b) = settled {
                 record_notice(&shared, s, b);
             }

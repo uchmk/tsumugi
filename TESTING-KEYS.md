@@ -30,6 +30,10 @@ Windows and Linux keys first; the macOS key is after `·`.
 - [ ] `Alt+Right` · `Cmd+Option+Right` — The keys to the pane on the right
 - [ ] `Alt+Up` · `Cmd+Option+Up` — The keys to the pane above
 - [ ] `Alt+Down` · `Cmd+Option+Down` — The keys to the pane below
+- [ ] `Alt+Shift+Left` · `Cmd+Ctrl+Left` — Move the divider nearest the pane with the keys to the left
+- [ ] `Alt+Shift+Right` · `Cmd+Ctrl+Right` — Move the divider nearest the pane with the keys to the right
+- [ ] `Alt+Shift+Up` · `Cmd+Ctrl+Up` — Move the divider nearest the pane with the keys up
+- [ ] `Alt+Shift+Down` · `Cmd+Ctrl+Down` — Move the divider nearest the pane with the keys down
 
 ## The new-session dialog
 

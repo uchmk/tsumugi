@@ -250,6 +250,25 @@ fn a_prompt_is_pasted_and_sent() {
     pane.kill();
 }
 
+/// The settings' `[shell.env]` reaches every session's shell.
+#[test]
+fn the_settings_variables_reach_the_shell() {
+    let at = address();
+    let dir = std::env::temp_dir().join(format!("tsumugi-env-test-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("settings.toml");
+    std::fs::write(&path, "[shell.env]\nTSUMUGI_T = \"from-settings\"\n").unwrap();
+    let _srv = server::start_with(&at, server::Options { state: None, settings: Some(path) }).expect("the server starts");
+    let c = Client::connect(&at, || {}).expect("a client connects");
+    let pane = c.spawn(std::env::temp_dir(), None, Size::new(80, 24), (8, 16)).expect("a shell starts");
+    until(&pane, "a prompt", |t| !t.trim().is_empty());
+    let line = if cfg!(windows) { "echo \"got-$env:TSUMUGI_T\"" } else { "echo \"got-$TSUMUGI_T\"" };
+    c.send_prompt(pane.id(), line.into());
+    until(&pane, "the variable", |t| t.contains("got-from-settings"));
+    pane.kill();
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 /// A search across sessions finds a line in the one that printed it, and
 /// nothing for what no session printed.
 #[test]

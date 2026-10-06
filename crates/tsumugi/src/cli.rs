@@ -66,7 +66,7 @@ pub fn new(client: &Client, n: New) -> Result<SessionId, String> {
     if !folder.is_dir() {
         return Err(format!("{}: not a folder", folder.display()));
     }
-    let shell = tsumugi_pane::default_shell().map(|s| (s, Vec::new()));
+    let shell = None;
     let pane = client
         .spawn_typing(folder, shell, Size::new(80, 24), (8, 16), Place::NewWorkspace, command_line(&n.command))
         .map_err(|e| format!("the session did not start: {e}"))?;

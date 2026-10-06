@@ -347,10 +347,36 @@ pub fn bell(ui: &mut egui::Ui, pal: &Palette, notices: &[Notice]) -> egui::Respo
     resp
 }
 
+/// `[tags.colors]`: tags given a colour of their own.
+static TAG_COLORS: std::sync::RwLock<std::collections::BTreeMap<String, Color32>> = std::sync::RwLock::new(std::collections::BTreeMap::new());
+
+/// Take `[tags.colors]` (`"#rrggbb"` each; others are left out).
+pub fn set_tag_colors(map: &std::collections::BTreeMap<String, String>) {
+    let parsed = map
+        .iter()
+        .filter_map(|(k, v)| {
+            let h = v.trim().strip_prefix('#')?;
+            let n = u32::from_str_radix(h.get(..6)?, 16).ok()?;
+            Some((k.clone(), Color32::from_rgb((n >> 16) as u8, (n >> 8) as u8, n as u8)))
+        })
+        .collect();
+    if let Ok(mut m) = TAG_COLORS.write() {
+        *m = parsed;
+    }
+}
+
+/// The design's eight tag colours, as `"#rrggbb"`, for the settings' picker.
+pub const TAG_PALETTE: [&str; 8] = ["#4a4f5c", "#5e4a86", "#2f6b66", "#7a5a22", "#2f4f7f", "#7a343a", "#3d6b3a", "#7a3a5e"];
+
 /// A tag's colours, fill and text: picked from its name, so a tag is the
 /// same colour in every window and after a restart. The first three are the
 /// design's (`claude`, `review`, `filer`).
 pub fn tag_colors(tag: &str) -> (Color32, Color32) {
+    // A colour of its own from `[tags.colors]`, its text white or black.
+    if let Some(fill) = TAG_COLORS.read().ok().and_then(|m| m.get(tag).copied()) {
+        let light = 0.299 * f32::from(fill.r()) + 0.587 * f32::from(fill.g()) + 0.114 * f32::from(fill.b()) > 150.0;
+        return (fill, if light { Color32::from_rgb(0x14, 0x14, 0x13) } else { Color32::WHITE });
+    }
     type Rgb = (u8, u8, u8);
     const COLORS: [(Rgb, Rgb); 8] = [
         ((0x4a, 0x4f, 0x5c), (0xee, 0xf0, 0xf4)),
@@ -432,6 +458,20 @@ pub fn top_band(ui: &mut egui::Ui, pal: &Palette, tags: &[String], muted_tags: &
     let name = p.layout_no_wrap("tsumugi".into(), FontId::proportional(13.0), crate::theme::colors().strong());
     let name_right = o.x + 24.0 + name.size().x;
     p.galley(egui::pos2(o.x + 24.0, rect.center().y - name.size().y / 2.0), name, Color32::WHITE);
+    if frame.settings {
+        p.text(whole.center(), egui::Align2::CENTER_CENTER, "Settings", FontId::proportional(13.0), pal.fg_dim);
+        let r = egui::Rect::from_min_max(egui::pos2(rect.right() - 44.0, whole.top() + 4.0), egui::pos2(rect.right(), whole.bottom() - 4.0));
+        let resp = ui.interact(r, ui.id().with("close-settings"), egui::Sense::click()).on_hover_text("Close settings (Esc)");
+        if resp.hovered() {
+            p.rect_filled(r, 4.0, crate::theme::colors().hover());
+        }
+        let c = r.center();
+        let stroke = egui::Stroke::new(1.2, if resp.hovered() { crate::theme::colors().strong() } else { pal.fg_dim });
+        p.line_segment([c + egui::vec2(-4.5, -4.5), c + egui::vec2(4.5, 4.5)], stroke);
+        p.line_segment([c + egui::vec2(4.5, -4.5), c + egui::vec2(-4.5, 4.5)], stroke);
+        out.close_settings = resp.clicked();
+        return out;
+    }
 
     // The tags, right to left, as many as fit with the box at its widest.
     let chip_w = |t: &str| p.layout_no_wrap(t.to_owned(), FontId::proportional(11.0), pal.fg).size().x + 12.0;
@@ -486,12 +526,17 @@ pub struct BandFrame {
     /// Room kept on the left (macOS's traffic lights over the band).
     pub left: f32,
     pub maximized: bool,
+    /// The settings are open: the band says so in the middle, with their
+    /// close button, in place of the search box and the tags.
+    pub settings: bool,
 }
 
 #[derive(Default)]
 pub struct BandOut {
     /// The search box was clicked.
     pub search: bool,
+    /// The settings' close button was clicked.
+    pub close_settings: bool,
     pub window: Option<WindowOp>,
 }
 

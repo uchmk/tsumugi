@@ -20,6 +20,8 @@ pub enum Action {
     SplitDown,
     /// Give the keys to the pane on that side.
     Move(Toward),
+    /// Move the divider beside the pane with the keys that way.
+    Resize(Toward),
     /// Show the pane with the keys alone, or all of them again.
     Zoom,
     /// The search box: sessions, folders and commands (the design's 1c).
@@ -40,7 +42,19 @@ pub enum Action {
 /// that action elsewhere or took it away.
 pub fn action(key: Key, m: Modifiers) -> Option<Action> {
     let bound = bindings();
-    action_with(key, m, cfg!(target_os = "macos"), &bound)
+    action_with(key, m, mac(), &bound)
+}
+
+/// `[general] cmd_on_mac`: off, a Mac takes the keys of Windows and Linux.
+static CMD_ON_MAC: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
+
+pub fn set_cmd_on_mac(on: bool) {
+    CMD_ON_MAC.store(on, std::sync::atomic::Ordering::Relaxed);
+}
+
+/// The window's keys are the Mac's (Cmd) ones.
+pub fn mac() -> bool {
+    cfg!(target_os = "macos") && CMD_ON_MAC.load(std::sync::atomic::Ordering::Relaxed)
 }
 
 fn action_with(key: Key, m: Modifiers, mac: bool, bound: &[(Action, Option<Chord>)]) -> Option<Action> {
@@ -86,6 +100,7 @@ pub fn title(a: Action) -> &'static str {
         Action::Input => "Input box",
         Action::Tab(_) => "The Nth tab",
         Action::Move(_) => "Move between panes",
+        Action::Resize(_) => "Resize the pane",
     }
 }
 
@@ -214,10 +229,41 @@ pub fn set_bindings(table: &std::collections::BTreeMap<String, String>) -> Resul
     Ok(())
 }
 
+/// Keys Claude Code and the shells use, which a window key would take from
+/// them: the chord as `[keys]` writes it, and whose it is.
+const OTHERS: [(&str, &str); 14] = [
+    ("Ctrl+C", "Claude Code's interrupt"),
+    ("Ctrl+D", "Claude Code's exit"),
+    ("Ctrl+R", "Claude Code's history search"),
+    ("Ctrl+O", "Claude Code's transcript"),
+    ("Ctrl+T", "Claude Code's task list"),
+    ("Ctrl+B", "Claude Code's background and tmux's prefix"),
+    ("Ctrl+L", "the shell's clear"),
+    ("Ctrl+Z", "the shell's suspend"),
+    ("Ctrl+V", "Claude Code's paste"),
+    ("Shift+Tab", "Claude Code's mode switch"),
+    ("Escape", "Claude Code's stop"),
+    ("Ctrl+W", "the shell's word rubout"),
+    ("Ctrl+U", "the shell's line rubout"),
+    ("Ctrl+A", "the shell's start of line"),
+];
+
+/// What `chord` would take, given to `action`: another of the window's
+/// actions on it now, or a key of Claude Code's or the shell's.
+pub fn clash(chord: &Chord, action: Action) -> Option<String> {
+    let label = chord.label();
+    for (a, ..) in NAMED {
+        if a != action && self::label(a) == label {
+            return Some(format!("{label} is {} already", title(a)));
+        }
+    }
+    OTHERS.iter().find(|(k, _)| Chord::parse(k).is_ok_and(|c| c == *chord)).map(|(_, whose)| format!("{label} is {whose}"))
+}
+
 /// The key an action is on now, as shown beside it: the settings' key,
 /// `none`, or its own.
 pub fn label(action: Action) -> String {
-    let mac = cfg!(target_os = "macos");
+    let mac = mac();
     if let Some((_, c)) = bindings().into_iter().find(|(a, _)| *a == action) {
         return c.map_or_else(|| "none".into(), |c| c.label());
     }
@@ -257,6 +303,12 @@ fn action_on(key: Key, m: Modifiers, mac: bool) -> Option<Action> {
                 return Some(Action::Move(t));
             }
         }
+        // iTerm2's: Cmd+Ctrl+arrows.
+        if cmd && m.ctrl && !m.alt && !m.shift {
+            if let Some(t) = arrow() {
+                return Some(Action::Resize(t));
+            }
+        }
         return match key {
             Key::D if cmd && !m.shift => Some(Action::SplitRight),
             Key::D if cmd && m.shift => Some(Action::SplitDown),
@@ -287,6 +339,7 @@ fn action_on(key: Key, m: Modifiers, mac: bool) -> Option<Action> {
         Key::Equals | Key::Plus if m.alt && m.shift && !m.ctrl => Some(Action::SplitRight),
         Key::Minus if m.alt && m.shift && !m.ctrl => Some(Action::SplitDown),
         _ if m.alt && !m.ctrl && !m.shift && arrow().is_some() => arrow().map(Action::Move),
+        _ if m.alt && m.shift && !m.ctrl && arrow().is_some() => arrow().map(Action::Resize),
         _ if m.ctrl && m.alt && !m.shift => digit().map(Action::Tab),
         _ => None,
     }
@@ -314,6 +367,7 @@ mod tests {
         assert_eq!(action_on(Key::Plus, alt_shift, false), Some(Action::SplitRight));
         assert_eq!(action_on(Key::Minus, alt_shift, false), Some(Action::SplitDown));
         assert_eq!(action_on(Key::ArrowLeft, alt, false), Some(Action::Move(Toward::Left)));
+        assert_eq!(action_on(Key::ArrowRight, alt_shift, false), Some(Action::Resize(Toward::Right)));
         assert_eq!(action_on(Key::Z, CTRL_SHIFT, false), Some(Action::Zoom));
         assert_eq!(action_on(Key::P, CTRL_SHIFT, false), Some(Action::Search));
         assert_eq!(action_on(Key::P, CTRL, false), None, "Ctrl+P is the shell's history");
@@ -355,6 +409,11 @@ mod tests {
         let split = vec![(Action::SplitRight, Some(Chord::parse("Ctrl+Alt+=").unwrap()))];
         let ctrl_alt = Modifiers { alt: true, ctrl: true, shift: false, mac_cmd: false, command: true };
         assert_eq!(action_with(Key::Plus, ctrl_alt, false, &split), Some(Action::SplitRight));
+        // A clash is named: with another action, or with Claude Code.
+        assert_eq!(clash(&Chord::parse("Ctrl+Shift+W").unwrap(), Action::NewTab).as_deref(), Some("Ctrl+Shift+W is Close the session already"));
+        assert!(clash(&Chord::parse("Ctrl+C").unwrap(), Action::NewTab).unwrap().contains("Claude Code"));
+        assert_eq!(clash(&Chord::parse("Ctrl+Shift+T").unwrap(), Action::NewTab), None, "its own key");
+        assert_eq!(clash(&Chord::parse("Ctrl+Shift+Y").unwrap(), Action::NewTab), None);
         // Every named action's own key reads.
         for (_, _, win, mac) in NAMED {
             assert!(Chord::parse(win).is_ok() && Chord::parse(mac).is_ok(), "{win} {mac}");
