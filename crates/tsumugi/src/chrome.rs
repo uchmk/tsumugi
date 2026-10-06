@@ -351,10 +351,30 @@ pub fn more_chip(p: &egui::Painter, at: egui::Pos2, n: usize, color: Color32) ->
 /// the right, three and `+N`. When the window is narrow the tags give way
 /// first, then the box shrinks to its magnifier (1o). Whether the box was
 /// clicked.
-pub fn top_band(ui: &mut egui::Ui, pal: &Palette, tags: &[String], muted_tags: &[String]) -> bool {
-    let rect = ui.max_rect();
+pub fn top_band(ui: &mut egui::Ui, pal: &Palette, tags: &[String], muted_tags: &[String], frame: &BandFrame) -> BandOut {
+    let whole = ui.max_rect();
     let p = ui.painter().clone();
-    p.line_segment([rect.left_bottom(), rect.right_bottom()], egui::Stroke::new(1.0, crate::theme::colors().border));
+    p.line_segment([whole.left_bottom(), whole.right_bottom()], egui::Stroke::new(1.0, crate::theme::colors().border));
+    let mut out = BandOut::default();
+    // As the title bar: the band's empty parts move the window and a double
+    // click maximizes it. Taken first, so what is drawn on it comes first.
+    if frame.own {
+        let bg = ui.interact(whole, ui.id().with("band-drag"), egui::Sense::click_and_drag());
+        if bg.double_clicked() {
+            out.window = Some(WindowOp::ToggleMax);
+        } else if bg.drag_started() {
+            out.window = Some(WindowOp::Drag);
+        }
+    }
+    let buttons = if frame.own && !cfg!(target_os = "macos") { 3.0 * CAPTION_W } else { 0.0 };
+    if buttons > 0.0 {
+        if let Some(op) = caption_buttons(ui, egui::Rect::from_min_max(egui::pos2(whole.right() - buttons, whole.top()), whole.right_bottom()), pal, frame.maximized) {
+            out.window = Some(op);
+        }
+    }
+    let mut rect = whole;
+    rect.min.x += frame.left;
+    rect.max.x -= buttons;
     // The mark: two threads, cyan and gold (the design's 10 A).
     let o = egui::pos2(rect.left() + 16.0, rect.center().y);
     let wave = |amp: f32, color: Color32| {
@@ -413,7 +433,126 @@ pub fn top_band(ui: &mut egui::Ui, pal: &Palette, tags: &[String], muted_tags: &
         }
         p.galley(egui::pos2(key_x, r.center().y - key.size().y / 2.0), key, grey());
     }
-    resp.clicked()
+    out.search = resp.clicked();
+    out
+}
+
+/// How the band is to be a title bar.
+pub struct BandFrame {
+    /// The window has no system title bar: the band is it.
+    pub own: bool,
+    /// Room kept on the left (macOS's traffic lights over the band).
+    pub left: f32,
+    pub maximized: bool,
+}
+
+#[derive(Default)]
+pub struct BandOut {
+    /// The search box was clicked.
+    pub search: bool,
+    pub window: Option<WindowOp>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum WindowOp {
+    Drag,
+    ToggleMax,
+    Minimize,
+    Close,
+}
+
+/// A caption button's width, as Windows 11 has them.
+const CAPTION_W: f32 = 46.0;
+
+/// Minimize, maximize (restore when maximized) and close, in `rect`, drawn
+/// as Windows draws them: thin lines, close red under the pointer.
+fn caption_buttons(ui: &mut egui::Ui, rect: egui::Rect, pal: &Palette, maximized: bool) -> Option<WindowOp> {
+    let mut out = None;
+    let ops = [(WindowOp::Minimize, "Minimize"), (WindowOp::ToggleMax, if maximized { "Restore" } else { "Maximize" }), (WindowOp::Close, "Close")];
+    for (k, (op, words)) in ops.into_iter().enumerate() {
+        let r = egui::Rect::from_min_size(rect.min + egui::vec2(k as f32 * CAPTION_W, 0.0), egui::vec2(CAPTION_W, rect.height()));
+        let resp = ui.interact(r, ui.id().with(("caption", k)), egui::Sense::click()).on_hover_text(words);
+        let p = ui.painter();
+        let hot = resp.hovered();
+        let close = op == WindowOp::Close;
+        if hot {
+            p.rect_filled(r, 0.0, if close { Color32::from_rgb(0xc4, 0x2b, 0x1c) } else { crate::theme::colors().hover() });
+        }
+        let color = if hot && close { Color32::WHITE } else { pal.fg };
+        let stroke = egui::Stroke::new(1.0, color);
+        let c = r.center();
+        match op {
+            WindowOp::Minimize => {
+                p.line_segment([c + egui::vec2(-5.0, 0.0), c + egui::vec2(5.0, 0.0)], stroke);
+            }
+            WindowOp::ToggleMax if maximized => {
+                // Two windows, one behind the other.
+                p.rect_stroke(egui::Rect::from_center_size(c + egui::vec2(-1.0, 1.0), egui::vec2(8.0, 8.0)), 1.0, stroke, egui::StrokeKind::Inside);
+                p.line_segment([c + egui::vec2(-3.0, -5.0), c + egui::vec2(5.0, -5.0)], stroke);
+                p.line_segment([c + egui::vec2(5.0, -5.0), c + egui::vec2(5.0, 3.0)], stroke);
+            }
+            WindowOp::ToggleMax => {
+                p.rect_stroke(egui::Rect::from_center_size(c, egui::vec2(10.0, 10.0)), 1.0, stroke, egui::StrokeKind::Inside);
+            }
+            WindowOp::Close | WindowOp::Drag => {
+                p.line_segment([c + egui::vec2(-5.0, -5.0), c + egui::vec2(5.0, 5.0)], stroke);
+                p.line_segment([c + egui::vec2(-5.0, 5.0), c + egui::vec2(5.0, -5.0)], stroke);
+            }
+        }
+        if resp.clicked() {
+            out = Some(op);
+        }
+    }
+    out
+}
+
+/// A window without the system's frame is resized by its edges: a 6px
+/// strip along each, and the corners, set the pointer and start the
+/// system's resizing on a press (on the press, not once a drag is seen: by
+/// then the pointer has left the window, outward). Called last in a frame,
+/// so its pointer is the one shown. Not while maximized.
+pub fn resize_edges(ctx: &egui::Context) {
+    use egui::{CursorIcon as C, ResizeDirection as D};
+    let r = ctx.content_rect();
+    let (pos, pressed) = ctx.input(|i| (i.pointer.latest_pos(), i.pointer.primary_pressed()));
+    let Some(p) = pos else { return };
+    let Some(dir) = edge_at(r, p) else { return };
+    ctx.set_cursor_icon(match dir {
+        D::North | D::South => C::ResizeVertical,
+        D::East | D::West => C::ResizeHorizontal,
+        D::NorthWest | D::SouthEast => C::ResizeNwSe,
+        D::NorthEast | D::SouthWest => C::ResizeNeSw,
+    });
+    if pressed {
+        ctx.send_viewport_cmd(egui::ViewportCommand::BeginResize(dir));
+    }
+}
+
+/// Which edge or corner of `r` the point `p` is on, if any. The top edge is
+/// thinner: the band under it is the title bar to drag by.
+fn edge_at(r: egui::Rect, p: egui::Pos2) -> Option<egui::ResizeDirection> {
+    use egui::ResizeDirection as D;
+    const EDGE: f32 = 6.0;
+    const CORNER: f32 = 12.0;
+    if !r.contains(p) {
+        return None;
+    }
+    let (left, right) = (p.x - r.left() < EDGE, r.right() - p.x < EDGE);
+    let (top, bottom) = (p.y - r.top() < EDGE / 2.0, r.bottom() - p.y < EDGE);
+    let (near_left, near_right) = (p.x - r.left() < CORNER, r.right() - p.x < CORNER);
+    let (near_top, near_bottom) = (p.y - r.top() < CORNER, r.bottom() - p.y < CORNER);
+    let dir = match () {
+        _ if (top && near_left) || (left && near_top) => D::NorthWest,
+        _ if (top && near_right) || (right && near_top) => D::NorthEast,
+        _ if (bottom && near_left) || (left && near_bottom) => D::SouthWest,
+        _ if (bottom && near_right) || (right && near_bottom) => D::SouthEast,
+        _ if top => D::North,
+        _ if bottom => D::South,
+        _ if left => D::West,
+        _ if right => D::East,
+        _ => return None,
+    };
+    Some(dir)
 }
 
 /// The search box opened (`Ctrl+Shift+P`): a field, and the entries that
@@ -774,7 +913,21 @@ pub fn restore_screen(ui: &mut egui::Ui, pal: &Palette, view: &mut RestoreView) 
 
 #[cfg(test)]
 mod tests {
-    use super::{BREATHE, SWEEP, breathe, elapsed, sweep_at};
+    use super::{BREATHE, SWEEP, breathe, edge_at, elapsed, sweep_at};
+    use eframe::egui::{ResizeDirection as D, pos2, Rect};
+
+    #[test]
+    fn the_edges_and_corners_resize() {
+        let r = Rect::from_min_max(pos2(0.0, 0.0), pos2(800.0, 600.0));
+        assert_eq!(edge_at(r, pos2(798.0, 300.0)), Some(D::East));
+        assert_eq!(edge_at(r, pos2(2.0, 300.0)), Some(D::West));
+        assert_eq!(edge_at(r, pos2(400.0, 597.0)), Some(D::South));
+        assert_eq!(edge_at(r, pos2(400.0, 1.0)), Some(D::North));
+        assert_eq!(edge_at(r, pos2(400.0, 5.0)), None, "the top edge is thin: the band is dragged there");
+        assert_eq!(edge_at(r, pos2(798.0, 595.0)), Some(D::SouthEast));
+        assert_eq!(edge_at(r, pos2(790.0, 1.0)), Some(D::NorthEast), "the corners reach further along");
+        assert_eq!(edge_at(r, pos2(400.0, 300.0)), None);
+    }
 
     #[test]
     fn the_ring_breathes_and_the_line_runs_round() {

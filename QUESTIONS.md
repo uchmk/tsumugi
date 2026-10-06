@@ -122,3 +122,16 @@
   2. 合字は入れない。ターミナルでは合字を嫌う人も多く、Windows Terminal でも既定は切ってある。
 - 回答が来るまでは 2 のまま（合字なし）。
 - 回答:
+
+## Q9: macOS の vibrancy のためのクレート
+- 状態: 未回答
+- タスク: v1-scope の「見た目」の「窓の素材。Windows 11 は Mica / Acrylic、macOS は vibrancy」。
+- 背景: v0.25.0 で Windows 11 の Mica / Acrylic を入れた（`windows` クレートで DWM を呼ぶだけで、新しいクレートは足していない。`[window] material`）。
+  macOS の vibrancy は、窓の下に `NSVisualEffectView` を差し込む Objective-C の呼び出しが要る。
+- 選択肢:
+  1. **`window-vibrancy` クレートを足す（推奨）**: Tauri のチームのもの。macOS の vibrancy と Windows の Mica / Acrylic / Blur を 1 つの API で出す。
+     Rust だけで書かれ（`objc2` と `windows-sys`）、C のライブラリを抱えない。入れたら Windows 側も自前の DWM の呼び出しからこちらに寄せる。
+  2. `objc2` を直接使って自前で書く（winit が既に使っているので、ビルドに増えるものは少ない）。
+  3. macOS では素材を使わない。
+- 回答が来るまでは 3 のまま（macOS は不透明）。
+- 回答:

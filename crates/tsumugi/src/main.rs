@@ -25,6 +25,7 @@ mod fonts;
 mod gitinfo;
 mod inputbox;
 mod keys;
+mod material;
 mod menu;
 mod newsession;
 mod palette;
@@ -298,7 +299,20 @@ fn json_string(json: &str, key: &str) -> Option<String> {
 fn window() -> std::process::ExitCode {
     // Before the window shows, so the taskbar files it under this name.
     alert::name_process();
-    let viewport = egui::ViewportBuilder::default().with_title("tsumugi").with_inner_size([960.0, 600.0]);
+    let first = tsumugi_mux::settings::default_path().and_then(|p| tsumugi_mux::settings::load(&p).ok()).unwrap_or_default();
+    let mut viewport = egui::ViewportBuilder::default().with_title("tsumugi").with_inner_size([960.0, 600.0]).with_min_inner_size([420.0, 260.0]);
+    if first.window.own_titlebar() {
+        // macOS keeps its traffic lights, over the band; elsewhere the band
+        // draws its own buttons (chrome::top_band).
+        viewport = if cfg!(target_os = "macos") {
+            viewport.with_fullsize_content_view(true).with_titlebar_shown(false).with_title_shown(false)
+        } else {
+            viewport.with_decorations(false)
+        };
+    }
+    if cfg!(windows) && first.window.material != "none" {
+        viewport = viewport.with_transparent(true);
+    }
     let options = eframe::NativeOptions { viewport, wgpu_options: wgpu_options(), ..Default::default() };
     match eframe::run_native("tsumugi", options, Box::new(|cc| Ok(Box::new(App::new(cc))))) {
         Ok(()) => std::process::ExitCode::SUCCESS,
@@ -539,6 +553,13 @@ struct App {
     nerd: bool,
     /// Commits not pushed and the pull request, for the status bar (1d).
     git: gitinfo::Watcher,
+    /// The window has no system title bar: the band is it. On macOS fixed
+    /// when the window opens; elsewhere it follows the settings.
+    own_frame: bool,
+    /// The system's frame is shown (not on macOS, where it stays as opened).
+    system_frame: bool,
+    /// The desktop shows through the chrome (Mica or Acrylic, Windows 11).
+    material: bool,
     /// `[font] family` as installed, and the file it found.
     font_family: String,
     font_file: Option<std::path::PathBuf>,
@@ -648,7 +669,8 @@ impl App {
         // The font before the first frame, so the panes do not start in
         // another and jump; later changes load on a thread.
         fonts::scan_names();
-        let first_font = tsumugi_mux::settings::default_path().and_then(|p| tsumugi_mux::settings::load(&p).ok()).map(|s| s.font).unwrap_or_default();
+        let first_settings = tsumugi_mux::settings::default_path().and_then(|p| tsumugi_mux::settings::load(&p).ok()).unwrap_or_default();
+        let (first_font, first_window) = (first_settings.font.clone(), first_settings.window.clone());
         let loaded = fonts::load(&first_font.family);
         cc.egui_ctx.set_fonts(loaded.defs);
         let nerd = loaded.nerd;
@@ -691,6 +713,9 @@ impl App {
             jump_waiting: false,
             nerd,
             git,
+            own_frame: first_window.own_titlebar(),
+            system_frame: !first_window.own_titlebar(),
+            material: cfg!(windows) && first_window.material != "none" && material::apply(window_handle(cc), &first_window.material, theme::colors().light),
             font_family: first_font.family.clone(),
             font_file: loaded.file,
             faces_found: [false; 3],
@@ -1748,6 +1773,12 @@ impl App {
         picked
     }
 
+    /// The band, sidebar and status bar's fill: see-through over Mica or
+    /// Acrylic, so the desktop's colour comes through; else as it is.
+    fn chrome_fill(&self, c: egui::Color32) -> egui::Color32 {
+        if self.material { c.gamma_multiply(0.55) } else { c }
+    }
+
     /// The panes' faces: the regular one, and bold and italic where found.
     fn faces(&self) -> tsumugi_pane::Faces {
         let size = self.font.size;
@@ -2207,9 +2238,29 @@ fn window_handle(cc: &eframe::CreationContext<'_>) -> Option<isize> {
 }
 
 impl eframe::App for App {
+    /// See-through where nothing is drawn when the desktop is to show
+    /// through (Mica or Acrylic).
+    fn clear_color(&self, visuals: &egui::Visuals) -> [f32; 4] {
+        if self.material { [0.0; 4] } else { visuals.panel_fill.to_normalized_gamma_f32() }
+    }
+
     fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
         self.animated = false;
         self.frame(ui, frame);
+        if !cfg!(target_os = "macos") {
+            // The system's frame while there is no band to be one (the
+            // screen saying the server cannot be reached), or when asked.
+            let frame = !self.own_frame || self.client.is_none();
+            if frame != self.system_frame {
+                self.system_frame = frame;
+                ui.ctx().send_viewport_cmd(egui::ViewportCommand::Decorations(frame));
+            }
+            // Last, so its pointer is the one shown over the edges.
+            let maximized = ui.ctx().input(|i| i.viewport().maximized.unwrap_or(false));
+            if !frame && !maximized {
+                chrome::resize_edges(ui.ctx());
+            }
+        }
         if self.animated {
             // About 30 frames a second while looked at (slow movement needs
             // no more); a few a second behind other windows.
@@ -2263,6 +2314,10 @@ impl App {
                 Read::Settings(read) => match *read {
                     Ok(s) => {
                         self.font = egui::FontId::monospace(s.font.size);
+                        let own = s.window.own_titlebar();
+                        if !cfg!(target_os = "macos") {
+                            self.own_frame = own;
+                        }
                         if s.font.family != self.font_family {
                             self.font_family = s.font.family.clone();
                             let (tx, rx) = std::sync::mpsc::channel();
@@ -2382,7 +2437,7 @@ impl App {
         let up = chrome::now_ms().saturating_sub(client.started_ms());
         let status = egui::Panel::bottom("status")
             .exact_size(24.0)
-            .frame(egui::Frame::NONE.fill(crate::theme::colors().side))
+            .frame(egui::Frame::NONE.fill(self.chrome_fill(crate::theme::colors().side)))
             .show(ui, |ui| {
                 let clock = &self.settings_now.clock;
                 let git = focus_info.as_ref().and_then(|i| self.git.get(&i.cwd, &i.branch));
@@ -2405,16 +2460,26 @@ impl App {
         // box, and the tags of the session with the keys.
         let focus_tags = focus_info.as_ref().map(|i| i.tags.clone()).unwrap_or_default();
         let muted_tags_now = client.muted_tags();
-        let open_search = egui::Panel::top("band")
+        let maximized = ctx.input(|i| i.viewport().maximized.unwrap_or(false));
+        let band_frame = chrome::BandFrame { own: self.own_frame && !self.system_frame, left: if self.own_frame && cfg!(target_os = "macos") { 76.0 } else { 0.0 }, maximized };
+        let band = egui::Panel::top("band")
             .exact_size(40.0)
-            .frame(egui::Frame::NONE.fill(crate::theme::colors().side))
-            .show(ui, |ui| chrome::top_band(ui, &self.palette, &focus_tags, &muted_tags_now))
+            .frame(egui::Frame::NONE.fill(self.chrome_fill(crate::theme::colors().side)))
+            .show(ui, |ui| chrome::top_band(ui, &self.palette, &focus_tags, &muted_tags_now, &band_frame))
             .inner;
-        if open_search {
+        if band.search {
             self.search = Some(palette::View::new());
         }
+        match band.window {
+            Some(chrome::WindowOp::Drag) => ctx.send_viewport_cmd(egui::ViewportCommand::StartDrag),
+            Some(chrome::WindowOp::ToggleMax) => ctx.send_viewport_cmd(egui::ViewportCommand::Maximized(!maximized)),
+            Some(chrome::WindowOp::Minimize) => ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(true)),
+            Some(chrome::WindowOp::Close) => ctx.send_viewport_cmd(egui::ViewportCommand::Close),
+            None => {}
+        }
 
-        let side = egui::Frame::NONE.fill(self.palette.on_cursor);
+
+        let side = egui::Frame::NONE.fill(self.chrome_fill(self.palette.on_cursor));
         // Each switch between the two starts the panel at its own width: a
         // fresh id, since egui keeps a panel's width by its id.
         let picked = if self.view.rail {

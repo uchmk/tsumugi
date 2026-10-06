@@ -267,6 +267,28 @@ fn general(ui: &mut egui::Ui, c: &Colors, seen: &Seen, out: &mut Vec<Change>) {
 }
 
 fn appearance(ui: &mut egui::Ui, c: &Colors, seen: &Seen, out: &mut Vec<Change>) {
+    let w = &seen.settings.window;
+    section(ui, c, "WINDOW", |ui| {
+        let own = w.own_titlebar();
+        let note = if cfg!(target_os = "macos") { "The band runs under the traffic lights (when the window opens next)" } else { "The band is the title bar, with its own buttons; off is the system's frame" };
+        if row(ui, c, "tsumugi's own title bar", note, |ui| switch(ui, c, own)) {
+            out.push(Change::Set(Some("window"), "titlebar", tsumugi_mux::settings::quote(if own { "system" } else { "tsumugi" })));
+        }
+        if cfg!(windows) {
+            ui.separator();
+            let mut m = w.material.clone();
+            row(ui, c, "Material", "Windows 11: the desktop shows through the band, sidebar and status bar (when the window opens next)", |ui| {
+                egui::ComboBox::from_id_salt("material").selected_text(&m).show_ui(ui, |ui| {
+                    for k in ["none", "mica", "acrylic"] {
+                        ui.selectable_value(&mut m, k.to_owned(), k);
+                    }
+                });
+            });
+            if m != w.material {
+                out.push(Change::Set(Some("window"), "material", tsumugi_mux::settings::quote(&m)));
+            }
+        }
+    });
     let f = &seen.settings.font;
     section(ui, c, "FONT", |ui| {
         let mut family = f.family.clone();

@@ -24,6 +24,14 @@
 //! dim = 35
 //! animations = true
 //!
+//! # The window's frame: "tsumugi" draws its own title bar along the band
+//! # (Windows and Linux; on macOS the band runs under the traffic lights), or
+//! # "system". material is "none", or on Windows 11 "mica" or "acrylic": the
+//! # desktop shows through the band, sidebar and status bar (on restart).
+//! [window]
+//! titlebar = "tsumugi"
+//! material = "none"
+//!
 //! # The panes' font: a font file's name (or part of it, "JetBrainsMono")
 //! # or its path; "" for the Nerd Font found, else the built-in one. Its Bold
 //! # and Italic files beside it are used for bold and italic text.
@@ -75,6 +83,7 @@ pub struct Settings {
     pub clock: Clock,
     pub appearance: Appearance,
     pub font: Font,
+    pub window: Window,
     pub tags: Tags,
     pub notify: Notify,
     pub open: Open,
@@ -133,6 +142,28 @@ pub struct Appearance {
     pub animations: bool,
 }
 
+/// The window's frame.
+#[derive(Clone, Debug, PartialEq, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct Window {
+    /// `tsumugi` (its own title bar) or `system`.
+    pub titlebar: String,
+    /// `none`, `mica` or `acrylic` (Windows 11).
+    pub material: String,
+}
+
+impl Window {
+    pub fn own_titlebar(&self) -> bool {
+        self.titlebar != "system"
+    }
+}
+
+impl Default for Window {
+    fn default() -> Self {
+        Self { titlebar: "tsumugi".into(), material: "none".into() }
+    }
+}
+
 /// The panes' font.
 #[derive(Clone, Debug, PartialEq, Deserialize)]
 #[serde(default, deny_unknown_fields)]
@@ -166,6 +197,7 @@ impl Default for Settings {
             clock: Clock::default(),
             appearance: Appearance::default(),
             font: Font::default(),
+            window: Window::default(),
             tags: Tags::default(),
             notify: Notify::default(),
             open: Open::default(),
@@ -294,6 +326,12 @@ pub fn parse(text: &str) -> Result<Settings, String> {
     })?;
     if !DATE_FORMATS.contains(&s.clock.date_format.as_str()) {
         return Err(format!("clock.date_format: `{}` is not one of {}", s.clock.date_format, DATE_FORMATS.join(", ")));
+    }
+    if !matches!(s.window.titlebar.as_str(), "tsumugi" | "system") {
+        return Err(format!("window.titlebar: `{}` is not tsumugi or system", s.window.titlebar));
+    }
+    if !matches!(s.window.material.as_str(), "none" | "mica" | "acrylic") {
+        return Err(format!("window.material: `{}` is not none, mica or acrylic", s.window.material));
     }
     if !(8.0..=32.0).contains(&s.font.size) {
         return Err(format!("font.size: {} is not between 8 and 32", s.font.size));
@@ -515,6 +553,9 @@ mod tests {
         assert!(parse("[font]\nsize = 4\n").is_err());
         assert!(parse("[font]\nline_height = 3.0\n").is_err());
         assert_eq!(parse("").unwrap().font, Font::default());
+        assert!(parse("").unwrap().window.own_titlebar());
+        assert!(!parse("[window]\ntitlebar = \"system\"\n").unwrap().window.own_titlebar());
+        assert!(parse("[window]\nmaterial = \"glass\"\n").is_err());
     }
 
     #[test]

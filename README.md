@@ -204,6 +204,14 @@ date = true
 date_format = "YYYY/MM/DD"
 weekday = true
 
+# The window's frame: "tsumugi" makes the band the title bar (its own
+# buttons; on macOS under the traffic lights), "system" the OS's own. On
+# Windows 11, material = "mica" or "acrylic" lets the desktop show through
+# the band, sidebar and status bar (when the window next opens).
+[window]
+titlebar = "tsumugi"
+material = "none"
+
 # The panes' font: a font file's name (or part of it) or its path, "" for
 # the Nerd Font found; its Bold and Italic files beside it are used too.
 [font]
