@@ -113,6 +113,11 @@ middle trades their places, an edge puts it on that side. A pane narrower
 than 20 columns or lower than 4 rows folds into a strip with its name and
 state.
 
+In the input box, **When done** (or `Ctrl+Shift+Enter`) queues the prompt
+instead: it goes when the session has finished what it is doing -- done,
+or waiting with no question on its screen -- one at a time. The card says
+how many are queued.
+
 ### New sessions
 
 The **+** beside SESSIONS, or `Ctrl+Shift+T` (`Cmd+T` on macOS), opens the new-session dialog with the

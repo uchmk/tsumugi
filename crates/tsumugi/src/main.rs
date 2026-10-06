@@ -564,6 +564,10 @@ struct App {
     material: bool,
     /// The session whose card the pointer is on: watched for its preview.
     peek: Option<SessionId>,
+    /// Prompts to send when their sessions are done, oldest first; and the
+    /// sessions just sent one, held until they have run again.
+    queue: Vec<Queued>,
+    queue_hold: HashMap<SessionId, std::time::Instant>,
     /// Sessions waiting, watched for a question on their screens this frame.
     watching: Vec<SessionId>,
     /// The worktrees tsumugi made; one being made, with what to start in
@@ -737,6 +741,8 @@ impl App {
             material: cfg!(windows) && first_window.material != "none" && material::apply(window_handle(cc), &first_window.material, theme::colors().light),
             peek: None,
             watching: Vec::new(),
+            queue: Vec::new(),
+            queue_hold: HashMap::new(),
             worktrees: worktree::ours(),
             ctx: cc.egui_ctx.clone(),
             worktree_making: None,
@@ -1487,10 +1493,14 @@ impl App {
                     chrome::branch_mark(&painter, mark, pal.fg_dim, self.nerd);
                     painter.galley(egui::pos2(mark.right() + 3.0, y), b, pal.fg_dim);
                 }
-                let third = match urgent.state {
+                let mut third = match urgent.state {
                     State::Waiting | State::Error | State::Done if !urgent.note.is_empty() => format!("{} · {}", chrome::state_words(urgent, now), urgent.note),
                     _ => chrome::state_words(urgent, now),
                 };
+                let queued = self.queue.iter().filter(|q| infos.iter().any(|i| i.id == q.id)).count();
+                if queued > 0 {
+                    third = format!("{queued} queued · {third}");
+                }
                 let third_color = match urgent.state {
                     State::Waiting => chrome::gold(),
                     State::Error => chrome::red(),
@@ -1944,7 +1954,50 @@ impl App {
         }
     }
 
-    /// Show `words` above the status bar for a while.
+    /// Queued prompts go to sessions that have finished: done, or waiting
+    /// with no question on their screens (a prompt into Claude Code's
+    /// permission menu would answer it). One at a time: after one goes, the
+    /// session's next is held for a few seconds, for it to start running.
+    fn send_queued(&mut self, client: &Client, sessions: &[Info]) {
+        if self.queue.is_empty() {
+            return;
+        }
+        let ids: Vec<SessionId> = self.queue.iter().map(|q| q.id).collect();
+        let mut gone = Vec::new();
+        for id in ids {
+            let Some(info) = sessions.iter().find(|i| i.id == id) else {
+                gone.push(id);
+                continue;
+            };
+            if matches!(info.state, State::Running | State::MaybeWaiting) {
+                self.queue_hold.remove(&id);
+                continue;
+            }
+            if self.queue_hold.get(&id).is_some_and(|t| t.elapsed() < std::time::Duration::from_secs(5)) {
+                continue;
+            }
+            let ready = info.state == State::Done || info.state == State::Waiting && answer::choices(&self.watch_lines(id)).is_empty();
+            if !ready {
+                continue;
+            }
+            if let Some(k) = self.queue.iter().position(|q| q.id == id) {
+                let q = self.queue.remove(k);
+                client.send_prompt(id, q.text);
+                self.queue_hold.insert(id, std::time::Instant::now());
+                let name = sort::display_title(&info.title, &info.command);
+                self.say(format!("Sent the queued prompt to {name}"), false);
+            }
+        }
+        if !gone.is_empty() {
+            let n = self.queue.iter().filter(|q| gone.contains(&q.id)).count();
+            self.queue.retain(|q| !gone.contains(&q.id));
+            self.say(format!("{n} queued prompt(s) dropped: the session ended"), true);
+        }
+        // Looked at again within the second, not only on output.
+        self.ctx.request_repaint_after(std::time::Duration::from_secs(1));
+    }
+
+    /// Show `words` under the band for a while.
     fn say(&mut self, words: String, error: bool) {
         self.toast = Some((words, std::time::Instant::now(), error));
     }
@@ -1959,7 +2012,7 @@ impl App {
         ctx.request_repaint_after(left);
         let c = crate::theme::colors();
         let (fill, color) = if *error { (crate::theme::mix(c.panel, c.err, 0.15), chrome::red()) } else { (c.raised(), c.strong()) };
-        egui::Area::new(egui::Id::new("toast")).order(egui::Order::Foreground).anchor(egui::Align2::CENTER_BOTTOM, egui::vec2(0.0, -64.0)).show(ctx, |ui| {
+        egui::Area::new(egui::Id::new("toast")).order(egui::Order::Foreground).anchor(egui::Align2::CENTER_TOP, egui::vec2(0.0, 52.0)).show(ctx, |ui| {
             egui::Frame::NONE.fill(fill).stroke(egui::Stroke::new(1.0, c.border)).corner_radius(6.0).inner_margin(egui::Margin::symmetric(12, 6)).show(ui, |ui| {
                 ui.add(egui::Label::new(egui::RichText::new(words.as_str()).size(12.5).color(color)).wrap_mode(egui::TextWrapMode::Extend));
             });
@@ -2435,6 +2488,12 @@ fn save_profile(mut profiles: Vec<tsumugi_mux::settings::Profile>, new: tsumugi_
 }
 
 /// Told of in the bell only: muted itself, or one of its tags is.
+/// A prompt waiting for its session to finish (the input box's "When done").
+struct Queued {
+    id: SessionId,
+    text: String,
+}
+
 /// How many lines a card's preview shows.
 const PEEK_LINES: usize = 12;
 
@@ -2767,6 +2826,7 @@ impl App {
             None => {}
         }
         self.worktrees(&ctx, &client, &sessions, current.as_ref());
+        self.send_queued(&client, &sessions);
         self.show_toast(&ctx);
 
         let answer = match &mut self.search {
@@ -2806,7 +2866,10 @@ impl App {
             let focus = w.focus;
             let sent = egui::Panel::bottom("input")
                 .frame(egui::Frame::NONE.fill(self.palette.on_cursor).inner_margin(egui::Margin::symmetric(10, 8)))
-                .show(ui, |ui| self.input.show(ui, &colors, focus, name.as_deref().unwrap_or("this pane"), &tags))
+                .show(ui, |ui| {
+                    let queued = self.queue.iter().filter(|q| q.id == focus).count();
+                    self.input.show(ui, &colors, focus, name.as_deref().unwrap_or("this pane"), &tags, queued)
+                })
                 .inner;
             if let Some(send) = sent {
                 let targets: Vec<SessionId> = match &send.to {
@@ -2814,7 +2877,11 @@ impl App {
                     inputbox::To::Tags(want) => sessions.iter().filter(|i| i.tags.iter().any(|t| want.contains(t))).map(|i| i.id).collect(),
                 };
                 for id in targets {
-                    client.send_prompt(id, send.text.clone());
+                    if send.later {
+                        self.queue.push(Queued { id, text: send.text.clone() });
+                    } else {
+                        client.send_prompt(id, send.text.clone());
+                    }
                 }
                 save_history(self.input.history.clone());
             }

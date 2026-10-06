@@ -37,6 +37,8 @@ pub struct InputBox {
     to_tags: Vec<String>,
     /// Focus the field on the next frame.
     focus: bool,
+    /// Send when the session is next done rather than now.
+    pub later: bool,
 }
 
 /// Where a prompt goes.
@@ -50,6 +52,8 @@ pub enum To {
 pub struct Send {
     pub to: To,
     pub text: String,
+    /// Queued: to go when the session has finished what it is doing.
+    pub later: bool,
 }
 
 impl InputBox {
@@ -135,7 +139,8 @@ impl InputBox {
 
     /// The box, for the session with the keys (`to`, called `name`), with
     /// the tags in use to send to instead. What to send, when it is sent.
-    pub fn show(&mut self, ui: &mut egui::Ui, c: &Colors, to: SessionId, name: &str, tags: &[String]) -> Option<Send> {
+    /// `queued`: prompts waiting to go to `to`, shown so they can be seen.
+    pub fn show(&mut self, ui: &mut egui::Ui, c: &Colors, to: SessionId, name: &str, tags: &[String], queued: usize) -> Option<Send> {
         self.to_tags.retain(|t| tags.contains(t));
         let id = egui::Id::new("input-box");
         let focused = ui.ctx().memory(|m| m.has_focus(id));
@@ -145,12 +150,14 @@ impl InputBox {
         // `↑` and `↓` walk the history only while the field is empty or shows
         // a line from it; in a draft of several lines they move the cursor.
         let walking = draft.text.is_empty() || (self.back.is_some() && !draft.text.contains('\n'));
-        let (send, up, down, close) = ui.input_mut(|i| {
+        let (later_key, send, up, down, close) = ui.input_mut(|i| {
             if !focused {
-                return (false, false, false, false);
+                return (false, false, false, false, false);
             }
             let cmd = egui::Modifiers::COMMAND;
             (
+                // Before the plain one, which would match it too.
+                i.consume_key(cmd | egui::Modifiers::SHIFT, egui::Key::Enter),
                 i.consume_key(cmd, egui::Key::Enter),
                 walking && i.consume_key(egui::Modifiers::NONE, egui::Key::ArrowUp),
                 walking && self.back.is_some() && i.consume_key(egui::Modifiers::NONE, egui::Key::ArrowDown),
@@ -203,6 +210,9 @@ impl InputBox {
                     }
                 }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if queued > 0 {
+                        ui.label(RichText::new(format!("{queued} queued")).size(11.5).color(c.wait)).on_hover_text("Prompts that go when the session is next done");
+                    }
                     if !draft.text.is_empty() {
                         ui.label(RichText::new("Draft kept").size(11.5).color(c.faint()));
                     }
@@ -237,12 +247,17 @@ impl InputBox {
                 }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     let key = if cfg!(target_os = "macos") { "Cmd+Enter" } else { "Ctrl+Enter" };
-                    let button = egui::Button::new(RichText::new(format!("Send   {key}")).color(c.on_accent()).strong()).fill(c.run).min_size(egui::vec2(110.0, 28.0));
+                    let label = if self.later { "Queue" } else { "Send" };
+                    let button = egui::Button::new(RichText::new(format!("{label}   {key}")).color(c.on_accent()).strong()).fill(if self.later { c.wait } else { c.run }).min_size(egui::vec2(110.0, 28.0));
                     let empty = draft.text.trim().is_empty() && draft.files.is_empty();
-                    if (ui.add_enabled(!empty, button).clicked() || send) && !empty {
+                    let clicked = ui.add_enabled(!empty, button).clicked();
+                    let shift = if cfg!(target_os = "macos") { "Cmd+Shift+Enter" } else { "Ctrl+Shift+Enter" };
+                    ui.toggle_value(&mut self.later, RichText::new("When done").size(12.0))
+                        .on_hover_text(format!("Queue the prompt: it goes when the session has finished what it is doing ({shift} queues once)"));
+                    if (clicked || send || later_key) && !empty {
                         let text = Self::prompt(&draft);
                         let to = if self.to_tags.is_empty() { To::Session(to) } else { To::Tags(self.to_tags.clone()) };
-                        sent = Some(Send { to, text: text.clone() });
+                        sent = Some(Send { to, text: text.clone(), later: self.later || later_key });
                         self.remember(draft.text.trim_end());
                         self.back = None;
                         draft = Draft::default();
