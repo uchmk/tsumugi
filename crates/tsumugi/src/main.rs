@@ -1173,6 +1173,21 @@ impl App {
                 for t in c.dropped.iter().cloned() {
                     client.tag(vec![id], t, false);
                 }
+                // The profile's other panes, beside it in the same tab.
+                let mut made = Vec::new();
+                for (k, s) in c.more.iter().enumerate() {
+                    let (beside, dir) = newsession::more_place(k, id, &made);
+                    let shell = tsumugi_pane::default_shell().map(|s| (s, Vec::new()));
+                    match client.spawn_typing(c.folder.clone(), shell, Size::new(80, 24), (8, 16), Place::Split { beside, dir }, s.typed()) {
+                        Ok(pane) => {
+                            made.push(pane.id());
+                            for t in c.tags.iter().cloned() {
+                                client.tag(vec![pane.id()], t, true);
+                            }
+                        }
+                        Err(e) => self.say(format!("A pane did not start: {e}"), true),
+                    }
+                }
             }
             Err(e) => self.failed = Some(format!("the shell did not start: {e}")),
         }
@@ -1182,6 +1197,7 @@ impl App {
                 folder: home_short(&c.folder),
                 start: c.start.word().into(),
                 tags: c.tags.clone(),
+                panes: c.more.iter().map(|s| s.word().to_owned()).collect(),
             };
             save_profile(self.profiles.clone(), profile);
         }

@@ -140,7 +140,10 @@ sessions on the same repository never write the same files; when the last
 session in it ends, tsumugi asks whether to remove the worktree (its branch
 stays, and git refuses while anything is not committed).
 `Enter` opens it in a new tab, `Alt+Enter` splits it to the right of the
-pane with the keys. **Save as a profile** keeps the choices under a name in
+pane with the keys. **Beside it → + Pane** adds up to three more panes to
+the tab, each started its own way (two Claude Codes and a shell: the second
+on the right, the third below it, a fourth below the first).
+**Save as a profile** keeps the choices -- the panes too -- under a name in
 `profiles.toml` beside the settings, for **Profile…** to fill in next time.
 
 ### Searching

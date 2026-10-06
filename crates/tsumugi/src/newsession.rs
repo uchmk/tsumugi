@@ -75,6 +75,8 @@ pub struct Dialog {
     /// the time).
     worktree: bool,
     branch: String,
+    /// More panes in the same tab, beside the first (a profile's layout).
+    more: Vec<Start>,
     /// The line of the folder list the arrows are on.
     selected: Option<usize>,
     opening: bool,
@@ -99,7 +101,24 @@ pub struct Create {
     pub save_as: Option<String>,
     /// Start it in a new git worktree on this branch.
     pub worktree: Option<String>,
+    /// More panes beside it, in the same folder.
+    pub more: Vec<Start>,
 }
+
+/// Where the `k`th more pane goes (0 the first of them), given the first
+/// pane and those already made: right of the first, below that, below the
+/// first -- two, three or four panes in a square.
+pub fn more_place(k: usize, first: u64, made: &[u64]) -> (u64, tsumugi_layout::Dir) {
+    use tsumugi_layout::Dir;
+    match k {
+        0 => (first, Dir::Right),
+        1 => (made.first().copied().unwrap_or(first), Dir::Down),
+        _ => (first, Dir::Down),
+    }
+}
+
+/// How many more panes a tab can start with.
+pub const MORE_MOST: usize = 3;
 
 impl Dialog {
     pub fn new(folder: &std::path::Path) -> Self {
@@ -113,6 +132,7 @@ impl Dialog {
             name: String::new(),
             worktree: false,
             branch: String::new(),
+            more: Vec::new(),
             selected: None,
             opening: true,
         }
@@ -139,6 +159,7 @@ impl Dialog {
         self.folder.clone_from(&p.folder);
         self.start = Start::from_word(&p.start).unwrap_or(Start::Claude);
         self.tags.clone_from(&p.tags);
+        self.more = p.panes.iter().filter_map(|w| Start::from_word(w)).take(MORE_MOST).collect();
         self.dropped.clear();
         self.selected = None;
     }
@@ -155,7 +176,7 @@ impl Dialog {
             let b = self.branch.trim();
             if b.is_empty() { crate::worktree::default_branch(chrono::Local::now()) } else { b.to_owned() }
         });
-        Answer::Create(Create { folder: self.folder_path(), start: self.start, tags, dropped: self.dropped.clone(), split, save_as, worktree })
+        Answer::Create(Create { folder: self.folder_path(), start: self.start, tags, dropped: self.dropped.clone(), split, save_as, worktree, more: self.more.clone() })
     }
 }
 
@@ -292,6 +313,33 @@ pub fn show(ctx: &egui::Context, pal: &Palette, d: &mut Dialog, recents: &[Recen
                         }
                     });
                 });
+                // More panes in the tab, beside the first (a profile keeps them).
+                ui.horizontal(|ui| {
+                    ui.label(RichText::new("Beside it").size(12.0).color(pal.fg_dim));
+                    let mut gone = None;
+                    for (k, s) in d.more.iter().enumerate() {
+                        if ui.add(egui::Button::new(RichText::new(format!("{}  ×", s.label())).size(12.0))).on_hover_text("Click to take it off").clicked() {
+                            gone = Some(k);
+                        }
+                    }
+                    if let Some(k) = gone {
+                        d.more.remove(k);
+                    }
+                    if d.more.len() < MORE_MOST {
+                        let add = ui.add(egui::Button::new(RichText::new("+ Pane").size(12.0)));
+                        egui::Popup::menu(&add).show(|ui| {
+                            for s in Start::ALL {
+                                if ui.button(s.label()).clicked() {
+                                    d.more.push(s);
+                                    ui.close();
+                                }
+                            }
+                        });
+                    }
+                    if d.more.is_empty() {
+                        ui.label(RichText::new("one pane").size(12.0).color(chrome::grey()));
+                    }
+                });
                 ui.add_space(10.0);
 
                 ui.label(label("TAGS"));
@@ -387,6 +435,24 @@ mod tests {
         }
         assert_eq!(Start::Claude.typed().as_deref(), Some("claude"));
         assert_eq!(Start::Shell.typed(), None);
+    }
+
+    #[test]
+    fn more_panes_make_a_square() {
+        use tsumugi_layout::Node;
+        let mut layout = Node::Leaf(1u64);
+        let mut made = Vec::new();
+        for k in 0..3 {
+            let (beside, dir) = more_place(k, 1, &made);
+            let id = 2 + k as u64;
+            assert!(layout.split(&beside, dir, id));
+            made.push(id);
+        }
+        // 1 | 2 over 3, with 4 below 1: two by two.
+        let r = layout.layout(tsumugi_layout::Rect::new(0.0, 0.0, 100.0, 100.0), 0.0);
+        let at = |id: u64| r.iter().find(|(x, _)| *x == id).unwrap().1;
+        assert_eq!((at(1).x, at(1).y, at(4).x, at(4).y), (0.0, 0.0, 0.0, 50.0));
+        assert_eq!((at(2).x, at(2).y, at(3).x, at(3).y), (50.0, 0.0, 50.0, 50.0));
     }
 
     #[test]
