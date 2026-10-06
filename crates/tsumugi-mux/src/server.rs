@@ -63,6 +63,8 @@ struct Shared {
     done: Sender<()>,
     /// A session has been started at some point.
     ever: std::sync::atomic::AtomicBool,
+    /// Asked to stop (`STOP`): leave at once, the tabs already written.
+    stopping: std::sync::atomic::AtomicBool,
     /// Where this server listens, told to its shells (`TSUMUGI_ADDRESS`) so
     /// that `tsumugi notify` inside them finds it.
     address: PathBuf,
@@ -99,6 +101,9 @@ impl ServerHandle {
                 Err(crossbeam_channel::RecvTimeoutError::Timeout) if self.shared.ever.load(Ordering::Relaxed) => {}
                 _ => break,
             }
+        }
+        if self.shared.stopping.load(Ordering::Relaxed) {
+            return;
         }
         // The state is written a moment after the last session ends, not at
         // once: a machine shutting down ends every shell before it ends the
@@ -146,6 +151,7 @@ pub fn start_with(at: &Address, options: Options) -> io::Result<ServerHandle> {
         dirty: dirty_tx,
         done: done_tx,
         ever: false.into(),
+        stopping: false.into(),
         address: at.0.clone(),
         state: options.state,
         notices: Mutex::new((1, std::collections::VecDeque::new())),
@@ -179,6 +185,14 @@ fn serve(shared: Arc<Shared>, client: ClientId, conn: Conn) {
     let Ok((mut r, mut w)) = conn.split() else { return };
     match frame::read::<_, ToServer>(&mut r) {
         Ok(ToServer::Hello { version: VERSION }) => {}
+        Ok(ToServer::Hello { version: crate::proto::STOP }) => {
+            // Asked to stop: the tabs on disk first, as they are now.
+            *lock(&shared.save_due) = Some(std::time::Instant::now());
+            save_if_due(&shared);
+            shared.stopping.store(true, Ordering::Relaxed);
+            let _ = shared.done.try_send(());
+            return;
+        }
         Ok(ToServer::Hello { version }) => {
             let _ = frame::write(&mut w, &ToClient::Error(format!("the server speaks version {VERSION}, the client {version}")));
             return;

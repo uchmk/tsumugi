@@ -250,6 +250,45 @@ fn a_prompt_is_pasted_and_sent() {
     pane.kill();
 }
 
+/// A server asked to stop goes, its tabs written down for the next one.
+#[cfg(unix)]
+#[test]
+fn a_server_stops_when_asked_and_keeps_its_tabs() {
+    let dir = std::env::temp_dir().join(format!("tsumugi-stop-test-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let state = dir.join("state");
+    let at = address();
+    let srv = server::start_with(&at, server::Options { state: Some(state.clone()), settings: None }).expect("the server starts");
+    let c = Client::connect(&at, || {}).expect("a client connects");
+    let pane = c.spawn(dir.clone(), None, Size::new(80, 24), (8, 16)).expect("a shell starts");
+    until(&pane, "a prompt", |t| !t.trim().is_empty());
+    Client::stop(&at).expect("asked");
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while !srv.stopped() {
+        assert!(Instant::now() < deadline, "the server did not stop");
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    srv.wait(Duration::from_secs(1));
+    let saved = crate::state::load(&state).expect("the tabs were written");
+    assert_eq!(saved.workspaces.len(), 1);
+    pane.kill();
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// A window of another version is told so, apart from other failures.
+#[test]
+fn another_version_is_told_apart() {
+    let at = address();
+    let _srv = serve(&at).expect("the server starts");
+    let (mut r, mut w) = crate::transport::connect(&at).unwrap().split().unwrap();
+    crate::frame::write(&mut w, &crate::proto::ToServer::Hello { version: crate::proto::VERSION + 1 }).unwrap();
+    match crate::frame::read::<_, crate::proto::ToClient>(&mut r).unwrap() {
+        crate::proto::ToClient::Error(e) => assert!(e.contains("version"), "{e}"),
+        other => panic!("answered {other:?}"),
+    }
+}
+
 /// Killing one of two sessions leaves the other, and the server answering.
 #[test]
 fn killing_one_session_leaves_the_rest() {

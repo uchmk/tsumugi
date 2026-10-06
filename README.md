@@ -19,7 +19,11 @@ without it the pane runs on the older ConPTY built into Windows, which breaks
 
 Sessions live in a background server (`tsumugi server`, which the window
 starts by itself), so closing the window leaves them running; `tsumugi ls`
-lists them. The sidebar marks each one: cyan while it works, yellow when it
+lists them. On Windows the server runs from a copy of the exe kept in
+`%LOCALAPPDATA%\tsumugi\server\`, so a rebuild or an update can replace
+`tsumugi.exe` while sessions run. A window that finds a server of another
+version offers to stop it -- the tabs are written down first -- and to start
+its own, which brings them back. The sidebar marks each one: cyan while it works, yellow when it
 wants you, a yellow ring when its output has stopped for 10 seconds while a
 program runs (`TSUMUGI_QUIET_SECS`, 0 to turn the guess off), green when the
 shell is back at its prompt, red for an error. `Ctrl+Shift+U` (Cmd+Shift+U on

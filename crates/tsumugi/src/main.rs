@@ -279,8 +279,12 @@ fn wgpu_options() -> eframe::WgpuConfiguration {
 /// Connect to this user's server, starting one if none answers.
 fn connect(wake: impl Fn() + Send + Sync + Clone + 'static) -> Result<Client, String> {
     let at = Address::for_user();
-    if let Ok(c) = Client::connect(&at, wake.clone()) {
-        return Ok(c);
+    match Client::connect(&at, wake.clone()) {
+        Ok(c) => return Ok(c),
+        // A server of another version answers: no new one can start beside
+        // it. Said apart, so the window offers to stop it.
+        Err(e) if e.kind() == std::io::ErrorKind::InvalidData => return Err(format!("{OTHER_VERSION}{e}")),
+        Err(_) => {}
     }
     spawn::server().map_err(|e| format!("could not start the server: {e}"))?;
     let deadline = std::time::Instant::now() + Duration::from_secs(10);
@@ -291,6 +295,39 @@ fn connect(wake: impl Fn() + Send + Sync + Clone + 'static) -> Result<Client, St
             Err(_) => std::thread::sleep(Duration::from_millis(50)),
         }
     }
+}
+
+/// How a failure to connect to a server of another version starts.
+const OTHER_VERSION: &str = "A tsumugi server of another version is running: ";
+
+/// Stop the server of another version and start this version's, on a thread
+/// of its own (it can take seconds). A server from before tsumugi 0.19
+/// does not know how to be asked, and is said so.
+fn replace_server(wake: impl Fn() + Send + Sync + Clone + 'static) -> std::sync::mpsc::Receiver<Result<Client, String>> {
+    let (tx, rx) = std::sync::mpsc::channel();
+    let _ = std::thread::Builder::new().name("replace-server".into()).spawn(move || {
+        let at = Address::for_user();
+        let _ = Client::stop(&at);
+        let deadline = std::time::Instant::now() + Duration::from_secs(8);
+        let stopped = loop {
+            match Client::connect(&at, || {}) {
+                Err(e) if e.kind() == std::io::ErrorKind::InvalidData => {}
+                _ => break true,
+            }
+            if std::time::Instant::now() > deadline {
+                break false;
+            }
+            std::thread::sleep(Duration::from_millis(100));
+        };
+        let answer = if stopped {
+            connect(wake)
+        } else {
+            let by_hand = if cfg!(windows) { "Stop-Process -Name tsumugi" } else { "pkill -f 'tsumugi server'" };
+            Err(format!("The other server did not stop: it is from before tsumugi 0.19, which cannot be asked. Stop it by hand ({by_hand}) and open tsumugi again; its tabs come back."))
+        };
+        let _ = tx.send(answer);
+    });
+    rx
 }
 
 /// Make sure the server has a tab to show. After a restart (no session, but
@@ -478,6 +515,8 @@ struct App {
     prefs: Option<prefs::Screen>,
     /// The input box below the panes (the design's 12, 1l).
     input: inputbox::InputBox,
+    /// Stopping a server of another version, and its answer.
+    replacing: Option<std::sync::mpsc::Receiver<Result<Client, String>>>,
     /// `TSUMUGI_KEYLOG` is set: print the key presses.
     key_log: bool,
     settings_error: Option<String>,
@@ -595,6 +634,7 @@ impl App {
             prefs: None,
             input: inputbox::InputBox::with_history(load_history()),
             key_log: std::env::var_os("TSUMUGI_KEYLOG").is_some(),
+            replacing: None,
             settings_error: None,
             tag_rules: Vec::new(),
             profiles: Vec::new(),
@@ -2219,10 +2259,40 @@ impl eframe::App for App {
 }
 
 impl App {
-    fn message(&self, ui: &mut egui::Ui) {
-        if let Some(why) = &self.failed {
-            let rect = ui.max_rect();
-            ui.painter().text(rect.center(), egui::Align2::CENTER_CENTER, why, self.font.clone(), self.palette.fg);
+    fn message(&mut self, ui: &mut egui::Ui) {
+        let Some(why) = self.failed.clone() else { return };
+        let other = why.starts_with(OTHER_VERSION);
+        let rect = ui.max_rect();
+        ui.painter().rect_filled(rect, 0.0, theme::colors().bg);
+        let mut inner = ui.new_child(egui::UiBuilder::new().max_rect(rect.shrink(40.0)).layout(egui::Layout::top_down(egui::Align::Center)));
+        inner.add_space((rect.height() / 2.0 - 80.0).max(0.0));
+        inner.label(egui::RichText::new(&why).font(self.font.clone()).color(self.palette.fg));
+        if !other {
+            return;
+        }
+        // A server of another version (an update, a new build): stopped,
+        // its tabs written down, and this version's started, which offers
+        // them back.
+        inner.add_space(12.0);
+        if self.replacing.is_some() {
+            inner.ctx().request_repaint_after(Duration::from_millis(200));
+            inner.label(egui::RichText::new("Stopping it…").color(self.palette.fg_dim));
+        } else if inner.button("Stop it and start this version (the tabs come back)").clicked() {
+            let ctx = inner.ctx().clone();
+            self.replacing = Some(replace_server(move || ctx.request_repaint()));
+        }
+        if let Some(rx) = &self.replacing {
+            if let Ok(answer) = rx.try_recv() {
+                self.replacing = None;
+                match answer.and_then(|client| first_session(&client).map(|restore| (client, restore))) {
+                    Ok((client, restore)) => {
+                        self.client = Some(client);
+                        self.restore = restore;
+                        self.failed = None;
+                    }
+                    Err(e) => self.failed = Some(e),
+                }
+            }
         }
     }
 }

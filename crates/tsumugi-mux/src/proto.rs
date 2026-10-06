@@ -9,6 +9,13 @@ use tsumugi_pane::Size;
 /// disagree say so at `Hello` instead of misreading each other.
 pub const VERSION: u32 = 13;
 
+/// A `Hello` with this version asks the server to stop, writing down its
+/// tabs first so the next window can bring them back. `Hello` stays the
+/// first message with its one number, so this reads the same in every
+/// version: any window can stop a server of another version, the one thing
+/// it can still say to it.
+pub const STOP: u32 = 0;
+
 pub type SessionId = u64;
 pub type WorkspaceId = u64;
 

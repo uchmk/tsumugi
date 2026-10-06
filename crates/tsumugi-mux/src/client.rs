@@ -95,7 +95,9 @@ impl Client {
         frame::write(&mut w, &ToServer::Hello { version: VERSION })?;
         match frame::read::<_, ToClient>(&mut r)? {
             ToClient::Hello { version: VERSION } => {}
-            ToClient::Error(e) => return Err(io::Error::other(e)),
+            // A server of another version: told apart, so a window can offer
+            // to stop it (`stop`).
+            ToClient::Error(e) => return Err(io::Error::new(io::ErrorKind::InvalidData, e)),
             other => return Err(io::Error::other(format!("the server answered {other:?}"))),
         }
         let (tx, rx) = crossbeam_channel::unbounded::<ToServer>();
@@ -119,6 +121,13 @@ impl Client {
             wake();
         })?;
         Ok(Self(inner))
+    }
+
+    /// Ask the server at `at` to stop, whatever its version, keeping its
+    /// tabs for the next window to bring back (`proto::STOP`).
+    pub fn stop(at: &Address) -> io::Result<()> {
+        let (_r, mut w) = transport::connect(at)?.split()?;
+        frame::write(&mut w, &ToServer::Hello { version: proto::STOP })
     }
 
     /// The server's sessions.
