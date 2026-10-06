@@ -43,9 +43,6 @@ use tsumugi_layout::{Node, Rect};
 use tsumugi_mux::{Address, Client, Dir, Info, Place, RemotePane, SessionId, State, Workspace, WorkspaceId};
 use tsumugi_pane::{Palette, Size, ViewOptions, ViewState};
 
-/// The pane's text size, in points.
-const FONT_SIZE: f32 = 14.0;
-
 fn main() -> std::process::ExitCode {
     // Before anything loads a DLL: `conpty.dll` only from beside the exe.
     tsumugi_pane::restrict_dll_search();
@@ -542,6 +539,16 @@ struct App {
     nerd: bool,
     /// Commits not pushed and the pull request, for the status bar (1d).
     git: gitinfo::Watcher,
+    /// `[font] family` as installed, and the file it found.
+    font_family: String,
+    font_file: Option<std::path::PathBuf>,
+    /// Bold, italic and bold italic faces in use; and as installed for the
+    /// next frame (egui takes new fonts a frame late, and a face named
+    /// before it has them is a panic).
+    faces_found: [bool; 3],
+    faces_next: [bool; 3],
+    /// Fonts being read for a new `[font] family`.
+    fonts_rx: Option<std::sync::mpsc::Receiver<fonts::Loaded>>,
     /// The bell list opened this frame: the click that opened it is not a
     /// click outside it.
     bell_opening: bool,
@@ -638,7 +645,13 @@ fn drop_index(workspaces: &[Workspace], rows: &[(WorkspaceId, egui::Rect)], drag
 
 impl App {
     fn new(cc: &eframe::CreationContext<'_>) -> Self {
-        let nerd = fonts::install(&cc.egui_ctx);
+        // The font before the first frame, so the panes do not start in
+        // another and jump; later changes load on a thread.
+        fonts::scan_names();
+        let first_font = tsumugi_mux::settings::default_path().and_then(|p| tsumugi_mux::settings::load(&p).ok()).map(|s| s.font).unwrap_or_default();
+        let loaded = fonts::load(&first_font.family);
+        cc.egui_ctx.set_fonts(loaded.defs);
+        let nerd = loaded.nerd;
         let (settings_tx, settings_rx) = std::sync::mpsc::channel();
         watch_settings(cc.egui_ctx.clone(), settings_tx.clone());
         // tsumugi Dark until the settings are read (the first frame).
@@ -670,7 +683,7 @@ impl App {
             dragging: None,
             moving: None,
             palette,
-            font: egui::FontId::monospace(FONT_SIZE),
+            font: egui::FontId::monospace(first_font.size),
             title: String::new(),
             had_tabs: false,
             bell_open: None,
@@ -678,6 +691,11 @@ impl App {
             jump_waiting: false,
             nerd,
             git,
+            font_family: first_font.family.clone(),
+            font_file: loaded.file,
+            faces_found: [false; 3],
+            faces_next: loaded.faces,
+            fonts_rx: None,
             bell_opening: false,
             alerts: alert::Alerts::default(),
             teller: alert::Teller::start(window_handle(cc), {
@@ -919,6 +937,9 @@ impl App {
             sort: self.view.sort,
             always_restore: always_restore(),
             nerd: self.nerd,
+            font_names: fonts::names(),
+            font_file: self.font_file.as_ref().map(|p| p.display().to_string()),
+            faces: self.faces_found,
             server_up: chrome::elapsed(chrome::now_ms().saturating_sub(client.started_ms())),
             settings_path: shown(tsumugi_mux::settings::default_path().and_then(|p| p.parent().map(std::path::Path::to_path_buf))),
             state_path: shown(tsumugi_mux::state::default_path()),
@@ -1727,6 +1748,13 @@ impl App {
         picked
     }
 
+    /// The panes' faces: the regular one, and bold and italic where found.
+    fn faces(&self) -> tsumugi_pane::Faces {
+        let size = self.font.size;
+        let face = |k: usize, name: &str| self.faces_found[k].then(|| egui::FontId::new(size, egui::FontFamily::Name(name.into())));
+        tsumugi_pane::Faces { regular: self.font.clone(), bold: face(0, fonts::BOLD), italic: face(1, fonts::ITALIC), bold_italic: face(2, fonts::BOLD_ITALIC) }
+    }
+
     /// A pane too small for a terminal: its state's dot and its name, along
     /// the strip's length (turned on its side when it is tall and thin).
     fn strip(&self, ui: &egui::Ui, rect: egui::Rect, info: Option<&Info>, focused: bool) -> egui::Response {
@@ -1813,7 +1841,8 @@ impl App {
         self.panes.retain(|id, _| rects.iter().any(|(r, _)| r == id));
         self.views.retain(|id, _| rects.iter().any(|(r, _)| r == id));
 
-        let row_h = ui.fonts_mut(|f| f.row_height(&self.font)).ceil();
+        let row_h = (ui.fonts_mut(|f| f.row_height(&self.font)) * self.settings_now.font.line_height).ceil();
+        let faces = self.faces();
         let ctx = ui.ctx().clone();
         let mut focus_to = None;
         let headed = rects.len() > 1;
@@ -1873,7 +1902,7 @@ impl App {
             if !narrow {
                 let (Some(pane), view) = (self.panes.get_mut(id), self.views.entry(*id).or_default()) else { continue };
                 let opts = ViewOptions { focused, wheel: true };
-                let shown = ui.push_id(id, |ui| tsumugi_pane::show(ui, Some(pane), view, rect, &self.font, row_h, &self.palette, opts)).inner;
+                let shown = ui.push_id(id, |ui| tsumugi_pane::show_faces(ui, Some(pane), view, rect, &faces, row_h, &self.palette, opts)).inner;
                 if !focused {
                     // The panes without the keys sit back; their marks do not (1e).
                     let dim = f32::from(self.settings_now.appearance.dim) / 100.0;
@@ -2221,10 +2250,29 @@ impl App {
         } else if self.had_tabs && self.pending.is_none() {
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
         }
+        self.faces_found = self.faces_next;
+        if let Some(loaded) = self.fonts_rx.as_ref().and_then(|rx| rx.try_recv().ok()) {
+            ctx.set_fonts(loaded.defs);
+            self.nerd = loaded.nerd;
+            self.faces_next = loaded.faces;
+            self.font_file = loaded.file;
+            self.fonts_rx = None;
+        }
         for read in self.settings.try_iter() {
             match read {
                 Read::Settings(read) => match *read {
                     Ok(s) => {
+                        self.font = egui::FontId::monospace(s.font.size);
+                        if s.font.family != self.font_family {
+                            self.font_family = s.font.family.clone();
+                            let (tx, rx) = std::sync::mpsc::channel();
+                            let (family, wake) = (s.font.family.clone(), ctx.clone());
+                            let _ = std::thread::Builder::new().name("fonts".into()).spawn(move || {
+                                let _ = tx.send(fonts::load(&family));
+                                wake.request_repaint();
+                            });
+                            self.fonts_rx = Some(rx);
+                        }
                         self.settings_now = s.clone();
                         self.alerts.rules = alert::Rules::from(&s.notify);
                         self.tag_rules = s.tags.rule;

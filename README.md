@@ -204,6 +204,13 @@ date = true
 date_format = "YYYY/MM/DD"
 weekday = true
 
+# The panes' font: a font file's name (or part of it) or its path, "" for
+# the Nerd Font found; its Bold and Italic files beside it are used too.
+[font]
+family = "JetBrains Mono"
+size = 14
+line_height = 1.0
+
 # How much a pane without the keys is dimmed, in percent, and whether
 # waiting tabs breathe in gold and running ones show a moving cyan line.
 [appearance]

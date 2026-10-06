@@ -24,6 +24,14 @@
 //! dim = 35
 //! animations = true
 //!
+//! # The panes' font: a font file's name (or part of it, "JetBrainsMono")
+//! # or its path; "" for the Nerd Font found, else the built-in one. Its Bold
+//! # and Italic files beside it are used for bold and italic text.
+//! [font]
+//! family = ""
+//! size = 14
+//! line_height = 1.0
+//!
 //! # Tag a session by the folder it is in (the design's 1a).
 //! [[tags.rule]]
 //! folder = "~/dev/filer"
@@ -66,6 +74,7 @@ pub struct Settings {
     pub light_theme: String,
     pub clock: Clock,
     pub appearance: Appearance,
+    pub font: Font,
     pub tags: Tags,
     pub notify: Notify,
     pub open: Open,
@@ -124,6 +133,24 @@ pub struct Appearance {
     pub animations: bool,
 }
 
+/// The panes' font.
+#[derive(Clone, Debug, PartialEq, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct Font {
+    /// A font file's name, part of it, or its path; empty for the default.
+    pub family: String,
+    /// In points, 8 to 32.
+    pub size: f32,
+    /// The row's height for the font's own, 0.8 to 2.
+    pub line_height: f32,
+}
+
+impl Default for Font {
+    fn default() -> Self {
+        Self { family: String::new(), size: 14.0, line_height: 1.0 }
+    }
+}
+
 impl Default for Appearance {
     fn default() -> Self {
         Self { dim: 35, animations: true }
@@ -138,6 +165,7 @@ impl Default for Settings {
             light_theme: "tsumugi Light".into(),
             clock: Clock::default(),
             appearance: Appearance::default(),
+            font: Font::default(),
             tags: Tags::default(),
             notify: Notify::default(),
             open: Open::default(),
@@ -266,6 +294,12 @@ pub fn parse(text: &str) -> Result<Settings, String> {
     })?;
     if !DATE_FORMATS.contains(&s.clock.date_format.as_str()) {
         return Err(format!("clock.date_format: `{}` is not one of {}", s.clock.date_format, DATE_FORMATS.join(", ")));
+    }
+    if !(8.0..=32.0).contains(&s.font.size) {
+        return Err(format!("font.size: {} is not between 8 and 32", s.font.size));
+    }
+    if !(0.8..=2.0).contains(&s.font.line_height) {
+        return Err(format!("font.line_height: {} is not between 0.8 and 2", s.font.line_height));
     }
     if s.appearance.dim > 90 {
         return Err(format!("appearance.dim: {} is more than 90", s.appearance.dim));
@@ -472,6 +506,15 @@ mod tests {
 
     fn rule(folder: &str, tag: &str) -> TagRule {
         TagRule { folder: folder.into(), tag: tag.into() }
+    }
+
+    #[test]
+    fn the_font_reads_and_is_kept_in_bounds() {
+        let s = parse("[font]\nfamily = \"JetBrainsMono\"\nsize = 15\nline_height = 1.2\n").expect("whole points read");
+        assert_eq!(s.font, Font { family: "JetBrainsMono".into(), size: 15.0, line_height: 1.2 });
+        assert!(parse("[font]\nsize = 4\n").is_err());
+        assert!(parse("[font]\nline_height = 3.0\n").is_err());
+        assert_eq!(parse("").unwrap().font, Font::default());
     }
 
     #[test]

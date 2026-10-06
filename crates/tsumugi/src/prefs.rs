@@ -95,6 +95,11 @@ pub struct Seen<'a> {
     pub sort: Sort,
     pub always_restore: bool,
     pub nerd: bool,
+    /// The monospace fonts installed, the file the panes are in, and which
+    /// of bold, italic and bold italic were found beside it.
+    pub font_names: &'a [String],
+    pub font_file: Option<String>,
+    pub faces: [bool; 3],
     pub server_up: String,
     pub settings_path: String,
     pub state_path: String,
@@ -183,14 +188,23 @@ fn row<R>(ui: &mut egui::Ui, c: &Colors, label: &str, note: &str, control: impl 
     let mut r = None;
     ui.horizontal(|ui| {
         ui.set_min_height(46.0);
-        ui.vertical(|ui| {
-            ui.add_space(6.0);
-            ui.label(RichText::new(label).size(13.0).color(c.strong()));
-            if !note.is_empty() {
-                ui.label(RichText::new(note).size(12.0).color(c.dim));
-            }
+        // The control first, on the right; the words wrap in what is left,
+        // never under it.
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            r = Some(control(ui));
+            ui.add_space(16.0);
+            ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                ui.vertical(|ui| {
+                    ui.set_max_width(ui.available_width());
+                    ui.add_space(6.0);
+                    ui.label(RichText::new(label).size(13.0).color(c.strong()));
+                    if !note.is_empty() {
+                        ui.label(RichText::new(note).size(12.0).color(c.dim));
+                    }
+                    ui.add_space(4.0);
+                });
+            });
         });
-        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| r = Some(control(ui)));
     });
     r.expect("the control ran")
 }
@@ -253,6 +267,48 @@ fn general(ui: &mut egui::Ui, c: &Colors, seen: &Seen, out: &mut Vec<Change>) {
 }
 
 fn appearance(ui: &mut egui::Ui, c: &Colors, seen: &Seen, out: &mut Vec<Change>) {
+    let f = &seen.settings.font;
+    section(ui, c, "FONT", |ui| {
+        let mut family = f.family.clone();
+        let shown = if family.is_empty() { "Automatic".to_owned() } else { family.clone() };
+        row(ui, c, "Font", "Installed monospace fonts; Automatic is the Nerd Font found, else the built-in one", |ui| {
+            egui::ComboBox::from_id_salt("font-family").selected_text(shown).width(220.0).show_ui(ui, |ui| {
+                ui.selectable_value(&mut family, String::new(), "Automatic");
+                for n in seen.font_names {
+                    ui.selectable_value(&mut family, n.clone(), n);
+                }
+            });
+        });
+        if family != f.family {
+            out.push(Change::Set(Some("font"), "family", tsumugi_mux::settings::quote(&family)));
+        }
+        let using = match &seen.font_file {
+            Some(file) => {
+                let styles: Vec<&str> = ["bold", "italic", "bold italic"].into_iter().zip(seen.faces).filter(|(_, on)| *on).map(|(s, _)| s).collect();
+                let styles = if styles.is_empty() { "no bold or italic file beside it".to_owned() } else { format!("with {}", styles.join(", ")) };
+                format!("{file} ({styles})")
+            }
+            None if !f.family.is_empty() => format!("`{}` was not found: the built-in font", f.family),
+            None => "The built-in font".to_owned(),
+        };
+        ui.label(RichText::new(using).size(11.5).color(c.dim));
+        ui.separator();
+        let mut size = f.size;
+        row(ui, c, "Size", "", |ui| {
+            ui.add(egui::Slider::new(&mut size, 8.0..=32.0).step_by(1.0).suffix(" pt"));
+        });
+        if size != f.size {
+            out.push(Change::Set(Some("font"), "size", format!("{size}")));
+        }
+        ui.separator();
+        let mut line = f.line_height;
+        row(ui, c, "Line height", "The rows' height for the font's own", |ui| {
+            ui.add(egui::Slider::new(&mut line, 0.8..=2.0).step_by(0.05).fixed_decimals(2));
+        });
+        if line != f.line_height {
+            out.push(Change::Set(Some("font"), "line_height", format!("{line:.2}")));
+        }
+    });
     section(ui, c, "PANES", |ui| {
         let mut dim = seen.settings.appearance.dim;
         row(ui, c, "Dim panes without the keys", "How much darker the other panes of a split get", |ui| {
