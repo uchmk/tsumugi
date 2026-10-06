@@ -251,6 +251,36 @@ fn git_marks(ui: &mut egui::Ui, pal: &Palette, g: &crate::gitinfo::Git, click: &
     }
 }
 
+/// A session's last lines, as a card's preview shows them: small, in the
+/// terminal's font, cut at the width rather than wrapped.
+pub fn peek(ui: &mut egui::Ui, pal: &Palette, lines: &[String]) {
+    if lines.is_empty() {
+        ui.label(RichText::new("Nothing on its screen yet").size(11.5).color(pal.fg_dim));
+        return;
+    }
+    let font = FontId::monospace(11.0);
+    let width = 520.0;
+    let shown: Vec<_> = lines
+        .iter()
+        .map(|l| {
+            let mut job = egui::text::LayoutJob::simple_singleline(l.clone(), font.clone(), pal.fg);
+            job.wrap = egui::text::TextWrapping::truncate_at_width(width);
+            ui.fonts_mut(|f| f.layout_job(job))
+        })
+        .collect();
+    let h: f32 = shown.iter().map(|g| g.size().y).sum();
+    let w = shown.iter().map(|g| g.size().x).fold(0.0f32, f32::max);
+    let (rect, _) = ui.allocate_exact_size(egui::vec2(w + 16.0, h + 12.0), egui::Sense::hover());
+    let p = ui.painter();
+    p.rect_filled(rect, 6.0, pal.bg);
+    let mut y = rect.top() + 6.0;
+    for g in shown {
+        let gh = g.size().y;
+        p.galley(egui::pos2(rect.left() + 8.0, y), g, pal.fg);
+        y += gh;
+    }
+}
+
 /// The bell: a button with the number of unread notifications on it, gold,
 /// or red while one of them is an error.
 /// The "+" that opens the new-session dialog (the same as `Ctrl+Shift+T`).

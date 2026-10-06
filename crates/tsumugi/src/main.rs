@@ -561,6 +561,8 @@ struct App {
     system_frame: bool,
     /// The desktop shows through the chrome (Mica or Acrylic, Windows 11).
     material: bool,
+    /// The session whose card the pointer is on: watched for its preview.
+    peek: Option<SessionId>,
     /// The worktrees tsumugi made; one being made, with what to start in
     /// it; those a session has been seen in; the one whose last session
     /// ended, to ask about; one being removed.
@@ -730,6 +732,7 @@ impl App {
             own_frame: first_window.own_titlebar(),
             system_frame: !first_window.own_titlebar(),
             material: cfg!(windows) && first_window.material != "none" && material::apply(window_handle(cc), &first_window.material, theme::colors().light),
+            peek: None,
             worktrees: worktree::ours(),
             ctx: cc.egui_ctx.clone(),
             worktree_making: None,
@@ -1544,6 +1547,13 @@ impl App {
                     let g = ui.fonts_mut(|f| f.layout_job(job));
                     painter.galley(egui::pos2(r.left() + 22.0, r.center().y - g.size().y / 2.0), g, name_color);
                 }
+                // Its last lines on the way past, without going there.
+                let resp = if resp.hovered() && self.dragging_tab.is_none() {
+                    let lines = self.peek_lines(urgent.id);
+                    resp.on_hover_ui(|ui| chrome::peek(ui, &pal, &lines))
+                } else {
+                    resp
+                };
                 if resp.clicked() {
                     picked = Some(w.id);
                 }
@@ -1778,6 +1788,7 @@ impl App {
             let letter = focus.project.file_name().and_then(|f| f.to_string_lossy().chars().next()).map_or('?', |c| c.to_ascii_uppercase());
             let color = if urgent.state == State::Done { pal.fg_dim } else { crate::theme::colors().wait_text() };
             p.text(rect.center(), egui::Align2::CENTER_CENTER, letter, egui::FontId::proportional(14.0), color);
+            let lines = if resp.hovered() { self.peek_lines(urgent.id) } else { Vec::new() };
             let resp = resp.on_hover_ui(|ui| {
                 ui.label(egui::RichText::new(tab.name()).strong());
                 let mut place = home_short(&focus.cwd);
@@ -1787,6 +1798,10 @@ impl App {
                 ui.label(egui::RichText::new(place).monospace().size(11.0).color(pal.fg_dim));
                 let words = chrome::state_words(urgent, now);
                 ui.label(egui::RichText::new(words).size(11.5).color(state_color(urgent.state)));
+                if !lines.is_empty() {
+                    ui.separator();
+                    chrome::peek(ui, &pal, &lines);
+                }
             });
             if resp.clicked() {
                 picked = Some(tab.workspace.id);
@@ -1913,6 +1928,18 @@ impl App {
         });
     }
 
+    /// The last lines of session `id`'s screen, for the card's preview: the
+    /// session is watched while the pointer is on it (kept among the panes
+    /// on screen, so a pane shown there is not watched twice).
+    fn peek_lines(&mut self, id: SessionId) -> Vec<String> {
+        self.peek = Some(id);
+        if let Some(client) = &self.client {
+            self.panes.entry(id).or_insert_with(|| client.attach(id));
+        }
+        let Some(pane) = self.panes.get(&id) else { return Vec::new() };
+        last_lines(&tsumugi_pane::Pane::screen(pane).rows, PEEK_LINES)
+    }
+
     /// The panes' faces: the regular one, and bold and italic where found.
     fn faces(&self) -> tsumugi_pane::Faces {
         let size = self.font.size;
@@ -2003,7 +2030,8 @@ impl App {
                 self.panes.entry(*id).or_insert_with(|| client.attach(*id));
             }
         }
-        self.panes.retain(|id, _| rects.iter().any(|(r, _)| r == id));
+        let peek = self.peek;
+        self.panes.retain(|id, _| rects.iter().any(|(r, _)| r == id) || Some(*id) == peek);
         self.views.retain(|id, _| rects.iter().any(|(r, _)| r == id));
 
         let row_h = (ui.fonts_mut(|f| f.row_height(&self.font)) * self.settings_now.font.line_height).ceil();
@@ -2358,6 +2386,20 @@ fn save_profile(mut profiles: Vec<tsumugi_mux::settings::Profile>, new: tsumugi_
 }
 
 /// Told of in the bell only: muted itself, or one of its tags is.
+/// How many lines a card's preview shows.
+const PEEK_LINES: usize = 12;
+
+/// The last `n` lines of a screen with anything on them, their trailing
+/// blanks cut.
+fn last_lines(rows: &[Vec<tsumugi_pane::CellView>], n: usize) -> Vec<String> {
+    let mut lines: Vec<String> = rows.iter().map(|r| r.iter().map(|c| if c.c == '\0' { ' ' } else { c.c }).collect::<String>().trim_end().to_owned()).collect();
+    while lines.last().is_some_and(String::is_empty) {
+        lines.pop();
+    }
+    let from = lines.len().saturating_sub(n);
+    lines.split_off(from)
+}
+
 fn quiet(i: &Info, muted_tags: &[String]) -> bool {
     i.muted || i.tags.iter().any(|t| muted_tags.contains(t))
 }
@@ -2380,6 +2422,7 @@ impl eframe::App for App {
 
     fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
         self.animated = false;
+        self.peek = None;
         self.frame(ui, frame);
         if !cfg!(target_os = "macos") {
             // The system's frame while there is no band to be one (the

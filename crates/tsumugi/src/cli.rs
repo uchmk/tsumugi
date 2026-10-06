@@ -40,8 +40,12 @@ pub fn parse_new(args: &[String]) -> Result<New, String> {
 }
 
 /// The command as one line for the shell: words with a space or a quote in
-/// them in double quotes, which bash, zsh, PowerShell and cmd all read.
+/// them in double quotes, which bash, zsh, PowerShell and cmd all read. One
+/// word alone is a line already (`-- "claude --continue"`), as typed.
 pub fn command_line(words: &[String]) -> Option<String> {
+    if let [line] = words {
+        return Some(line.clone());
+    }
     let quoted: Vec<String> = words
         .iter()
         .map(|w| if w.is_empty() || w.contains([' ', '\t', '"', '\'']) { format!("\"{}\"", w.replace('"', "\\\"")) } else { w.clone() })
@@ -133,6 +137,7 @@ mod tests {
         assert!(parse_new(&a("--tag")).is_err());
         assert_eq!(command_line(&a("claude --continue")).as_deref(), Some("claude --continue"));
         assert_eq!(command_line(&["echo".into(), "a b".into()]).as_deref(), Some("echo \"a b\""));
+        assert_eq!(command_line(&["claude --continue".into()]).as_deref(), Some("claude --continue"), "one word is the line");
         assert_eq!(command_line(&[]), None);
     }
 
