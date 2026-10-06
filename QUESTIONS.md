@@ -124,7 +124,7 @@
 - 回答:
 
 ## Q9: macOS の vibrancy のためのクレート
-- 状態: 未回答
+- 状態: 反映済み（v0.39.0）
 - タスク: v1-scope の「見た目」の「窓の素材。Windows 11 は Mica / Acrylic、macOS は vibrancy」。
 - 背景: v0.25.0 で Windows 11 の Mica / Acrylic を入れた（`windows` クレートで DWM を呼ぶだけで、新しいクレートは足していない。`[window] material`）。
   macOS の vibrancy は、窓の下に `NSVisualEffectView` を差し込む Objective-C の呼び出しが要る。
@@ -134,4 +134,4 @@
   2. `objc2` を直接使って自前で書く（winit が既に使っているので、ビルドに増えるものは少ない）。
   3. macOS では素材を使わない。
 - 回答が来るまでは 3 のまま（macOS は不透明）。
-- 回答:
+- 回答: 1（推奨、`window-vibrancy` を足す）。2026-10-06、持ち主。

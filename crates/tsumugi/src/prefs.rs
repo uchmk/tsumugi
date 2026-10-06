@@ -280,12 +280,17 @@ fn appearance(ui: &mut egui::Ui, c: &Colors, seen: &Seen, out: &mut Vec<Change>)
         if row(ui, c, "tsumugi's own title bar", note, |ui| switch(ui, c, own)) {
             out.push(Change::Set(Some("window"), "titlebar", tsumugi_mux::settings::quote(if own { "system" } else { "tsumugi" })));
         }
-        if cfg!(windows) {
+        if cfg!(windows) || cfg!(target_os = "macos") {
             ui.separator();
             let mut m = w.material.clone();
-            row(ui, c, "Material", "Windows 11: the desktop shows through the band, sidebar and status bar (when the window opens next)", |ui| {
+            let (note, kinds): (&str, &[&str]) = if cfg!(windows) {
+                ("Windows 11: the desktop shows through the band, sidebar and status bar (when the window opens next)", &["none", "mica", "acrylic"])
+            } else {
+                ("The desktop shows through the band, sidebar and status bar (when the window opens next)", &["none", "vibrancy"])
+            };
+            row(ui, c, "Material", note, |ui| {
                 egui::ComboBox::from_id_salt("material").selected_text(&m).show_ui(ui, |ui| {
-                    for k in ["none", "mica", "acrylic"] {
+                    for k in kinds.iter().copied() {
                         ui.selectable_value(&mut m, k.to_owned(), k);
                     }
                 });

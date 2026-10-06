@@ -26,8 +26,9 @@
 //!
 //! # The window's frame: "tsumugi" draws its own title bar along the band
 //! # (Windows and Linux; on macOS the band runs under the traffic lights), or
-//! # "system". material is "none", or on Windows 11 "mica" or "acrylic": the
-//! # desktop shows through the band, sidebar and status bar (on restart).
+//! # "system". material is "none", or "mica" or "acrylic" (Windows 11) or
+//! # "vibrancy" (macOS; the other two are it there too): the desktop shows
+//! # through the band, sidebar and status bar (on restart).
 //! [window]
 //! titlebar = "tsumugi"
 //! material = "none"
@@ -159,7 +160,7 @@ pub struct Appearance {
 pub struct Window {
     /// `tsumugi` (its own title bar) or `system`.
     pub titlebar: String,
-    /// `none`, `mica` or `acrylic` (Windows 11).
+    /// `none`, `mica` or `acrylic` (Windows 11), `vibrancy` (macOS).
     pub material: String,
 }
 
@@ -344,8 +345,8 @@ pub fn parse(text: &str) -> Result<Settings, String> {
     if !matches!(s.window.titlebar.as_str(), "tsumugi" | "system") {
         return Err(format!("window.titlebar: `{}` is not tsumugi or system", s.window.titlebar));
     }
-    if !matches!(s.window.material.as_str(), "none" | "mica" | "acrylic") {
-        return Err(format!("window.material: `{}` is not none, mica or acrylic", s.window.material));
+    if !matches!(s.window.material.as_str(), "none" | "mica" | "acrylic" | "vibrancy") {
+        return Err(format!("window.material: `{}` is not none, mica, acrylic or vibrancy", s.window.material));
     }
     if !(8.0..=32.0).contains(&s.font.size) {
         return Err(format!("font.size: {} is not between 8 and 32", s.font.size));

@@ -240,9 +240,10 @@ date_format = "YYYY/MM/DD"
 weekday = true
 
 # The window's frame: "tsumugi" makes the band the title bar (its own
-# buttons; on macOS under the traffic lights), "system" the OS's own. On
-# Windows 11, material = "mica" or "acrylic" lets the desktop show through
-# the band, sidebar and status bar (when the window next opens).
+# buttons; on macOS under the traffic lights), "system" the OS's own.
+# material = "mica" or "acrylic" (Windows 11) or "vibrancy" (macOS) lets the
+# desktop show through the band, sidebar and status bar (when the window
+# next opens).
 [window]
 titlebar = "tsumugi"
 material = "none"

@@ -1,36 +1,49 @@
-//! The window's material (v1-scope, the look): on Windows 11, Mica or
-//! Acrylic behind the band, sidebar and status bar, which are drawn
-//! see-through over it. Elsewhere nothing yet (macOS's vibrancy waits on
-//! QUESTIONS.md Q9).
+//! The window's material (v1-scope, the look): the desktop seen through the
+//! band, sidebar and status bar, which are drawn see-through over it. On
+//! Windows 11 Mica or Acrylic, on macOS the vibrancy (`NSVisualEffectView`),
+//! through the `window-vibrancy` crate (QUESTIONS.md Q9). Elsewhere none.
 
-/// Ask the system for `kind` (`mica`, `acrylic`) behind the window `hwnd`;
-/// true when it took it. `light` picks the light or dark tint.
+use raw_window_handle::HasWindowHandle;
+
+/// Ask the system for `kind` (`mica`, `acrylic`, `vibrancy`) behind the
+/// window; true when it took it. `light` picks the light or dark tint
+/// where the system asks.
+pub fn apply(window: &impl HasWindowHandle, kind: &str, light: bool) -> bool {
+    os::apply(window, kind, light)
+}
+
 #[cfg(windows)]
-pub fn apply(hwnd: Option<isize>, kind: &str, light: bool) -> bool {
-    use windows::Win32::Foundation::HWND;
-    use windows::Win32::Graphics::Dwm::{
-        DWM_SYSTEMBACKDROP_TYPE, DWMSBT_MAINWINDOW, DWMSBT_TRANSIENTWINDOW, DWMWA_SYSTEMBACKDROP_TYPE, DWMWA_USE_IMMERSIVE_DARK_MODE, DwmExtendFrameIntoClientArea,
-        DwmSetWindowAttribute,
-    };
-    use windows::Win32::UI::Controls::MARGINS;
-    let Some(hwnd) = hwnd else { return false };
-    let hwnd = HWND(hwnd as *mut core::ffi::c_void);
-    let backdrop: DWM_SYSTEMBACKDROP_TYPE = if kind == "acrylic" { DWMSBT_TRANSIENTWINDOW } else { DWMSBT_MAINWINDOW };
-    let dark: i32 = i32::from(!light);
-    // SAFETY: a window handle of this process, and attributes of the sizes
-    // the calls are told.
-    unsafe {
-        let _ = DwmSetWindowAttribute(hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE, (&raw const dark).cast(), size_of::<i32>() as u32);
-        let margins = MARGINS { cxLeftWidth: -1, cxRightWidth: -1, cyTopHeight: -1, cyBottomHeight: -1 };
-        if DwmExtendFrameIntoClientArea(hwnd, &margins).is_err() {
-            return false;
+mod os {
+    use super::HasWindowHandle;
+
+    pub fn apply(window: &impl HasWindowHandle, kind: &str, light: bool) -> bool {
+        match kind {
+            // A light or dark tint, a little of the theme's own.
+            "acrylic" => window_vibrancy::apply_acrylic(window, Some(if light { (238, 240, 243, 120) } else { (18, 20, 24, 120) })).is_ok(),
+            "mica" | "vibrancy" => window_vibrancy::apply_mica(window, Some(!light)).is_ok(),
+            _ => false,
         }
-        // Before Windows 11 22H2 the attribute is unknown, and this fails.
-        DwmSetWindowAttribute(hwnd, DWMWA_SYSTEMBACKDROP_TYPE, (&raw const backdrop).cast(), size_of::<DWM_SYSTEMBACKDROP_TYPE>() as u32).is_ok()
     }
 }
 
-#[cfg(not(windows))]
-pub fn apply(_hwnd: Option<isize>, _kind: &str, _light: bool) -> bool {
-    false
+#[cfg(target_os = "macos")]
+mod os {
+    use super::HasWindowHandle;
+    use window_vibrancy::NSVisualEffectMaterial;
+
+    pub fn apply(window: &impl HasWindowHandle, kind: &str, _light: bool) -> bool {
+        // Any of the three is the vibrancy here: the sidebar's, or the
+        // thinner HUD's for "acrylic".
+        let material = if kind == "acrylic" { NSVisualEffectMaterial::HudWindow } else { NSVisualEffectMaterial::Sidebar };
+        kind != "none" && window_vibrancy::apply_vibrancy(window, material, None, None).is_ok()
+    }
+}
+
+#[cfg(not(any(windows, target_os = "macos")))]
+mod os {
+    use super::HasWindowHandle;
+
+    pub fn apply(_window: &impl HasWindowHandle, _kind: &str, _light: bool) -> bool {
+        false
+    }
 }

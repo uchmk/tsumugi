@@ -317,7 +317,7 @@ fn window() -> std::process::ExitCode {
             viewport.with_decorations(false)
         };
     }
-    if cfg!(windows) && first.window.material != "none" {
+    if (cfg!(windows) || cfg!(target_os = "macos")) && first.window.material != "none" {
         viewport = viewport.with_transparent(true);
     }
     let options = eframe::NativeOptions { viewport, wgpu_options: wgpu_options(), ..Default::default() };
@@ -770,7 +770,7 @@ impl App {
             usage,
             own_frame: first_window.own_titlebar(),
             system_frame: !first_window.own_titlebar(),
-            material: cfg!(windows) && first_window.material != "none" && material::apply(window_handle(cc), &first_window.material, theme::colors().light),
+            material: (cfg!(windows) || cfg!(target_os = "macos")) && first_window.material != "none" && material::apply(cc, &first_window.material, theme::colors().light),
             known_cwds: HashMap::new(),
             closed: closed_file().and_then(|p| std::fs::read_to_string(p).ok()).map(|t| t.lines().filter(|l| !l.is_empty()).map(std::path::PathBuf::from).collect()).unwrap_or_default(),
             shown_tab: None,

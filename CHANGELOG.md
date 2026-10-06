@@ -5,6 +5,17 @@
 
 ## [未リリース]
 
+## [0.39.0] - 2026-10-06
+
+### 追加
+
+- macOS の vibrancy（Q9、持ち主の回答で `window-vibrancy` クレートを足した）。`[window] material = "vibrancy"`（macOS では mica / acrylic も vibrancy になる）。
+  帯・サイドバー・ステータスバーの後ろに `NSVisualEffectView` を敷く。開き直すと効く。
+
+### 変更
+
+- Windows の Mica / Acrylic も `window-vibrancy` で出す（自前の DWM の呼び出しをやめた。`windows` クレートの機能を 2 つ減らした）。Acrylic は明暗に合わせて薄く色を乗せる。
+
 ## [0.38.0] - 2026-10-06
 
 ### 追加
