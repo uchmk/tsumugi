@@ -19,6 +19,7 @@
 
 mod alert;
 mod chrome;
+mod cli;
 mod drop;
 mod fonts;
 mod inputbox;
@@ -57,6 +58,8 @@ fn main() -> std::process::ExitCode {
         Some("ls") => ls(),
         Some("notify") => notify(&args[1..]),
         Some("tag") => tag(&args[1..]),
+        Some("new") => new_cli(&args[1..]),
+        Some("attach") => attach(&args[1..]),
         Some("shell-hook") => match shellhook::text(args.get(1).map(String::as_str)) {
             Ok(text) => {
                 print!("{text}");
@@ -72,7 +75,7 @@ fn main() -> std::process::ExitCode {
             std::process::ExitCode::SUCCESS
         }
         Some(other) => {
-            eprintln!("tsumugi: unknown command `{other}` (server, ls, notify, tag, shell-hook, --version)");
+            eprintln!("tsumugi: unknown command `{other}` (server, ls, new, attach, notify, tag, shell-hook, --version)");
             std::process::ExitCode::from(2)
         }
     }
@@ -104,6 +107,52 @@ fn server() -> std::process::ExitCode {
         }
         Err(e) => {
             eprintln!("tsumugi server: {e}");
+            std::process::ExitCode::FAILURE
+        }
+    }
+}
+
+/// `tsumugi new [FOLDER] [--tag TAG]... [-- COMMAND...]`: a session in a tab
+/// of its own, the server started if need be; prints its number.
+fn new_cli(args: &[String]) -> std::process::ExitCode {
+    let n = match cli::parse_new(args) {
+        Ok(n) => n,
+        Err(e) => {
+            eprintln!("tsumugi new: {e}\nusage: {}", cli::NEW_USAGE);
+            return std::process::ExitCode::from(2);
+        }
+    };
+    match connect(|| {}).and_then(|c| cli::new(&c, n)) {
+        Ok(id) => {
+            println!("{id}");
+            std::process::ExitCode::SUCCESS
+        }
+        Err(e) => {
+            eprintln!("tsumugi new: {e}");
+            std::process::ExitCode::FAILURE
+        }
+    }
+}
+
+/// The session `tsumugi attach` asked the window to show.
+static SHOW_SESSION: std::sync::OnceLock<SessionId> = std::sync::OnceLock::new();
+
+/// `tsumugi attach NAME`: open the window on a session, by its number,
+/// folder, program or tag. The sessions live in the server whether a window
+/// is open or not, so attaching is opening a window there.
+fn attach(args: &[String]) -> std::process::ExitCode {
+    let [name] = args else {
+        eprintln!("usage: tsumugi attach NUMBER|NAME (tsumugi ls lists them)");
+        return std::process::ExitCode::from(2);
+    };
+    let found = Client::connect(&Address::for_user(), || {}).map_err(|e| format!("no server ({e})")).and_then(|c| c.list().map_err(|e| e.to_string())).and_then(|list| cli::find(&list, name));
+    match found {
+        Ok(id) => {
+            let _ = SHOW_SESSION.set(id);
+            window()
+        }
+        Err(e) => {
+            eprintln!("tsumugi attach: {e}");
             std::process::ExitCode::FAILURE
         }
     }
@@ -609,7 +658,7 @@ impl App {
             failed,
             // A window opened by "Move to a new window" shows that tab.
             active: std::env::var(menu::SHOW_TAB).ok().and_then(|v| v.parse().ok()),
-            pending: None,
+            pending: SHOW_SESSION.get().copied(),
             panes: HashMap::new(),
             views: HashMap::new(),
             zoom: false,
@@ -668,6 +717,10 @@ impl App {
             if let Some(w) = workspaces.iter().find(|w| w.layout.contains(&new)) {
                 self.active = Some(w.id);
                 self.pending = None;
+                // `tsumugi attach` names a pane, maybe not the tab's focus.
+                if w.focus != new {
+                    self.set_focus(w, new);
+                }
             }
         }
         let found = self.active.and_then(|id| workspaces.iter().find(|w| w.id == id));

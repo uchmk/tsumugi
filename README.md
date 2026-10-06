@@ -19,7 +19,10 @@ without it the pane runs on the older ConPTY built into Windows, which breaks
 
 Sessions live in a background server (`tsumugi server`, which the window
 starts by itself), so closing the window leaves them running; `tsumugi ls`
-lists them. On Windows the server runs from a copy of the exe kept in
+lists them. `tsumugi new [FOLDER] [--tag TAG] [-- claude]` starts one in a tab
+of its own (the server too, if it is not running) and prints its number;
+`tsumugi attach NAME` opens a window on one, named by its number, folder,
+program or tag. On Windows the server runs from a copy of the exe kept in
 `%LOCALAPPDATA%\tsumugi\server\`, so a rebuild or an update can replace
 `tsumugi.exe` while sessions run. A window that finds a server of another
 version offers to stop it -- the tabs are written down first -- and to start
