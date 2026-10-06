@@ -18,6 +18,7 @@
 #![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 
 mod alert;
+mod answer;
 mod chrome;
 mod cli;
 mod drop;
@@ -563,6 +564,8 @@ struct App {
     material: bool,
     /// The session whose card the pointer is on: watched for its preview.
     peek: Option<SessionId>,
+    /// Sessions waiting, watched for a question on their screens this frame.
+    watching: Vec<SessionId>,
     /// The worktrees tsumugi made; one being made, with what to start in
     /// it; those a session has been seen in; the one whose last session
     /// ended, to ask about; one being removed.
@@ -733,6 +736,7 @@ impl App {
             system_frame: !first_window.own_titlebar(),
             material: cfg!(windows) && first_window.material != "none" && material::apply(window_handle(cc), &first_window.material, theme::colors().light),
             peek: None,
+            watching: Vec::new(),
             worktrees: worktree::ours(),
             ctx: cc.egui_ctx.clone(),
             worktree_making: None,
@@ -1492,7 +1496,41 @@ impl App {
                     State::Error => chrome::red(),
                     _ => pal.fg_dim,
                 };
-                line(third, 42.0, egui::FontId::proportional(11.5), third_color, width);
+                // A question on its screen: its choices as buttons, so it is
+                // answered without going there (the third line gives way).
+                let mut room = width;
+                if urgent.state == State::Waiting {
+                    let found = answer::choices(&self.watch_lines(urgent.id));
+                    let mut x = rect.right() - 12.0;
+                    for c in found.iter().take(3).rev() {
+                        let label = format!("{} {}", c.key, answer::short(&c.text));
+                        let g = ui.fonts_mut(|f| f.layout_no_wrap(label, egui::FontId::proportional(11.0), pal.fg));
+                        let r = egui::Rect::from_min_size(egui::pos2(x - g.size().x - 12.0, rect.top() + 40.0), egui::vec2(g.size().x + 12.0, 18.0));
+                        if r.left() < left + 40.0 {
+                            break;
+                        }
+                        let b = ui.interact(r, egui::Id::new(("answer", urgent.id, c.key)), egui::Sense::click()).on_hover_text(format!("Type {}: {}", c.key, c.text));
+                        let first = c.key == '1';
+                        let fill = match (first, b.hovered()) {
+                            (true, true) => chrome::cyan(),
+                            (true, false) => chrome::cyan().gamma_multiply(0.8),
+                            (false, true) => crate::theme::colors().hover(),
+                            (false, false) => crate::theme::colors().panel,
+                        };
+                        painter.rect_filled(r, 5.0, fill);
+                        painter.rect_stroke(r, 5.0, egui::Stroke::new(1.0, crate::theme::colors().border), egui::StrokeKind::Inside);
+                        let color = if first { crate::theme::colors().on_accent() } else { pal.fg };
+                        painter.galley(egui::pos2(r.left() + 6.0, r.center().y - g.size().y / 2.0), g, color);
+                        if b.clicked() {
+                            if let Some(pane) = self.panes.get(&urgent.id) {
+                                tsumugi_pane::Pane::send(pane, vec![c.key as u8]);
+                            }
+                        }
+                        x = r.left() - 4.0;
+                    }
+                    room = (x - left - 6.0).max(20.0);
+                }
+                line(third, 42.0, egui::FontId::proportional(11.5), third_color, room);
                 // Up to three tags, the rest as +N (the design's 1o).
                 let mut x = left;
                 for (k, t) in tags.iter().enumerate() {
@@ -1940,6 +1978,17 @@ impl App {
         last_lines(&tsumugi_pane::Pane::screen(pane).rows, PEEK_LINES)
     }
 
+    /// The last lines of a waiting session's screen, to find a question
+    /// in: watched while it waits.
+    fn watch_lines(&mut self, id: SessionId) -> Vec<String> {
+        self.watching.push(id);
+        if let Some(client) = &self.client {
+            self.panes.entry(id).or_insert_with(|| client.attach(id));
+        }
+        let Some(pane) = self.panes.get(&id) else { return Vec::new() };
+        last_lines(&tsumugi_pane::Pane::screen(pane).rows, 20)
+    }
+
     /// The panes' faces: the regular one, and bold and italic where found.
     fn faces(&self) -> tsumugi_pane::Faces {
         let size = self.font.size;
@@ -2030,8 +2079,8 @@ impl App {
                 self.panes.entry(*id).or_insert_with(|| client.attach(*id));
             }
         }
-        let peek = self.peek;
-        self.panes.retain(|id, _| rects.iter().any(|(r, _)| r == id) || Some(*id) == peek);
+        let (peek, watching) = (self.peek, std::mem::take(&mut self.watching));
+        self.panes.retain(|id, _| rects.iter().any(|(r, _)| r == id) || Some(*id) == peek || watching.contains(id));
         self.views.retain(|id, _| rects.iter().any(|(r, _)| r == id));
 
         let row_h = (ui.fonts_mut(|f| f.row_height(&self.font)) * self.settings_now.font.line_height).ceil();
@@ -2423,6 +2472,7 @@ impl eframe::App for App {
     fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
         self.animated = false;
         self.peek = None;
+        self.watching.clear();
         self.frame(ui, frame);
         if !cfg!(target_os = "macos") {
             // The system's frame while there is no band to be one (the
