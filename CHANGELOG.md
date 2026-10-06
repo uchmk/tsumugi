@@ -5,6 +5,16 @@
 
 ## [未リリース]
 
+## [0.41.3] - 2026-10-06
+
+### 変更
+
+- Linux に残っていた保守停止の `ttf-parser` を外した（Q10、持ち主の指示）。winit の Wayland の窓飾りが題名の文字を描くのに `ab_glyph` 経由で
+  使っていたもので、eframe の既定の機能から `winit/default` だけを外し、winit の `wayland-csd-adwaita-notitle`（同じ窓飾りで題名の文字だけ描かない）
+  を選んだ。tsumugi は既定で自分の題名の帯を描くので、違いが見えるのは `[window] titlebar = "system"` の Wayland だけ。
+  `ab_glyph`・`ttf-parser`・`owned_ttf_parser` はどのビルドからも消え、`cargo audit` の警告は 0 になった。
+- TESTING.md に 13.11（Wayland で system の窓飾り）を足した。
+
 ## [0.41.2] - 2026-10-06
 
 ### 変更

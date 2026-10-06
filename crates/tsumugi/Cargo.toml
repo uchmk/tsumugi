@@ -20,7 +20,13 @@ test = true
 tsumugi-pane = { path = "../tsumugi-pane", features = ["egui", "wgpu"] }
 tsumugi-mux = { path = "../tsumugi-mux" }
 tsumugi-layout = { path = "../tsumugi-layout" }
-eframe = "0.36"
+# eframe's own defaults, but for `winit/default`: that draws the title on
+# Wayland's window frame with ab_glyph, which brings the unmaintained
+# ttf-parser (RUSTSEC-2026-0192, QUESTIONS.md Q10). winit below keeps the
+# rest of its defaults and the same frame, without the title's text --
+# tsumugi draws its own title bar unless told not to.
+eframe = { version = "0.36", default-features = false, features = ["accesskit", "default_fonts", "links", "wayland", "web_screen_reader", "wgpu", "x11"] }
+winit = { version = "0.30", default-features = false, features = ["rwh_06", "x11", "wayland", "wayland-dlopen", "wayland-csd-adwaita-notitle"] }
 # The status bar's clock in local time; filer uses the same.
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 egui = "0.36"

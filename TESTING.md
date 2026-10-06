@@ -222,6 +222,7 @@ what happened, and the steps.
 | 13.8 | Material → mica, restart | The desktop's colour through the band, sidebar and status bar; the panes stay solid |
 | 13.9 | Material → acrylic, restart | A blurred desktop instead; moving the window may lag (Windows' own limit) |
 | 13.10 | macOS: Material → vibrancy, restart | The sidebar's frosted material behind the band and sidebar; the traffic lights over the band, its name clear of them |
+| 13.11 | Linux on Wayland: tsumugi's own title bar off | The system's frame (Adwaita) with its buttons, moving and resizing the window; no title text on it |
 
 ## 14. Motion
 

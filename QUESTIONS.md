@@ -152,5 +152,7 @@
 - 回答: 1（`harfrust` に移す）。2026-10-06、持ち主（「保守停止のライブラリを使い続けると将来的なセキュリティリスクや互換性問題に繋がる」）。
   egui と同じ `harfrust` 0.12・`skrifa` 0.44・`vello_cpu` 0.1 にした（`harfrust` の最新は 0.14 だが、egui と揃えて 2 つ抱えないため。
   egui を上げるときに一緒に上げる）。`rustybuzz` と `ab_glyph` は依存から消え、Windows と macOS のビルドからは `ttf-parser` も消えた。
-  Linux では winit の窓飾り（`sctk-adwaita`）がまだ `ab_glyph` 経由で `ttf-parser` を使うので、`cargo audit` の警告は 1 つ（ttf-parser）残る。
-  これは winit が直すまで待つ。
+  Linux では winit の Wayland の窓飾り（`sctk-adwaita`）が、題名の文字を描くのに `ab_glyph` 経由で `ttf-parser` を使っていた。
+  v0.41.3 で eframe の既定の機能のうち `winit/default` だけを外し、winit の `wayland-csd-adwaita-notitle`（同じ窓飾りで、題名の文字だけ描かない）
+  を選んだ。tsumugi は既定で自分の題名の帯を描くので、窓飾りが出るのは `titlebar = "system"` の Wayland だけ。これで `ttf-parser` は
+  どのビルドからも消え、`cargo audit` の警告は 0 になった（持ち主の指示）。
