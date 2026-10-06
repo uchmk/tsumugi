@@ -612,6 +612,8 @@ struct App {
     /// `[font] family` as installed, and the file it found.
     font_family: String,
     font_file: Option<std::path::PathBuf>,
+    /// The font file's ligatures, when it has a file (Q8).
+    shaper: Option<std::sync::Arc<tsumugi_pane::Shaper>>,
     /// Bold, italic and bold italic faces in use; and as installed for the
     /// next frame (egui takes new fonts a frame late, and a face named
     /// before it has them is a panic).
@@ -801,6 +803,7 @@ impl App {
             toast: None,
             font_family: first_font.family.clone(),
             font_file: loaded.file,
+            shaper: loaded.shaper,
             faces_found: [false; 3],
             faces_next: loaded.faces,
             fonts_rx: None,
@@ -2258,7 +2261,8 @@ impl App {
     fn faces(&self) -> tsumugi_pane::Faces {
         let size = self.font.size;
         let face = |k: usize, name: &str| self.faces_found[k].then(|| egui::FontId::new(size, egui::FontFamily::Name(name.into())));
-        tsumugi_pane::Faces { regular: self.font.clone(), bold: face(0, fonts::BOLD), italic: face(1, fonts::ITALIC), bold_italic: face(2, fonts::BOLD_ITALIC) }
+        let shaper = self.shaper.clone().filter(|_| self.settings_now.font.ligatures);
+        tsumugi_pane::Faces { regular: self.font.clone(), bold: face(0, fonts::BOLD), italic: face(1, fonts::ITALIC), bold_italic: face(2, fonts::BOLD_ITALIC), shaper }
     }
 
     /// A pane too small for a terminal: its state's dot and its name, along
@@ -2859,6 +2863,7 @@ impl App {
             self.nerd = loaded.nerd;
             self.faces_next = loaded.faces;
             self.font_file = loaded.file;
+            self.shaper = loaded.shaper;
             self.fonts_rx = None;
         }
         for read in self.settings.try_iter() {

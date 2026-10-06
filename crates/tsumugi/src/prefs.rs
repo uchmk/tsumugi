@@ -341,6 +341,10 @@ fn appearance(ui: &mut egui::Ui, c: &Colors, seen: &Seen, out: &mut Vec<Change>)
         if line != f.line_height {
             out.push(Change::Set(Some("font"), "line_height", format!("{line:.2}")));
         }
+        ui.separator();
+        if row(ui, c, "Ligatures", "-> and != as one sign, in a font that has them (Fira Code, JetBrains Mono, Cascadia Code)", |ui| switch(ui, c, f.ligatures)) {
+            out.push(Change::Set(Some("font"), "ligatures", (!f.ligatures).to_string()));
+        }
     });
     section(ui, c, "PANES", |ui| {
         let mut dim = seen.settings.appearance.dim;

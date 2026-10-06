@@ -261,6 +261,9 @@ new_tab = "Ctrl+Shift+N"
 family = "JetBrains Mono"
 size = 14
 line_height = 1.0
+# `->` as one arrow and `!=` as ≠, in a font that has them (Fira Code,
+# JetBrains Mono, Cascadia Code).
+ligatures = true
 
 # How much a pane without the keys is dimmed, in percent, and whether
 # waiting tabs breathe in gold and running ones show a moving cyan line.

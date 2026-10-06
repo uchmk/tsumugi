@@ -47,6 +47,7 @@
 //! family = ""
 //! size = 14
 //! line_height = 1.0
+//! ligatures = true
 //!
 //! # Tag a session by the folder it is in (the design's 1a).
 //! [[tags.rule]]
@@ -186,11 +187,13 @@ pub struct Font {
     pub size: f32,
     /// The row's height for the font's own, 0.8 to 2.
     pub line_height: f32,
+    /// `->` as one arrow, where the font has it (Q8).
+    pub ligatures: bool,
 }
 
 impl Default for Font {
     fn default() -> Self {
-        Self { family: String::new(), size: 14.0, line_height: 1.0 }
+        Self { family: String::new(), size: 14.0, line_height: 1.0, ligatures: true }
     }
 }
 
@@ -568,7 +571,7 @@ mod tests {
     #[test]
     fn the_font_reads_and_is_kept_in_bounds() {
         let s = parse("[font]\nfamily = \"JetBrainsMono\"\nsize = 15\nline_height = 1.2\n").expect("whole points read");
-        assert_eq!(s.font, Font { family: "JetBrainsMono".into(), size: 15.0, line_height: 1.2 });
+        assert_eq!(s.font, Font { family: "JetBrainsMono".into(), size: 15.0, line_height: 1.2, ligatures: true });
         assert!(parse("[font]\nsize = 4\n").is_err());
         assert!(parse("[font]\nline_height = 3.0\n").is_err());
         assert_eq!(parse("").unwrap().font, Font::default());

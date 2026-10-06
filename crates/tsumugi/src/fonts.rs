@@ -66,6 +66,8 @@ pub struct Loaded {
     pub faces: [bool; 3],
     /// The regular file the panes are drawn in, when not the built-in one.
     pub file: Option<std::path::PathBuf>,
+    /// That file, to shape and draw its ligatures from (Q8).
+    pub shaper: Option<std::sync::Arc<tsumugi_pane::Shaper>>,
 }
 
 /// Read the fonts for `family` (see `[font]` in the settings): it in front
@@ -82,8 +84,10 @@ pub fn load(family: &str) -> Loaded {
     let mut nerd = false;
     let mut faces = [false; 3];
     let mut file = None;
+    let mut shaper = None;
     if let Some(path) = &regular {
         if let Some(data) = read(path) {
+            shaper = std::fs::read(path).ok().and_then(|b| tsumugi_pane::Shaper::new(b, 0));
             let name = format!("mono:{}", path.display());
             fonts.font_data.insert(name.clone(), data);
             // In front, as filer has it: the pane's text in the face its owner chose.
@@ -118,7 +122,7 @@ pub fn load(family: &str) -> Loaded {
             faces[k] = true;
         }
     }
-    Loaded { defs: fonts, nerd, faces, file }
+    Loaded { defs: fonts, nerd, faces, file, shaper }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]

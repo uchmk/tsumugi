@@ -185,6 +185,7 @@ tmux や zellij のように、**セッションを持つのは裏で動くサ�
   Windows 11 の Mica / Acrylic は `[window] material`（既定は none。開き直すと効く）。macOS の vibrancy は Q9 で待っている。
   Linux は openbox の上で動かし方を確かめた。Windows と macOS の実機ではまだ動かしていない。
 - v0.32.0: 今日のトークン（1d の残り）とセッションごとの使用量（構想の 5）。Claude Code の会話の記録から数える。
+- v0.40.0: 合字（Q8、`rustybuzz` を足した）。`tsumugi-pane` で行を整形し、置き換わった字形を `ab_glyph` で描く。`[font] ligatures`。
 - v0.39.0: macOS の vibrancy（Q9、`window-vibrancy` を足した）。Windows の Mica / Acrylic も同じクレートに寄せた。
 - v0.38.0: キーの付け替え（1m の Keys）。`[keys]` と設定の画面（押して付け替える）。タブの番号とペインの移動は固定。
 - v0.37.0: 短い動き（「見た目」）。タブを切り替えたとき、ペインが現れたとき（分割、新しいセッション）、トーストの出入りを 150ms でにじませる。Animations で止まる。
