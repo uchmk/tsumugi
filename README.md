@@ -112,6 +112,11 @@ one more Claude Code beside this one is that key and `Enter`. Type another
 folder or pick one of the folders the other sessions are in (the arrows and
 `Tab` complete); choose **Resume last** (`claude --continue`) or **Shell**
 instead; the folder rules' tags are there, dashed, and more can be added.
+Tick **In a new git worktree** to start it in a folder of its own beside the
+repository, on its own branch (named for the time unless you name it), so
+sessions on the same repository never write the same files; when the last
+session in it ends, tsumugi asks whether to remove the worktree (its branch
+stays, and git refuses while anything is not committed).
 `Enter` opens it in a new tab, `Alt+Enter` splits it to the right of the
 pane with the keys. **Save as a profile** keeps the choices under a name in
 `profiles.toml` beside the settings, for **Profile…** to fill in next time.

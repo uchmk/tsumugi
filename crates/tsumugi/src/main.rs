@@ -33,6 +33,7 @@ mod prefs;
 mod shellhook;
 mod sort;
 mod theme;
+mod worktree;
 mod spawn;
 
 use std::time::Duration;
@@ -560,6 +561,19 @@ struct App {
     system_frame: bool,
     /// The desktop shows through the chrome (Mica or Acrylic, Windows 11).
     material: bool,
+    /// The worktrees tsumugi made; one being made, with what to start in
+    /// it; those a session has been seen in; the one whose last session
+    /// ended, to ask about; one being removed.
+    worktrees: Vec<std::path::PathBuf>,
+    /// For threads to wake the window with.
+    ctx: egui::Context,
+    worktree_making: Option<(std::sync::mpsc::Receiver<Result<std::path::PathBuf, String>>, newsession::Create)>,
+    worktree_lived: std::collections::HashSet<std::path::PathBuf>,
+    worktree_ask: Option<std::path::PathBuf>,
+    worktree_removing: Option<(std::path::PathBuf, std::sync::mpsc::Receiver<Result<(), String>>)>,
+    /// A few words above the status bar for a few seconds: what was done,
+    /// or (true) what went wrong.
+    toast: Option<(String, std::time::Instant, bool)>,
     /// `[font] family` as installed, and the file it found.
     font_family: String,
     font_file: Option<std::path::PathBuf>,
@@ -716,6 +730,13 @@ impl App {
             own_frame: first_window.own_titlebar(),
             system_frame: !first_window.own_titlebar(),
             material: cfg!(windows) && first_window.material != "none" && material::apply(window_handle(cc), &first_window.material, theme::colors().light),
+            worktrees: worktree::ours(),
+            ctx: cc.egui_ctx.clone(),
+            worktree_making: None,
+            worktree_lived: std::collections::HashSet::new(),
+            worktree_ask: None,
+            worktree_removing: None,
+            toast: None,
             font_family: first_font.family.clone(),
             font_file: loaded.file,
             faces_found: [false; 3],
@@ -1033,7 +1054,19 @@ impl App {
     }
 
     /// Start what the new-session dialog asked for.
-    fn create(&mut self, client: &Client, c: newsession::Create, current: Option<&Workspace>) {
+    fn create(&mut self, client: &Client, mut c: newsession::Create, current: Option<&Workspace>) {
+        // The worktree first, on a thread (git can take a moment); the
+        // session starts in it when it is made.
+        if let Some(branch) = c.worktree.take() {
+            let (tx, rx) = std::sync::mpsc::channel();
+            let (folder, ctx) = (c.folder.clone(), self.ctx.clone());
+            let _ = std::thread::Builder::new().name("worktree".into()).spawn(move || {
+                let _ = tx.send(worktree::add(&folder, &branch));
+                ctx.request_repaint();
+            });
+            self.worktree_making = Some((rx, c));
+            return;
+        }
         let place = match current {
             Some(w) if c.split => Place::Split { beside: w.focus, dir: Dir::Right },
             _ => Place::NewWorkspace,
@@ -1777,6 +1810,107 @@ impl App {
     /// Acrylic, so the desktop's colour comes through; else as it is.
     fn chrome_fill(&self, c: egui::Color32) -> egui::Color32 {
         if self.material { c.gamma_multiply(0.55) } else { c }
+    }
+
+    /// The worktrees' comings and goings: start the session in one just
+    /// made; when the last session in one of ours ends, ask whether to
+    /// remove it; say how the removing went.
+    fn worktrees(&mut self, ctx: &egui::Context, client: &Client, sessions: &[Info], current: Option<&Workspace>) {
+        if let Some((rx, _)) = &self.worktree_making {
+            if let Ok(made) = rx.try_recv() {
+                let (_, mut c) = self.worktree_making.take().expect("there");
+                match made {
+                    Ok(path) => {
+                        self.say(format!("Worktree made: {}", home_short(&path)), false);
+                        self.worktrees.push(path.clone());
+                        c.folder = path;
+                        self.create(client, c, current);
+                    }
+                    Err(e) => self.say(e, true),
+                }
+            }
+        }
+        for w in &self.worktrees {
+            let alive = sessions.iter().any(|i| i.cwd.starts_with(w));
+            if alive {
+                self.worktree_lived.insert(w.clone());
+            } else if self.worktree_lived.remove(w) && self.worktree_ask.is_none() {
+                self.worktree_ask = Some(w.clone());
+            }
+        }
+        if let Some((path, rx)) = &self.worktree_removing {
+            if let Ok(done) = rx.try_recv() {
+                let path = path.clone();
+                self.worktree_removing = None;
+                match done {
+                    Ok(()) => {
+                        self.say(format!("Worktree removed: {} (its branch stays)", home_short(&path)), false);
+                        self.worktrees.retain(|w| *w != path);
+                    }
+                    Err(e) => self.say(e, true),
+                }
+            }
+        }
+        let Some(path) = self.worktree_ask.clone() else { return };
+        let mut answer = None;
+        egui::Area::new(egui::Id::new("worktree-ask")).order(egui::Order::Foreground).anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0)).show(ctx, |ui| {
+            egui::Frame::NONE
+                .fill(crate::theme::colors().panel)
+                .stroke(egui::Stroke::new(1.0, crate::theme::colors().border_strong()))
+                .corner_radius(12.0)
+                .inner_margin(egui::Margin::symmetric(20, 16))
+                .show(ui, |ui| {
+                    ui.set_max_width(460.0);
+                    ui.label(egui::RichText::new("Remove the worktree?").size(15.0).strong().color(crate::theme::colors().strong()));
+                    ui.add_space(4.0);
+                    ui.label(egui::RichText::new(format!("The last session in {} has ended. Its branch stays; git refuses if anything is not committed.", home_short(&path))).size(12.5).color(crate::theme::colors().dim));
+                    ui.add_space(10.0);
+                    ui.horizontal(|ui| {
+                        if ui.add(egui::Button::new(egui::RichText::new("Remove").color(crate::theme::colors().on_accent()).strong()).fill(chrome::red()).min_size(egui::vec2(90.0, 28.0))).clicked() {
+                            answer = Some(true);
+                        }
+                        if ui.add(egui::Button::new("Keep").min_size(egui::vec2(80.0, 28.0))).clicked() {
+                            answer = Some(false);
+                        }
+                    });
+                });
+        });
+        match answer {
+            Some(true) => {
+                let (tx, rx) = std::sync::mpsc::channel();
+                let (p, ctx) = (path.clone(), ctx.clone());
+                let _ = std::thread::Builder::new().name("worktree".into()).spawn(move || {
+                    let _ = tx.send(worktree::remove(&p));
+                    ctx.request_repaint();
+                });
+                self.worktree_removing = Some((path, rx));
+                self.worktree_ask = None;
+            }
+            Some(false) => self.worktree_ask = None,
+            None => {}
+        }
+    }
+
+    /// Show `words` above the status bar for a while.
+    fn say(&mut self, words: String, error: bool) {
+        self.toast = Some((words, std::time::Instant::now(), error));
+    }
+
+    fn show_toast(&mut self, ctx: &egui::Context) {
+        let Some((words, at, error)) = &self.toast else { return };
+        let left = std::time::Duration::from_secs(if *error { 10 } else { 5 }).saturating_sub(at.elapsed());
+        if left.is_zero() {
+            self.toast = None;
+            return;
+        }
+        ctx.request_repaint_after(left);
+        let c = crate::theme::colors();
+        let (fill, color) = if *error { (crate::theme::mix(c.panel, c.err, 0.15), chrome::red()) } else { (c.raised(), c.strong()) };
+        egui::Area::new(egui::Id::new("toast")).order(egui::Order::Foreground).anchor(egui::Align2::CENTER_BOTTOM, egui::vec2(0.0, -64.0)).show(ctx, |ui| {
+            egui::Frame::NONE.fill(fill).stroke(egui::Stroke::new(1.0, c.border)).corner_radius(6.0).inner_margin(egui::Margin::symmetric(12, 6)).show(ui, |ui| {
+                ui.add(egui::Label::new(egui::RichText::new(words.as_str()).size(12.5).color(color)).wrap_mode(egui::TextWrapMode::Extend));
+            });
+        });
     }
 
     /// The panes' faces: the regular one, and bold and italic where found.
@@ -2539,6 +2673,8 @@ impl App {
             Some(newsession::Answer::Cancel) => self.new_session = None,
             None => {}
         }
+        self.worktrees(&ctx, &client, &sessions, current.as_ref());
+        self.show_toast(&ctx);
 
         let answer = match &mut self.search {
             Some(view) => chrome::search_box(&ctx, &self.palette, view, &Self::search_entries(&workspaces, &sessions)),

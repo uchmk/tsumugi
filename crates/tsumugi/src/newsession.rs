@@ -71,6 +71,10 @@ pub struct Dialog {
     tag_input: String,
     save: bool,
     name: String,
+    /// In a git worktree of its own, on this branch (empty: one named for
+    /// the time).
+    worktree: bool,
+    branch: String,
     /// The line of the folder list the arrows are on.
     selected: Option<usize>,
     opening: bool,
@@ -93,6 +97,8 @@ pub struct Create {
     pub split: bool,
     /// Keep these choices as a profile of this name.
     pub save_as: Option<String>,
+    /// Start it in a new git worktree on this branch.
+    pub worktree: Option<String>,
 }
 
 impl Dialog {
@@ -105,6 +111,8 @@ impl Dialog {
             tag_input: String::new(),
             save: false,
             name: String::new(),
+            worktree: false,
+            branch: String::new(),
             selected: None,
             opening: true,
         }
@@ -143,7 +151,11 @@ impl Dialog {
             }
         }
         let save_as = (self.save && !self.name.trim().is_empty()).then(|| self.name.trim().to_owned());
-        Answer::Create(Create { folder: self.folder_path(), start: self.start, tags, dropped: self.dropped.clone(), split, save_as })
+        let worktree = self.worktree.then(|| {
+            let b = self.branch.trim();
+            if b.is_empty() { crate::worktree::default_branch(chrono::Local::now()) } else { b.to_owned() }
+        });
+        Answer::Create(Create { folder: self.folder_path(), start: self.start, tags, dropped: self.dropped.clone(), split, save_as, worktree })
     }
 }
 
@@ -317,6 +329,14 @@ pub fn show(ctx: &egui::Context, pal: &Palette, d: &mut Dialog, recents: &[Recen
                 });
                 ui.add_space(10.0);
 
+                ui.horizontal(|ui| {
+                    ui.checkbox(&mut d.worktree, RichText::new("In a new git worktree").color(crate::theme::colors().dim))
+                        .on_hover_text("A folder of its own beside the repository, on its own branch: sessions on the same repository never write the same files");
+                    if d.worktree {
+                        let hint = crate::worktree::default_branch(chrono::Local::now());
+                        ui.add(egui::TextEdit::singleline(&mut d.branch).id(egui::Id::new("ns-branch")).hint_text(hint).font(FontId::monospace(12.0)).desired_width(220.0));
+                    }
+                });
                 ui.horizontal(|ui| {
                     ui.checkbox(&mut d.save, RichText::new("Save as a profile").color(crate::theme::colors().dim));
                     if d.save {
