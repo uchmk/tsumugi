@@ -214,6 +214,24 @@ pub fn status_bar(
 
 /// The bell: a button with the number of unread notifications on it, gold,
 /// or red while one of them is an error.
+/// The "+" that opens the new-session dialog (the same as `Ctrl+Shift+T`).
+pub fn plus_button(ui: &mut egui::Ui, pal: &Palette) -> egui::Response {
+    let (rect, resp) = ui.allocate_exact_size(egui::vec2(26.0, 24.0), egui::Sense::click());
+    let key = if cfg!(target_os = "macos") { "Cmd+T" } else { "Ctrl+Shift+T" };
+    let resp = resp.on_hover_text(format!("New session   {key}"));
+    let p = ui.painter();
+    let border = if resp.hovered() { crate::theme::colors().border_strong() } else { crate::theme::colors().border };
+    if resp.hovered() {
+        p.rect_filled(rect, 6.0, pal.selection.gamma_multiply(0.5));
+    }
+    p.rect_stroke(rect, 6.0, egui::Stroke::new(1.0, border), egui::StrokeKind::Inside);
+    let c = rect.center();
+    let stroke = egui::Stroke::new(1.5, if resp.hovered() { pal.fg } else { pal.fg_dim });
+    p.line_segment([c - egui::vec2(5.0, 0.0), c + egui::vec2(5.0, 0.0)], stroke);
+    p.line_segment([c - egui::vec2(0.0, 5.0), c + egui::vec2(0.0, 5.0)], stroke);
+    resp
+}
+
 pub fn bell(ui: &mut egui::Ui, pal: &Palette, notices: &[Notice]) -> egui::Response {
     let unread: Vec<&Notice> = notices.iter().filter(|n| !n.read).collect();
     let (rect, resp) = ui.allocate_exact_size(egui::vec2(28.0, 24.0), egui::Sense::click());

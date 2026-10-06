@@ -84,9 +84,18 @@ the prompt. `↑` brings back what was sent (kept between runs), a draft
 stays with its session, and choosing a tag under **To** sends the same
 prompt to every session wearing it. `Esc` gives the keys back to the pane.
 
+### Splits
+
+`Alt+Shift+=` splits the pane with the keys to the right, `Alt+Shift+-`
+below (`Cmd+D` and `Cmd+Shift+D` on macOS); `Alt+Arrows` move between them
+and `Ctrl+Shift+Z` zooms one. Drag a pane by its header onto another: the
+middle trades their places, an edge puts it on that side. A pane narrower
+than 20 columns or lower than 4 rows folds into a strip with its name and
+state.
+
 ### New sessions
 
-`Ctrl+Shift+T` (`Cmd+T` on macOS) opens the new-session dialog with the
+The **+** beside SESSIONS, or `Ctrl+Shift+T` (`Cmd+T` on macOS), opens the new-session dialog with the
 folder of the pane you are in already filled in and Claude Code chosen, so
 one more Claude Code beside this one is that key and `Enter`. Type another
 folder or pick one of the folders the other sessions are in (the arrows and

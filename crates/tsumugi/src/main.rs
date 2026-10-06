@@ -19,6 +19,7 @@
 
 mod alert;
 mod chrome;
+mod drop;
 mod fonts;
 mod inputbox;
 mod keys;
@@ -472,6 +473,8 @@ struct App {
     zoom: bool,
     /// A divider being dragged: the tab's shape as the drag has it so far.
     dragging: Option<(WorkspaceId, Node<SessionId>)>,
+    /// A pane being carried by its header to another place in its tab.
+    moving: Option<(WorkspaceId, SessionId)>,
     palette: Palette,
     font: egui::FontId,
     /// What the window title was last set to, so it is set only on a change.
@@ -611,6 +614,7 @@ impl App {
             views: HashMap::new(),
             zoom: false,
             dragging: None,
+            moving: None,
             palette,
             font: egui::FontId::monospace(FONT_SIZE),
             title: String::new(),
@@ -1036,6 +1040,10 @@ impl App {
                 // The order (the design's 1b): a button with the choice's
                 // short name, opening the five.
                 let button = chrome::sort_button(ui, &pal, self.view.sort.short());
+                ui.add_space(2.0);
+                if chrome::plus_button(ui, &pal).clicked() {
+                    self.new_session = Some(newsession::Dialog::new(&self.here(workspaces, sessions)));
+                }
                 egui::Popup::menu(&button).show(|ui| {
                     for s in sort::Sort::ALL {
                         if ui.selectable_label(self.view.sort == s, s.label()).clicked() {
@@ -1574,6 +1582,12 @@ impl App {
     /// The narrow rail (the design's 1i A): a square per tab with its
     /// project's first letter, ringed in its state's colour, its card on
     /// hover, and how many wait at the foot.
+    /// Where a new session starts: the folder of the pane with the keys.
+    fn here(&self, workspaces: &[Workspace], sessions: &[Info]) -> std::path::PathBuf {
+        let w = self.active.and_then(|id| workspaces.iter().find(|w| w.id == id));
+        w.and_then(|w| sessions.iter().find(|i| i.id == w.focus)).map(|i| i.cwd.clone()).or_else(|| std::env::current_dir().ok()).unwrap_or_else(|| ".".into())
+    }
+
     fn rail(&mut self, ui: &mut egui::Ui, workspaces: &[Workspace], sessions: &[Info]) -> Option<WorkspaceId> {
         let pal = self.palette;
         let now = chrome::now_ms();
@@ -1582,7 +1596,12 @@ impl App {
         let area = ui.max_rect();
         let foot = area.bottom() - 44.0;
         let mut picked = None;
-        let mut y = area.top() + 12.0;
+        // A new session, at the top as in the sidebar's header.
+        let plus = egui::Rect::from_center_size(egui::pos2(area.center().x, area.top() + 22.0), egui::vec2(26.0, 24.0));
+        if ui.scope_builder(egui::UiBuilder::new().max_rect(plus), |ui| chrome::plus_button(ui, &pal)).inner.clicked() {
+            self.new_session = Some(newsession::Dialog::new(&self.here(workspaces, sessions)));
+        }
+        let mut y = area.top() + 44.0;
         for (k, tab) in shown.iter().enumerate() {
             if y + 36.0 > foot - 22.0 {
                 ui.painter().text(egui::pos2(area.center().x, y + 6.0), egui::Align2::CENTER_CENTER, format!("+{}", shown.len() - k), egui::FontId::proportional(11.0), pal.fg_dim);
@@ -1649,6 +1668,74 @@ impl App {
         picked
     }
 
+    /// A pane too small for a terminal: its state's dot and its name, along
+    /// the strip's length (turned on its side when it is tall and thin).
+    fn strip(&self, ui: &egui::Ui, rect: egui::Rect, info: Option<&Info>, focused: bool) -> egui::Response {
+        let resp = ui.interact(rect, egui::Id::new(("strip", info.map(|i| i.id))), egui::Sense::click_and_drag());
+        let p = ui.painter_at(rect);
+        p.rect_filled(rect, 0.0, if focused { crate::theme::colors().hover() } else { crate::theme::colors().panel });
+        let Some(info) = info else { return resp };
+        let name = sort::display_title(&info.title, &info.command);
+        let color = if focused { self.palette.fg } else { self.palette.fg_dim };
+        let upright = rect.height() > rect.width() * 1.5;
+        let room = if upright { rect.height() } else { rect.width() } - 28.0;
+        let galley = ui.fonts_mut(|f| {
+            let mut job = egui::text::LayoutJob::simple_singleline(name, egui::FontId::proportional(12.0), color);
+            job.wrap = egui::text::TextWrapping::truncate_at_width(room.max(8.0));
+            f.layout_job(job)
+        });
+        let size = galley.size();
+        if upright {
+            // Top to bottom, the dot above the name.
+            let x = rect.center().x;
+            p.circle_filled(egui::pos2(x, rect.top() + 12.0), 4.0, state_color(info.state));
+            let at = egui::pos2(x + size.y / 2.0, rect.top() + 22.0);
+            p.add(egui::epaint::TextShape::new(at, galley, color).with_angle(std::f32::consts::FRAC_PI_2));
+        } else {
+            let y = rect.center().y;
+            p.circle_filled(egui::pos2(rect.left() + 12.0, y), 4.0, state_color(info.state));
+            p.galley(egui::pos2(rect.left() + 22.0, y - size.y / 2.0), galley, color);
+        }
+        resp.on_hover_text(chrome::state_words(info, chrome::now_ms()))
+    }
+
+    /// A pane carried by its header: where it would land, shown on the pane
+    /// under the pointer, and on release the tab's new shape (1f).
+    fn carry(&mut self, ui: &egui::Ui, w: &Workspace, rects: &[(SessionId, Rect)]) {
+        let Some((tab, moving)) = self.moving else { return };
+        if tab != w.id || !rects.iter().any(|(id, _)| *id == moving) {
+            self.moving = None;
+            return;
+        }
+        let ctx = ui.ctx();
+        ctx.set_cursor_icon(egui::CursorIcon::Grabbing);
+        let (pointer, released) = ctx.input(|i| (i.pointer.latest_pos(), !i.pointer.primary_down()));
+        let target = pointer.and_then(|p| rects.iter().find(|(id, r)| *id != moving && from_rect(*r).contains(p)).map(|(id, r)| (p, *id, from_rect(*r))));
+        if let Some((p, to, r)) = target {
+            let z = drop::zone(r, p);
+            let show = drop::preview(r, z).shrink(2.0);
+            let painter = ui.painter();
+            painter.rect_filled(show, 6.0, chrome::cyan().gamma_multiply(0.16));
+            painter.rect_stroke(show, 6.0, egui::Stroke::new(1.5, chrome::cyan()), egui::StrokeKind::Inside);
+            let words = if z == drop::Zone::Swap { "Swap" } else { "Move here" };
+            painter.text(show.center(), egui::Align2::CENTER_CENTER, words, egui::FontId::proportional(13.0), chrome::cyan());
+            if let (true, Some(client)) = (released, &self.client) {
+                let layout = match z {
+                    drop::Zone::Swap => {
+                        let mut l = w.layout.clone();
+                        l.swap(&moving, &to);
+                        l
+                    }
+                    drop::Zone::Side(toward) => w.layout.clone().moved(&moving, &to, toward),
+                };
+                client.set_layout(w.id, layout, moving);
+            }
+        }
+        if released {
+            self.moving = None;
+        }
+    }
+
     /// The tab's panes in `area`, each with its own view, and the dividers
     /// between them to drag.
     fn panes(&mut self, ui: &mut egui::Ui, w: &Workspace, sessions: &[Info]) {
@@ -1672,10 +1759,24 @@ impl App {
         let mut focus_to = None;
         let headed = rects.len() > 1;
         let now = chrome::now_ms();
+        let cell_w = ui.fonts_mut(|f| f.glyph_width(&self.font, 'M'));
         for (id, r) in &rects {
             let mut rect = from_rect(*r);
             let focused = *id == w.focus;
-            if headed {
+            // Narrower than 20 columns or lower than 4 rows: no room for a
+            // terminal, so a strip with its name and state (1f), which is
+            // also the handle to carry it by.
+            let narrow = headed && (rect.width() < 20.0 * cell_w || rect.height() - HEADER < 4.0 * row_h);
+            if narrow {
+                let info = sessions.iter().find(|i| i.id == *id);
+                let resp = self.strip(ui, rect, info, focused);
+                if resp.drag_started() {
+                    self.moving = Some((w.id, *id));
+                } else if resp.clicked() && !focused {
+                    focus_to = Some(*id);
+                }
+            }
+            if headed && !narrow {
                 // Each pane of a split says what it is (the design's 1f): its
                 // program or title, its folder, and what it is doing.
                 let head = egui::Rect::from_min_size(rect.min, egui::vec2(rect.width(), HEADER));
@@ -1699,14 +1800,35 @@ impl App {
                     });
                     p.galley(egui::pos2(head.left() + 8.0, head.center().y - galley.size().y / 2.0), galley, color);
                 }
+                // The header is the handle to carry the pane by (1f).
+                let resp = ui.interact(head, egui::Id::new(("pane-head", id)), egui::Sense::click_and_drag());
+                if resp.drag_started() {
+                    self.moving = Some((w.id, *id));
+                } else if resp.clicked() && !focused {
+                    focus_to = Some(*id);
+                }
+                if resp.hovered() && self.moving.is_none() {
+                    ctx.set_cursor_icon(egui::CursorIcon::Grab);
+                }
             }
-            let (Some(pane), view) = (self.panes.get_mut(id), self.views.entry(*id).or_default()) else { continue };
-            let opts = ViewOptions { focused, wheel: true };
-            let shown = ui.push_id(id, |ui| tsumugi_pane::show(ui, Some(pane), view, rect, &self.font, row_h, &self.palette, opts)).inner;
-            if !focused {
-                // The panes without the keys sit back; their marks do not (1e).
-                let dim = f32::from(self.settings_now.appearance.dim) / 100.0;
-                ui.painter().rect_filled(rect, 0.0, self.palette.on_cursor.gamma_multiply(dim));
+            if !narrow {
+                let (Some(pane), view) = (self.panes.get_mut(id), self.views.entry(*id).or_default()) else { continue };
+                let opts = ViewOptions { focused, wheel: true };
+                let shown = ui.push_id(id, |ui| tsumugi_pane::show(ui, Some(pane), view, rect, &self.font, row_h, &self.palette, opts)).inner;
+                if !focused {
+                    // The panes without the keys sit back; their marks do not (1e).
+                    let dim = f32::from(self.settings_now.appearance.dim) / 100.0;
+                    ui.painter().rect_filled(rect, 0.0, self.palette.on_cursor.gamma_multiply(dim));
+                }
+                if shown.focus && !focused {
+                    focus_to = Some(*id);
+                }
+                if let Some(text) = shown.copy {
+                    ctx.copy_text(text);
+                }
+                if shown.paste {
+                    ctx.send_viewport_cmd(egui::ViewportCommand::RequestPaste);
+                }
             }
             if headed && !focused {
                 // A pane of the split that wants a person breathes too, so
@@ -1726,19 +1848,11 @@ impl App {
                     _ => {}
                 }
             }
-            if shown.focus && !focused {
-                focus_to = Some(*id);
-            }
-            if let Some(text) = shown.copy {
-                ctx.copy_text(text);
-            }
-            if shown.paste {
-                ctx.send_viewport_cmd(egui::ViewportCommand::RequestPaste);
-            }
         }
         if let Some(id) = focus_to {
             self.set_focus(w, id);
         }
+        self.carry(ui, w, &rects);
 
         if self.zoom {
             // Said in gold when a pane hidden by the zoom wants a person (1f).
