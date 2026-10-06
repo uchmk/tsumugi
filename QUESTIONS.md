@@ -122,6 +122,7 @@
   2. 合字は入れない。ターミナルでは合字を嫌う人も多く、Windows Terminal でも既定は切ってある。
 - 回答が来るまでは 2 のまま（合字なし）。
 - 回答: 1（推奨、`rustybuzz` を足す）。2026-10-06、持ち主。描くのに `ab_glyph`（eframe がすでに使っているもの）も直接の依存にした。
+  その後 `rustybuzz` が保守停止になり、Q10 で `harfrust` に移した。
 
 ## Q9: macOS の vibrancy のためのクレート
 - 状態: 反映済み（v0.39.0）
@@ -135,3 +136,21 @@
   3. macOS では素材を使わない。
 - 回答が来るまでは 3 のまま（macOS は不透明）。
 - 回答: 1（推奨、`window-vibrancy` を足す）。2026-10-06、持ち主。
+
+## Q10: 保守が止まった `rustybuzz` を何に置き換えるか
+- 状態: 反映済み（v0.41.2）
+- タスク: v0.41.1 で入れた `cargo audit` の警告 2 つ。
+- 背景: 合字（Q8）のために足した `rustybuzz` 0.20 と、それが使う `ttf-parser` 0.25 が、2026-07 に保守停止になった
+  （RUSTSEC-2026-0206、RUSTSEC-2026-0192）。警告なのでチェックは緑のままだが、直らない穴が見つかっても新しい版が出ない。
+  `ttf-parser` は、字形を描くのに使っていた `ab_glyph` も抱えている。
+- 選択肢:
+  1. **`harfrust` に移す（推奨）**: `rustybuzz` から分かれた後継で、HarfBuzz の新しい版に追いついている。フォントの読み込みは
+     `read-fonts`（Google の fontations）で、`ttf-parser` を使わない。egui 0.36 自身が文字を `harfrust` 0.12・`skrifa` 0.44・`vello_cpu` で
+     描いているので、同じ版を使えば新しくビルドされるものは無い。字形を描くのも `ab_glyph` から `skrifa`（輪郭）と `vello_cpu`（塗り）に移せる。
+  2. 警告のまま `rustybuzz` を使い続ける。
+  3. 合字をやめる。
+- 回答: 1（`harfrust` に移す）。2026-10-06、持ち主（「保守停止のライブラリを使い続けると将来的なセキュリティリスクや互換性問題に繋がる」）。
+  egui と同じ `harfrust` 0.12・`skrifa` 0.44・`vello_cpu` 0.1 にした（`harfrust` の最新は 0.14 だが、egui と揃えて 2 つ抱えないため。
+  egui を上げるときに一緒に上げる）。`rustybuzz` と `ab_glyph` は依存から消え、Windows と macOS のビルドからは `ttf-parser` も消えた。
+  Linux では winit の窓飾り（`sctk-adwaita`）がまだ `ab_glyph` 経由で `ttf-parser` を使うので、`cargo audit` の警告は 1 つ（ttf-parser）残る。
+  これは winit が直すまで待つ。
