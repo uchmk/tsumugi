@@ -517,6 +517,9 @@ struct App {
     input: inputbox::InputBox,
     /// Stopping a server of another version, and its answer.
     replacing: Option<std::sync::mpsc::Receiver<Result<Client, String>>>,
+    /// Something drawn this frame moves (a breathing ring, a running line):
+    /// draw again soon. Nothing moving, nothing drawn until there is news.
+    animated: bool,
     /// `TSUMUGI_KEYLOG` is set: print the key presses.
     key_log: bool,
     settings_error: Option<String>,
@@ -635,6 +638,7 @@ impl App {
             input: inputbox::InputBox::with_history(load_history()),
             key_log: std::env::var_os("TSUMUGI_KEYLOG").is_some(),
             replacing: None,
+            animated: false,
             settings_error: None,
             tag_rules: Vec::new(),
             profiles: Vec::new(),
@@ -1245,14 +1249,26 @@ impl App {
                 if as_card {
                 let card = rect.shrink2(egui::vec2(6.0, 2.0));
                 if urgent.state == State::Waiting {
-                    // Ringed in gold: the one to look at (the design's sidebar).
+                    // Ringed in gold, breathing: the one to look at (the
+                    // design's sidebar). The glow spreads past the card.
                     painter.rect_filled(card, 8.0, crate::theme::colors().wait_bg());
-                    painter.rect_stroke(card, 8.0, egui::Stroke::new(1.0, chrome::gold().gamma_multiply(0.8)), egui::StrokeKind::Inside);
+                    let t = self.moving(ui);
+                    chrome::wait_ring(&ui.painter_at(rect.expand(4.0)), card, 8.0, t);
+                } else if urgent.state == State::Running {
+                    if let Some(t) = self.moving(ui) {
+                        chrome::run_line(&painter, card, 8.0, t);
+                    }
                 }
+                // The hover comes and goes over a moment rather than at once.
+                let hover = if self.settings_now.appearance.animations {
+                    ui.ctx().animate_bool_with_time(egui::Id::new(("card-hover", w.id)), resp.hovered(), 0.12)
+                } else {
+                    f32::from(u8::from(resp.hovered()))
+                };
                 if Some(w.id) == self.active {
                     painter.rect_filled(card, 8.0, pal.selection.gamma_multiply(0.85));
-                } else if resp.hovered() {
-                    painter.rect_filled(card, 8.0, pal.selection.gamma_multiply(0.4));
+                } else if hover > 0.0 {
+                    painter.rect_filled(card, 8.0, pal.selection.gamma_multiply(0.4 * hover));
                 }
                 if self.dragging_tab == Some(w.id) {
                     painter.rect_stroke(card, 8.0, egui::Stroke::new(1.0, chrome::cyan()), egui::StrokeKind::Inside);
@@ -1347,7 +1363,13 @@ impl App {
                     match urgent.state {
                         State::Waiting => {
                             painter.rect_filled(r, 6.0, crate::theme::colors().wait_bg());
-                            painter.rect_stroke(r, 6.0, egui::Stroke::new(1.0, chrome::gold().gamma_multiply(0.85)), egui::StrokeKind::Inside);
+                            let t = self.moving(ui);
+                            chrome::wait_ring(&ui.painter_at(rect.expand(3.0)), r, 6.0, t);
+                        }
+                        State::Running => {
+                            if let Some(t) = self.moving(ui) {
+                                chrome::run_line(&painter, r, 6.0, t);
+                            }
                         }
                         State::Error => {
                             painter.rect_stroke(r, 6.0, egui::Stroke::new(1.0, chrome::red().gamma_multiply(0.6)), egui::StrokeKind::Inside);
@@ -1581,7 +1603,21 @@ impl App {
                 crate::theme::colors().panel
             };
             p.rect_filled(rect, 9.0, fill);
-            p.rect_stroke(rect, 9.0, egui::Stroke::new(1.2, state_color(urgent.state).gamma_multiply(0.85)), egui::StrokeKind::Inside);
+            match urgent.state {
+                State::Waiting => {
+                    let t = self.moving(ui);
+                    chrome::wait_ring(ui.painter(), rect, 9.0, t);
+                }
+                state => {
+                    ui.painter().rect_stroke(rect, 9.0, egui::Stroke::new(1.2, state_color(state).gamma_multiply(0.85)), egui::StrokeKind::Inside);
+                    if state == State::Running {
+                        if let Some(t) = self.moving(ui) {
+                            chrome::run_line(ui.painter(), rect, 9.0, t);
+                        }
+                    }
+                }
+            }
+            let p = ui.painter();
             let letter = focus.project.file_name().and_then(|f| f.to_string_lossy().chars().next()).map_or('?', |c| c.to_ascii_uppercase());
             let color = if urgent.state == State::Done { pal.fg_dim } else { crate::theme::colors().wait_text() };
             p.text(rect.center(), egui::Align2::CENTER_CENTER, letter, egui::FontId::proportional(14.0), color);
@@ -1671,6 +1707,24 @@ impl App {
                 // The panes without the keys sit back; their marks do not (1e).
                 let dim = f32::from(self.settings_now.appearance.dim) / 100.0;
                 ui.painter().rect_filled(rect, 0.0, self.palette.on_cursor.gamma_multiply(dim));
+            }
+            if headed && !focused {
+                // A pane of the split that wants a person breathes too, so
+                // it is seen while working in another (1f).
+                let state = sessions.iter().find(|i| i.id == *id).map(|i| i.state);
+                let whole = from_rect(*r);
+                match state {
+                    Some(State::Waiting) => {
+                        let t = self.moving(ui);
+                        chrome::wait_ring(&ui.painter_at(whole), whole, 0.0, t);
+                    }
+                    Some(State::Running) => {
+                        if let Some(t) = self.moving(ui) {
+                            chrome::run_line(&ui.painter_at(whole), whole, 0.0, t);
+                        }
+                    }
+                    _ => {}
+                }
             }
             if shown.focus && !focused {
                 focus_to = Some(*id);
@@ -1951,7 +2005,30 @@ fn window_handle(cc: &eframe::CreationContext<'_>) -> Option<isize> {
 }
 
 impl eframe::App for App {
-    fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+    fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
+        self.animated = false;
+        self.frame(ui, frame);
+        if self.animated {
+            // About 30 frames a second while looked at (slow movement needs
+            // no more); a few a second behind other windows.
+            let seen = ui.ctx().input(|i| i.focused);
+            ui.ctx().request_repaint_after(std::time::Duration::from_millis(if seen { 33 } else { 100 }));
+        }
+    }
+}
+
+impl App {
+    /// The clock for something that moves, when the animations are on; and
+    /// a note to draw the next frame soon.
+    fn moving(&mut self, ui: &egui::Ui) -> Option<f64> {
+        if !self.settings_now.appearance.animations {
+            return None;
+        }
+        self.animated = true;
+        Some(ui.input(|i| i.time))
+    }
+
+    fn frame(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
         let Some(client) = self.client.clone() else {
             self.message(ui);

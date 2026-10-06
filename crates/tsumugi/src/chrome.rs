@@ -35,6 +35,55 @@ pub fn state_color(state: State) -> Color32 {
     }
 }
 
+/// How long a waiting ring takes to brighten and fade, in seconds.
+pub const BREATHE: f64 = 2.4;
+/// How long the running line takes to cross a card, in seconds.
+pub const SWEEP: f64 = 1.8;
+
+/// Where a waiting ring is in its breath at `time` seconds: 0 faint, 1
+/// brightest, easing in and out.
+pub fn breathe(time: f64) -> f32 {
+    (0.5 - 0.5 * (std::f64::consts::TAU * time / BREATHE).cos()) as f32
+}
+
+/// The ring round something waiting for a person, breathing at `time`
+/// (`None` holds it still at its brightest). A soft glow spreads outside it
+/// as it brightens; on a light theme the line is thicker, the glow less.
+pub fn wait_ring(painter: &egui::Painter, rect: egui::Rect, radius: f32, time: Option<f64>) {
+    let light = crate::theme::colors().light;
+    let b = time.map_or(1.0, breathe);
+    let gold = gold();
+    let width = if light { 1.5 } else { 1.0 };
+    painter.rect_stroke(rect, radius, egui::Stroke::new(width, gold.gamma_multiply(0.45 + 0.5 * b)), egui::StrokeKind::Inside);
+    if time.is_some() {
+        let glow = if light { 0.18 } else { 0.28 };
+        for (k, spread) in [1.5_f32, 3.5].into_iter().enumerate() {
+            let alpha = glow * b / (k as f32 + 1.0);
+            painter.rect_stroke(rect.expand(spread - 1.0), radius + spread, egui::Stroke::new(2.0, gold.gamma_multiply(alpha)), egui::StrokeKind::Outside);
+        }
+    }
+}
+
+/// Where the running line's left end is at `time`, as a share of the width:
+/// from -0.3 (just out of sight on the left) to 1.0 (gone on the right).
+pub fn sweep_at(time: f64) -> f32 {
+    ((time % SWEEP) / SWEEP) as f32 * 1.3 - 0.3
+}
+
+/// The thin cyan line that runs along the top of something working, a
+/// third of its width, left to right and round again.
+pub fn run_line(painter: &egui::Painter, rect: egui::Rect, radius: f32, time: f64) {
+    let w = rect.width();
+    let x0 = rect.left() + sweep_at(time) * w;
+    let left = x0.max(rect.left() + radius);
+    let right = (x0 + 0.3 * w).min(rect.right() - radius);
+    if right <= left {
+        return;
+    }
+    let y = rect.top() + 1.0;
+    painter.line_segment([egui::pos2(left, y), egui::pos2(right, y)], egui::Stroke::new(2.0, cyan()));
+}
+
 pub fn now_ms() -> u64 {
     std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_millis() as u64)
 }
@@ -667,7 +716,17 @@ pub fn restore_screen(ui: &mut egui::Ui, pal: &Palette, view: &mut RestoreView) 
 
 #[cfg(test)]
 mod tests {
-    use super::elapsed;
+    use super::{BREATHE, SWEEP, breathe, elapsed, sweep_at};
+
+    #[test]
+    fn the_ring_breathes_and_the_line_runs_round() {
+        assert!(breathe(0.0) < 0.001, "faint at the start");
+        assert!((breathe(BREATHE / 2.0) - 1.0).abs() < 0.001, "brightest halfway");
+        assert!((breathe(BREATHE * 3.0) - breathe(0.0)).abs() < 0.001, "and round again");
+        assert!((sweep_at(0.0) + 0.3).abs() < 0.001, "starts out of sight on the left");
+        assert!(sweep_at(SWEEP * 0.999) > 0.99, "ends gone on the right");
+        assert!((sweep_at(SWEEP * 2.5) - sweep_at(SWEEP * 0.5)).abs() < 0.001);
+    }
 
     #[test]
     fn time_is_said_the_way_the_design_says_it() {

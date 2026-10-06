@@ -262,6 +262,11 @@ fn appearance(ui: &mut egui::Ui, c: &Colors, seen: &Seen, out: &mut Vec<Change>)
             out.push(Change::Set(Some("appearance"), "dim", dim.to_string()));
         }
         ui.separator();
+        let on = seen.settings.appearance.animations;
+        if row(ui, c, "Animations", "Waiting tabs breathe in gold; running ones show a moving cyan line", |ui| switch(ui, c, on)) {
+            out.push(Change::Set(Some("appearance"), "animations", (!on).to_string()));
+        }
+        ui.separator();
         let nerd = if seen.nerd { "Found" } else { "Not found: icons are drawn" };
         row(ui, c, "Nerd Font", "HackGen NF, or a FiraCode, Caskaydia Cove or JetBrains Mono Nerd Font", |ui| {
             ui.label(RichText::new(nerd).size(12.5).color(if seen.nerd { c.done } else { c.dim }));

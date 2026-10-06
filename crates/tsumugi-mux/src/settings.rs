@@ -18,9 +18,11 @@
 //! date_format = "YYYY/MM/DD"
 //! weekday = true
 //!
-//! # How much a pane without the keys is dimmed, in percent (1e).
+//! # How much a pane without the keys is dimmed, in percent (1e), and
+//! # whether waiting rings breathe and running tabs show a moving line.
 //! [appearance]
 //! dim = 35
+//! animations = true
 //!
 //! # Tag a session by the folder it is in (the design's 1a).
 //! [[tags.rule]]
@@ -118,11 +120,13 @@ impl Clock {
 pub struct Appearance {
     /// Percent a pane without the keys is dimmed, 0 to 90.
     pub dim: u8,
+    /// Waiting rings breathe and running tabs show a moving line.
+    pub animations: bool,
 }
 
 impl Default for Appearance {
     fn default() -> Self {
-        Self { dim: 35 }
+        Self { dim: 35, animations: true }
     }
 }
 

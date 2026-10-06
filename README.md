@@ -184,9 +184,11 @@ date = true
 date_format = "YYYY/MM/DD"
 weekday = true
 
-# How much a pane without the keys is dimmed, in percent.
+# How much a pane without the keys is dimmed, in percent, and whether
+# waiting tabs breathe in gold and running ones show a moving cyan line.
 [appearance]
 dim = 35
+animations = true
 
 # What the tab's menu opens its folder with; the system's shell runs it.
 [open]
