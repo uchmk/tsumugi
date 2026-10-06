@@ -578,6 +578,12 @@ struct App {
     /// ended (the new-session dialog's "closed" ones).
     known_cwds: HashMap<SessionId, std::path::PathBuf>,
     closed: Vec<std::path::PathBuf>,
+    /// The tab and panes shown last frame, and when the tab changed or a
+    /// pane appeared: they fade in (the short moves of v1-scope's look).
+    shown_tab: Option<WorkspaceId>,
+    shown_panes: std::collections::HashSet<SessionId>,
+    tab_at: Option<std::time::Instant>,
+    pane_at: HashMap<SessionId, std::time::Instant>,
     /// The session whose card the pointer is on: watched for its preview.
     peek: Option<SessionId>,
     /// Claude Code's hooks: being looked for, offered, being added.
@@ -767,6 +773,10 @@ impl App {
             material: cfg!(windows) && first_window.material != "none" && material::apply(window_handle(cc), &first_window.material, theme::colors().light),
             known_cwds: HashMap::new(),
             closed: closed_file().and_then(|p| std::fs::read_to_string(p).ok()).map(|t| t.lines().filter(|l| !l.is_empty()).map(std::path::PathBuf::from).collect()).unwrap_or_default(),
+            shown_tab: None,
+            shown_panes: std::collections::HashSet::new(),
+            tab_at: None,
+            pane_at: HashMap::new(),
             peek: None,
             watching: Vec::new(),
             queue: Vec::new(),
@@ -2208,10 +2218,14 @@ impl App {
             self.toast = None;
             return;
         }
-        ctx.request_repaint_after(left);
+        // In and out over a moment, when things move at all.
+        let shown = at.elapsed().as_secs_f32();
+        let alpha = if self.settings_now.appearance.animations { (shown / FADE.as_secs_f32()).min(left.as_secs_f32() / FADE.as_secs_f32()).clamp(0.0, 1.0) } else { 1.0 };
+        ctx.request_repaint_after(if alpha < 1.0 { std::time::Duration::from_millis(16) } else { left.saturating_sub(FADE) });
         let c = crate::theme::colors();
         let (fill, color) = if *error { (crate::theme::mix(c.panel, c.err, 0.15), chrome::red()) } else { (c.raised(), c.strong()) };
         egui::Area::new(egui::Id::new("toast")).order(egui::Order::Foreground).anchor(egui::Align2::CENTER_TOP, egui::vec2(0.0, 52.0)).show(ctx, |ui| {
+            ui.set_opacity(alpha);
             egui::Frame::NONE.fill(fill).stroke(egui::Stroke::new(1.0, c.border)).corner_radius(6.0).inner_margin(egui::Margin::symmetric(12, 6)).show(ui, |ui| {
                 ui.add(egui::Label::new(egui::RichText::new(words.as_str()).size(12.5).color(color)).wrap_mode(egui::TextWrapMode::Extend));
             });
@@ -2337,6 +2351,23 @@ impl App {
 
         let row_h = (ui.fonts_mut(|f| f.row_height(&self.font)) * self.settings_now.font.line_height).ceil();
         let faces = self.faces();
+        // What came into view: the tab when it changed, a pane when it
+        // appeared (a split, a new session). Each fades in over a moment.
+        let now_t = std::time::Instant::now();
+        let first_frame = self.shown_panes.is_empty() && self.shown_tab.is_none();
+        if self.shown_tab != Some(w.id) {
+            if !first_frame {
+                self.tab_at = Some(now_t);
+            }
+            self.shown_tab = Some(w.id);
+        }
+        for (id, _) in &rects {
+            if !self.shown_panes.contains(id) && !first_frame && self.tab_at.is_none_or(|t| t.elapsed() > FADE) {
+                self.pane_at.insert(*id, now_t);
+            }
+        }
+        self.shown_panes = rects.iter().map(|(id, _)| *id).collect();
+        self.pane_at.retain(|_, t| t.elapsed() < FADE);
         let ctx = ui.ctx().clone();
         let mut focus_to = None;
         let headed = rects.len() > 1;
@@ -2410,6 +2441,15 @@ impl App {
                 }
                 if shown.paste {
                     ctx.send_viewport_cmd(egui::ViewportCommand::RequestPaste);
+                }
+            }
+            // Coming in: the pane's colour over it, thinning to nothing.
+            if self.settings_now.appearance.animations {
+                let since = [self.tab_at, self.pane_at.get(id).copied()].into_iter().flatten().map(|t| t.elapsed()).min();
+                if let Some(since) = since.filter(|s| *s < FADE) {
+                    let left = 1.0 - since.as_secs_f32() / FADE.as_secs_f32();
+                    ui.painter().rect_filled(from_rect(*r), 0.0, self.palette.bg.gamma_multiply(left * left));
+                    ctx.request_repaint();
                 }
             }
             if headed && !focused {
@@ -2717,6 +2757,9 @@ struct Queued {
     id: SessionId,
     text: String,
 }
+
+/// How long something coming into view takes to fade in.
+const FADE: std::time::Duration = std::time::Duration::from_millis(150);
 
 /// How many lines a card's preview shows.
 const PEEK_LINES: usize = 12;
