@@ -82,6 +82,8 @@ pub struct Dialog {
     /// The line of the folder list the arrows are on.
     selected: Option<usize>,
     opening: bool,
+    /// The start button the arrows moved to, to give the keys next frame.
+    start_focus: Option<usize>,
 }
 
 /// What the dialog was asked to do.
@@ -143,6 +145,7 @@ impl Dialog {
             more: Vec::new(),
             selected: None,
             opening: true,
+            start_focus: None,
         }
     }
 
@@ -202,28 +205,52 @@ pub fn expand(text: &str) -> PathBuf {
 
 /// The dialog over the window, everything behind it dimmed.
 pub fn show(ctx: &egui::Context, pal: &Palette, d: &mut Dialog, recents: &[Recent], profiles: &[Profile], rules: &[TagRule]) -> Option<Answer> {
-    let typing_tag = !d.tag_input.trim().is_empty();
-    // Alt+Enter before Enter: egui's plain Enter also matches it.
-    let (esc, alt_enter, enter, up, down, tab) = ctx.input_mut(|i| {
-        (
-            i.consume_key(egui::Modifiers::NONE, egui::Key::Escape),
-            i.consume_key(egui::Modifiers::ALT, egui::Key::Enter),
-            !typing_tag && i.consume_key(egui::Modifiers::NONE, egui::Key::Enter),
-            i.consume_key(egui::Modifiers::NONE, egui::Key::ArrowUp),
-            i.consume_key(egui::Modifiers::NONE, egui::Key::ArrowDown),
-            i.consume_key(egui::Modifiers::NONE, egui::Key::Tab),
-        )
-    });
-    if esc {
-        return Some(Answer::Cancel);
-    }
     // The folders that match what is typed; all of them before any typing.
     let typed = d.folder.trim().to_lowercase();
+    let exact = recents.iter().any(|r| crate::home_short(&r.folder).to_lowercase() == typed);
     let mut shown: Vec<&Recent> = recents.iter().filter(|r| crate::palette::score(&typed, &crate::home_short(&r.folder).to_lowercase()).is_some()).collect();
-    if shown.iter().any(|r| crate::home_short(&r.folder).to_lowercase() == typed) || typed.is_empty() {
+    if exact || typed.is_empty() {
         shown = recents.iter().collect();
     }
     shown.truncate(5);
+
+    // The keys. Tab and Shift+Tab walk the fields, as in any dialog: from
+    // the folder, Tab first completes it when the list has a folder that
+    // differs from what is typed (the line the arrows are on, else the best
+    // match), and moves on once it is complete. The arrows walk the list
+    // only from the folder. Enter creates from a field or from nowhere; on a
+    // button it presses the button, as Space does.
+    let focused = ctx.memory(|m| m.focused());
+    let in_field = |name: &str| focused == Some(egui::Id::new(name));
+    let in_folder = in_field("ns-folder");
+    let typing_tag = in_field("ns-tag") && !d.tag_input.trim().is_empty();
+    let mut completion = match d.selected {
+        Some(k) => shown.get(k).map(|r| crate::home_short(&r.folder)),
+        None if exact => None,
+        None => shown.first().map(|r| crate::home_short(&r.folder)),
+    }
+    .filter(|f| *f != d.folder.trim());
+    let enter_creates = focused.is_none() || ["ns-folder", "ns-branch", "ns-name", "ns-tag"].iter().any(|n| in_field(n));
+    // Alt+Enter before Enter: egui's plain Enter also matches it.
+    let (esc, alt_enter, enter, up, down, tab, back) = ctx.input_mut(|i| {
+        (
+            i.consume_key(egui::Modifiers::NONE, egui::Key::Escape),
+            i.consume_key(egui::Modifiers::ALT, egui::Key::Enter),
+            enter_creates && !typing_tag && i.consume_key(egui::Modifiers::NONE, egui::Key::Enter),
+            in_folder && i.consume_key(egui::Modifiers::NONE, egui::Key::ArrowUp),
+            in_folder && i.consume_key(egui::Modifiers::NONE, egui::Key::ArrowDown),
+            in_folder && completion.is_some() && i.consume_key(egui::Modifiers::NONE, egui::Key::Tab),
+            in_folder && completion.is_some() && i.consume_key(egui::Modifiers::SHIFT, egui::Key::Tab),
+        )
+    });
+    // The folder holds on to Tab while it has something to complete (its
+    // event filter, below), so Shift+Tab is moved on by hand then.
+    if back {
+        ctx.memory_mut(|m| m.move_focus(egui::FocusDirection::Previous));
+    }
+    if esc {
+        return Some(Answer::Cancel);
+    }
     if down && !shown.is_empty() {
         d.selected = Some(d.selected.map_or(0, |s| (s + 1) % shown.len()));
     }
@@ -231,9 +258,16 @@ pub fn show(ctx: &egui::Context, pal: &Palette, d: &mut Dialog, recents: &[Recen
         d.selected = Some(d.selected.map_or(shown.len() - 1, |s| (s + shown.len() - 1) % shown.len()));
     }
     if tab {
-        if let Some(r) = d.selected.and_then(|s| shown.get(s)).or(shown.first()) {
-            d.folder = crate::home_short(&r.folder);
+        if let Some(f) = completion.take() {
+            d.folder = f;
             d.selected = None;
+        }
+        // The cursor to the end of what was put in, for more typing.
+        let id = egui::Id::new("ns-folder");
+        if let Some(mut state) = egui::TextEdit::load_state(ctx, id) {
+            let end = egui::text::CCursor::new(d.folder.chars().count());
+            state.cursor.set_char_range(Some(egui::text::CCursorRange::one(end)));
+            state.store(ctx, id);
         }
     }
     if (enter || alt_enter) && !d.opening {
@@ -247,7 +281,8 @@ pub fn show(ctx: &egui::Context, pal: &Palette, d: &mut Dialog, recents: &[Recen
     // Behind: dimmed, and a click there cancels.
     let screen = ctx.content_rect();
     egui::Area::new(egui::Id::new("new-session-dim")).order(egui::Order::Middle).fixed_pos(screen.min).show(ctx, |ui| {
-        let (rect, resp) = ui.allocate_exact_size(screen.size(), egui::Sense::click());
+        // Mouse only: Tab never stops on the backdrop.
+        let (rect, resp) = ui.allocate_exact_size(screen.size(), egui::Sense::CLICK);
         ui.painter().rect_filled(rect, 0.0, Color32::from_black_alpha(140));
         if resp.clicked() && !d.opening {
             answer = Some(Answer::Cancel);
@@ -273,7 +308,11 @@ pub fn show(ctx: &egui::Context, pal: &Palette, d: &mut Dialog, recents: &[Recen
                 ui.add_space(8.0);
 
                 ui.label(label("FOLDER"));
-                let field = egui::TextEdit::singleline(&mut d.folder).id(egui::Id::new("ns-folder")).font(FontId::monospace(13.0)).desired_width(f32::INFINITY);
+                // Tab stays in the field while there is a folder to complete
+                // it to (egui moves the keys on Tab before the dialog reads
+                // it otherwise); the arrows always stay, for the list.
+                let filter = egui::EventFilter { tab: completion.is_some(), horizontal_arrows: true, vertical_arrows: true, escape: false };
+                let field = egui::TextEdit::singleline(&mut d.folder).id(egui::Id::new("ns-folder")).font(FontId::monospace(13.0)).desired_width(f32::INFINITY).event_filter(filter);
                 let f = ui.add(field);
                 if d.opening {
                     f.request_focus();
@@ -283,7 +322,8 @@ pub fn show(ctx: &egui::Context, pal: &Palette, d: &mut Dialog, recents: &[Recen
                     d.dropped.clear();
                 }
                 for (k, r) in shown.iter().enumerate() {
-                    let (rect, resp) = ui.allocate_exact_size(egui::vec2(ui.available_width(), 26.0), egui::Sense::click());
+                    // The arrows walk these from the folder; Tab passes them by.
+                    let (rect, resp) = ui.allocate_exact_size(egui::vec2(ui.available_width(), 26.0), egui::Sense::CLICK);
                     let p = ui.painter();
                     if d.selected == Some(k) || resp.hovered() {
                         p.rect_filled(rect, 6.0, crate::theme::colors().chosen());
@@ -303,10 +343,30 @@ pub fn show(ctx: &egui::Context, pal: &Palette, d: &mut Dialog, recents: &[Recen
 
                 ui.label(label("START"));
                 ui.horizontal(|ui| {
-                    for s in Start::ALL {
-                        if start_button(ui, s.label(), d.start == s).clicked() {
+                    let (left, right) = ui.input(|i| (i.key_pressed(egui::Key::ArrowLeft), i.key_pressed(egui::Key::ArrowRight)));
+                    let mut went = None;
+                    for (k, s) in Start::ALL.into_iter().enumerate() {
+                        let b = start_button(ui, s.label(), d.start == s);
+                        if d.start_focus == Some(k) {
+                            b.request_focus();
+                            d.start_focus = None;
+                        }
+                        // Left and Right pick the next way to start, as in a
+                        // row of radio buttons; Tab leaves the row.
+                        if b.has_focus() && (left || right) {
+                            let n = Start::ALL.len();
+                            went = Some(if right { (k + 1) % n } else { (k + n - 1) % n });
+                        }
+                        if b.clicked() {
                             d.start = s;
                         }
+                    }
+                    if let Some(k) = went {
+                        d.start = Start::ALL[k];
+                        d.start_focus = Some(k);
+                        // egui would move the keys by the arrow too, to
+                        // whatever is that way; the row's own move instead.
+                        ui.memory_mut(|m| m.move_focus(egui::FocusDirection::None));
                     }
                     let profile = start_button(ui, "Profile…", false);
                     egui::Popup::menu(&profile).show(|ui| {
@@ -326,7 +386,8 @@ pub fn show(ctx: &egui::Context, pal: &Palette, d: &mut Dialog, recents: &[Recen
                     ui.label(RichText::new("Beside it").size(12.0).color(pal.fg_dim));
                     let mut gone = None;
                     for (k, s) in d.more.iter().enumerate() {
-                        if ui.add(egui::Button::new(RichText::new(format!("{}  ×", s.label())).size(12.0))).on_hover_text("Click to take it off").clicked() {
+                        let chip = ui.add(egui::Button::new(RichText::new(format!("{}  ×", s.label())).size(12.0)));
+                        if ring(ui, chip).on_hover_text("Click to take it off").clicked() {
                             gone = Some(k);
                         }
                     }
@@ -335,6 +396,7 @@ pub fn show(ctx: &egui::Context, pal: &Palette, d: &mut Dialog, recents: &[Recen
                     }
                     if d.more.len() < MORE_MOST {
                         let add = ui.add(egui::Button::new(RichText::new("+ Pane").size(12.0)));
+                        let add = ring(ui, add);
                         egui::Popup::menu(&add).show(|ui| {
                             for s in Start::ALL {
                                 if ui.button(s.label()).clicked() {
@@ -357,7 +419,7 @@ pub fn show(ctx: &egui::Context, pal: &Palette, d: &mut Dialog, recents: &[Recen
                     // click takes either kind off.
                     for (t, auto) in rule_tags.iter().map(|t| (t.clone(), true)).chain(d.tags.clone().into_iter().map(|t| (t, false))) {
                         let w = ui.fonts_mut(|f| f.layout_no_wrap(t.clone(), FontId::proportional(11.0), pal.fg).size().x) + 12.0;
-                        let (rect, resp) = ui.allocate_exact_size(egui::vec2(w, 16.0), egui::Sense::click());
+                        let (rect, resp) = ui.allocate_exact_size(egui::vec2(w, 16.0), egui::Sense::CLICK);
                         let p = ui.painter();
                         chrome::tag_chip(p, rect.min, &t, false);
                         if auto {
@@ -386,15 +448,16 @@ pub fn show(ctx: &egui::Context, pal: &Palette, d: &mut Dialog, recents: &[Recen
                 ui.add_space(10.0);
 
                 ui.horizontal(|ui| {
-                    ui.checkbox(&mut d.worktree, RichText::new("In a new git worktree").color(crate::theme::colors().dim))
-                        .on_hover_text("A folder of its own beside the repository, on its own branch: sessions on the same repository never write the same files");
+                    let c = ui.checkbox(&mut d.worktree, RichText::new("In a new git worktree").color(crate::theme::colors().dim));
+                    ring(ui, c).on_hover_text("A folder of its own beside the repository, on its own branch: sessions on the same repository never write the same files");
                     if d.worktree {
                         let hint = crate::worktree::default_branch(chrono::Local::now());
                         ui.add(egui::TextEdit::singleline(&mut d.branch).id(egui::Id::new("ns-branch")).hint_text(hint).font(FontId::monospace(12.0)).desired_width(220.0));
                     }
                 });
                 ui.horizontal(|ui| {
-                    ui.checkbox(&mut d.save, RichText::new("Save as a profile").color(crate::theme::colors().dim));
+                    let c = ui.checkbox(&mut d.save, RichText::new("Save as a profile").color(crate::theme::colors().dim));
+                    ring(ui, c);
                     if d.save {
                         ui.add(egui::TextEdit::singleline(&mut d.name).id(egui::Id::new("ns-name")).hint_text("Its name").desired_width(200.0));
                     }
@@ -402,16 +465,21 @@ pub fn show(ctx: &egui::Context, pal: &Palette, d: &mut Dialog, recents: &[Recen
                 ui.add_space(12.0);
 
                 ui.horizontal(|ui| {
-                    ui.label(RichText::new("Alt+Enter").font(FontId::monospace(12.0)).color(crate::theme::colors().fg));
-                    ui.label(RichText::new("split right").size(12.0).color(pal.fg_dim));
+                    for (key, what) in [("Tab", "next"), ("Enter", "create"), ("Alt+Enter", "split right")] {
+                        ui.label(RichText::new(key).font(FontId::monospace(12.0)).color(crate::theme::colors().fg));
+                        ui.label(RichText::new(what).size(12.0).color(pal.fg_dim));
+                        ui.add_space(6.0);
+                    }
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         let create = egui::Button::new(RichText::new("Create").color(crate::theme::colors().on_accent()).strong())
                             .fill(chrome::cyan())
                             .min_size(egui::vec2(90.0, 30.0));
-                        if ui.add(create).clicked() {
+                        let create = ui.add(create);
+                        if ring(ui, create).clicked() {
                             answer = Some(d.create(rules, false));
                         }
-                        if ui.add(egui::Button::new("Cancel").min_size(egui::vec2(70.0, 30.0))).clicked() {
+                        let cancel = ui.add(egui::Button::new("Cancel").min_size(egui::vec2(70.0, 30.0)));
+                        if ring(ui, cancel).clicked() {
                             answer = Some(Answer::Cancel);
                         }
                     });
@@ -429,7 +497,16 @@ fn start_button(ui: &mut egui::Ui, text: &str, on: bool) -> egui::Response {
         (Color32::TRANSPARENT, crate::theme::colors().border, crate::theme::colors().fg)
     };
     let b = egui::Button::new(RichText::new(text).size(12.5).color(color)).fill(fill).stroke(egui::Stroke::new(1.0, stroke)).min_size(egui::vec2(128.0, 32.0));
-    ui.add(b)
+    let r = ui.add(b);
+    ring(ui, r)
+}
+
+/// A ring round the control that has the keys, so Tab shows where it went.
+fn ring(ui: &egui::Ui, r: egui::Response) -> egui::Response {
+    if r.has_focus() {
+        ui.painter().rect_stroke(r.rect.expand(3.0), 8.0, egui::Stroke::new(1.5, chrome::cyan()), egui::StrokeKind::Outside);
+    }
+    r
 }
 
 #[cfg(test)]
@@ -474,5 +551,101 @@ mod tests {
         d.tags.push("mine".into());
         let Answer::Create(c) = d.create(&rules, true) else { panic!("created") };
         assert_eq!((c.tags, c.dropped, c.split), (vec!["mine".to_owned()], vec!["ci".to_owned()], true));
+    }
+
+    /// The dialog drawn without a window, keys pressed into it.
+    struct Run {
+        ctx: egui::Context,
+        recents: Vec<Recent>,
+    }
+
+    impl Run {
+        fn new() -> Self {
+            let recents = ["/srv/app", "/srv/api"].iter().map(|f| Recent { folder: PathBuf::from(f), note: String::new() }).collect();
+            Self { ctx: egui::Context::default(), recents }
+        }
+
+        fn frame(&self, d: &mut Dialog, events: Vec<egui::Event>) -> Option<Answer> {
+            let input = egui::RawInput { screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(900.0, 800.0))), events, ..Default::default() };
+            let mut answer = None;
+            let mut out = self.ctx.run_ui(input, |ui| answer = show(ui.ctx(), &Palette::default(), d, &self.recents, &[], &[]));
+            out.textures_delta.clear();
+            answer
+        }
+
+        /// A key pressed and let go, then a frame for the focus to settle.
+        fn key(&self, d: &mut Dialog, key: egui::Key, modifiers: egui::Modifiers) -> Option<Answer> {
+            let ev = |pressed| egui::Event::Key { key, physical_key: None, pressed, repeat: false, modifiers };
+            let answer = self.frame(d, vec![ev(true), ev(false)]);
+            answer.or_else(|| self.frame(d, Vec::new()))
+        }
+
+        #[allow(dead_code)]
+        fn focused(&self) -> String {
+            let id = self.ctx.memory(|m| m.focused());
+            let rect = id.and_then(|id| self.ctx.read_response(id)).map(|r| r.rect);
+            format!("{id:?} {rect:?}")
+        }
+
+        fn in_folder(&self) -> bool {
+            self.ctx.memory(|m| m.has_focus(egui::Id::new("ns-folder")))
+        }
+    }
+
+    #[test]
+    fn tab_completes_the_folder_then_walks_the_fields() {
+        let run = Run::new();
+        let mut d = Dialog::new(std::path::Path::new("/srv/ap"));
+        run.frame(&mut d, Vec::new());
+        run.frame(&mut d, Vec::new());
+        assert!(run.in_folder(), "the folder has the keys when it opens");
+        // Not a folder of the list yet: Tab completes it and stays.
+        run.key(&mut d, egui::Key::Tab, egui::Modifiers::NONE);
+        assert_eq!(d.folder, "/srv/app");
+        assert!(run.in_folder());
+        // Complete: Tab goes on, to the first way to start.
+        run.key(&mut d, egui::Key::Tab, egui::Modifiers::NONE);
+        assert!(!run.in_folder(), "Tab left the folder");
+        // The arrows pick the way to start there.
+        run.key(&mut d, egui::Key::ArrowRight, egui::Modifiers::NONE);
+        assert_eq!(d.start, Start::ALL[1]);
+        run.key(&mut d, egui::Key::ArrowLeft, egui::Modifiers::NONE);
+        run.key(&mut d, egui::Key::ArrowLeft, egui::Modifiers::NONE);
+        assert_eq!(d.start, Start::ALL[Start::ALL.len() - 1], "round from the first");
+        // Shift+Tab walks back over the buttons to the folder, the list's
+        // lines passed by.
+        for _ in Start::ALL {
+            assert!(!run.in_folder());
+            run.key(&mut d, egui::Key::Tab, egui::Modifiers::SHIFT);
+        }
+        assert!(run.in_folder(), "Shift+Tab back to the folder: {}", run.focused());
+        // Enter from the folder creates.
+        let answer = run.key(&mut d, egui::Key::Enter, egui::Modifiers::NONE);
+        let Some(Answer::Create(c)) = answer else { panic!("created") };
+        assert_eq!(c.folder, PathBuf::from("/srv/app"));
+    }
+
+    #[test]
+    fn enter_on_a_button_presses_it() {
+        let run = Run::new();
+        let mut d = Dialog::new(std::path::Path::new("/srv/app"));
+        run.frame(&mut d, Vec::new());
+        run.frame(&mut d, Vec::new());
+        // Shift+Tab from the folder wraps round to the last of the dialog:
+        // Cancel.
+        run.key(&mut d, egui::Key::Tab, egui::Modifiers::SHIFT);
+        let answer = run.key(&mut d, egui::Key::Enter, egui::Modifiers::NONE);
+        assert!(matches!(answer, Some(Answer::Cancel)), "Enter on Cancel cancels: {}", run.focused());
+        // Space on a button presses it too; Tab from Cancel goes round to
+        // the folder.
+        let mut d = Dialog::new(std::path::Path::new("/srv/app"));
+        run.frame(&mut d, Vec::new());
+        run.key(&mut d, egui::Key::Tab, egui::Modifiers::NONE);
+        run.key(&mut d, egui::Key::ArrowRight, egui::Modifiers::NONE);
+        run.key(&mut d, egui::Key::Tab, egui::Modifiers::NONE);
+        assert_eq!(d.start, Start::ALL[1]);
+        let answer = run.key(&mut d, egui::Key::Space, egui::Modifiers::NONE);
+        assert!(answer.is_none());
+        assert_eq!(d.start, Start::ALL[2], "Space chose the button Tab went to: {}", run.focused());
     }
 }

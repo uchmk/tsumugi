@@ -114,7 +114,8 @@ without going there.
 
 ### Splits
 
-`Alt+Shift+=` splits the pane with the keys to the right, `Alt+Shift+-`
+`Alt+Shift++` splits the pane with the keys to the right (`+` is Shift and
+`=` on a US keyboard, Shift and `;` on a JIS one), `Alt+Shift+-`
 below (`Cmd+D` and `Cmd+Shift+D` on macOS); `Alt+Arrows` move between them,
 `Alt+Shift+Arrows` move the nearest divider (`Cmd+Ctrl+Arrows` on macOS)
 and `Ctrl+Shift+Z` zooms one. Drag a pane by its header onto another: the

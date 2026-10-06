@@ -30,7 +30,7 @@ Windows and Linux keys first; the macOS key is after `·`.
 
 /// Fixed keys of the window, and the keys of its boxes: (section, key on
 /// Windows and Linux, on macOS, what it does).
-const FIXED: [(&str, &str, &str, &str); 24] = [
+const FIXED: [(&str, &str, &str, &str); 27] = [
     ("The window, fixed", "Ctrl+Alt+1 … 9", "Cmd+1 … 9", "The Nth tab"),
     ("The window, fixed", "Alt+Left", "Cmd+Option+Left", "The keys to the pane on the left"),
     ("The window, fixed", "Alt+Right", "Cmd+Option+Right", "The keys to the pane on the right"),
@@ -40,9 +40,12 @@ const FIXED: [(&str, &str, &str, &str); 24] = [
     ("The window, fixed", "Alt+Shift+Right", "Cmd+Ctrl+Right", "Move the divider nearest the pane with the keys to the right"),
     ("The window, fixed", "Alt+Shift+Up", "Cmd+Ctrl+Up", "Move the divider nearest the pane with the keys up"),
     ("The window, fixed", "Alt+Shift+Down", "Cmd+Ctrl+Down", "Move the divider nearest the pane with the keys down"),
-    ("The new-session dialog", "Enter", "Enter", "Create in a new tab"),
+    ("The new-session dialog", "Enter", "Enter", "Create in a new tab (on a button: press it)"),
     ("The new-session dialog", "Alt+Enter", "Option+Enter", "Create split to the right of the pane with the keys"),
-    ("The new-session dialog", "Tab", "Tab", "Complete the folder from the list"),
+    ("The new-session dialog", "Tab", "Tab", "In the folder: complete it from the list; complete, or elsewhere: the next field"),
+    ("The new-session dialog", "Shift+Tab", "Shift+Tab", "The field before"),
+    ("The new-session dialog", "Left / Right", "Left / Right", "On a way to start: the one beside it"),
+    ("The new-session dialog", "Space", "Space", "Press the button that has the keys"),
     ("The new-session dialog", "Up / Down", "Up / Down", "Walk the folder list"),
     ("The new-session dialog", "Esc", "Esc", "Cancel"),
     ("The input box", "Ctrl+Enter", "Cmd+Enter", "Send the prompt"),

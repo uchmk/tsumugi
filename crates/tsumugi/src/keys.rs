@@ -73,7 +73,7 @@ pub const NAMED: [(Action, &str, &str, &str); 12] = [
     (Action::NextTab, "next_tab", "Ctrl+Tab", "Ctrl+Tab"),
     (Action::PrevTab, "prev_tab", "Ctrl+Shift+Tab", "Ctrl+Shift+Tab"),
     (Action::NextWaiting, "next_waiting", "Ctrl+Shift+U", "Cmd+Shift+U"),
-    (Action::SplitRight, "split_right", "Alt+Shift+=", "Cmd+D"),
+    (Action::SplitRight, "split_right", "Alt+Shift++", "Cmd+D"),
     (Action::SplitDown, "split_down", "Alt+Shift+-", "Cmd+Shift+D"),
     (Action::Zoom, "zoom", "Ctrl+Shift+Z", "Cmd+Shift+Z"),
     (Action::Search, "search", "Ctrl+Shift+P", "Cmd+Shift+P"),
@@ -141,8 +141,11 @@ impl Chord {
     }
 
     fn matches(&self, key: Key, m: Modifiers) -> bool {
-        // With Shift held, a US keyboard says `+` for the `=` key.
-        let same_key = key == self.key || (self.key == Key::Equals && key == Key::Plus);
+        // With Shift held a US keyboard says `+` for the `=` key, so `=` and
+        // `+` are one key to a chord (a JIS `=`, Shift and `-`, is made
+        // `-` before it gets here: see `physical_minus`).
+        let plus = |k: Key| matches!(k, Key::Equals | Key::Plus);
+        let same_key = key == self.key || (plus(self.key) && plus(key));
         same_key && m.ctrl == self.ctrl && m.shift == self.shift && m.alt == self.alt && m.mac_cmd == self.cmd
     }
 
@@ -334,14 +337,28 @@ fn action_on(key: Key, m: Modifiers, mac: bool) -> Option<Action> {
         // Windows Terminal's and VS Code's.
         Key::Comma if m.ctrl && !m.shift && !m.alt => Some(Action::Settings),
         Key::I if m.ctrl && !m.shift && !m.alt => Some(Action::Input),
-        // Alt+Shift+= / Alt+Shift+-, Windows Terminal's; with Shift held a US
-        // keyboard reports `+` for the first.
+        // Alt+Shift++ / Alt+Shift+-, Windows Terminal's: `+` is Shift and
+        // `=` on a US keyboard, Shift and `;` on a JIS one.
         Key::Equals | Key::Plus if m.alt && m.shift && !m.ctrl => Some(Action::SplitRight),
         Key::Minus if m.alt && m.shift && !m.ctrl => Some(Action::SplitDown),
         _ if m.alt && !m.ctrl && !m.shift && arrow().is_some() => arrow().map(Action::Move),
         _ if m.alt && m.shift && !m.ctrl && arrow().is_some() => arrow().map(Action::Resize),
         _ if m.ctrl && m.alt && !m.shift => digit().map(Action::Tab),
         _ => None,
+    }
+}
+
+/// On a JIS keyboard `=` is Shift and the `-` key, so Alt+Shift+- arrived
+/// as Alt+Shift+= and split right; nothing could split down. A key event
+/// from the `-` key with Shift held is `-` here, whatever the layout calls
+/// it, before anything reads the keys.
+pub fn physical_minus(events: &mut [egui::Event]) {
+    for e in events {
+        if let egui::Event::Key { key, physical_key: Some(Key::Minus), modifiers, .. } = e {
+            if modifiers.shift && *key == Key::Equals {
+                *key = Key::Minus;
+            }
+        }
     }
 }
 
@@ -401,6 +418,7 @@ mod tests {
         assert_eq!(Chord::parse("Ctrl+,").unwrap().key, Key::Comma);
         assert_eq!(Chord::parse("ctrl++").unwrap().key, Key::Plus);
         assert_eq!(Chord::parse("Alt+Shift+=").unwrap().label(), "Alt+Shift+=");
+        assert_eq!(Chord::parse("Alt+Shift++").unwrap().label(), "Alt+Shift++");
         assert_eq!(Chord::parse("F5").unwrap(), Chord { key: Key::F5, ctrl: false, shift: false, alt: false, cmd: false });
         assert_eq!(Chord::parse("cmd+shift+p").unwrap().label(), "Cmd+Shift+P");
         assert!(Chord::parse("Hyper+X").is_err());
@@ -432,5 +450,26 @@ mod tests {
         assert_eq!(action_on(Key::ArrowUp, cmd_opt, true), Some(Action::Move(Toward::Up)));
         let ctrl_mac = Modifiers { alt: false, ctrl: true, shift: false, mac_cmd: false, command: false };
         assert_eq!(action_on(Key::T, ctrl_mac, true), None, "Ctrl+T is the shell's on a Mac too");
+    }
+
+    #[test]
+    fn a_jis_keyboard_splits_both_ways() {
+        let alt_shift = Modifiers { alt: true, shift: true, ..Default::default() };
+        let ev = |key, physical| egui::Event::Key { key, physical_key: Some(physical), pressed: true, repeat: false, modifiers: alt_shift };
+        // JIS: Shift and `-` is `=`; Shift and `;` is `+`.
+        let mut events = vec![ev(Key::Equals, Key::Minus), ev(Key::Plus, Key::Semicolon), ev(Key::Plus, Key::Equals)];
+        physical_minus(&mut events);
+        let keys: Vec<Key> = events.iter().map(|e| match e {
+            egui::Event::Key { key, .. } => *key,
+            _ => unreachable!(),
+        }).collect();
+        assert_eq!(keys, [Key::Minus, Key::Plus, Key::Plus], "only JIS's `-` key changes");
+        assert_eq!(action_on(Key::Minus, alt_shift, false), Some(Action::SplitDown));
+        assert_eq!(action_on(Key::Plus, alt_shift, false), Some(Action::SplitRight));
+        // A key written as `Alt+Shift+=` in the settings is the same key.
+        let split = [(Action::SplitRight, Some(Chord::parse("Alt+Shift+=").unwrap()))];
+        assert_eq!(action_with(Key::Plus, alt_shift, false, &split), Some(Action::SplitRight));
+        let split = [(Action::SplitRight, Some(Chord::parse("Alt+Shift++").unwrap()))];
+        assert_eq!(action_with(Key::Equals, alt_shift, false, &split), Some(Action::SplitRight));
     }
 }

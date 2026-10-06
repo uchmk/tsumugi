@@ -15,7 +15,7 @@ Windows and Linux keys first; the macOS key is after `·`.
 - [ ] `Ctrl+Tab` · `Ctrl+Tab` — Next tab · `next_tab`
 - [ ] `Ctrl+Shift+Tab` · `Ctrl+Shift+Tab` — Previous tab · `prev_tab`
 - [ ] `Ctrl+Shift+U` · `Cmd+Shift+U` — Go to the session waiting longest · `next_waiting`
-- [ ] `Alt+Shift+=` · `Cmd+D` — Split right · `split_right`
+- [ ] `Alt+Shift++` · `Cmd+D` — Split right · `split_right`
 - [ ] `Alt+Shift+-` · `Cmd+Shift+D` — Split down · `split_down`
 - [ ] `Ctrl+Shift+Z` · `Cmd+Shift+Z` — Zoom one pane · `zoom`
 - [ ] `Ctrl+Shift+P` · `Cmd+Shift+P` — Search · `search`
@@ -37,9 +37,12 @@ Windows and Linux keys first; the macOS key is after `·`.
 
 ## The new-session dialog
 
-- [ ] `Enter` · `Enter` — Create in a new tab
+- [ ] `Enter` · `Enter` — Create in a new tab (on a button: press it)
 - [ ] `Alt+Enter` · `Option+Enter` — Create split to the right of the pane with the keys
-- [ ] `Tab` · `Tab` — Complete the folder from the list
+- [ ] `Tab` · `Tab` — In the folder: complete it from the list; complete, or elsewhere: the next field
+- [ ] `Shift+Tab` · `Shift+Tab` — The field before
+- [ ] `Left / Right` · `Left / Right` — On a way to start: the one beside it
+- [ ] `Space` · `Space` — Press the button that has the keys
 - [ ] `Up / Down` · `Up / Down` — Walk the folder list
 - [ ] `Esc` · `Esc` — Cancel
 

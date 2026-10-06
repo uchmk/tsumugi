@@ -2338,8 +2338,9 @@ impl App {
                 }
             }
         }
-        // Not over the settings, which have the same question on a page.
-        if !self.hooks_offered || self.prefs.is_some() {
+        // Not over the settings, which have the same question on a page, nor
+        // over the new-session dialog.
+        if !self.hooks_offered || self.prefs.is_some() || self.new_session.is_some() {
             return;
         }
         let mut answer = None;
@@ -3069,6 +3070,10 @@ fn window_handle(cc: &eframe::CreationContext<'_>) -> Option<isize> {
 }
 
 impl eframe::App for App {
+    fn raw_input_hook(&mut self, _ctx: &egui::Context, raw: &mut egui::RawInput) {
+        keys::physical_minus(&mut raw.events);
+    }
+
     /// See-through where nothing is drawn when the desktop is to show
     /// through (Mica or Acrylic).
     fn clear_color(&self, visuals: &egui::Visuals) -> [f32; 4] {
