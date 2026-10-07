@@ -43,6 +43,10 @@ struct Session {
     pending: Option<Vec<u8>>,
     /// When the wait last sent to the webhook began (`Info::since_ms`).
     webhooked: Option<u64>,
+    /// The screen's text, hashed, and since when it has read so: a program
+    /// that keeps writing the same screen (a redrawn prompt, a cursor shown
+    /// and hidden) is still quiet to a person.
+    screen: Option<(u64, std::time::Instant)>,
 }
 
 struct Shared {
@@ -750,7 +754,7 @@ fn spawn_session(
     let watchers: BTreeSet<ClientId> = client.into_iter().collect();
     sessions.insert(
         id,
-        Session { term, info, notice: None, fresh: watchers.clone(), watchers, sent: None, shell, claude: None, pending: None, webhooked: None },
+        Session { term, info, notice: None, fresh: watchers.clone(), watchers, sent: None, shell, claude: None, pending: None, webhooked: None, screen: None },
     );
     Ok(id)
 }
@@ -938,11 +942,12 @@ fn settle(s: &mut Session, quiet: Duration) -> Option<(State, u64)> {
     let input = s.term.last_input();
     let after_input = |t: Option<std::time::Instant>| t.is_some_and(|t| input.is_none_or(|i| t > i));
     let busy = s.term.busy();
-    let state = match s.notice {
+    let notice = s.notice;
+    let state = match notice {
         Some((state, at)) if after_input(Some(at)) => state,
         _ if !busy && after_input(s.term.last_prompt()) => State::Done,
         _ if !busy && s.term.quiet_for(Duration::from_secs(2)) => State::Done,
-        _ if busy && !quiet.is_zero() && s.term.quiet_for(quiet) && after_input(s.term.last_output()) => State::MaybeWaiting,
+        _ if busy && !quiet.is_zero() && after_input(s.term.last_output()) && (s.term.quiet_for(quiet) || screen_still_for(s, quiet)) => State::MaybeWaiting,
         _ => State::Running,
     };
     if state == s.info.state {
@@ -955,6 +960,22 @@ fn settle(s: &mut Session, quiet: Duration) -> Option<(State, u64)> {
     s.info.state = state;
     s.info.since_ms = now_ms();
     Some(before)
+}
+
+/// Whether the screen's text has stayed the same for `quiet`. Looked at once
+/// a second at most (`settle`'s own pace), so the time is to the second.
+fn screen_still_for(s: &mut Session, quiet: Duration) -> bool {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    s.term.screen_text().hash(&mut h);
+    let now = h.finish();
+    match s.screen {
+        Some((was, since)) if was == now => since.elapsed() >= quiet,
+        _ => {
+            s.screen = Some((now, std::time::Instant::now()));
+            false
+        }
+    }
 }
 
 /// How long a session has to have run for its finishing to be worth a

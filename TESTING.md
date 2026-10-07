@@ -159,6 +159,7 @@ what happened, and the steps.
 | 4.20 | `webhook_format = "slack"` with a Slack incoming webhook | The message in the channel, the title in bold |
 | 4.21 | Settings → Notifications → WHAT IT COSTS → Tell when the day costs → Past $5, with Claude Code's day already past $5 (or `[prices]` raised to get there) | `spend_day = 5` in the file; at once a toast `Today's Claude Code use passed $5: about $N at API prices`, and with the window not looked at the system's notification too; not again that day, again the next |
 | 4.22 | Tell when a 5-hour block costs → Past $5, the block past it | The same once for the block (`This 5-hour block passed $5`); again only in the next block |
+| 4.23 | Start `claude` in a session and type nothing for half a minute (with a plugin such as claude-mem printing at start too) | After about 10 s (`[sessions] quiet`) the card reads **Quiet for … · probably waiting**, not **Running**; typing a prompt makes it **Running** again |
 
 ## 5. Search
 

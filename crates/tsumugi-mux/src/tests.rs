@@ -690,3 +690,30 @@ fn a_sessions_program_and_ports_are_seen() {
     pane.kill();
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// A program that keeps writing the same screen -- Claude Code at its
+/// prompt redrawing it -- is still quiet: probably waiting, not running.
+#[cfg(unix)]
+#[test]
+fn a_program_redrawing_the_same_screen_is_quiet() {
+    use crate::State;
+    let at = address();
+    let dir = std::env::temp_dir().join(format!("tsumugi-redraw-test-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("settings.toml");
+    std::fs::write(&path, "[sessions]\nquiet = 2\n").unwrap();
+    let _srv = server::start_with(&at, server::Options { state: None, settings: Some(path) }).expect("the server starts");
+    let c = Client::connect(&at, || {}).expect("a client connects");
+    let pane = c.spawn(std::env::temp_dir(), None, Size::new(80, 24), (8, 16)).expect("a shell starts");
+    until(&pane, "a prompt", |t| !t.trim().is_empty());
+    pane.send(b"clear; while :; do printf '\\rsame'; sleep 0.3; done\r".to_vec());
+    until(&pane, "the loop", |t| t.contains("same"));
+    let info = |c: &Client| c.list().unwrap().into_iter().find(|i| i.id == pane.id()).unwrap();
+    let deadline = Instant::now() + Duration::from_secs(15);
+    while info(&c).state != State::MaybeWaiting {
+        assert!(Instant::now() < deadline, "still {:?} with the screen unchanged", info(&c).state);
+        std::thread::sleep(Duration::from_millis(200));
+    }
+    pane.kill();
+    let _ = std::fs::remove_dir_all(&dir);
+}
