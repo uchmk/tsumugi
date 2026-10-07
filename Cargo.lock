@@ -3301,7 +3301,7 @@ dependencies = [
 
 [[package]]
 name = "tsumugi"
-version = "0.52.0"
+version = "0.52.1"
 dependencies = [
  "arboard",
  "chrono",
@@ -3320,7 +3320,7 @@ dependencies = [
 
 [[package]]
 name = "tsumugi-layout"
-version = "0.52.0"
+version = "0.52.1"
 dependencies = [
  "egui",
  "serde",
@@ -3328,7 +3328,7 @@ dependencies = [
 
 [[package]]
 name = "tsumugi-mux"
-version = "0.52.0"
+version = "0.52.1"
 dependencies = [
  "crossbeam-channel",
  "postcard",
@@ -3341,7 +3341,7 @@ dependencies = [
 
 [[package]]
 name = "tsumugi-pane"
-version = "0.52.0"
+version = "0.52.1"
 dependencies = [
  "alacritty_terminal",
  "crossbeam-channel",

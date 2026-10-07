@@ -16,4 +16,4 @@ tsumugi のやること。`【人】` は持ち主の作業、`【金】` は 20
       `src/ui/term.rs` を合わせる。filer の TESTING.md の 1・19・29・40 節（ペイン）を filer の実機の再テストに積む。
   - [ ] 同じときに、filer の 2 分割の境目を `tsumugi_layout::ui::dividers`（v0.52.0、`egui` 機能）に置き換えられるかを見る。
       filer の分割は「2 つのタブを横に並べる」形なので、`tsumugi_layout::Node` に載せ替えるかどうかは filer の QUESTIONS.md で聞く。
-- [ ] 【人】最初のリリースを切る。Actions タブから `release.yml` を `tag` に `v<Cargo.toml の版>` を渡して回す（v0.52.0 から）。
+- [x] 最初のリリースを切る。v0.52.0 を 2026-10-07 に出した（6 つの成果物と SHA-256 の表が揃った。run 37577264990）。
