@@ -84,8 +84,11 @@ pub struct Dialog {
     opening: bool,
     /// The start button the arrows moved to, to give the keys next frame.
     start_focus: Option<usize>,
-    /// The ways-to-start buttons as last drawn, for Enter on one of them.
+    /// The ways-to-start buttons as last drawn, for Enter on one of them;
+    /// Profile… after them; the first thing in the Beside it row.
     start_ids: Vec<egui::Id>,
+    profile_id: Option<egui::Id>,
+    beside_id: Option<egui::Id>,
 }
 
 /// What the dialog was asked to do.
@@ -149,6 +152,8 @@ impl Dialog {
             opening: true,
             start_focus: None,
             start_ids: Vec::new(),
+            profile_id: None,
+            beside_id: None,
         }
     }
 
@@ -245,17 +250,65 @@ pub fn show(ctx: &egui::Context, pal: &Palette, d: &mut Dialog, recents: &[Recen
     // Enter on a way to start (Claude Code, Resume last, Shell) picks it and
     // creates, as the dialog's foot says; on another button it presses it.
     let on_start = Start::ALL.into_iter().zip(&d.start_ids).find(|(_, id)| focused == Some(**id)).map(|(s, _)| s);
+    // The START row is one stop for Tab, as a row of radio buttons is: Tab
+    // comes in on the way picked and leaves for Beside it; Left and Right
+    // walk the row, Profile… included.
+    let on_profile = focused.is_some() && focused == d.profile_id;
+    let on_row = on_start.is_some() || on_profile;
+    let at = |s: Start| Start::ALL.iter().position(|x| *x == s).unwrap_or(0);
+    let picked_id = d.start_ids.get(at(d.start)).copied();
+    // Shift+Tab before Tab: egui's plain Tab also matches it.
+    let (row_back, row_tab, row_left, row_right, beside_back) = ctx.input_mut(|i| {
+        (
+            on_row && i.consume_key(egui::Modifiers::SHIFT, egui::Key::Tab),
+            on_row && i.consume_key(egui::Modifiers::NONE, egui::Key::Tab),
+            on_row && i.consume_key(egui::Modifiers::NONE, egui::Key::ArrowLeft),
+            on_row && i.consume_key(egui::Modifiers::NONE, egui::Key::ArrowRight),
+            focused.is_some() && focused == d.beside_id && i.consume_key(egui::Modifiers::SHIFT, egui::Key::Tab),
+        )
+    });
+    // egui has already read Tab and the arrows as moves of its own, from
+    // the raw keys; those are called off where the row moves instead.
+    let focus = |id: Option<egui::Id>| {
+        if let Some(id) = id {
+            ctx.memory_mut(|m| {
+                m.move_focus(egui::FocusDirection::None);
+                m.request_focus(id);
+            });
+        }
+    };
+    if row_tab {
+        focus(d.beside_id);
+    }
+    if row_back {
+        focus(Some(egui::Id::new("ns-folder")));
+    }
+    if beside_back {
+        focus(picked_id);
+    }
+    if row_left || row_right {
+        let n = Start::ALL.len() + 1;
+        let here = if on_profile { Start::ALL.len() } else { on_start.map_or(0, at) };
+        let next = if row_right { (here + 1) % n } else { (here + n - 1) % n };
+        match Start::ALL.get(next) {
+            Some(s) => {
+                d.start = *s;
+                focus(d.start_ids.get(next).copied());
+            }
+            None => focus(d.profile_id),
+        }
+    }
     let enter_creates = focused.is_none() || on_start.is_some() || ["ns-folder", "ns-branch", "ns-name", "ns-tag"].iter().any(|n| in_field(n));
     // Alt+Enter before Enter: egui's plain Enter also matches it.
-    let (esc, alt_enter, enter, up, down, tab, back) = ctx.input_mut(|i| {
+    let (esc, alt_enter, enter, up, down, back, tab) = ctx.input_mut(|i| {
         (
             i.consume_key(egui::Modifiers::NONE, egui::Key::Escape),
             i.consume_key(egui::Modifiers::ALT, egui::Key::Enter),
             enter_creates && !typing_tag && i.consume_key(egui::Modifiers::NONE, egui::Key::Enter),
             in_folder && i.consume_key(egui::Modifiers::NONE, egui::Key::ArrowUp),
             in_folder && i.consume_key(egui::Modifiers::NONE, egui::Key::ArrowDown),
-            in_folder && completion.is_some() && i.consume_key(egui::Modifiers::NONE, egui::Key::Tab),
             in_folder && completion.is_some() && i.consume_key(egui::Modifiers::SHIFT, egui::Key::Tab),
+            in_folder && !i.events.iter().any(|e| matches!(e, egui::Event::Key { key: egui::Key::Tab, pressed: true, modifiers, .. } if modifiers.shift)) && i.consume_key(egui::Modifiers::NONE, egui::Key::Tab),
         )
     });
     // The folder holds on to Tab while it has something to complete (its
@@ -272,7 +325,11 @@ pub fn show(ctx: &egui::Context, pal: &Palette, d: &mut Dialog, recents: &[Recen
     if up && !shown.is_empty() {
         d.selected = Some(d.selected.map_or(shown.len() - 1, |s| (s + shown.len() - 1) % shown.len()));
     }
-    if tab {
+    // Tab from a folder that is complete goes into the START row, on the
+    // way picked.
+    if tab && completion.is_none() {
+        focus(picked_id);
+    } else if tab {
         if let Some(f) = completion.take() {
             d.folder = f;
             d.selected = None;
@@ -361,8 +418,6 @@ pub fn show(ctx: &egui::Context, pal: &Palette, d: &mut Dialog, recents: &[Recen
 
                 ui.label(label("START"));
                 ui.horizontal(|ui| {
-                    let (left, right) = ui.input(|i| (i.key_pressed(egui::Key::ArrowLeft), i.key_pressed(egui::Key::ArrowRight)));
-                    let mut went = None;
                     d.start_ids.clear();
                     for (k, s) in Start::ALL.into_iter().enumerate() {
                         let b = start_button(ui, s.label(), d.start == s);
@@ -371,24 +426,12 @@ pub fn show(ctx: &egui::Context, pal: &Palette, d: &mut Dialog, recents: &[Recen
                             b.request_focus();
                             d.start_focus = None;
                         }
-                        // Left and Right pick the next way to start, as in a
-                        // row of radio buttons; Tab leaves the row.
-                        if b.has_focus() && (left || right) {
-                            let n = Start::ALL.len();
-                            went = Some(if right { (k + 1) % n } else { (k + n - 1) % n });
-                        }
                         if b.clicked() {
                             d.start = s;
                         }
                     }
-                    if let Some(k) = went {
-                        d.start = Start::ALL[k];
-                        d.start_focus = Some(k);
-                        // egui would move the keys by the arrow too, to
-                        // whatever is that way; the row's own move instead.
-                        ui.memory_mut(|m| m.move_focus(egui::FocusDirection::None));
-                    }
                     let profile = start_button(ui, "Profile…", false);
+                    d.profile_id = Some(profile.id);
                     egui::Popup::menu(&profile).show(|ui| {
                         if profiles.is_empty() {
                             ui.label(RichText::new("No profiles yet: tick \"Save as a profile\"").color(pal.fg_dim));
@@ -405,8 +448,10 @@ pub fn show(ctx: &egui::Context, pal: &Palette, d: &mut Dialog, recents: &[Recen
                 ui.horizontal(|ui| {
                     ui.label(RichText::new("Beside it").size(12.0).color(pal.fg_dim));
                     let mut gone = None;
+                    d.beside_id = None;
                     for (k, s) in d.more.iter().enumerate() {
                         let chip = ui.add(egui::Button::new(RichText::new(format!("{}  ×", s.label())).size(12.0)));
+                        d.beside_id = d.beside_id.or(Some(chip.id));
                         if ring(ui, chip).on_hover_text("Click to take it off").clicked() {
                             gone = Some(k);
                         }
@@ -416,6 +461,7 @@ pub fn show(ctx: &egui::Context, pal: &Palette, d: &mut Dialog, recents: &[Recen
                     }
                     if d.more.len() < MORE_MOST {
                         let add = ui.add(egui::Button::new(RichText::new("+ Pane").size(12.0)));
+                        d.beside_id = d.beside_id.or(Some(add.id));
                         let add = ring(ui, add);
                         egui::Popup::menu(&add).show(|ui| {
                             for s in Start::ALL {
@@ -630,14 +676,13 @@ mod tests {
         run.key(&mut d, egui::Key::ArrowRight, egui::Modifiers::NONE);
         assert_eq!(d.start, Start::ALL[1]);
         run.key(&mut d, egui::Key::ArrowLeft, egui::Modifiers::NONE);
+        // Round from the first, past Profile… (the way picked stays).
+        run.key(&mut d, egui::Key::ArrowLeft, egui::Modifiers::NONE);
+        assert_eq!(d.start, Start::ALL[0], "on Profile…, the way picked is kept: {}", run.focused());
         run.key(&mut d, egui::Key::ArrowLeft, egui::Modifiers::NONE);
         assert_eq!(d.start, Start::ALL[Start::ALL.len() - 1], "round from the first");
-        // Shift+Tab walks back over the buttons to the folder, the list's
-        // lines passed by.
-        for _ in Start::ALL {
-            assert!(!run.in_folder());
-            run.key(&mut d, egui::Key::Tab, egui::Modifiers::SHIFT);
-        }
+        // The row is one stop: Shift+Tab goes back to the folder at once.
+        run.key(&mut d, egui::Key::Tab, egui::Modifiers::SHIFT);
         assert!(run.in_folder(), "Shift+Tab back to the folder: {}", run.focused());
         // Enter from the folder creates.
         let answer = run.key(&mut d, egui::Key::Enter, egui::Modifiers::NONE);
@@ -656,17 +701,19 @@ mod tests {
         run.key(&mut d, egui::Key::Tab, egui::Modifiers::SHIFT);
         let answer = run.key(&mut d, egui::Key::Enter, egui::Modifiers::NONE);
         assert!(matches!(answer, Some(Answer::Cancel)), "Enter on Cancel cancels: {}", run.focused());
-        // Space on a button presses it too; Tab from Cancel goes round to
-        // the folder.
+        // Tab leaves the START row for Beside it (2026-10-07, the owner's
+        // ask), and Shift+Tab from there comes back on the way picked.
         let mut d = Dialog::new(std::path::Path::new("/srv/app"));
         run.frame(&mut d, Vec::new());
         run.key(&mut d, egui::Key::Tab, egui::Modifiers::NONE);
         run.key(&mut d, egui::Key::ArrowRight, egui::Modifiers::NONE);
+        run.key(&mut d, egui::Key::ArrowRight, egui::Modifiers::NONE);
+        assert_eq!(d.start, Start::ALL[2]);
         run.key(&mut d, egui::Key::Tab, egui::Modifiers::NONE);
-        assert_eq!(d.start, Start::ALL[1]);
-        let answer = run.key(&mut d, egui::Key::Space, egui::Modifiers::NONE);
-        assert!(answer.is_none());
-        assert_eq!(d.start, Start::ALL[2], "Space chose the button Tab went to: {}", run.focused());
+        let focused = run.ctx.memory(|m| m.focused());
+        assert!(focused.is_some() && focused == d.beside_id, "Tab went to Beside it: {}", run.focused());
+        run.key(&mut d, egui::Key::Tab, egui::Modifiers::SHIFT);
+        assert_eq!(run.ctx.memory(|m| m.focused()), d.start_ids.get(2).copied(), "back on Shell: {}", run.focused());
         // Enter on a way to start picks it and creates (seen on Windows,
         // 2026-10-07: Enter on Shell did nothing, Alt+Enter worked).
         let answer = run.key(&mut d, egui::Key::Enter, egui::Modifiers::NONE);
