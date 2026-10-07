@@ -42,11 +42,11 @@
 
 ## 3. The sidebar
 
-- [ ] **3.1** Open three tabs in different git repositories → Each card: name, folder and branch, the state and how long
+- [ ] **3.1** Open three tabs in different git repositories → Each card: the name in bold sans-serif (IBM Plex Sans JP, else Segoe UI / the system's), then `~/folder · branch` in the terminal's font, then the state and how long in the state's colour (waiting gold, running cyan, error red, done green, probably waiting grey); one state mark, on the left
 - [ ] **3.2** The **+** beside SESSIONS, and the one at the top of the rail → The new-session dialog opens with the focused pane's folder
 - [ ] **3.3** Sort button → each of the five orders → The cards reorder accordingly; **Manual** keeps a dragged order across restarts
 - [ ] **3.4** Drag a card in Manual order → The grip shows on hover; the card lands where it is dropped
-- [ ] **3.5** The state and folder filters at the foot → Only matching cards; the count says `N of M`
+- [ ] **3.5** The state and folder filters at the foot → Only matching cards; the heading reads `SESSIONS  N of M` (also `5 of 5` with no filter), then the order button, then **+**
 - [ ] **3.6** Right-click a card: rename, tag, mute, pin, restart, duplicate, new window, open in editor / filer, copy path, close → Each does what it says; close is red and last; Rename, Duplicate and Close show their keys on the right, in grey
 - [ ] **3.7** Sort → One line each; then `Ctrl+Shift+B` → One line per tab; then the 60px rail with first letters and state rings
 - [ ] **3.8** Rest the pointer on a card of another tab → Its last 12 lines in a box, the waiting pane's in a tab of several
@@ -55,7 +55,7 @@
 - [ ] **3.11** One session of each state (notify them) and a plain shell → Each card ringed in its state's colour with its own mark -- a clock (waiting, breathing), a turning arc (running), a dotted circle (probably waiting), a triangle (error), a tick (done, its ground sunken) -- and the shell grey with a small dot and no words; the foot's filters and the status bar count the shell as Shell, not Running
 - [ ] **3.12** Two waiting, then `[keys] next_waiting = "F8"` → Under a line at the foot: the key as a cap (`F8` once changed) and **Jump to waiting · 2** in grey; a click on either jumps
 - [ ] **3.13** Theme tsumugi Light (and each light theme) → The waiting and error words and counts read clearly on white (WCAG 4.5 or more)
-- [ ] **3.14** A tab on a branch with an open pull request (`gh` signed in) → A line on its card: `PR #N · checks passing` (green), `failing` (red), `running` (gold) or `no checks`
+- [ ] **3.14** A tab on a branch with an open pull request (`gh` signed in) → `· PR #N` after the branch on the second line, green when its checks pass, red when they fail, cyan while they run, grey with none; its tooltip says which
 - [ ] **3.15** The card of the tab with the keys, Claude Code talked to a few times → A line `N prompts · 12m · 3.4k tokens`; the other cards have none. A running card's third line ends with `· N tokens`
 - [ ] **3.16** `F2` → A field on the card with the name selected; Enter renames, Esc leaves it as it was
 - [ ] **3.17** `Ctrl+Shift+D` (macOS `Cmd+Option+D`) in a Claude Code pane, then in a shell → A new tab in the same folder: `claude` typed in the first, a shell in the second
@@ -66,7 +66,10 @@
 - [ ] **3.22** A tab on a branch other than main (a worktree's), right-click → Create a pull request (`gh` signed in) → The branch pushed, a pull request made from its commits and opened in the browser; a toast with its address; on `main` the item is not there; without `gh`, a toast says why
 - [ ] **3.23** Run `codex` (or `gemini`, `opencode`) in a session → The card is an agent's, not a grey shell: its name (`codex`) on a line under the folder, its states shown; on Windows, Gemini CLI (run by node) stays a shell
 - [ ] **3.24** `npm run dev` (or `python -m http.server 8123`) in a session → `:3000` (`:8123`) on its card within a few seconds; a click opens `http://localhost:3000` in the browser; gone when the server stops
-- [ ] **3.25** A card with tags and a PR (and a note), a card with neither → The extra lines (note, agent and ports, PR, numbers) under the tags, or under the third line; none over another
+- [ ] **3.25** A card with tags and a PR (and a note), a card with neither → The extra lines (note, agent and ports, numbers) under the tags, or under the third line; none over another
+- [ ] **3.26** Claude Code working (its title `✳ …` or a braille spinner), and pwsh → The card's and pane heading's name without the `✳` or spinner: one mark only, the card's own on the left
+- [ ] **3.27** Click a waiting card, then a running one, then a shell → The card's ground stays dark (no fill): its ring in its state's colour, brighter, with a soft glow past it (cyan for a shell); a running card's line still runs along its top edge
+- [ ] **3.28** A plain shell's card beside an agent's → The shell's card is a line shorter: no empty third line
 
 ## 4. States, notifications and answering
 
@@ -79,7 +82,7 @@
 - [ ] **4.7** The taskbar button while two wait, then one fails → A gold `2` with dark digits; red with white once one has failed; it clears when the window is looked at
 - [ ] **4.8** Settings → Notifications: flash and sound on for waiting, then 4.5 again → The taskbar button flashes and the system's message sound plays once (the error sound for an error)
 - [ ] **4.9** Right-click a tag chip → mute → Sessions with the tag tell only in the bell
-- [ ] **4.10** The bell → The list of notices, newest first; a click goes to the session and marks it read
+- [ ] **4.10** The bell, right of the search box at the top → The list of notices under it, newest first; a click goes to the session and marks it read; no bell in the sidebar's heading
 - [ ] **4.11** `printf '\e]9;hello\a'` in a pane → Marked waiting with `hello`, no hooks needed
 - [ ] **4.12** `Ctrl+Shift+U` with two waiting → The one waiting longest first, then the other
 - [ ] **4.13** Two Claude Code sessions asking permission, then `Ctrl+Shift+Y` (or **List ›** at the sidebar's foot) → A panel: each waiting session with what it said, how long, its choices as buttons and a tick; a choice's button types its number there

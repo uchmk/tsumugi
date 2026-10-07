@@ -1723,26 +1723,19 @@ impl App {
         ui.add_space(8.0);
         ui.horizontal(|ui| {
             ui.add_space(14.0);
-            let count = if shown.len() == tabs.len() { format!("{}", tabs.len()) } else { format!("{} of {}", shown.len(), tabs.len()) };
-            ui.label(egui::RichText::new(format!("SESSIONS  {count}")).size(11.0).strong().color(pal.fg_dim));
+            let count = format!("{} of {}", shown.len(), tabs.len());
+            ui.label(egui::RichText::new("SESSIONS").size(11.0).strong().color(pal.fg_dim));
+            ui.label(egui::RichText::new(count).size(11.0).color(crate::theme::colors().faint()));
+            // Right to left: `+` at the end, the order before it.
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 ui.add_space(8.0);
-                let notices = self.client.as_ref().map(Client::notices).unwrap_or_default();
-                let bell = chrome::bell(ui, &pal, &notices);
-                if bell.clicked() {
-                    self.bell_open = match self.bell_open {
-                        Some(_) => None,
-                        None => Some(bell.rect.left_bottom() + egui::vec2(0.0, 6.0)),
-                    };
-                    self.bell_opening = true;
-                }
-                // The order (the design's 1b): a button with the choice's
-                // short name, opening the five.
-                let button = chrome::sort_button(ui, &pal, self.view.sort.short());
-                ui.add_space(2.0);
                 if chrome::plus_button(ui, &pal).clicked() {
                     self.new_session = Some(self.dialog(&self.here(workspaces, sessions)));
                 }
+                ui.add_space(2.0);
+                // The order (the design's 1b): a button with the choice's
+                // short name, opening the five.
+                let button = chrome::sort_button(ui, &pal, self.view.sort.short());
                 egui::Popup::menu(&button).show(|ui| {
                     for s in sort::Sort::ALL {
                         if ui.selectable_label(self.view.sort == s, s.label()).clicked() {
@@ -1916,6 +1909,10 @@ impl App {
         let mut rows: Vec<(WorkspaceId, egui::Rect)> = Vec::new();
         egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
             let listed = sort::items(&shown, self.view.sort, self.view.density, &self.closed_groups, &self.whole_groups, self.active);
+            // Room between the cards for their glow (the design's Sidebar).
+            if self.view.density == sort::Density::Cards {
+                ui.spacing_mut().item_spacing.y = 6.0;
+            }
             for item in &listed {
                 let (tab, as_card) = match item {
                     // A project's heading (the design's 1i B): a click
@@ -2000,8 +1997,12 @@ impl App {
                 // the field while it is written.
                 let noting = self.noting_card.as_ref().is_some_and(|(id, _)| *id == w.id);
                 let note_line = as_card && (!w.note.is_empty() || noting);
-                let base = if !as_card { 28.0 } else if tags.is_empty() { 62.0 } else { 82.0 };
-                let height = base + 18.0 * (usize::from(note_line) + usize::from(run_line) + usize::from(pr.is_some()) + usize::from(numbers.is_some())) as f32;
+                // A card with nothing to say on its third line (a shell) is
+                // the shorter by it.
+                let no_third = as_card && chrome::card_words(urgent, now).is_empty();
+                let closed_up = if no_third { 17.0 } else { 0.0 };
+                let base = if !as_card { 28.0 } else if tags.is_empty() { 62.0 - closed_up } else { 82.0 - closed_up };
+                let height = base + 18.0 * (usize::from(note_line) + usize::from(run_line) + usize::from(numbers.is_some())) as f32;
                 let (rect, resp) = ui.allocate_exact_size(egui::vec2(ui.available_width(), height), sense);
                 rows.push((w.id, rect));
                 let painter = ui.painter_at(rect);
@@ -2030,10 +2031,12 @@ impl App {
                 } else {
                     f32::from(u8::from(resp.hovered()))
                 };
+                // The selected card keeps its dark ground: its ring in its
+                // state's colour, brighter, and a soft glow past it.
                 if Some(w.id) == self.active {
-                    painter.rect_filled(card, 8.0, pal.selection.gamma_multiply(0.85));
+                    chrome::selected_ring(&ui.painter_at(rect.expand(4.0)), card, 8.0, look);
                 } else if hover > 0.0 {
-                    painter.rect_filled(card, 8.0, pal.selection.gamma_multiply(0.4 * hover));
+                    painter.rect_filled(card, 8.0, pal.selection.gamma_multiply(0.3 * hover));
                 }
                 if self.dragging_tab == Some(w.id) {
                     painter.rect_stroke(card, 8.0, egui::Stroke::new(1.0, chrome::cyan()), egui::StrokeKind::Inside);
@@ -2055,7 +2058,10 @@ impl App {
                 let marks = usize::from(quiet_tab) + usize::from(w.pinned);
                 // A waiting card's name in the warm white the design gives it.
                 let name_color = if look == chrome::Look::State(State::Waiting) { crate::theme::colors().wait_text() } else { pal.fg };
-                line(name, 6.0, egui::FontId::proportional(13.5), name_color, width - 18.0 * marks as f32);
+                // Bold and small in the window's own letters (not the
+                // terminal's); a finished one's in the plain weight.
+                let name_font = if look == chrome::Look::State(State::Done) { egui::FontId::proportional(13.0) } else { fonts::bold(13.0) };
+                line(name, 6.0, name_font, name_color, width - 18.0 * marks as f32);
                 let mut mark_x = rect.right() - 22.0;
                 if quiet_tab {
                     chrome::muted_mark(&painter, egui::pos2(mark_x, rect.top() + 14.0), pal.fg_dim);
@@ -2068,13 +2074,22 @@ impl App {
                 if manual && resp.hovered() {
                     chrome::grip(&painter, egui::pos2(rect.right() - 16.0, rect.center().y), pal.fg_dim);
                 }
-                // The folder, then the branch after its mark; the folder gives
-                // way first when the row is narrow.
+                // The folder, then ` · ` and the branch, then its pull
+                // request in its checks' colour; the folder gives way first
+                // when the row is narrow.
                 let mono = egui::FontId::monospace(11.0);
-                let branch = (!focus.branch.is_empty()).then(|| {
+                let branch = (!focus.branch.is_empty() || pr.is_some()).then(|| {
                     ui.fonts_mut(|f| {
-                        let mut job = egui::text::LayoutJob::simple_singleline(focus.branch.clone(), mono.clone(), pal.fg_dim);
-                        job.wrap = egui::text::TextWrapping::truncate_at_width(width * 0.45);
+                        let mut job = egui::text::LayoutJob::default();
+                        let plain = egui::TextFormat::simple(mono.clone(), pal.fg_dim);
+                        if !focus.branch.is_empty() {
+                            job.append(&format!(" · {}", focus.branch), 0.0, plain.clone());
+                        }
+                        if let Some(pr) = &pr {
+                            job.append(" · ", 0.0, plain);
+                            job.append(&format!("PR #{}", pr.number), 0.0, egui::TextFormat::simple(mono.clone(), chrome::pr_line(pr).1));
+                        }
+                        job.wrap = egui::text::TextWrapping::truncate_at_width(width - 70.0);
                         f.layout_job(job)
                     })
                 });
@@ -2093,7 +2108,7 @@ impl App {
                     ui.fonts_mut(|x| x.layout_job(job))
                 });
                 let diff_w = diff.as_ref().map_or(0.0, |g| g.size().x + 10.0);
-                let room = width - 14.0 - diff_w - branch.as_ref().map_or(0.0, |b| b.size().x + 20.0);
+                let room = width - 6.0 - diff_w - branch.as_ref().map_or(0.0, |b| b.size().x);
                 let folder = ui.fonts_mut(|f| {
                     let mut job = egui::text::LayoutJob::simple_singleline(home_short(&focus.cwd), mono.clone(), pal.fg_dim);
                     job.wrap = egui::text::TextWrapping::truncate_at_width(room.max(20.0));
@@ -2103,9 +2118,12 @@ impl App {
                 let folder_w = folder.size().x;
                 painter.galley(egui::pos2(left, y), folder, pal.fg_dim);
                 if let Some(b) = branch {
-                    let mark = egui::Rect::from_min_size(egui::pos2(left + folder_w + 6.0, y + 1.0), egui::vec2(11.0, 11.0));
-                    chrome::branch_mark(&painter, mark, pal.fg_dim, self.nerd());
-                    painter.galley(egui::pos2(mark.right() + 3.0, y), b, pal.fg_dim);
+                    let at = egui::pos2(left + folder_w, y);
+                    if let Some(pr) = &pr {
+                        let r = egui::Rect::from_min_size(at, b.size());
+                        ui.interact(r, egui::Id::new(("pr", w.id)), egui::Sense::hover()).on_hover_text(chrome::pr_line(pr).0);
+                    }
+                    painter.galley(at, b, pal.fg_dim);
                 }
                 if let (Some(g), Some(c)) = (diff, &changed) {
                     let at = egui::pos2(rect.right() - 12.0 - g.size().x, y);
@@ -2142,10 +2160,10 @@ impl App {
                 if queued > 0 {
                     third = format!("{queued} queued · {third}");
                 }
+                // In its state's colour; probably waiting stays quiet.
                 let third_color = match urgent.state {
-                    State::Waiting => chrome::ink(chrome::gold()),
-                    State::Error => chrome::ink(chrome::red()),
-                    _ => pal.fg_dim,
+                    State::MaybeWaiting => pal.fg_dim,
+                    s => chrome::state_ink(s),
                 };
                 // A question on its screen: its choices as buttons, so it is
                 // answered without going there (the third line gives way).
@@ -2185,7 +2203,7 @@ impl App {
                 // Up to three tags, the rest as +N (the design's 1o).
                 let mut x = left;
                 for (k, t) in tags.iter().enumerate() {
-                    let at = egui::pos2(x, rect.top() + 61.0);
+                    let at = egui::pos2(x, rect.top() + 61.0 - closed_up);
                     let rest = tags.len() - k;
                     let w_chip = ui.fonts_mut(|f| f.layout_no_wrap(t.to_string(), egui::FontId::proportional(11.0), pal.fg).size().x) + 12.0;
                     if k == 3 || (rest > 1 && x + w_chip + 34.0 > left + width) || x + w_chip > left + width {
@@ -2225,11 +2243,6 @@ impl App {
                         }
                         x = r.right() + 5.0;
                     }
-                    y += 18.0;
-                }
-                if let Some(pr) = &pr {
-                    let (words, color) = chrome::pr_line(pr);
-                    line(words, y, egui::FontId::proportional(11.5), color, width);
                     y += 18.0;
                 }
                 if let Some(n) = numbers {
@@ -4149,8 +4162,15 @@ impl App {
         let band = egui::Panel::top("band")
             .exact_size(40.0)
             .frame(egui::Frame::NONE.fill(self.chrome_fill(crate::theme::colors().side)))
-            .show(ui, |ui| chrome::top_band(ui, &self.palette, &focus_tags, &muted_tags_now, &band_frame))
+            .show(ui, |ui| chrome::top_band(ui, &self.palette, &focus_tags, &muted_tags_now, &client.notices(), &band_frame))
             .inner;
+        if let Some(at) = band.bell {
+            self.bell_open = match self.bell_open {
+                Some(_) => None,
+                None => Some(egui::pos2(at.x.max(8.0), at.y)),
+            };
+            self.bell_opening = true;
+        }
         if band.search {
             self.search = Some(palette::View::new());
         }

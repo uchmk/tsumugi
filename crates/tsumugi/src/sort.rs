@@ -192,13 +192,21 @@ pub fn urgency(state: State) -> u8 {
 /// `C:\Program Files\WindowsApps\…\pwsh.exe`) as the program's name, and
 /// no title as the program.
 pub fn display_title(title: &str, command: &str) -> String {
-    let t = title.trim();
+    let t = without_spinner(title);
     if t.is_empty() {
         return program_name(command);
     }
     let path_like = (t.contains('\\') || t.contains('/')) && !t.contains(' ') || t.to_ascii_lowercase().ends_with(".exe");
     let is_program = t == command || program_name(t).eq_ignore_ascii_case(&program_name(command));
     if path_like && (is_program || t.to_ascii_lowercase().ends_with(".exe")) { program_name(t) } else { t.to_owned() }
+}
+
+/// A title without the turning mark a program puts before it while it
+/// works (Claude Code's `✳` and `✻`, the braille spinners): the card's own
+/// mark says that already.
+pub fn without_spinner(title: &str) -> &str {
+    let spinner = |c: char| matches!(c, '✳' | '✻' | '✽' | '✶' | '✢' | '✦' | '✧' | '·' | '*' | '◐' | '◓' | '◑' | '◒' | '⏺') || ('\u{2800}'..='\u{28FF}').contains(&c) || c.is_whitespace();
+    title.trim_start_matches(spinner).trim()
 }
 
 /// A program's name without its folder or `.exe`.
@@ -353,6 +361,15 @@ pub fn projects(tabs: &[Tab]) -> Vec<(PathBuf, usize)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn spinners_are_left_off_titles() {
+        assert_eq!(without_spinner("✳ Claude Code"), "Claude Code");
+        assert_eq!(without_spinner("⠋ Fixing the tests"), "Fixing the tests");
+        assert_eq!(without_spinner("· Approve the edit"), "Approve the edit");
+        assert_eq!(without_spinner("pwsh"), "pwsh");
+        assert_eq!(display_title("✳", "claude"), "claude", "the program's name when nothing is left");
+    }
     use tsumugi_mux::Node;
 
     fn info(id: u64, state: State, since_ms: u64, project: &str, title: &str) -> Info {
@@ -478,7 +495,7 @@ mod tests {
         assert_eq!(display_title("", "/usr/bin/zsh"), "zsh");
         // A title of its own stays, paths and all.
         assert_eq!(display_title("root@vm: /tmp/proj", "/bin/bash"), "root@vm: /tmp/proj");
-        assert_eq!(display_title("✳ Fix the zoom badge", "pwsh.exe"), "✳ Fix the zoom badge");
+        assert_eq!(display_title("✳ Fix the zoom badge", "pwsh.exe"), "Fix the zoom badge", "less the working mark");
         assert_eq!(display_title("~/dev/filer", "/bin/bash"), "~/dev/filer");
     }
 

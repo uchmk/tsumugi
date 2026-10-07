@@ -164,10 +164,28 @@ pub fn state_ring(painter: &egui::Painter, rect: egui::Rect, radius: f32, l: Loo
                 run_line(painter, rect, radius, t);
             }
         }
-        Look::State(State::Error) => ring(red().gamma_multiply(0.85)),
-        Look::State(State::Done) => ring(green().gamma_multiply(0.5)),
+        Look::State(State::Error) => ring(red().gamma_multiply(0.6)),
+        Look::State(State::Done) => ring(green().gamma_multiply(0.35)),
         Look::Shell => ring(grey().gamma_multiply(0.6)),
     }
+}
+
+/// The selected card's ring, over its state's: the state's colour (cyan
+/// for a shell) at full strength, and a soft glow outside it. The ground
+/// under it is left as it is.
+pub fn selected_ring(painter: &egui::Painter, rect: egui::Rect, radius: f32, l: Look) {
+    let color = match l {
+        Look::Shell => cyan(),
+        _ => look_color(l),
+    };
+    let light = crate::theme::colors().light;
+    painter.rect_stroke(rect, radius, egui::Stroke::new(1.5, color), egui::StrokeKind::Inside);
+    let glow = if light { 0.16 } else { 0.24 };
+    for (k, spread) in [1.5_f32, 3.5].into_iter().enumerate() {
+        let alpha = glow / (k as f32 + 1.0);
+        painter.rect_stroke(rect.expand(spread - 1.0), radius + spread, egui::Stroke::new(2.0, color.gamma_multiply(alpha)), egui::StrokeKind::Outside);
+    }
+    painter.rect_filled(rect, radius, color.gamma_multiply(0.04));
 }
 
 /// The zoom's mark at the right of the pane's heading, ending at `right`:
@@ -536,9 +554,10 @@ pub fn plus_button(ui: &mut egui::Ui, pal: &Palette) -> egui::Response {
     resp
 }
 
-pub fn bell(ui: &mut egui::Ui, pal: &Palette, notices: &[Notice]) -> egui::Response {
+/// The bell in `rect` (28 by 24), with the unread count on it.
+pub fn bell(ui: &mut egui::Ui, rect: egui::Rect, pal: &Palette, notices: &[Notice]) -> egui::Response {
     let unread: Vec<&Notice> = notices.iter().filter(|n| !n.read).collect();
-    let (rect, resp) = ui.allocate_exact_size(egui::vec2(28.0, 24.0), egui::Sense::click());
+    let resp = ui.interact(rect, ui.id().with("bell"), egui::Sense::click());
     let resp = resp.on_hover_text(format!("Notifications ({} unread)", unread.len()));
     let p = ui.painter_at(rect.expand(6.0));
     if resp.hovered() {
@@ -642,7 +661,7 @@ pub fn more_chip(p: &egui::Painter, at: egui::Pos2, n: usize, color: Color32) ->
 /// the right, three and `+N`. When the window is narrow the tags give way
 /// first, then the box shrinks to its magnifier (1o). Whether the box was
 /// clicked.
-pub fn top_band(ui: &mut egui::Ui, pal: &Palette, tags: &[String], muted_tags: &[String], frame: &BandFrame) -> BandOut {
+pub fn top_band(ui: &mut egui::Ui, pal: &Palette, tags: &[String], muted_tags: &[String], notices: &[Notice], frame: &BandFrame) -> BandOut {
     let whole = ui.max_rect();
     let p = ui.painter().clone();
     p.line_segment([whole.left_bottom(), whole.right_bottom()], egui::Stroke::new(1.0, crate::theme::colors().border));
@@ -700,7 +719,9 @@ pub fn top_band(ui: &mut egui::Ui, pal: &Palette, tags: &[String], muted_tags: &
     // The tags, right to left, as many as fit with the box at its widest.
     let chip_w = |t: &str| p.layout_no_wrap(t.to_owned(), FontId::proportional(11.0), pal.fg).size().x + 12.0;
     let full: f32 = tags.iter().take(3).map(|t| chip_w(t) + 5.0).sum::<f32>() + if tags.len() > 3 { 34.0 } else { 0.0 };
-    let room = rect.width() - (name_right - rect.left()) - 32.0;
+    // The bell's room, beside the box.
+    const BELL: f32 = 36.0;
+    let room = rect.width() - (name_right - rect.left()) - 32.0 - BELL;
     let box_w = 420.0f32.min(room - full - 16.0);
     let (show_tags, box_w) = if box_w >= 200.0 { (true, box_w) } else { (false, (room - 34.0).min(420.0)) };
     if show_tags && !tags.is_empty() {
@@ -718,7 +739,7 @@ pub fn top_band(ui: &mut egui::Ui, pal: &Palette, tags: &[String], muted_tags: &
     // The box, or only its magnifier when there is no room.
     let compact = box_w < 160.0;
     let w = if compact { 30.0 } else { box_w };
-    let center_x = (name_right + rect.right() - if show_tags { full } else { 0.0 }) / 2.0;
+    let center_x = (name_right + rect.right() - BELL - if show_tags { full } else { 0.0 }) / 2.0;
     let r = egui::Rect::from_center_size(egui::pos2(center_x.max(name_right + 12.0 + w / 2.0), rect.center().y), egui::vec2(w, 26.0));
     let resp = ui.interact(r, ui.id().with("search"), egui::Sense::CLICK).on_hover_text("Search sessions, folders and commands");
     let fill = if resp.hovered() { crate::theme::colors().hover() } else { crate::theme::colors().panel };
@@ -740,6 +761,11 @@ pub fn top_band(ui: &mut egui::Ui, pal: &Palette, tags: &[String], muted_tags: &
         p.galley(egui::pos2(key_x, r.center().y - key.size().y / 2.0), key, grey());
     }
     out.search = resp.clicked();
+    // The bell just right of the box (the notices, the box's neighbour).
+    let bell_rect = egui::Rect::from_min_size(egui::pos2(r.right() + 6.0, rect.center().y - 12.0), egui::vec2(28.0, 24.0));
+    if bell(ui, bell_rect, pal, notices).clicked() {
+        out.bell = Some(egui::pos2(bell_rect.right() - 380.0, bell_rect.bottom() + 6.0));
+    }
     out
 }
 
@@ -761,6 +787,8 @@ pub struct BandOut {
     pub search: bool,
     /// The settings' close button was clicked.
     pub close_settings: bool,
+    /// The bell was clicked: where its list goes.
+    pub bell: Option<egui::Pos2>,
     pub window: Option<WindowOp>,
 }
 

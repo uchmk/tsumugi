@@ -18,6 +18,58 @@ const CANDIDATES: &[&str] = &[
     "/usr/share/fonts/truetype/fonts-japanese-gothic.ttf",
 ];
 
+/// The window's own words (titles, buttons) in a proportional face, as the
+/// design has them (IBM Plex Sans JP): the first of these found in the font
+/// folders, else egui's own. Then their bold, for titles.
+const UI_REGULAR: &[&str] = &[
+    "IBMPlexSansJP-Regular.ttf",
+    "IBMPlexSansJP-Regular.otf",
+    "IBMPlexSans-Regular.ttf",
+    "IBMPlexSans-Regular.otf",
+    "segoeui.ttf",
+    "NotoSans-Regular.ttf",
+    "DejaVuSans.ttf",
+];
+const UI_BOLD: &[&str] = &[
+    "IBMPlexSansJP-SemiBold.ttf",
+    "IBMPlexSansJP-SemiBold.otf",
+    "IBMPlexSansJP-Bold.ttf",
+    "IBMPlexSans-SemiBold.ttf",
+    "IBMPlexSans-SemiBold.otf",
+    "seguisb.ttf",
+    "segoeuib.ttf",
+    "NotoSans-SemiBold.ttf",
+    "DejaVuSans-Bold.ttf",
+];
+/// Japanese in bold behind those, where the system has it.
+#[cfg(windows)]
+const JA_BOLD: &[&str] = &[r"C:\Windows\Fonts\YuGothB.ttc", r"C:\Windows\Fonts\meiryob.ttc"];
+#[cfg(target_os = "macos")]
+const JA_BOLD: &[&str] = &["/System/Library/Fonts/ヒラギノ角ゴシック W6.ttc"];
+#[cfg(not(any(windows, target_os = "macos")))]
+const JA_BOLD: &[&str] = &["/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc", "/usr/share/fonts/noto-cjk/NotoSansCJK-Bold.ttc"];
+
+/// The family the window's titles are drawn in: bold, proportional.
+pub const UI_BOLD_FAMILY: &str = "ui-bold";
+
+/// A title's font: the bold proportional face at `size`.
+pub fn bold(size: f32) -> egui::FontId {
+    egui::FontId::new(size, egui::FontFamily::Name(UI_BOLD_FAMILY.into()))
+}
+
+/// The first of `names` in the font folders or one folder below them
+/// (`truetype/ibm-plex/…`).
+fn find_file(names: &[&str]) -> Option<std::path::PathBuf> {
+    let dirs = font_dirs();
+    let mut all: Vec<std::path::PathBuf> = dirs.clone();
+    for d in &dirs {
+        if let Ok(entries) = std::fs::read_dir(d) {
+            all.extend(entries.flatten().map(|e| e.path()).filter(|p| p.is_dir()));
+        }
+    }
+    names.iter().find_map(|n| all.iter().map(|d| d.join(n)).find(|p| p.is_file()))
+}
+
 /// The Nerd Fonts filer looks for (filer's `NERD_FONTS`), in the same order.
 const NERD_FONTS: [&str; 6] = [
     "HackGen35ConsoleNF-Regular.ttf",
@@ -94,11 +146,28 @@ pub fn load(family: &str) -> Loaded {
             fonts.families.entry(egui::FontFamily::Monospace).or_default().insert(0, name.clone());
             let stem = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
             nerd = NERD_FONTS.contains(&stem.as_str()) || stem.contains("NerdFont") || stem.contains("NF-");
-            // The window's own words in it only when it is a Nerd Font, as before.
+            // The window's own words stay proportional (the design): a Nerd
+            // Font only behind them, for its icons. Before, with no family
+            // chosen, it went in front and every word came out monospace.
             if chosen.is_none() {
-                fonts.families.entry(egui::FontFamily::Proportional).or_default().insert(0, name);
+                fonts.families.entry(egui::FontFamily::Proportional).or_default().push(name);
             }
             file = Some(path.clone());
+        }
+    }
+    // The window's words: a proportional face in front of egui's own, and its
+    // bold for titles (egui has no bold of its own: `strong` is only a colour).
+    if let Some((path, data)) = find_file(UI_REGULAR).and_then(|p| read(&p).map(|d| (p, d))) {
+        let name = format!("ui:{}", path.display());
+        fonts.font_data.insert(name.clone(), data);
+        fonts.families.entry(egui::FontFamily::Proportional).or_default().insert(0, name);
+    }
+    let mut bold_list = Vec::new();
+    for path in find_file(UI_BOLD).into_iter().chain(JA_BOLD.iter().map(std::path::PathBuf::from).filter(|p| p.is_file()).take(1)) {
+        if let Some(data) = read(&path) {
+            let name = format!("ui-bold:{}", path.display());
+            fonts.font_data.insert(name.clone(), data);
+            bold_list.push(name);
         }
     }
     let system = CANDIDATES.iter().find_map(|p| std::fs::read(p).ok().map(|b| (*p, b)));
@@ -109,6 +178,9 @@ pub fn load(family: &str) -> Loaded {
             fonts.families.entry(family).or_default().push(name.clone());
         }
     }
+    // The bold family: its faces, then the proportional ones for the rest.
+    bold_list.extend(fonts.families.get(&egui::FontFamily::Proportional).cloned().unwrap_or_default());
+    fonts.families.insert(egui::FontFamily::Name(UI_BOLD_FAMILY.into()), bold_list);
     // Bold and italic: the regular file's siblings, then the same fallbacks.
     let fallback = fonts.families.get(&egui::FontFamily::Monospace).cloned().unwrap_or_default();
     if let Some(path) = &file {

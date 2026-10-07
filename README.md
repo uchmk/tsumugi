@@ -92,7 +92,7 @@ notification, and the ones waiting or in error are counted on the taskbar
 button (on Windows a gold number over the icon, red once one has failed;
 elsewhere the window title
 starts with it, `(2) …`). Coming back to the window clears the number. The bell
-beside SESSIONS keeps the same list.
+beside the search box at the top keeps the same list.
 
 The notification says `<folder> is waiting for you` (or `failed`, `is
 done`), the work's name and what it said below; on Windows one per session,
