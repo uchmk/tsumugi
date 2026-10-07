@@ -938,7 +938,7 @@ pub fn search_box(ctx: &egui::Context, pal: &Palette, view: &mut crate::palette:
                     .id(egui::Id::new("search-field"))
                     .hint_text("Search sessions, folders and commands")
                     .desired_width(f32::INFINITY);
-                ui.add(field).request_focus();
+                crate::keep_focus(&ui.add(field));
                 if view.query != before {
                     view.selected = 0;
                     view.changed = std::time::Instant::now();

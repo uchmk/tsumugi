@@ -753,6 +753,17 @@ const GRAB: f32 = 12.0;
 /// The heading over each pane of a split.
 const HEADER: f32 = 30.0;
 
+/// Keeps the keys in a field that should hold them while it is shown.
+/// Asking again on every frame would end an IME composition each time
+/// (`request_focus` interrupts it), so Japanese could never be typed: ask
+/// only when the field does not have them, and not on the frame it let them
+/// go, which its owner reads as leaving.
+fn keep_focus(field: &egui::Response) {
+    if !field.has_focus() && !field.lost_focus() {
+        field.request_focus();
+    }
+}
+
 /// Whether Claude Code's hooks are in, and the file when they were pointed
 /// here (`hooks::repair_on_disk`).
 type HooksFound = (bool, Result<Option<std::path::PathBuf>, String>);
@@ -2301,7 +2312,7 @@ impl App {
                         self.fields_drawn.0 = true;
                         let at = egui::Rect::from_min_size(egui::pos2(left - 4.0, rect.top() + note_y - 3.0), egui::vec2(width - 10.0, 20.0));
                         let field = ui.put(at, egui::TextEdit::singleline(text).id(egui::Id::new(("note-card", w.id))).hint_text("A note: what this tab is for").font(egui::FontId::proportional(12.0)));
-                        field.request_focus();
+                        keep_focus(&field);
                         let (enter, esc) = ui.input(|i| (i.key_pressed(egui::Key::Enter), i.key_pressed(egui::Key::Escape)));
                         if enter {
                             ops.push(SideOp::Note(w.id, text.clone()));
@@ -2317,7 +2328,7 @@ impl App {
                         self.fields_drawn.1 = true;
                         let at = egui::Rect::from_min_size(egui::pos2(left - 4.0, rect.top() + 3.0), egui::vec2(width - 10.0, 22.0));
                         let field = ui.put(at, egui::TextEdit::singleline(text).id(egui::Id::new(("rename-card", w.id))).hint_text("The tab's name").font(egui::FontId::proportional(13.5)));
-                        field.request_focus();
+                        keep_focus(&field);
                         let (enter, esc) = ui.input(|i| (i.key_pressed(egui::Key::Enter), i.key_pressed(egui::Key::Escape)));
                         if enter {
                             ops.push(SideOp::Rename(w.id, text.clone()));
@@ -2427,7 +2438,7 @@ impl App {
                                 match &mut self.renaming {
                                     Some((id, text)) if *id == w.id => {
                                         let edit = ui.add(egui::TextEdit::singleline(text).id(egui::Id::new(("rename", w.id))).hint_text("The tab's name").desired_width(220.0));
-                                        edit.request_focus();
+                                        keep_focus(&edit);
                                         if ui.input(|i| i.key_pressed(egui::Key::Enter)) {
                                             ops.push(SideOp::Rename(w.id, text.clone()));
                                             self.renaming = None;
@@ -4675,6 +4686,28 @@ mod tests {
         let v = View { sort: crate::sort::Sort::Needs, density: crate::sort::Density::Lines, rail: true, asked: true, hooks_asked: true };
         assert_eq!(View::parse(&v.text()), v);
         assert_eq!(View::parse("nonsense\nsort=nope"), View::default());
+    }
+
+    /// The frames of a field kept focused, and whether each ended an IME
+    /// composition: Japanese is typed over several frames, so only the
+    /// first may.
+    fn interruptions(keep: fn(&egui::Response)) -> Vec<bool> {
+        let ctx = egui::Context::default();
+        let mut text = String::new();
+        (0..4)
+            .map(|_| {
+                let mut out = ctx.run_ui(egui::RawInput::default(), |ui| keep(&ui.add(egui::TextEdit::singleline(&mut text).id(egui::Id::new("note")))));
+                out.textures_delta.clear();
+                out.platform_output.ime.is_some_and(|ime| ime.should_interrupt_composition)
+            })
+            .collect()
+    }
+
+    #[test]
+    fn a_kept_field_lets_a_composition_run() {
+        assert!(!interruptions(super::keep_focus)[1..].contains(&true), "the note field ends Japanese being typed");
+        // What it was before: asked again every frame, every frame ended it.
+        assert!(interruptions(|r| r.request_focus())[1..].iter().all(|&i| i));
     }
 
     #[test]

@@ -138,6 +138,7 @@ what happened, and the steps.
 | 3.27 | Click a waiting card, then a running one, then a shell | The card's ground stays dark (no fill): its ring in its state's colour, brighter, with a soft glow past it (cyan for a shell); a running card's line still runs along its top edge |
 | 3.28 | A plain shell's card beside an agent's | The shell's card is a line shorter: no empty third line |
 | 3.29 | Claude Code working in a tab: `F2`, type, `Esc`; right-click → Note…, type, `Esc`; and `F2` on a tab, then pick a tag filter that hides it | Each field closes as it was and Claude Code keeps working (no Esc reached it, `TSUMUGI_PTY_LOG` has no `in key` line); a hidden card's field is let go and the pane gets keys again |
+| 3.30 | With the Japanese IME on: right-click a card → Note…, type `にほんご`, convert with Space, Enter to commit, Enter again; the same in `F2`'s field, the menu's Rename… and the search box (`Ctrl+Shift+P`) | The reading stays underlined as it is typed and the candidates come up; the first Enter only commits the conversion, the second keeps the note (or name); `日本語` arrives whole, nothing lost or doubled |
 
 ## 4. States, notifications and answering
 
