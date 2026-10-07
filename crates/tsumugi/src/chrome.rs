@@ -558,7 +558,7 @@ pub fn plus_button(ui: &mut egui::Ui, pal: &Palette) -> egui::Response {
 pub fn bell(ui: &mut egui::Ui, rect: egui::Rect, pal: &Palette, notices: &[Notice]) -> egui::Response {
     let unread: Vec<&Notice> = notices.iter().filter(|n| !n.read).collect();
     let resp = ui.interact(rect, ui.id().with("bell"), egui::Sense::click());
-    let resp = resp.on_hover_text(format!("Notifications ({} unread)", unread.len()));
+    let resp = resp.on_hover_text(format!("Notifications ({} unread)  {}", unread.len(), crate::keys::label(crate::keys::Action::Notices)));
     let p = ui.painter_at(rect.expand(6.0));
     if resp.hovered() {
         p.rect_filled(rect, 6.0, pal.selection.gamma_multiply(0.5));
@@ -763,9 +763,8 @@ pub fn top_band(ui: &mut egui::Ui, pal: &Palette, tags: &[String], muted_tags: &
     out.search = resp.clicked();
     // The bell just right of the box (the notices, the box's neighbour).
     let bell_rect = egui::Rect::from_min_size(egui::pos2(r.right() + 6.0, rect.center().y - 12.0), egui::vec2(28.0, 24.0));
-    if bell(ui, bell_rect, pal, notices).clicked() {
-        out.bell = Some(egui::pos2(bell_rect.right() - 380.0, bell_rect.bottom() + 6.0));
-    }
+    out.bell = bell(ui, bell_rect, pal, notices).clicked();
+    out.bell_anchor = Some(egui::pos2(bell_rect.right() - 380.0, bell_rect.bottom() + 6.0));
     out
 }
 
@@ -787,8 +786,10 @@ pub struct BandOut {
     pub search: bool,
     /// The settings' close button was clicked.
     pub close_settings: bool,
-    /// The bell was clicked: where its list goes.
-    pub bell: Option<egui::Pos2>,
+    /// The bell was clicked.
+    pub bell: bool,
+    /// Where its list goes, under it.
+    pub bell_anchor: Option<egui::Pos2>,
     pub window: Option<WindowOp>,
 }
 
@@ -1150,7 +1151,7 @@ pub fn bell_list(ctx: &egui::Context, pal: &Palette, at: egui::Pos2, notices: &[
                             State::Error => "error",
                             _ => "finished",
                         };
-                        let head = format!("{} · {word}", n.title);
+                        let head = format!("{} · {word}", crate::sort::without_spinner(&n.title));
                         p.text(rect.left_top() + egui::vec2(22.0, 6.0), egui::Align2::LEFT_TOP, head, FontId::proportional(13.0), text_color);
                         p.text(rect.right_top() + egui::vec2(-6.0, 6.0), egui::Align2::RIGHT_TOP, format!("{} ago", elapsed(now.saturating_sub(n.at_ms))), FontId::proportional(11.0), pal.fg_dim);
                         if !n.note.is_empty() {

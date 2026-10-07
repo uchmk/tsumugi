@@ -145,7 +145,7 @@ what happened, and the steps.
 | 4.7 | The taskbar button while two wait, then one fails | A gold `2` with dark digits; red with white once one has failed; it clears when the window is looked at |
 | 4.8 | Settings → Notifications: flash and sound on for waiting, then 4.5 again | The taskbar button flashes and the system's message sound plays once (the error sound for an error) |
 | 4.9 | Right-click a tag chip → mute | Sessions with the tag tell only in the bell |
-| 4.10 | The bell, right of the search box at the top | The list of notices under it, newest first; a click goes to the session and marks it read; no bell in the sidebar's heading |
+| 4.10 | The bell, right of the search box at the top; then `Ctrl+Shift+N` (macOS `Cmd+Shift+N`) twice in a shell | The list of notices under it, newest first, its names without Claude Code's `✳`; a click goes to the session and marks it read; no bell in the sidebar's heading. The key opens the same list and closes it, and nothing reaches the shell |
 | 4.11 | `printf '\e]9;hello\a'` in a pane | Marked waiting with `hello`, no hooks needed |
 | 4.12 | `Ctrl+Shift+U` with two waiting | The one waiting longest first, then the other |
 | 4.13 | Two Claude Code sessions asking permission, then `Ctrl+Shift+Y` (or **List ›** at the sidebar's foot) | A panel: each waiting session with what it said, how long, its choices as buttons and a tick; a choice's button types its number there |

@@ -44,6 +44,8 @@ pub enum Action {
     /// What is typed goes to every pane of the tab, or to the one with the
     /// keys again (iTerm2's Broadcast Input).
     TypeAll,
+    /// The bell's list of notifications, open or closed.
+    Notices,
 }
 
 /// The action for a key press, if it is one of the window's: a key the
@@ -76,7 +78,7 @@ fn action_with(key: Key, m: Modifiers, mac: bool, bound: &[(Action, Option<Chord
 
 /// The actions the settings can give another key, by the name `[keys]`
 /// uses, with their own keys (elsewhere, then on macOS).
-pub const NAMED: [(Action, &str, &str, &str); 16] = [
+pub const NAMED: [(Action, &str, &str, &str); 17] = [
     (Action::NewTab, "new_tab", "Ctrl+Shift+T", "Cmd+T"),
     (Action::CloseTab, "close_tab", "Ctrl+Shift+W", "Cmd+W"),
     (Action::NextTab, "next_tab", "Ctrl+Tab", "Ctrl+Tab"),
@@ -96,6 +98,8 @@ pub const NAMED: [(Action, &str, &str, &str); 16] = [
     (Action::Waiting, "waiting_list", "Ctrl+Shift+Y", "Cmd+Shift+Y"),
     // iTerm2's own key for it on a Mac.
     (Action::TypeAll, "type_into_all", "Ctrl+Shift+I", "Cmd+Shift+I"),
+    // N for notifications (Q13).
+    (Action::Notices, "notifications", "Ctrl+Shift+N", "Cmd+Shift+N"),
 ];
 
 /// What a changeable action is called on the settings screen and in
@@ -118,6 +122,7 @@ pub fn title(a: Action) -> &'static str {
         Action::Duplicate => "Duplicate in the same folder",
         Action::Waiting => "The waiting sessions, answered together",
         Action::TypeAll => "Type into every pane of the tab",
+        Action::Notices => "Notifications (the bell)",
         Action::Tab(_) => "The Nth tab",
         Action::Move(_) => "Move between panes",
         Action::Resize(_) => "Resize the pane",
@@ -346,6 +351,7 @@ fn action_on(key: Key, m: Modifiers, mac: bool) -> Option<Action> {
             Key::D if cmd && m.alt && !m.shift => Some(Action::Duplicate),
             Key::Y if cmd && m.shift => Some(Action::Waiting),
             Key::I if cmd && m.shift => Some(Action::TypeAll),
+            Key::N if cmd && m.shift => Some(Action::Notices),
             Key::F2 if !m.any() => Some(Action::Rename),
             _ if cmd && !m.shift => digit().map(Action::Tab),
             _ => None,
@@ -364,6 +370,7 @@ fn action_on(key: Key, m: Modifiers, mac: bool) -> Option<Action> {
         Key::D if ctrl_shift => Some(Action::Duplicate),
         Key::Y if ctrl_shift => Some(Action::Waiting),
         Key::I if ctrl_shift => Some(Action::TypeAll),
+        Key::N if ctrl_shift => Some(Action::Notices),
         Key::F2 if !m.any() => Some(Action::Rename),
         // Alt+Shift++ / Alt+Shift+-, Windows Terminal's: `+` is Shift and
         // `=` on a US keyboard, Shift and `;` on a JIS one.
@@ -423,6 +430,7 @@ mod tests {
         assert_eq!(action_on(Key::I, CTRL, false), Some(Action::Input));
         assert_eq!(action_on(Key::Y, CTRL_SHIFT, false), Some(Action::Waiting));
         assert_eq!(action_on(Key::I, CTRL_SHIFT, false), Some(Action::TypeAll));
+        assert_eq!(action_on(Key::N, CTRL_SHIFT, false), Some(Action::Notices));
         assert_eq!(action_on(Key::Y, CTRL, false), None, "Ctrl+Y is the shell's yank");
         assert_eq!(action_on(Key::Tab, Modifiers::NONE, false), None, "Tab is the shell's");
         assert_eq!(action_on(Key::Minus, alt, false), None, "Alt+- is the shell's");

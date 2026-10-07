@@ -26,6 +26,7 @@ Windows and Linux keys first; the macOS key is after `·`.
 - [ ] `Ctrl+Shift+D` · `Cmd+Option+D` — Duplicate in the same folder · `duplicate`
 - [ ] `Ctrl+Shift+Y` · `Cmd+Shift+Y` — The waiting sessions, answered together · `waiting_list`
 - [ ] `Ctrl+Shift+I` · `Cmd+Shift+I` — Type into every pane of the tab · `type_into_all`
+- [ ] `Ctrl+Shift+N` · `Cmd+Shift+N` — Notifications (the bell) · `notifications`
 
 ## The window, fixed
 

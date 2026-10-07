@@ -146,17 +146,18 @@ impl Alerts {
 /// (`filer is waiting for you`), the work's name and what it said below.
 /// Without a folder, the work's name is the title.
 fn wording(n: &Notice, place: Option<&str>) -> (String, String) {
-    let who = place.filter(|p| !p.is_empty()).unwrap_or(&n.title);
+    let work = crate::sort::without_spinner(&n.title);
+    let who = place.filter(|p| !p.is_empty()).unwrap_or(work);
     let title = match n.state {
         State::Waiting | State::MaybeWaiting => format!("{who} is waiting for you"),
         State::Error => format!("{who} failed"),
         State::Done => format!("{who} is done"),
         State::Running => format!("{who} is running"),
     };
-    let named = place.is_some_and(|p| !p.is_empty()) && !n.title.is_empty();
+    let named = place.is_some_and(|p| !p.is_empty()) && !work.is_empty();
     let body = match (named, n.note.is_empty()) {
-        (true, true) => n.title.clone(),
-        (true, false) => format!("{} · {}", n.title, n.note),
+        (true, true) => work.to_owned(),
+        (true, false) => format!("{work} · {}", n.note),
         (false, _) => n.note.clone(),
     };
     (title, body)

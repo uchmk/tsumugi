@@ -815,7 +815,7 @@ fn keys(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut Vec<
         });
     };
     section(ui, l, "SESSIONS", |ui| {
-        for (k, a) in [Action::NewTab, Action::CloseTab, Action::Rename, Action::Duplicate, Action::NextTab, Action::PrevTab, Action::NextWaiting, Action::Waiting, Action::TypeAll, Action::Search, Action::Input, Action::Rail, Action::Settings].into_iter().enumerate() {
+        for (k, a) in [Action::NewTab, Action::CloseTab, Action::Rename, Action::Duplicate, Action::NextTab, Action::PrevTab, Action::NextWaiting, Action::Waiting, Action::Notices, Action::TypeAll, Action::Search, Action::Input, Action::Rail, Action::Settings].into_iter().enumerate() {
             if k > 0 {
                 sep(ui, l);
             }

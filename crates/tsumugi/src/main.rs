@@ -770,6 +770,8 @@ struct App {
     had_tabs: bool,
     /// The bell's list is open, and where.
     bell_open: Option<egui::Pos2>,
+    /// Where the bell's list goes: under the bell, as last drawn.
+    bell_anchor: egui::Pos2,
     /// After a restart: the "Welcome back" screen, until it is answered.
     restore: Option<chrome::RestoreView>,
     /// The sidebar's "Jump to waiting" was pressed.
@@ -1037,6 +1039,7 @@ impl App {
             title: String::new(),
             had_tabs: false,
             bell_open: None,
+            bell_anchor: egui::pos2(20.0, 60.0),
             restore,
             jump_waiting: false,
             nerd,
@@ -1252,6 +1255,14 @@ impl App {
                 if !self.typing_all.remove(&w.id) && w.layout.leaves().len() > 1 {
                     self.typing_all.insert(w.id);
                 }
+            }
+            // Under the bell, where a click opens it.
+            keys::Action::Notices => {
+                self.bell_open = match self.bell_open {
+                    Some(_) => None,
+                    None => Some(self.bell_anchor),
+                };
+                self.bell_opening = true;
             }
             keys::Action::Waiting => {
                 self.lists = match &self.lists {
@@ -1627,6 +1638,7 @@ impl App {
                     palette::Command::InputBox => keys::Action::Input,
                     palette::Command::Waiting => keys::Action::Waiting,
                     palette::Command::TypeAll => keys::Action::TypeAll,
+                    palette::Command::Notices => keys::Action::Notices,
                     palette::Command::Sort(_) | palette::Command::Closed | palette::Command::Changes | palette::Command::SaveOutput | palette::Command::Parallel => return,
                 };
                 if let Some(w) = current {
@@ -4164,10 +4176,13 @@ impl App {
             .frame(egui::Frame::NONE.fill(self.chrome_fill(crate::theme::colors().side)))
             .show(ui, |ui| chrome::top_band(ui, &self.palette, &focus_tags, &muted_tags_now, &client.notices(), &band_frame))
             .inner;
-        if let Some(at) = band.bell {
+        if let Some(at) = band.bell_anchor {
+            self.bell_anchor = egui::pos2(at.x.max(8.0), at.y);
+        }
+        if band.bell {
             self.bell_open = match self.bell_open {
                 Some(_) => None,
-                None => Some(egui::pos2(at.x.max(8.0), at.y)),
+                None => Some(self.bell_anchor),
             };
             self.bell_opening = true;
         }

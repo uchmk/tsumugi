@@ -43,16 +43,19 @@ pub enum Command {
     SaveOutput,
     /// Several pieces of work at once, in worktrees.
     Parallel,
+    /// The bell's list.
+    Notices,
 }
 
 impl Command {
-    pub const ALL: [Command; 19] = [
+    pub const ALL: [Command; 20] = [
         Command::NewSession,
         Command::SplitRight,
         Command::SplitDown,
         Command::Zoom,
         Command::NextWaiting,
         Command::Waiting,
+        Command::Notices,
         Command::Closed,
         Command::Changes,
         Command::TypeAll,
@@ -85,6 +88,7 @@ impl Command {
             Command::TypeAll => "Type into every pane of the tab (or stop)".into(),
             Command::SaveOutput => "Save the pane's output to a file".into(),
             Command::Parallel => "Start in parallel: worktrees, one prompt each…".into(),
+            Command::Notices => "Notifications".into(),
         }
     }
 
@@ -103,6 +107,7 @@ impl Command {
             Command::Settings => Action::Settings,
             Command::Waiting => Action::Waiting,
             Command::TypeAll => Action::TypeAll,
+            Command::Notices => Action::Notices,
             Command::Sort(_) | Command::Closed | Command::Changes | Command::SaveOutput | Command::Parallel => return String::new(),
         };
         label(action)
