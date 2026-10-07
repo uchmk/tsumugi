@@ -5,6 +5,21 @@
 
 ## [未リリース]
 
+## [0.53.6] - 2026-10-07
+
+### 変更
+
+- Claude Code のフックのコマンドを、素の `tsumugi` ではなく tsumugi 自身のフルパスで書く（Windows でも `/` 区切り、空白があれば `'…'` で囲む）。
+  窓を開いたとき、`settings.json` の tsumugi のフックが見つからないプログラムを指していれば（`PATH` に無い素の `tsumugi`、動かした後の古い場所）、
+  この tsumugi を指すように書き直す（元のファイルは `settings.json.tsumugi-backup`、トーストで知らせる）。動く別の tsumugi（開発中のビルドなど）を指すものはそのまま。
+
+### 修正
+
+- フックを動かすシェル（Windows では Git Bash）の `PATH` に tsumugi が無いと、Claude Code が返答のたびに `Stop hook error: … tsumugi: command not found` を出していた（上の変更で直る）。
+- tsumugi のセッションの外（別のターミナルの Claude Code）でフックから `tsumugi notify` が走ると、終了コード 2 でエラーを出していた。
+  Claude Code は `Stop` フックの 2 を「まだ止まるな」と読む。標準入力が端末でないとき（フックから）は何もせず 0 で終わる。
+- 設定画面の「The lines themselves」と最初の画面のフックの行も、実際に書くフルパスのコマンドを見せる。
+
 ## [0.53.5] - 2026-10-07
 
 ### 追加

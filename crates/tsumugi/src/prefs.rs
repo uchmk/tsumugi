@@ -1481,12 +1481,9 @@ fn shell(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut Vec
             edit.lines = !edit.lines;
         }
         if edit.lines {
-            let json = r#"{
-  "hooks": {
-    "Notification": [{ "hooks": [{ "type": "command", "command": "tsumugi notify --stdin" }] }],
-    "Stop": [{ "hooks": [{ "type": "command", "command": "tsumugi notify --state done" }] }]
-  }
-}"#;
+            // This tsumugi's own commands, by its full path (`hooks::commands`).
+            let json = crate::hooks::add("").unwrap_or_default();
+            let json = json.trim_end();
             ui.label(RichText::new(json).font(FontId::monospace(11.5)).color(c.fg));
             if ui.small_button("Copy").clicked() {
                 out.push(Change::Copy(json.to_owned()));

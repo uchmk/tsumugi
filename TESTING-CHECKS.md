@@ -187,11 +187,13 @@
 ## 12. Claude Code's hooks
 
 - [ ] **12.1** Without the hooks in `~/.claude/settings.json`, start tsumugi → On the first-run screen, the gold-ringed card with the two hooks under the folders; with sessions there already, a short card at the bottom right, above the input box when it is open
-- [ ] **12.2** Add the hooks → Both in the file beside any there, `settings.json.tsumugi-backup` next to it, and a toast
+- [ ] **12.2** Add the hooks → Both in the file beside any there, each the full path of this tsumugi (`C:/…/tsumugi.exe notify …`, in `'…'` when the path has a space), `settings.json.tsumugi-backup` next to it, and a toast
 - [ ] **12.3** Not now / Don't ask again → Asked again at the next start / never again
 - [ ] **12.4** Settings → Shell & hooks → Claude Code hooks → Add → Added, the row says Installed; Remove takes only tsumugi's out, the backup beside it
 - [ ] **12.5** `notify = ["tsumugi", "notify", "--state", "done"]` in `~/.codex/config.toml`; ask Codex something in a session → When its turn ends the card turns done (green) with the first line of its answer
 - [ ] **12.6** Windows PowerShell 5.1: a `$PROFILE` saved as UTF-16 (`"# mine" \| Out-File $PROFILE`), then Settings → Shell & hooks → Shell integration → Install → A toast says the profile is not UTF-8 text and is left as it is; the profile is unchanged (its hash the same)
+- [ ] **12.7** In `~/.claude/settings.json`, tsumugi's hooks as the bare `tsumugi notify --stdin` / `tsumugi notify --state done`, with tsumugi not on the `PATH`; start tsumugi → A toast says the hooks could not find tsumugi and run this one now; both commands are this tsumugi's full path, the old file is `settings.json.tsumugi-backup`; Claude Code in a session ends its replies with no "Stop hook error" and the card turns done
+- [ ] **12.8** With the hooks in, Claude Code in a terminal that is not tsumugi (Windows Terminal); let it finish a reply → No "Stop hook error", and Claude does not carry on by itself
 
 ## 13. The window's frame
 

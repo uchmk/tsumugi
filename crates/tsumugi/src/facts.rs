@@ -56,7 +56,7 @@ fn installed_shells() -> Vec<(String, String)> {
     KNOWN.iter().filter(|(_, p)| locate(p)).map(|(l, p)| (l.to_string(), p.to_string())).collect()
 }
 
-fn locate(program: &str) -> bool {
+pub fn locate(program: &str) -> bool {
     let Some(path) = std::env::var_os("PATH") else { return false };
     let exts: &[&str] = if cfg!(windows) { &[".exe", ".cmd", ".bat"] } else { &[""] };
     std::env::split_paths(&path).any(|dir| exts.iter().any(|e| dir.join(format!("{program}{e}")).is_file()))

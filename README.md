@@ -467,25 +467,36 @@ moves again.
 
 ### Claude Code hooks
 
-An agent can say for itself that it is waiting. With `tsumugi` on the `PATH`,
-add to Claude Code's settings (`~/.claude/settings.json`) -- or let tsumugi
-do it: the first window offers to while they are missing, and **Add them
-for me** in Settings → Shell & hooks does it any time (beside the hooks you
-have; the old file is kept as `settings.json.tsumugi-backup`):
+An agent can say for itself that it is waiting. Add to Claude Code's
+settings (`~/.claude/settings.json`) -- or let tsumugi do it: the first
+window offers to while they are missing, and **Add them for me** in
+Settings → Shell & hooks does it any time (beside the hooks you have; the
+old file is kept as `settings.json.tsumugi-backup`):
 
 ```json
 {
   "hooks": {
-    "Notification": [{ "hooks": [{ "type": "command", "command": "tsumugi notify --stdin" }] }],
-    "Stop": [{ "hooks": [{ "type": "command", "command": "tsumugi notify --state done" }] }]
+    "Notification": [{ "hooks": [{ "type": "command", "command": "C:/Users/me/AppData/Local/tsumugi/tsumugi.exe notify --stdin" }] }],
+    "Stop": [{ "hooks": [{ "type": "command", "command": "C:/Users/me/AppData/Local/tsumugi/tsumugi.exe notify --state done" }] }]
   }
 }
 ```
 
+tsumugi writes its own full path (`/` on Windows too, and in `'…'` when it
+has a space), since the shell Claude Code runs hooks in (Git Bash's on
+Windows) may not have tsumugi on its `PATH`; **The lines themselves** in
+Settings shows them with yours. A bare `tsumugi notify …` works when it is
+on that `PATH`. If tsumugi's hooks name a program that is not there any
+more (a bare `tsumugi` not on the `PATH`, or a tsumugi since moved), the
+window points them at itself when it starts, keeping the old file beside
+it, and says so; hooks that run another tsumugi of yours are left alone.
+
 The `Notification` hook's `--stdin` also hands over Claude Code's
 conversation id, which is what `claude --resume` takes after a restart.
 `tsumugi notify` works inside a tsumugi session only (it reads
-`TSUMUGI_SESSION`). Programs that send OSC 9, 99 or 777 notifications are
+`TSUMUGI_SESSION`); run from a hook outside one (Claude Code in another
+terminal) it does nothing and exits 0, so no hook error shows and the
+`Stop` hook never keeps Claude going. Programs that send OSC 9, 99 or 777 notifications are
 marked without any setup.
 
 ### Other AI programs

@@ -308,8 +308,11 @@ fn remote(what: &str, args: &[String]) -> std::process::ExitCode {
 /// `tsumugi notify [--state waiting|done|error] [--session N] [MESSAGE...]`:
 /// mark a session for the sidebar. Meant for an agent's hooks, run inside
 /// the session, which is where `TSUMUGI_SESSION` and `TSUMUGI_ADDRESS` are
-/// set. Claude Code's `Notification` hook is `tsumugi notify`, its `Stop`
-/// hook `tsumugi notify --state done`.
+/// set. Claude Code's `Notification` hook is `tsumugi notify --stdin`, its
+/// `Stop` hook `tsumugi notify --state done`. Outside a session a hook's
+/// (stdin not a terminal) does nothing and says nothing: Claude Code run in
+/// another terminal shows a hook's error on every reply, and takes a `Stop`
+/// hook's exit code 2 as "do not stop yet".
 fn notify(args: &[String]) -> std::process::ExitCode {
     let mut state = tsumugi_mux::State::Waiting;
     let mut session = std::env::var("TSUMUGI_SESSION").ok().and_then(|s| s.parse().ok());
@@ -352,6 +355,9 @@ fn notify(args: &[String]) -> std::process::ExitCode {
         }
     }
     let Some(id) = session else {
+        if !std::io::IsTerminal::is_terminal(&std::io::stdin()) {
+            return std::process::ExitCode::SUCCESS;
+        }
         eprintln!("tsumugi notify: not inside a tsumugi session (no TSUMUGI_SESSION); give --session N");
         return std::process::ExitCode::from(2);
     };
@@ -544,7 +550,8 @@ fn hooks_card(ui: &mut egui::Ui, width: f32, full: bool) -> Option<u8> {
             if full {
                 egui::Frame::NONE.fill(c.side).corner_radius(8.0).inner_margin(egui::Margin::symmetric(12, 10)).show(ui, |ui| {
                     ui.set_width(ui.available_width());
-                    ui.label(egui::RichText::new("\"Notification\": [{ \"command\": \"tsumugi notify --stdin\" }]\n\"Stop\":         [{ \"command\": \"tsumugi notify --state done\" }]").font(egui::FontId::monospace(12.0)).color(c.fg));
+                    let [notification, stop] = hooks::commands();
+                    ui.label(egui::RichText::new(format!("\"Notification\": [{{ \"command\": {notification:?} }}]\n\"Stop\":         [{{ \"command\": {stop:?} }}]")).font(egui::FontId::monospace(12.0)).color(c.fg));
                 });
             }
             ui.add_space(8.0);
@@ -746,6 +753,10 @@ const GRAB: f32 = 12.0;
 /// The heading over each pane of a split.
 const HEADER: f32 = 30.0;
 
+/// Whether Claude Code's hooks are in, and the file when they were pointed
+/// here (`hooks::repair_on_disk`).
+type HooksFound = (bool, Result<Option<std::path::PathBuf>, String>);
+
 struct App {
     client: Option<Client>,
     /// Why there is nothing to show, shown in its place.
@@ -807,8 +818,9 @@ struct App {
     pane_at: HashMap<SessionId, std::time::Instant>,
     /// The session whose card the pointer is on: watched for its preview.
     peek: Option<SessionId>,
-    /// Claude Code's hooks: being looked for, offered, being added.
-    hooks_check: Option<std::sync::mpsc::Receiver<bool>>,
+    /// Claude Code's hooks: being looked for (and pointed here when theirs
+    /// is gone, `hooks::repair_on_disk`), offered, being added.
+    hooks_check: Option<std::sync::mpsc::Receiver<HooksFound>>,
     hooks_offered: bool,
     hooks_adding: Option<std::sync::mpsc::Receiver<Result<std::path::PathBuf, String>>>,
     /// Prompts to send when their sessions are done, oldest first; and the
@@ -1071,7 +1083,8 @@ impl App {
                 let (tx, rx) = std::sync::mpsc::channel();
                 let ctx = cc.egui_ctx.clone();
                 let _ = std::thread::Builder::new().name("hooks".into()).spawn(move || {
-                    let _ = tx.send(hooks::installed());
+                    let repaired = hooks::repair_on_disk();
+                    let _ = tx.send((hooks::installed(), repaired));
                     ctx.request_repaint();
                 });
                 Some(rx)
@@ -2916,9 +2929,14 @@ impl App {
     /// on a thread), the offer to add them while they are not, and adding.
     fn hooks_offer(&mut self, ctx: &egui::Context) {
         if let Some(rx) = &self.hooks_check {
-            if let Ok(there) = rx.try_recv() {
+            if let Ok((there, repaired)) = rx.try_recv() {
                 self.hooks_check = None;
                 self.hooks_offered = !there && !self.view.hooks_asked;
+                match repaired {
+                    Ok(Some(path)) => self.say(format!("Claude Code's hooks in {} could not find tsumugi; they run this one now (the old file kept beside it)", home_short(&path)), false),
+                    Ok(None) => {}
+                    Err(e) => self.say(format!("Claude Code's hooks could not find tsumugi, and were left: {e}"), true),
+                }
             }
         }
         if let Some(rx) = &self.hooks_adding {
