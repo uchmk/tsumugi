@@ -435,7 +435,10 @@ pub fn show(ctx: &egui::Context, pal: &Palette, d: &mut Dialog, recents: &[Recen
                             d.start = s;
                         }
                     }
-                    let profile = start_button(ui, "Profile…", false);
+                    // Lit with the ring while it has the keys, as the others
+                    // are when picked.
+                    let profile_has_keys = d.profile_id.is_some_and(|id| ui.memory(|m| m.has_focus(id)));
+                    let profile = start_button(ui, "Profile…", profile_has_keys);
                     d.profile_id = Some(profile.id);
                     egui::Popup::menu(&profile).show(|ui| {
                         if profiles.is_empty() {
