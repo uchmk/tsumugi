@@ -1576,14 +1576,15 @@ fn theme(ui: &mut egui::Ui, l: Look, seen: &Seen, out: &mut Vec<Change>) {
             }
         }
     };
-    // The mode as one segmented control on the right (the design's Themes),
-    // in a row of its own height: a bare right-to-left layout takes all the
-    // height left and centres itself in it.
-    ui.allocate_ui_with_layout(egui::vec2(ui.available_width(), 36.0), egui::Layout::right_to_left(egui::Align::Center), |ui| {
+    // The mode as one segmented control at the left, under the heading, in
+    // a row of its own height.
+    ui.allocate_ui_with_layout(egui::vec2(ui.available_width(), 36.0), egui::Layout::left_to_right(egui::Align::Center), |ui| {
+        ui.label(RichText::new("Mode").size(12.0).color(c.dim));
+        ui.add_space(8.0);
         egui::Frame::NONE.stroke(egui::Stroke::new(1.0, c.border_strong())).corner_radius(8.0).inner_margin(egui::Margin::same(3)).show(ui, |ui| {
             ui.horizontal(|ui| {
                 ui.spacing_mut().item_spacing.x = 2.0;
-                for (k, label) in [("dark", "Dark"), ("light", "Light"), ("system", "Follow OS")] {
+                for (k, label) in [("system", "Follow OS"), ("light", "Light"), ("dark", "Dark")] {
                     let on = mode == k;
                     let b = egui::Button::new(RichText::new(label).size(12.5).color(if on { c.strong() } else { c.dim }))
                         .fill(if on { c.chosen() } else { Color32::TRANSPARENT })
@@ -1604,8 +1605,6 @@ fn theme(ui: &mut egui::Ui, l: Look, seen: &Seen, out: &mut Vec<Change>) {
                 }
             });
         });
-        ui.add_space(8.0);
-        ui.label(RichText::new("Mode").size(12.0).color(c.dim));
     });
     ui.add_space(10.0);
     let picked = |t: &Theme| {
@@ -1624,7 +1623,10 @@ fn theme(ui: &mut egui::Ui, l: Look, seen: &Seen, out: &mut Vec<Change>) {
             ui.label(RichText::new(format!("THEME · {}", list.len())).size(11.0).strong().color(c.dim));
             egui::Frame::NONE.fill(c.panel).stroke(egui::Stroke::new(1.0, c.border)).corner_radius(10.0).inner_margin(egui::Margin::same(6)).show(ui, |ui| {
                 for t in list {
-                    let on = picked(t);
+                    // Follow OS keeps one theme for each kind: the one shown
+                    // now is lit, the other only named as the other kind's.
+                    let chosen = picked(t);
+                    let on = chosen && (mode != "system" || t.colors == seen.current);
                     let (r, resp) = ui.allocate_exact_size(egui::vec2(ui.available_width(), 34.0), egui::Sense::click());
                     let p = ui.painter();
                     if on {
@@ -1647,8 +1649,14 @@ fn theme(ui: &mut egui::Ui, l: Look, seen: &Seen, out: &mut Vec<Change>) {
                     }
                     p.rect_stroke(chip, 4.0, egui::Stroke::new(1.0, c.border_strong()), egui::StrokeKind::Outside);
                     p.text(egui::pos2(r.left() + 62.0, r.center().y), egui::Align2::LEFT_CENTER, &t.name, FontId::proportional(13.0), if on { c.strong() } else { c.fg });
-                    let kind = if t.colors.light { "light" } else { "dark" };
-                    p.text(egui::pos2(r.right() - 10.0, r.center().y), egui::Align2::RIGHT_CENTER, kind, FontId::proportional(11.0), c.faint());
+                    let tagged = chosen && mode == "system";
+                    let kind = match (tagged, t.colors.light) {
+                        (true, true) => "when light",
+                        (true, false) => "when dark",
+                        (false, true) => "light",
+                        (false, false) => "dark",
+                    };
+                    p.text(egui::pos2(r.right() - 10.0, r.center().y), egui::Align2::RIGHT_CENTER, kind, FontId::proportional(11.0), if tagged { c.run } else { c.faint() });
                     if resp.clicked() {
                         // In Follow OS, a theme becomes the one for its kind.
                         let change = match mode {
@@ -1823,6 +1831,10 @@ mod tests {
         let list = find(&texts, "THEME").expect("the list's heading").top();
         assert!(mode - heading < 80.0, "Mode at {mode}, the heading ends at {heading}");
         assert!(list - mode < 80.0, "the list at {list}, Mode at {mode}");
+        // At the left, under the heading's start, and the choices after it.
+        let left = find(&texts, "Colours, applied as you pick.").unwrap().left();
+        let (mode_x, follow, dark) = (find(&texts, "Mode").unwrap().left(), find(&texts, "Follow OS").unwrap().left(), find(&texts, "Dark").unwrap().left());
+        assert!((mode_x - left).abs() < 4.0 && mode_x < follow && follow < dark, "Mode at {mode_x}, the heading at {left}, Follow OS at {follow}, Dark at {dark}");
     }
 
     fn at_page(page: Page) -> Screen {

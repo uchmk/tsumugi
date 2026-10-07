@@ -162,7 +162,7 @@
 - [ ] **10.3** Save a Windows Terminal scheme `.json` in `themes\` → It is in the list under its name; chosen, `ls` colours match Windows Terminal's with that scheme
 - [ ] **10.4** The same with an iTerm2 `.itermcolors` → As 10.3
 - [ ] **10.5** `theme.toml` with one colour → Only that colour changes in the theme in force
-- [ ] **10.6** Settings → Theme → Mode (Dark, Light, System) on the right of the heading; PREVIEW names the theme in force; a line with the font, the window and motion, a click goes to Appearance; each theme's swatches bordered and rounded
+- [ ] **10.6** Settings → Theme, in Follow OS → Mode (Follow OS, Light, Dark) at the left under the heading; only the theme shown now is lit, it and the other kind's pick are named `when dark` / `when light`; PREVIEW names the theme in force; a line with the font, the window and motion, a click goes to Appearance; each theme's swatches bordered and rounded
 
 ## 11. Fonts
 
