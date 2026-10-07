@@ -124,6 +124,7 @@ what happened, and the steps.
 | 3.19 | Right-click a card → Note…, type `the release`, Enter; restart the machine (or the server) | `“the release”` on the card under the folder; Edit the note… and an empty Enter takes it off; after the restart the note is back |
 | 3.20 | A tab with uncommitted changes: click its `+N −M` (or search `changes`) | The diff over the window: each file under its name, added lines green, removed red, hunks cyan, new files at the end; Esc or a click outside closes it; a lock file's large diff is cut at 512 KB |
 | 3.21 | Right-click a card → Save the output to a file (or search `save the pane`) | A toast names `Downloads\tsumugi-<name>-<date>-<time>.txt`; it holds the whole scrollback as the program wrote it, Japanese whole, long lines unbroken |
+| 3.22 | A tab on a branch other than main (a worktree's), right-click → Create a pull request (`gh` signed in) | The branch pushed, a pull request made from its commits and opened in the browser; a toast with its address; on `main` the item is not there; without `gh`, a toast says why |
 
 ## 4. States, notifications and answering
 
@@ -146,6 +147,9 @@ what happened, and the steps.
 | 4.15 | A session waiting with a menu of other words (no "Yes"/"No") | Not counted in Yes to N / No to N; its own buttons still work |
 | 4.16 | `exit` a Claude Code session after some work; then the panel's **Recently closed** (or search `recently`) | It is listed: today at …, done, its tokens; **Last output** shows its last lines; **Resume** opens a new tab in its folder typing `claude --resume <id>`; the list survives a restart of tsumugi |
 | 4.17 | A Claude Code session asking to run a Bash command; `Ctrl+Shift+Y` | Under what it said: "Bash command", the command and its description, "Do you want to proceed?", in the terminal's font, before the buttons |
+| 4.18 | A Claude Code session asking to run one Bash command → `Ctrl+Shift+Y` → **Always allow…** → **Add and say yes** | Before: the rule `Bash(<command>)` and the file named; after: the project's `.claude/settings.local.json` has it under `permissions.allow` (the old file as `.tsumugi-backup`), `1` typed, a toast; next time Claude Code runs it without asking. No **Always allow…** for an edit or a command of several lines |
+| 4.19 | `[notify] webhook = "https://ntfy.sh/<a topic>"`, `webhook_after = 30`; a session waiting; minimize (or close) the window | Within a minute the phone (ntfy app on the topic) shows `<folder> is waiting for you` and what it said; once, not again for the same wait; nothing while the window is looked at; a muted session never |
+| 4.20 | `webhook_format = "slack"` with a Slack incoming webhook | The message in the channel, the title in bold |
 
 ## 5. Search
 
@@ -170,6 +174,7 @@ what happened, and the steps.
 | 6.7 | Tick In a new git worktree in a repository, Create | A folder `<repo>-tsumugi-MMDD-HHMM` beside the repository on its own branch, and the session in it; a toast says so |
 | 6.8 | `exit` the last session in that worktree | **Remove the worktree?**; Remove takes the folder (the branch stays); with uncommitted changes git refuses and the toast says why |
 | 6.9 | `Ctrl+Shift+T`, then only the keyboard: `Tab` through the dialog, `←`/`→` on the ways to start, `Space` on a button, `Shift+Tab` back | A cyan ring shows where the keys are; Tab completes the folder once and then moves on, through the start buttons, + Pane, the tag, the two ticks, Create and Cancel; `Enter` on Cancel cancels, `Enter` in a field creates |
+| 6.10 | Search `parallel` → Start in parallel; two prompts; Start 2 | Two folders `<repo>-tsumugi-MMDD-HHMM-1`/`-2` beside the repository on branches `tsumugi/MMDD-HHMM-1`/`-2`, two tabs, Claude Code started in each on its own prompt (quotes in a prompt kept); Esc or Cancel starts nothing |
 
 ## 7. The input box
 
@@ -181,12 +186,14 @@ what happened, and the steps.
 | 7.4 | Pick a tag as **To**, send | Every session wearing the tag gets it |
 | 7.5 | While a session runs, **When done** (or `Ctrl+Shift+Enter`) | `1 queued` on the card and in the box; when the session is done, the prompt goes and a toast says so |
 | 7.6 | Queue to a session showing a permission menu | It waits until the menu is answered and the session is done |
-| 7.7 | `Esc` | The box closes and the keys go back to the pane; the draft is kept for next time |
+| 7.7 | `Esc`, then type `echo ok` and Enter | The box closes and the keys go back to the pane; the draft is kept for next time; the Esc does not reach the shell (`echo ok` runs whole), nor Claude Code (it is not stopped) |
 | 7.8 | Take a screenshot (`Win+Shift+S`), `Ctrl+V` in the box | A chip `▣ paste-<date>-<time>.png · N KB`; the PNG is in the settings folder's `attachments`; sent, its path follows the text |
 | 7.9 | `Ctrl+V` with text on the clipboard | The text is pasted; no chip |
 | 7.10 | Drop a file of a few hundred KB | Its chip says its size, `▤ name · 214 KB` |
 | 7.11 | Split the tab, open the box, move the keys with `Alt+Arrows` | The box follows the pane with the keys; a pane narrower than 20 columns has none |
 | 7.12 | **+ Sessions** in the box, tick another session, `Esc`, write a prompt, `Ctrl+Enter` | `+ name` beside the pane under To; the menu's Esc does not reach the shell; both sessions get the prompt; a click on `+ name` takes it off |
+| 7.13 | Write `Run the tests in {project} on {branch}`, **Prompts…** → name it, Save; empty the box, **Prompts…** → it, `Ctrl+Enter` | The menu stays open while the name is typed; `prompts.toml` beside the settings holds it; picked, it fills the box and the keys are back in it; the session gets the project's and branch's names in place of the braces; with **+ Sessions**, each its own |
+| 7.14 | Open **Prompts…** or **+ Sessions**, press `Esc`, type | The menu closes, the box stays open with the keys; nothing reaches the shell |
 
 ## 8. Restoring after a restart
 
@@ -279,6 +286,7 @@ what happened, and the steps.
 | 15.6 | Claude Code used in the last hours | `5h N · resets HH:MM` beside the tokens; the tooltip gives the window's start and end, what is left, and that the limit is the plan's |
 | 15.7 | Linux or macOS: click `UTF-8` → Shift_JIS; `cat` a Shift_JIS file; type Japanese into `cat > x.txt`, then `nkf -g x.txt` (or `file`) | The menu of eight; the file reads right; `Shift_JIS` on the pane's heading and in gold in the status bar; what was typed is Shift_JIS in the file; restart the machine: still Shift_JIS |
 | 15.8 | Windows: the `UTF-8` in the status bar | Only a label with its tooltip: no menu |
+| 15.9 | Claude Code used today (Opus 5.5, say) | `≈$0.39` after the conversation's tokens and today's, and in the 5h window; the tooltip says it is the API's price; `[prices."claude-opus-5-5"] input = 8.0` doubles the input's share; a closed session's line in Recently closed has its own |
 
 ## 16. Keys
 

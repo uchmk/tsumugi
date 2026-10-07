@@ -14,6 +14,7 @@ pub mod server;
 pub mod settings;
 pub mod state;
 pub mod transport;
+pub mod webhook;
 
 #[cfg(test)]
 mod tests;

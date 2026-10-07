@@ -111,6 +111,9 @@ pub const INDEX: &[(Page, &str)] = &[
     (Page::Notifications, "Taskbar flash"),
     (Page::Notifications, "Sound"),
     (Page::Notifications, "Tell about a finish"),
+    (Page::Notifications, "Webhook"),
+    (Page::Notifications, "Webhook format"),
+    (Page::Notifications, "Send after waiting"),
     (Page::Notifications, "Sound for waits"),
     (Page::Notifications, "Sound for fails"),
     (Page::Notifications, "focus mode"),
@@ -838,7 +841,7 @@ fn keys(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut Vec<
 /// The sounds by what the list says.
 const SOUND_NAMES: [(&str, &str); 4] = [("chime", "Soft chime"), ("low", "Low tone"), ("alert", "Alert"), ("default", "System default")];
 
-fn notifications(ui: &mut egui::Ui, l: Look, seen: &Seen, _edit: &mut Edit, out: &mut Vec<Change>) {
+fn notifications(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut Vec<Change>) {
     let c = l.c;
     let n = &seen.settings.notify;
     ui.horizontal(|ui| {
@@ -935,6 +938,25 @@ fn notifications(ui: &mut egui::Ui, l: Look, seen: &Seen, _edit: &mut Edit, out:
         let note = if cfg!(windows) { "Nothing while focus mode, a presentation or a full-screen game is on; the bell still keeps them" } else { "Windows says when focus mode is on; this system does not tell tsumugi yet" };
         if row(ui, l, "Respect Windows focus mode", note, |ui| switch(ui, l, n.focus_mode)) {
             out.push(Change::Set(Some("notify"), "focus_mode", (!n.focus_mode).to_string()));
+        }
+    });
+    section(ui, l, "WHILE YOU ARE AWAY", |ui| {
+        if let Some(t) = row(ui, l, "Webhook", "A session waiting while no one is at the window is sent here: an ntfy topic for the phone, a Slack webhook, or any address taking JSON", |ui| field(ui, &mut edit.drafts, "webhook", &n.webhook, "https://ntfy.sh/my-topic", 260.0)) {
+            out.push(Change::Set(Some("notify"), "webhook", cfg::quote(t.trim())));
+        }
+        sep(ui, l);
+        let formats = [("ntfy", "ntfy"), ("slack", "Slack"), ("json", "JSON")];
+        if let Some(v) = row(ui, l, "Webhook format", "What the address takes", |ui| select(ui, "webhook-format", n.webhook_format.as_str(), &formats)) {
+            out.push(Change::Set(Some("notify"), "webhook_format", cfg::quote(v)));
+        }
+        sep(ui, l);
+        let mut afters: Vec<(u64, String)> = [(30, "30 s"), (60, "1 min"), (120, "2 min"), (300, "5 min"), (900, "15 min")].iter().map(|(v, t)| (*v, t.to_string())).collect();
+        if !afters.iter().any(|(v, _)| *v == n.webhook_after) {
+            afters.push((n.webhook_after, format!("{} s", n.webhook_after)));
+        }
+        let afters: Vec<(u64, &str)> = afters.iter().map(|(v, t)| (*v, t.as_str())).collect();
+        if let Some(v) = row(ui, l, "Send after waiting", "Once a wait, and not while you are at a tsumugi window", |ui| select(ui, "webhook-after", n.webhook_after, &afters)) {
+            out.push(Change::Set(Some("notify"), "webhook_after", v.to_string()));
         }
     });
     section(ui, l, "QUIET TAGS", |ui| {

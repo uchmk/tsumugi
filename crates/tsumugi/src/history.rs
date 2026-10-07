@@ -23,6 +23,8 @@ pub struct Closed {
     pub state: String,
     /// Tokens its conversation used, when known.
     pub tokens: u64,
+    /// What they would cost on the API, in US dollars (`price.rs`).
+    pub cost: f64,
     /// When it ended, in Unix milliseconds.
     pub ended_ms: u64,
     /// The last lines on its screen.
@@ -49,6 +51,7 @@ pub fn to_json(list: &[Closed]) -> String {
                     ("conversation".into(), s(&c.conversation)),
                     ("state".into(), s(&c.state)),
                     ("tokens".into(), n(c.tokens)),
+                    ("cost".into(), Json::Number(c.cost)),
                     ("ended_ms".into(), n(c.ended_ms)),
                     ("last".into(), Json::Array(c.last.iter().map(|l| s(l)).collect())),
                 ])
@@ -78,6 +81,10 @@ pub fn from_json(text: &str) -> Vec<Closed> {
             conversation: text(j, "conversation"),
             state: text(j, "state"),
             tokens: num(j, "tokens"),
+            cost: match j.get("cost") {
+                Some(Json::Number(n)) if *n >= 0.0 => *n,
+                _ => 0.0,
+            },
             ended_ms: num(j, "ended_ms"),
             last: j.get("last").and_then(Json::array).map(|a| a.iter().filter_map(Json::string).map(str::to_owned).collect()).unwrap_or_default(),
         })
@@ -121,6 +128,7 @@ mod tests {
             conversation: "abc-1".into(),
             state: "done".into(),
             tokens: 123_456,
+            cost: 1.25,
             ended_ms: 1_791_000_000_123,
             last: vec!["● Done.".into(), "".into(), "> \\ end".into()],
         };

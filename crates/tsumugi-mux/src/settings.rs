@@ -65,6 +65,16 @@
 //! taskbar = ["waiting", "error"]
 //! flash = []
 //! sound = []
+//! # A session waiting two minutes while no one is at the window, sent here.
+//! webhook = "https://ntfy.sh/my-topic"
+//! webhook_format = "ntfy"
+//! webhook_after = 120
+//!
+//! # What tokens cost, per million in US dollars, by the start of the model's id.
+//! [prices."claude-opus-5-5"]
+//! input = 4.0
+//! output = 20.0
+//! cache_read = 0.2
 //!
 //! # What a tab's menu runs to open its folder; {folder} is the folder.
 //! [open]
@@ -144,6 +154,20 @@ pub struct Settings {
     pub notify: Notify,
     pub open: Open,
     pub menu: Menu,
+    /// Prices per million tokens in US dollars, by the start of a model's id
+    /// (`claude-opus-5-5`): the window's own are used for the rest.
+    pub prices: std::collections::BTreeMap<String, Price>,
+}
+
+/// What a model's tokens cost, in US dollars per million. A cache write is
+/// 1.25 times the input (2 times for the hour-long cache); a cache read is a
+/// tenth of the input unless given.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Price {
+    pub input: f64,
+    pub output: f64,
+    pub cache_read: Option<f64>,
 }
 
 /// Startup and closing (the settings screen's General).
@@ -360,6 +384,7 @@ impl Default for Settings {
             notify: Notify::default(),
             open: Open::default(),
             menu: Menu::default(),
+            prices: std::collections::BTreeMap::new(),
         }
     }
 }
@@ -382,7 +407,7 @@ impl Default for Open {
 
 /// The tab's right-click menu: built-in items to leave out, by their words
 /// (`rename`, `note`, `tags`, `mute`, `pin`, `restart`, `duplicate`, `new-window`,
-/// `filer`, `editor`, `copy-path`, `save-output`, `close`), and items of one's own.
+/// `filer`, `editor`, `copy-path`, `save-output`, `pr`, `close`), and items of one's own.
 #[derive(Clone, Debug, Default, PartialEq, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Menu {
@@ -403,7 +428,7 @@ pub struct MenuItem {
 }
 
 /// The words of the menu's own items, for `menu.hide`.
-pub const MENU_ITEMS: [&str; 13] = ["rename", "note", "tags", "mute", "pin", "restart", "duplicate", "new-window", "filer", "editor", "copy-path", "save-output", "close"];
+pub const MENU_ITEMS: [&str; 14] = ["rename", "note", "tags", "mute", "pin", "restart", "duplicate", "new-window", "filer", "editor", "copy-path", "save-output", "pr", "close"];
 
 /// The menu's items in the order `order` asks for: those it names first,
 /// in its order, then the rest in their own.
@@ -424,7 +449,7 @@ pub fn menu_group(word: &str) -> &'static str {
     match word {
         "rename" | "note" | "tags" | "mute" | "pin" => "look",
         "restart" | "duplicate" | "new-window" => "start",
-        "filer" | "editor" | "copy-path" | "save-output" => "folder",
+        "filer" | "editor" | "copy-path" | "save-output" | "pr" => "folder",
         _ => "close",
     }
 }
@@ -444,6 +469,7 @@ pub fn menu_label(word: &str) -> &'static str {
         "editor" => "Open in the editor",
         "copy-path" => "Copy the folder path",
         "save-output" => "Save the output to a file",
+        "pr" => "Create a pull request",
         "close" => "Close the session",
         _ => "",
     }
@@ -500,6 +526,14 @@ pub struct Notify {
     pub sound_error: String,
     /// Windows: nothing shows or sounds while focus mode (do not disturb) is on.
     pub focus_mode: bool,
+    /// Where to send a session waiting while no one is at the window: an
+    /// ntfy topic's address, a Slack incoming webhook, or any address that
+    /// takes JSON. Empty: nowhere.
+    pub webhook: String,
+    /// What the address takes: `ntfy`, `slack` or `json`.
+    pub webhook_format: String,
+    /// How many seconds a session waits before it is sent.
+    pub webhook_after: u64,
 }
 
 /// The sounds `sound_waiting` and `sound_error` name.
@@ -517,6 +551,9 @@ impl Default for Notify {
             sound_waiting: "chime".into(),
             sound_error: "low".into(),
             focus_mode: true,
+            webhook: String::new(),
+            webhook_format: "ntfy".into(),
+            webhook_after: 120,
         }
     }
 }
@@ -576,6 +613,16 @@ pub fn parse(text: &str) -> Result<Settings, String> {
     let shapes = ["block", "bar", "underline"];
     if !shapes.contains(&s.appearance.cursor.trim_end_matches("-blink")) {
         return Err(format!("appearance.cursor: `{}` is not block, bar or underline (with -blink to blink)", s.appearance.cursor));
+    }
+    if !["ntfy", "slack", "json"].contains(&s.notify.webhook_format.as_str()) {
+        return Err(format!("notify.webhook_format: `{}` is not ntfy, slack or json", s.notify.webhook_format));
+    }
+    let webhook = s.notify.webhook.trim();
+    if !webhook.is_empty() && !(webhook.starts_with("https://") || webhook.starts_with("http://")) {
+        return Err(format!("notify.webhook: `{webhook}` is not an http(s) address"));
+    }
+    if let Some((model, _)) = s.prices.iter().find(|(_, p)| p.input < 0.0 || p.output < 0.0 || p.cache_read.is_some_and(|r| r < 0.0)) {
+        return Err(format!("prices.{model}: a price below zero"));
     }
     for (key, v) in [("notify.sound_waiting", &s.notify.sound_waiting), ("notify.sound_error", &s.notify.sound_error)] {
         if !SOUNDS.contains(&v.as_str()) {
@@ -937,7 +984,10 @@ mod tests {
         let by_branch = TagRule { branch: "claude/*".into(), tag: "claude".into(), ..TagRule::default() };
         assert_eq!(s.tags.rule, vec![rule("~/dev/filer", "filer"), rule("~/dev/*", "{name}"), by_branch]);
         assert_eq!(s.tags.colors.get("claude").map(String::as_str), Some("#5e4a86"));
-        assert_eq!(s.notify, Notify { flash: vec![], ..Notify::default() });
+        assert_eq!(s.notify, Notify { flash: vec![], webhook: "https://ntfy.sh/my-topic".into(), ..Notify::default() });
+        assert_eq!(s.prices.get("claude-opus-5-5"), Some(&Price { input: 4.0, output: 20.0, cache_read: Some(0.2) }));
+        assert!(parse("[notify]\nwebhook = \"file:///etc\"\n").is_err(), "an http(s) address only");
+        assert!(parse("[notify]\nwebhook_format = \"xml\"\n").is_err());
         assert_eq!(s.general.default_folder, "~/dev");
         assert_eq!(s.sessions.quiet, Some(10));
         assert_eq!(s.shell.command(), Some(("pwsh".to_string(), vec!["-NoLogo".to_string()])));

@@ -321,7 +321,7 @@ pub fn status_bar(
     size: Option<(usize, usize)>,
     extra: &StatusExtra,
 ) -> Option<StatusClick> {
-    let StatusExtra { up_ms, nerd, clock, git, tokens, block } = extra;
+    let StatusExtra { up_ms, nerd, clock, git, tokens, block, cost } = extra;
     let (up_ms, nerd) = (*up_ms, *nerd);
     let mut click = None;
     let small = |t: String, c: Color32| RichText::new(t).font(FontId::proportional(11.5)).color(c);
@@ -393,16 +393,20 @@ pub fn status_bar(
             if let Some((conversation, today)) = tokens {
                 use crate::usage::short;
                 ui.add_space(12.0);
+                use crate::price::dollars;
+                let money = |c: f64| if c > 0.0 { format!(" ≈{}", dollars(c)) } else { String::new() };
                 let said = match conversation {
-                    Some(c) => format!("{} tokens · Today {}", short(c.total()), short(today.total())),
-                    None => format!("Today {} tokens", short(today.total())),
+                    Some(c) => format!("{} tokens{} · Today {}{}", short(c.total()), money(cost.0.unwrap_or(0.0)), short(today.total()), money(cost.1)),
+                    None => format!("Today {} tokens{}", short(today.total()), money(cost.1)),
                 };
                 let detail = |t: &crate::usage::Tokens| format!("in {} · cache write {} · cache read {} · out {}", short(t.input), short(t.cache_write), short(t.cache_read), short(t.output));
                 let mut hover = format!("Claude Code's tokens today: {}", detail(today));
                 if let Some(c) = conversation {
                     hover = format!("This conversation: {}\n{hover}", detail(c));
                 }
-                ui.label(small(said, pal.fg_dim)).on_hover_text(format!("{hover}\nThe totals leave out the cache's reads."));
+                ui.label(small(said, pal.fg_dim)).on_hover_text(format!(
+                    "{hover}\nThe totals leave out the cache's reads.\n≈ is what the tokens would cost on the API, at each model's prices (`[prices]` in the settings changes them); a Pro or Max plan is not billed this way."
+                ));
             }
             if let Some(b) = block {
                 use crate::usage::short;
@@ -411,7 +415,8 @@ pub fn status_bar(
                 let start = chrono::Local.timestamp_millis_opt(b.start_ms).single().map(|t| t.format("%H:%M").to_string()).unwrap_or_default();
                 let left = (b.end_ms - now_ms() as i64).max(0) as u64;
                 ui.add_space(12.0);
-                ui.label(small(format!("5h {} · resets {end}", short(b.tokens.total())), pal.fg_dim)).on_hover_text(format!(
+                let money = if b.cost > 0.0 { format!(" ≈{}", crate::price::dollars(b.cost)) } else { String::new() };
+                ui.label(small(format!("5h {}{money} · resets {end}", short(b.tokens.total())), pal.fg_dim)).on_hover_text(format!(
                     "Claude Code's usage window: {start} to {end}, {} left; {} tokens in it so far.\n\
                      Worked out from the transcripts: the window opens at the hour of the first answer after the last one closed. \
                      How much a window allows depends on the plan, which tsumugi cannot read.",
@@ -1058,6 +1063,8 @@ pub struct StatusExtra {
     pub tokens: Option<(Option<crate::usage::Tokens>, crate::usage::Tokens)>,
     /// Claude Code's five-hour window, when one is open.
     pub block: Option<crate::usage::Block>,
+    /// What the conversation's and today's tokens would cost on the API.
+    pub cost: (Option<f64>, f64),
 }
 
 /// What the notification list was asked to do.

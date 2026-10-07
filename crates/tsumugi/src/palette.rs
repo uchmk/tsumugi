@@ -41,10 +41,12 @@ pub enum Command {
     TypeAll,
     /// Save the pane's output to a file.
     SaveOutput,
+    /// Several pieces of work at once, in worktrees.
+    Parallel,
 }
 
 impl Command {
-    pub const ALL: [Command; 18] = [
+    pub const ALL: [Command; 19] = [
         Command::NewSession,
         Command::SplitRight,
         Command::SplitDown,
@@ -55,6 +57,7 @@ impl Command {
         Command::Changes,
         Command::TypeAll,
         Command::SaveOutput,
+        Command::Parallel,
         Command::CloseTab,
         Command::Sort(Sort::Manual),
         Command::Sort(Sort::Needs),
@@ -81,6 +84,7 @@ impl Command {
             Command::Changes => "Changes not committed here (git diff)".into(),
             Command::TypeAll => "Type into every pane of the tab (or stop)".into(),
             Command::SaveOutput => "Save the pane's output to a file".into(),
+            Command::Parallel => "Start in parallel: worktrees, one prompt each…".into(),
         }
     }
 
@@ -99,7 +103,7 @@ impl Command {
             Command::Settings => Action::Settings,
             Command::Waiting => Action::Waiting,
             Command::TypeAll => Action::TypeAll,
-            Command::Sort(_) | Command::Closed | Command::Changes | Command::SaveOutput => return String::new(),
+            Command::Sort(_) | Command::Closed | Command::Changes | Command::SaveOutput | Command::Parallel => return String::new(),
         };
         label(action)
     }

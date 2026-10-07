@@ -191,6 +191,32 @@ pub fn diff(cwd: &Path) -> Result<String, String> {
     Ok(text)
 }
 
+/// Push the branch `cwd` is on and open a pull request for it with `gh`,
+/// titled and described from its commits (a thread's work): its address.
+pub fn create_pr(cwd: &Path) -> Result<String, String> {
+    let said = |cmd: &mut Command| -> Result<String, String> {
+        cmd.current_dir(cwd).stdin(Stdio::null());
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            cmd.creation_flags(0x0800_0000);
+        }
+        let out = cmd.output().map_err(|e| format!("{e}"))?;
+        if out.status.success() {
+            Ok(String::from_utf8_lossy(&out.stdout).trim().to_owned())
+        } else {
+            Err(String::from_utf8_lossy(&out.stderr).trim().to_owned())
+        }
+    };
+    let branch = said(Command::new("git").args(["rev-parse", "--abbrev-ref", "HEAD"])).map_err(|e| format!("not a git repository: {e}"))?;
+    if branch == "HEAD" {
+        return Err("no branch checked out here (a detached HEAD)".into());
+    }
+    said(Command::new("git").args(["push", "-u", "origin", "HEAD"])).map_err(|e| format!("git push: {e}"))?;
+    let out = said(Command::new("gh").args(["pr", "create", "--fill"])).map_err(|e| if e.is_empty() { "gh did not run: is the GitHub CLI installed and signed in?".to_owned() } else { format!("gh pr create: {e}") })?;
+    out.lines().rev().find(|l| l.starts_with("https://")).map(str::to_owned).ok_or_else(|| format!("gh said: {out}"))
+}
+
 /// `git diff --numstat`: added, removed and path a line; `-` for binary.
 fn sum_numstat(out: &str) -> (u32, u32) {
     out.lines().fold((0, 0), |(a, r), l| {

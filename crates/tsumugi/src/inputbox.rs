@@ -51,6 +51,19 @@ pub struct InputBox {
     pasted_text_lately: bool,
     /// The V key's press was seen: typed, not pasted.
     v_down: bool,
+    /// Prompts kept to send again (`prompts.rs`), and whether they changed
+    /// here and want writing.
+    pub prompts: Vec<crate::prompts::Prompt>,
+    pub prompts_changed: bool,
+    /// The name being given to the draft, to keep it as a prompt.
+    naming: String,
+    /// One of its menus was open last frame: when it closes, the keys come
+    /// back to the box.
+    menu_was_open: bool,
+    /// The frame at whose end the field had the keys. egui takes them from
+    /// it as an Esc arrives, before anything reads the Esc: this says the
+    /// Esc is still the box's (closing it), not the shell's.
+    had_keys_at: Option<u64>,
 }
 
 /// Where a prompt goes.
@@ -71,9 +84,9 @@ pub struct Send {
 }
 
 impl InputBox {
-    /// Closed, with the prompts sent before.
-    pub fn with_history(history: Vec<String>) -> Self {
-        Self { history, ..Self::default() }
+    /// Closed, with the prompts sent before and those kept to send again.
+    pub fn with_history(history: Vec<String>, prompts: Vec<crate::prompts::Prompt>) -> Self {
+        Self { history, prompts, ..Self::default() }
     }
 
     /// Open it and give it the keys, or close it.
@@ -101,6 +114,12 @@ impl InputBox {
         self.drop_files(session, paths);
         let d = self.drafts.entry(session).or_default();
         d.sizes.extend(files);
+    }
+
+    /// Whether the box had the keys as this frame began: they are not the
+    /// shell's, even in the frame an Esc took them from it.
+    pub fn had_keys(&self, ctx: &egui::Context) -> bool {
+        self.had_keys_at.is_some_and(|f| f + 1 == ctx.cumulative_frame_nr())
     }
 
     /// Whether Ctrl+V was pressed in the box with no text to paste: the
@@ -175,12 +194,16 @@ impl InputBox {
         self.to_also.retain(|s| *s != to && others.iter().any(|(o, _)| o == s));
         let id = egui::Id::new("input-box");
         let focused = ui.ctx().memory(|m| m.has_focus(id));
+        let esc_for_box = self.had_keys(ui.ctx()) && !focused && ui.input(|i| i.key_pressed(egui::Key::Escape));
         let mut draft = self.drafts.remove(&to).unwrap_or_default();
         let mut sent = None;
         // The keys the field would take otherwise: send, history, close.
         // `↑` and `↓` walk the history only while the field is empty or shows
         // a line from it; in a draft of several lines they move the cursor.
         let walking = draft.text.is_empty() || (self.back.is_some() && !draft.text.contains('\n'));
+        // An Esc while one of its menus is open closes the menu, not the box.
+        let menu_open = egui::Popup::is_any_open(ui.ctx());
+        let mut menus_open = false;
         let (later_key, send, up, down, close) = ui.input_mut(|i| {
             if !focused {
                 return (false, false, false, false, false);
@@ -192,7 +215,7 @@ impl InputBox {
                 i.consume_key(cmd, egui::Key::Enter),
                 walking && i.consume_key(egui::Modifiers::NONE, egui::Key::ArrowUp),
                 walking && self.back.is_some() && i.consume_key(egui::Modifiers::NONE, egui::Key::ArrowDown),
-                i.consume_key(cmd, egui::Key::I) || i.consume_key(egui::Modifiers::NONE, egui::Key::Escape),
+                i.consume_key(cmd, egui::Key::I) || (!menu_open && i.consume_key(egui::Modifiers::NONE, egui::Key::Escape)),
             )
         });
         // Ctrl+V: egui-winit takes the V key's press as a paste and passes
@@ -221,7 +244,7 @@ impl InputBox {
         if down {
             self.newer(&mut draft);
         }
-        if close {
+        if close || (esc_for_box && !menu_open) {
             self.open = false;
             // Back to the pane.
             ui.ctx().memory_mut(|m| m.surrender_focus(id));
@@ -256,7 +279,7 @@ impl InputBox {
                 }
                 let rest: Vec<&(SessionId, String)> = others.iter().filter(|(o, _)| *o != to).collect();
                 if !rest.is_empty() {
-                    let menu = ui.menu_button(RichText::new("+ Sessions").size(12.0).color(c.dim), |ui| {
+                    let menu = stay_open(RichText::new("+ Sessions").size(12.0).color(c.dim)).ui(ui, |ui| {
                         ui.set_min_width(220.0);
                         ui.label(RichText::new("Send the same prompt to").size(11.5).color(c.dim));
                         for (o, n) in &rest {
@@ -283,10 +306,11 @@ impl InputBox {
                     });
                     // The keys stay with the box (a click on the menu took
                     // them): an Esc to close it must not reach the shell.
-                    if menu.response.clicked() || menu.inner.is_some() {
+                    if menu.0.clicked() {
                         self.focus = true;
                     }
-                    menu.response.on_hover_text("Send the same prompt to other sessions as well");
+                    menus_open |= menu.1.is_some();
+                    menu.0.on_hover_text("Send the same prompt to other sessions as well");
                 }
                 if !tags.is_empty() {
                     ui.label(RichText::new("or").size(12.0).color(c.faint()));
@@ -308,6 +332,55 @@ impl InputBox {
                     }
                 }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    // Prompts kept: one picked goes into the draft.
+                    let mut picked = false;
+                    let menu = stay_open(RichText::new("Prompts…").size(12.0).color(c.dim)).ui(ui, |ui| {
+                        ui.set_min_width(260.0);
+                        if self.prompts.is_empty() {
+                            ui.label(RichText::new("None kept yet: write one and save it below").size(11.5).color(c.dim));
+                        }
+                        let mut gone = None;
+                        for (k, p) in self.prompts.iter().enumerate() {
+                            ui.horizontal(|ui| {
+                                if ui.small_button("×").on_hover_text("Forget it").clicked() {
+                                    gone = Some(k);
+                                }
+                                if ui.button(&p.name).on_hover_text(&p.text).clicked() {
+                                    if draft.text.trim().is_empty() {
+                                        draft.text.clone_from(&p.text);
+                                    } else {
+                                        draft.text = format!("{}\n{}", draft.text.trim_end(), p.text);
+                                    }
+                                    picked = true;
+                                    ui.close();
+                                }
+                            });
+                        }
+                        if let Some(k) = gone {
+                            self.prompts.remove(k);
+                            self.prompts_changed = true;
+                        }
+                        ui.separator();
+                        if draft.text.trim().is_empty() {
+                            ui.label(RichText::new("{folder}, {project} and {branch} become each session's").size(11.0).color(c.faint()));
+                        } else {
+                            ui.horizontal(|ui| {
+                                ui.add(egui::TextEdit::singleline(&mut self.naming).hint_text("Name this prompt").desired_width(160.0));
+                                if ui.add_enabled(!self.naming.trim().is_empty(), egui::Button::new("Save")).clicked() {
+                                    let name = std::mem::take(&mut self.naming).trim().to_owned();
+                                    self.prompts.retain(|p| p.name != name);
+                                    self.prompts.push(crate::prompts::Prompt { name, text: draft.text.trim_end().to_owned() });
+                                    self.prompts_changed = true;
+                                    ui.close();
+                                }
+                            });
+                        }
+                    });
+                    // Back to the box to go on writing, or to send.
+                    if menu.0.clicked() || picked {
+                        self.focus = true;
+                    }
+                    menus_open |= menu.1.is_some();
                     if queued > 0 {
                         ui.label(RichText::new(format!("{queued} queued")).size(11.5).color(c.wait)).on_hover_text("Prompts that go when the session is next done");
                     }
@@ -376,6 +449,16 @@ impl InputBox {
                 });
             });
         });
+        if self.menu_was_open && !menus_open {
+            self.focus = true;
+        }
+        self.menu_was_open = menus_open;
+        // An Esc for one of its menus leaves the keys with the box.
+        if esc_for_box && menu_open {
+            self.focus = true;
+        }
+        let keeps = self.open && (ui.ctx().memory(|m| m.has_focus(id)) || self.focus);
+        self.had_keys_at = keeps.then(|| ui.ctx().cumulative_frame_nr());
         // Picked out by a glow while it has the keys (the design's).
         if focused {
             let r = shown.response.rect;
@@ -386,6 +469,13 @@ impl InputBox {
         }
         sent
     }
+}
+
+/// A menu button whose menu stays open while it is used (a field typed in,
+/// several ticks), closing on a click outside it or on Esc.
+fn stay_open(text: RichText) -> egui::containers::menu::MenuButton<'static> {
+    use egui::containers::menu::{MenuButton, MenuConfig};
+    MenuButton::new(text).config(MenuConfig::new().close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside))
 }
 
 /// `214 KB`, `1.2 MB`.

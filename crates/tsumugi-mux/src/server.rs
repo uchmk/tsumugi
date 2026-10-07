@@ -41,6 +41,8 @@ struct Session {
     /// A line to type once the shell is ready: `claude --resume` in a
     /// restored session.
     pending: Option<Vec<u8>>,
+    /// When the wait last sent to the webhook began (`Info::since_ms`).
+    webhooked: Option<u64>,
 }
 
 struct Shared {
@@ -574,6 +576,10 @@ struct Rules {
     shell: crate::settings::Shell,
     scrollback: usize,
     pane_log: bool,
+    /// `[notify] webhook`, `webhook_format` and `webhook_after` (ms).
+    webhook: String,
+    webhook_format: String,
+    webhook_after: u64,
 }
 
 impl Rules {
@@ -593,6 +599,9 @@ impl Rules {
             shell: s.shell,
             scrollback: s.advanced.scrollback,
             pane_log: s.advanced.pane_log,
+            webhook: s.notify.webhook.trim().to_owned(),
+            webhook_format: s.notify.webhook_format,
+            webhook_after: s.notify.webhook_after.saturating_mul(1000),
         }
     }
 
@@ -723,7 +732,7 @@ fn spawn_session(
     let watchers: BTreeSet<ClientId> = client.into_iter().collect();
     sessions.insert(
         id,
-        Session { term, info, notice: None, fresh: watchers.clone(), watchers, sent: None, shell, claude: None, pending: None },
+        Session { term, info, notice: None, fresh: watchers.clone(), watchers, sent: None, shell, claude: None, pending: None, webhooked: None },
     );
     Ok(id)
 }
@@ -1024,6 +1033,35 @@ fn repo(dir: &std::path::Path) -> Option<(Option<String>, PathBuf)> {
 
 /// Turn "session N changed" into messages, at most one screen per session
 /// every few milliseconds however fast its shell writes.
+/// A session that has waited `[notify] webhook_after` while no one is at a
+/// window goes to the webhook, once a wait; muted ones (or their tags) not.
+fn send_webhooks(shared: &Shared, sessions: &mut BTreeMap<SessionId, Session>) {
+    let rules = lock(&shared.rules);
+    if rules.webhook.is_empty() {
+        return;
+    }
+    let (url, format, after) = (rules.webhook.clone(), rules.webhook_format.clone(), rules.webhook_after);
+    drop(rules);
+    if !lock(&shared.attention).focused.is_empty() {
+        return;
+    }
+    let muted = lock(&shared.muted_tags).clone();
+    let now = now_ms();
+    for s in sessions.values_mut() {
+        let i = &s.info;
+        let quiet = i.muted || i.tags.iter().any(|t| muted.contains(t));
+        if i.state != State::Waiting || quiet || now.saturating_sub(i.since_ms) < after || s.webhooked == Some(i.since_ms) {
+            continue;
+        }
+        s.webhooked = Some(i.since_ms);
+        let folder = i.project.file_name().map(|f| f.to_string_lossy().into_owned()).unwrap_or_default();
+        let said = if i.note.is_empty() { "Waiting for you".to_owned() } else { i.note.clone() };
+        let name = if i.title.trim().is_empty() { i.command.clone() } else { i.title.clone() };
+        let message = format!("{said}\n{name} · waiting {} s", now.saturating_sub(i.since_ms) / 1000);
+        crate::webhook::send(url.clone(), format.clone(), format!("{folder} is waiting for you"), message, i.cwd.display().to_string());
+    }
+}
+
 fn run_pump(shared: Arc<Shared>, dirty: Receiver<SessionId>) {
     let mut last_settle = std::time::Instant::now();
     loop {
@@ -1079,6 +1117,7 @@ fn run_pump(shared: Arc<Shared>, dirty: Receiver<SessionId>) {
             if changed {
                 broadcast(&shared, &sessions);
             }
+            send_webhooks(&shared, &mut sessions);
         }
         let mut ended = Vec::new();
         for id in ids {

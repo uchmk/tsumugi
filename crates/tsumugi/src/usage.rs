@@ -18,6 +18,8 @@ pub struct Tokens {
     pub input: u64,
     /// Written to the prompt cache.
     pub cache_write: u64,
+    /// Of those, written to the hour-long cache (priced higher).
+    pub cache_write_1h: u64,
     /// Read from it: cheap, and many, so kept apart from the total.
     pub cache_read: u64,
     pub output: u64,
@@ -32,6 +34,7 @@ impl Tokens {
     fn add(&mut self, o: Tokens) {
         self.input += o.input;
         self.cache_write += o.cache_write;
+        self.cache_write_1h += o.cache_write_1h;
         self.cache_read += o.cache_read;
         self.output += o.output;
     }
@@ -48,6 +51,11 @@ pub struct Usage {
     pub talks: HashMap<String, Talk>,
     /// Claude Code's five-hour window now, if one is open.
     pub block: Option<Block>,
+    /// What today's tokens would cost on the API, in US dollars (`price.rs`),
+    /// the models with no price left out.
+    pub today_cost: f64,
+    /// The same, by conversation.
+    pub costs: HashMap<String, f64>,
 }
 
 /// Claude Code's usage window: it opens at the hour of the first answer
@@ -59,25 +67,29 @@ pub struct Block {
     pub start_ms: i64,
     pub end_ms: i64,
     pub tokens: Tokens,
+    /// What they would cost on the API (`price.rs`).
+    pub cost: f64,
 }
 
 /// How long a window lasts.
 const BLOCK_MS: i64 = 5 * 3600 * 1000;
 
-/// The window open at `now`, from the answers' times and tokens (any order).
-pub fn block(answers: &[(i64, Tokens)], now: i64) -> Option<Block> {
-    let mut sorted: Vec<&(i64, Tokens)> = answers.iter().collect();
-    sorted.sort_by_key(|(t, _)| *t);
+/// The window open at `now`, from the answers' times, tokens and costs
+/// (any order).
+pub fn block(answers: &[(i64, Tokens, f64)], now: i64) -> Option<Block> {
+    let mut sorted: Vec<&(i64, Tokens, f64)> = answers.iter().collect();
+    sorted.sort_by_key(|(t, ..)| *t);
     let mut open: Option<Block> = None;
-    for (t, tokens) in sorted {
+    for (t, tokens, cost) in sorted {
         let mut b = match open {
             Some(b) if *t < b.end_ms => b,
             _ => {
                 let start = t - t.rem_euclid(3600 * 1000);
-                Block { start_ms: start, end_ms: start + BLOCK_MS, tokens: Tokens::default() }
+                Block { start_ms: start, end_ms: start + BLOCK_MS, tokens: Tokens::default(), cost: 0.0 }
             }
         };
         b.tokens.add(*tokens);
+        b.cost += cost;
         open = Some(b);
     }
     open.filter(|b| now < b.end_ms)
@@ -110,17 +122,27 @@ pub fn short(n: u64) -> String {
     }
 }
 
-/// An answer's line: its message id, the local day it came, its time in
-/// Unix milliseconds, its tokens. `None` for any other line.
-fn line(text: &str) -> Option<(String, NaiveDate, i64, Tokens)> {
+/// An answer: its message id, the local day it came, its time in Unix
+/// milliseconds, its model and its tokens.
+struct Answer {
+    id: String,
+    day: NaiveDate,
+    ms: i64,
+    model: String,
+    tokens: Tokens,
+}
+
+/// An answer's line; `None` for any other line.
+fn line(text: &str) -> Option<Answer> {
     let at = text.find("\"usage\":{")?;
     let usage = &text[at..];
     let n = |key: &str| number(usage, key).unwrap_or(0);
-    let tokens = Tokens { input: n("input_tokens"), cache_write: n("cache_creation_input_tokens"), cache_read: n("cache_read_input_tokens"), output: n("output_tokens") };
+    let tokens = Tokens { input: n("input_tokens"), cache_write: n("cache_creation_input_tokens"), cache_write_1h: n("ephemeral_1h_input_tokens"), cache_read: n("cache_read_input_tokens"), output: n("output_tokens") };
     let id = string(text, "\"id\":\"msg_").map(|s| format!("msg_{s}")).unwrap_or_default();
     let when = string(text, "\"timestamp\":\"")?;
     let at = DateTime::parse_from_rfc3339(&when).ok()?;
-    Some((id, at.with_timezone(&Local).date_naive(), at.timestamp_millis(), tokens))
+    let model = string(text, "\"model\":\"").unwrap_or_default();
+    Some(Answer { id, day: at.with_timezone(&Local).date_naive(), ms: at.timestamp_millis(), model, tokens })
 }
 
 /// The number after `"key":` in `json`, the first one.
@@ -147,8 +169,11 @@ struct File {
     prompts: u32,
     /// The first and the last line's time.
     span: Option<(i64, i64)>,
-    /// The answers of the last day, by time: the five-hour window.
-    recent: Vec<(i64, Tokens)>,
+    /// The answers of the last day, by time and model: the five-hour window.
+    recent: Vec<(i64, String, Tokens)>,
+    /// By model: all of it, and each day's (what they cost).
+    models: HashMap<String, Tokens>,
+    day_models: HashMap<(NaiveDate, String), Tokens>,
 }
 
 impl File {
@@ -160,16 +185,18 @@ impl File {
             if let Some(t) = stamp(l) {
                 self.span = Some(self.span.map_or((t, t), |(a, b)| (a.min(t), b.max(t))));
             }
-            let Some((id, day, ms, t)) = line(l) else { continue };
-            if !id.is_empty() && !self.seen.insert(id) {
+            let Some(a) = line(l) else { continue };
+            if !a.id.is_empty() && !self.seen.insert(a.id) {
                 continue;
             }
-            self.total.add(t);
-            self.days.entry(day).or_default().add(t);
-            self.recent.push((ms, t));
+            self.total.add(a.tokens);
+            self.days.entry(a.day).or_default().add(a.tokens);
+            self.models.entry(a.model.clone()).or_default().add(a.tokens);
+            self.day_models.entry((a.day, a.model.clone())).or_default().add(a.tokens);
+            self.recent.push((a.ms, a.model, a.tokens));
         }
         let day_ago = chrono::Utc::now().timestamp_millis() - 24 * 3600 * 1000;
-        self.recent.retain(|(ms, _)| *ms > day_ago);
+        self.recent.retain(|(ms, ..)| *ms > day_ago);
     }
 
     /// Read what was added since the last time.
@@ -243,20 +270,23 @@ impl Watcher {
                 }
                 let today = Local::now().date_naive();
                 let mut u = Usage::default();
-                let answers: Vec<(i64, Tokens)> = files.values().flat_map(|(f, _)| f.recent.iter().copied()).collect();
+                let price = |model: &str, t: &Tokens| crate::price::of(model).map_or(0.0, |p| crate::price::cost(p, t));
+                let answers: Vec<(i64, Tokens, f64)> = files.values().flat_map(|(f, _)| f.recent.iter().map(|(ms, m, t)| (*ms, *t, price(m, t)))).collect();
                 u.block = block(&answers, chrono::Utc::now().timestamp_millis());
                 for (f, id) in files.values() {
                     if let Some(t) = f.days.get(&today) {
                         u.today.add(*t);
                     }
+                    u.today_cost += f.day_models.iter().filter(|((d, _), _)| *d == today).map(|((_, m), t)| price(m, t)).sum::<f64>();
                     if let Some(id) = id {
+                        u.costs.insert(id.clone(), f.models.iter().map(|(m, t)| price(m, t)).sum());
                         u.conversations.insert(id.clone(), f.total);
                         let ms = f.span.map_or(0, |(a, b)| (b - a).max(0) as u64);
                         u.talks.insert(id.clone(), Talk { prompts: f.prompts, ms });
                     }
                 }
                 let changed = out.lock().map(|mut l| {
-                    let changed = l.today != u.today || l.conversations != u.conversations || l.talks != u.talks || l.block != u.block;
+                    let changed = l.today != u.today || l.conversations != u.conversations || l.talks != u.talks || l.block != u.block || l.today_cost != u.today_cost;
                     *l = u;
                     changed
                 });
@@ -284,27 +314,29 @@ mod tests {
         let t = |n: u64| Tokens { output: n, ..Tokens::default() };
         // 09:20 and 11:00 in one window (09:00 to 14:00); 14:10 opens the
         // next at 14:00, which 15:30 is in.
-        let answers = [(9 * h + 20 * 60 * 1000, t(1)), (11 * h, t(2)), (14 * h + 10 * 60 * 1000, t(4)), (15 * h + 30 * 60 * 1000, t(8))];
+        let answers = [(9 * h + 20 * 60 * 1000, t(1), 0.5), (11 * h, t(2), 0.5), (14 * h + 10 * 60 * 1000, t(4), 1.0), (15 * h + 30 * 60 * 1000, t(8), 2.0)];
         let b = block(&answers, 16 * h).unwrap();
-        assert_eq!((b.start_ms, b.end_ms, b.tokens.output), (14 * h, 19 * h, 12));
+        assert_eq!((b.start_ms, b.end_ms, b.tokens.output, b.cost), (14 * h, 19 * h, 12, 3.0));
         assert_eq!(block(&answers[..2], 12 * h).unwrap().tokens.output, 3);
         assert_eq!(block(&answers[..2], 14 * h), None, "closed at 14:00");
         assert_eq!(block(&[], 0), None);
     }
 
-    const ANSWER: &str = r#"{"message":{"id":"msg_011Cf","role":"assistant","usage":{"cache_creation":{"ephemeral_1h_input_tokens":39581},"cache_creation_input_tokens":39581,"cache_read_input_tokens":42941,"input_tokens":2,"iterations":[{"input_tokens":2,"output_tokens":492}],"output_tokens":492}},"sessionId":"abc","timestamp":"2026-10-06T03:57:00.000Z","type":"assistant"}"#;
+    const ANSWER: &str = r#"{"message":{"id":"msg_011Cf","role":"assistant","usage":{"cache_creation":{"ephemeral_1h_input_tokens":39581},"cache_creation_input_tokens":39581,"cache_read_input_tokens":42941,"input_tokens":2,"iterations":[{"input_tokens":2,"output_tokens":492}],"output_tokens":492}},"model":"claude-opus-5-5","sessionId":"abc","timestamp":"2026-10-06T03:57:00.000Z","type":"assistant"}"#;
 
     #[test]
     fn an_answers_tokens_are_read_once() {
-        let (id, _, _, t) = line(ANSWER).expect("an answer");
-        assert_eq!(id, "msg_011Cf");
-        assert_eq!(t, Tokens { input: 2, cache_write: 39581, cache_read: 42941, output: 492 });
+        let a = line(ANSWER).expect("an answer");
+        let t = a.tokens;
+        assert_eq!((a.id.as_str(), a.model.as_str()), ("msg_011Cf", "claude-opus-5-5"));
+        assert_eq!(t, Tokens { input: 2, cache_write: 39581, cache_write_1h: 39581, cache_read: 42941, output: 492 });
         assert_eq!(t.total(), 40075, "the cache's reads apart");
         assert!(line(r#"{"type":"user","message":{"content":"hi"},"timestamp":"2026-10-06T03:57:00Z"}"#).is_none());
         let mut f = File::default();
         f.take(&format!("{ANSWER}\n{ANSWER}\nnot json\n"));
         assert_eq!(f.total.output, 492, "the same message twice is one answer");
         assert_eq!(f.days.values().map(|t| t.output).sum::<u64>(), 492);
+        assert_eq!(f.models.get("claude-opus-5-5").map(|t| t.output), Some(492), "by model, for its price");
     }
 
     #[test]

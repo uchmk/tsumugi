@@ -48,7 +48,12 @@ what it asks about as its screen says it (Claude Code's "Bash command" and
 the command, the file to edit), and the numbered choices as buttons. Each row has a tick;
 **Yes to N** types `1` into every ticked menu whose first choice is "Yes",
 **No to N** types the choice that starts with "No". A menu without such a
-choice, or a session with no menu on its screen, is left alone. The same
+choice, or a session with no menu on its screen, is left alone. When it asks
+to run one Bash command, **Always allow…** shows the rule (`Bash(npm run
+test)`) and the file it goes in -- the project's `.claude/settings.local.json`,
+kept on this machine and out of git, the old one kept beside it -- and, once
+confirmed, writes it and says yes: Claude Code runs that exact command without
+asking from then on. The same
 panel's other page, **Recently closed** (also in the search box), keeps the
 last 30 sessions that ended -- when, how, the tokens its conversation used,
 and the last 12 lines on its screen -- with **Resume** (Claude Code's
@@ -106,6 +111,15 @@ later), on macOS through AppleScript. Which
 states tell in which way is `[notify]` in the settings (below); by default
 the taskbar does not flash.
 
+Away from the machine, `[notify] webhook` (Settings, Notifications, WHILE YOU
+ARE AWAY) sends a session that has waited `webhook_after` seconds (2 minutes
+by default) while no tsumugi window is looked at -- an ntfy topic's address
+(`https://ntfy.sh/my-topic`, the phone's notification), a Slack incoming
+webhook (`webhook_format = "slack"`) or any address taking JSON (`"json"`:
+`title`, `message`, `folder`). The server sends it, once a wait, through the
+system's `curl`, so it works with the window closed; muted sessions and quiet
+tags are not sent.
+
 ### The input box
 
 `Ctrl+I` (`Cmd+I` on macOS) opens a box at the foot of the pane with the
@@ -117,7 +131,11 @@ image on the clipboard (a screenshot) saves it as a PNG in the settings
 folder's `attachments` and adds it the same way. `↑` brings back what was sent (kept between runs), a draft
 stays with its session, and choosing a tag under **To** sends the same
 prompt to every session wearing it; **+ Sessions** there picks other
-sessions to get it as well as the pane, or **Every session**. `Esc` gives the keys back to the pane.
+sessions to get it as well as the pane, or **Every session**. **Prompts…**
+keeps a prompt under a name and puts one back into the draft; `{folder}`,
+`{project}` and `{branch}` in it become each receiving session's when it is
+sent. They are kept in `prompts.toml` beside the settings (and go with an
+export). `Esc` gives the keys back to the pane.
 
 ### The status bar
 
@@ -129,7 +147,12 @@ click opens it). The pull request needs the GitHub CLI (`gh`) signed in.
 On the right, Claude Code's tokens -- the focused session's conversation
 and today's in all -- read from the transcripts under `~/.claude/projects/`
 (`CLAUDE_CONFIG_DIR` moves them); the totals leave out the cache's reads,
-which the tooltip shows. `5h 1.2M · resets 14:00` is Claude Code's usage
+which the tooltip shows. `≈$0.42` beside them is what those tokens would
+cost on the API, at each model's prices -- Anthropic's own as of 2026-09-25,
+with cache writes at 1.25 times the input (2 times for the hour-long cache);
+`[prices."model-id-start"]` with `input`, `output` and `cache_read` (dollars
+per million) changes them or adds a model. A Pro or Max plan is not billed
+this way: it is what the same work would cost. `5h 1.2M · resets 14:00` is Claude Code's usage
 window: it opens at the hour of the first answer after the last one closed
 and lasts five hours, worked out from the same transcripts. How much a window
 allows depends on the plan, which tsumugi cannot read, so it says what was
@@ -148,6 +171,13 @@ committed -- `+120 −8` lines, or `3 new` files -- with the list of files
 under the pointer; a click there (or **Changes not committed here** in the
 search box) shows the diff, each file under its heading, added lines green
 and removed ones red, the files git does not know yet at the end.
+
+**Start in parallel** (the search box) takes a repository and a prompt for
+each piece of work: each gets a git worktree beside the repository on a
+branch of its own (`tsumugi/1007-1432-1`, `-2`, …) and a tab where Claude
+Code starts on its prompt. A tab on a branch other than `main` has **Create
+a pull request** in its menu: the branch pushed and `gh pr create --fill`
+run, the pull request opened in the browser.
 
 `Ctrl+Shift+I` (`Cmd+Shift+I` on macOS, iTerm2's key) sends what is typed to
 every pane of the tab -- **TYPING INTO ALL** on each heading -- until it is
@@ -408,7 +438,7 @@ new window**;
 `[[menu.session]]`; and **Close the session**, which asks a second click
 while something is running in it. `[menu] hide` leaves out any of rename,
 note, tags, mute, pin, restart, duplicate, new-window, filer, editor, copy-path,
-save-output, close.
+save-output, pr, close.
 
 Themes: tsumugi Dark (the default) and Light, Tokyo Night, Catppuccin Mocha
 and Latte, Dracula, Nord, Gruvbox Dark and Light, Solarized Dark and Light,

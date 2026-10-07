@@ -315,6 +315,44 @@ fn the_settings_variables_reach_the_shell() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+/// A session waiting while no window is looked at goes to the webhook once,
+/// with its folder in the title and what it said (here to a local listener;
+/// `curl` does the sending, as on a real machine).
+#[cfg(unix)]
+#[test]
+fn a_wait_nobody_sees_goes_to_the_webhook_once() {
+    use std::io::Read;
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let at = address();
+    let dir = std::env::temp_dir().join(format!("tsumugi-webhook-test-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("settings.toml");
+    std::fs::write(&path, format!("[notify]\nwebhook = \"http://127.0.0.1:{port}/topic\"\nwebhook_after = 0\n")).unwrap();
+    let _srv = server::start_with(&at, server::Options { state: None, settings: Some(path) }).expect("the server starts");
+    let c = Client::connect(&at, || {}).expect("a client connects");
+    let pane = c.spawn(std::env::temp_dir(), None, Size::new(80, 24), (8, 16)).expect("a shell starts");
+    c.focus(false);
+    c.notify(pane.id(), crate::proto::State::Waiting, "Claude needs your permission".into(), None).unwrap();
+    listener.set_nonblocking(false).unwrap();
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        for conn in listener.incoming().take(2).flatten() {
+            let mut conn = conn;
+            conn.set_read_timeout(Some(Duration::from_secs(2))).unwrap();
+            let mut buf = vec![0u8; 4096];
+            let n = conn.read(&mut buf).unwrap_or(0);
+            let _ = std::io::Write::write_all(&mut conn, b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n");
+            let _ = tx.send(String::from_utf8_lossy(&buf[..n]).into_owned());
+        }
+    });
+    let got = rx.recv_timeout(Duration::from_secs(10)).expect("the webhook was called");
+    assert!(got.starts_with("POST /topic") && got.contains("is waiting for you") && got.contains("Claude needs your permission"), "{got}");
+    assert!(rx.recv_timeout(Duration::from_secs(3)).is_err(), "once a wait");
+    pane.kill();
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 /// A search across sessions finds a line in the one that printed it, and
 /// nothing for what no session printed.
 #[test]

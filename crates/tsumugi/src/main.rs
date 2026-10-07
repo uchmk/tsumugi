@@ -39,6 +39,10 @@ mod sort;
 mod sound;
 mod theme;
 mod usage;
+mod price;
+mod permit;
+mod prompts;
+mod parallel;
 mod worktree;
 mod spawn;
 mod autostart;
@@ -704,6 +708,12 @@ struct App {
     ended: Vec<history::Closed>,
     /// A tab's changes not committed, over the window.
     diff: Option<diffview::View>,
+    /// A menu of the window's was open as the frame began.
+    menu_open: bool,
+    /// "Start in parallel", while open; and the worktrees being made for it,
+    /// each with its prompt, as they are made.
+    parallel: Option<parallel::View>,
+    parallel_made: Option<std::sync::mpsc::Receiver<Result<(std::path::PathBuf, String), String>>>,
     /// Sessions whose whole buffer was asked for, to save, by name.
     saving: HashMap<SessionId, String>,
     /// Tabs where what is typed goes to every pane (`Ctrl+Shift+I`).
@@ -828,6 +838,8 @@ enum SideOp {
     Diff(String, std::path::PathBuf),
     /// Ask for the session's whole buffer, to save it under this name.
     SaveOutput(SessionId, String),
+    /// Push the branch in this folder and open a pull request for it.
+    CreatePr(std::path::PathBuf),
 }
 
 /// Where in the server's order a tab dropped at `gap` among the rows shown
@@ -940,6 +952,9 @@ impl App {
             diff: None,
             typing_all: std::collections::HashSet::new(),
             saving: HashMap::new(),
+            parallel: None,
+            parallel_made: None,
+            menu_open: false,
             hooks_seen_first: false,
             side_rect: None,
             first_shown: false,
@@ -973,7 +988,7 @@ impl App {
             settings_tx: settings_tx.clone(),
             settings_now: tsumugi_mux::settings::Settings::default(),
             prefs: None,
-            input: inputbox::InputBox::with_history(load_history()),
+            input: inputbox::InputBox::with_history(load_history(), prompts::load()),
             key_log: std::env::var_os("TSUMUGI_KEYLOG").is_some(),
             replacing: None,
             replaced_unasked: false,
@@ -1445,6 +1460,11 @@ impl App {
                 Err(e) => self.failed = Some(e),
             },
             palette::Pick::Command(palette::Command::Closed) => self.lists = Some(lists::View::new(lists::Page::Closed)),
+            palette::Pick::Command(palette::Command::Parallel) => {
+                let focus = current.and_then(|w| client.sessions().into_iter().find(|i| i.id == w.focus));
+                let folder = focus.map(|i| i.project).or_else(|| std::env::current_dir().ok()).unwrap_or_default();
+                self.parallel = Some(parallel::View::new(&folder));
+            }
             palette::Pick::Command(palette::Command::SaveOutput) => {
                 let focus = current.and_then(|w| client.sessions().into_iter().find(|i| i.id == w.focus));
                 if let Some(i) = focus {
@@ -1476,7 +1496,7 @@ impl App {
                     palette::Command::InputBox => keys::Action::Input,
                     palette::Command::Waiting => keys::Action::Waiting,
                     palette::Command::TypeAll => keys::Action::TypeAll,
-                    palette::Command::Sort(_) | palette::Command::Closed | palette::Command::Changes | palette::Command::SaveOutput => return,
+                    palette::Command::Sort(_) | palette::Command::Closed | palette::Command::Changes | palette::Command::SaveOutput | palette::Command::Parallel => return,
                 };
                 if let Some(w) = current {
                     self.act(action, w, workspaces, area);
@@ -1837,7 +1857,8 @@ impl App {
                     let talk = used.talks.get(c)?;
                     let tokens = used.conversations.get(c).map_or(0, usage::Tokens::total);
                     let prompts = if talk.prompts == 1 { "1 prompt".to_owned() } else { format!("{} prompts", talk.prompts) };
-                    Some(format!("{prompts} · {} · {} tokens", chrome::elapsed(talk.ms), usage::short(tokens)))
+                    let cost = used.costs.get(c).filter(|c| **c > 0.0).map(|c| format!(" · ≈{}", price::dollars(*c))).unwrap_or_default();
+                    Some(format!("{prompts} · {} · {} tokens{cost}", chrome::elapsed(talk.ms), usage::short(tokens)))
                 }).flatten();
                 // A note of one's own (the tab menu's Note…), and room for
                 // the field while it is written.
@@ -2275,6 +2296,13 @@ impl App {
                                     ui.close();
                                 }
                             }
+                            "pr" => {
+                                let shown = !focus.branch.is_empty() && !matches!(focus.branch.as_str(), "main" | "master");
+                                if shown && ui.button("Create a pull request").on_hover_text(format!("Push {} and open a pull request with gh, titled from its commits", focus.branch)).clicked() {
+                                    ops.push(SideOp::CreatePr(focus.cwd.clone()));
+                                    ui.close();
+                                }
+                            }
                             "save-output" => {
                                 if ui.button("Save the output to a file").on_hover_text("The scrollback and the screen of the pane with the keys, as text in Downloads").clicked() {
                                     ops.push(SideOp::SaveOutput(focus.id, sort::display_title(&focus.title, &focus.command)));
@@ -2333,6 +2361,14 @@ impl App {
                     SideOp::Move(id, to) => client.move_workspace(id, to),
                     SideOp::Rename(id, name) => client.rename_workspace(id, name),
                     SideOp::Note(id, note) => client.note_workspace(id, note),
+                    SideOp::CreatePr(cwd) => {
+                        let _ = self.jobs.0.send(Ok("Pushing and opening a pull request…".into()));
+                        self.job(move || {
+                            let url = gitinfo::create_pr(&cwd)?;
+                            menu::open_url(&url);
+                            Ok(format!("Opened the pull request {url}"))
+                        });
+                    }
                     SideOp::SaveOutput(id, name) => {
                         self.saving.insert(id, name);
                         client.all_text(id);
@@ -2811,6 +2847,51 @@ impl App {
             let _ = tx.send(work());
             ctx.request_repaint();
         });
+    }
+
+    /// "Start in parallel": the dialog while open; then the worktrees made
+    /// on a thread, one after another (git locks the repository), and a tab
+    /// with Claude Code on its prompt in each as it comes.
+    fn start_parallel(&mut self, ctx: &egui::Context, client: &Client) {
+        if let Some(view) = &mut self.parallel {
+            match parallel::show(ctx, view, &theme::colors()) {
+                Some(parallel::Answer::Start(start)) => {
+                    self.parallel = None;
+                    let (tx, rx) = std::sync::mpsc::channel();
+                    let wake = ctx.clone();
+                    let stamp = worktree::default_branch(chrono::Local::now());
+                    let _ = std::thread::Builder::new().name("parallel".into()).spawn(move || {
+                        for (k, task) in start.tasks.into_iter().enumerate() {
+                            let made = worktree::add(&start.folder, &parallel::branch(&stamp, k)).map(|path| (path, task));
+                            let failed = made.is_err();
+                            let _ = tx.send(made);
+                            wake.request_repaint();
+                            if failed {
+                                break;
+                            }
+                        }
+                    });
+                    self.parallel_made = Some(rx);
+                }
+                Some(parallel::Answer::Close) => self.parallel = None,
+                None => {}
+            }
+        }
+        let Some(rx) = &self.parallel_made else { return };
+        let made: Vec<Result<(std::path::PathBuf, String), String>> = rx.try_iter().collect();
+        let program = self.settings_now.shell.command().map(|(p, _)| p).unwrap_or_else(tsumugi_pane::default_program);
+        let how = tsumugi_pane::Quoting::for_shell(Some(&program));
+        let claude = newsession::Start::Claude.typed(&self.settings_now.sessions.claude).unwrap_or_else(|| "claude".into());
+        for m in made {
+            match m {
+                Ok((path, task)) => {
+                    if let Err(e) = client.spawn_typing(path, None, Size::new(80, 24), (8, 16), Place::NewWorkspace, Some(parallel::typed(&claude, &task, how))) {
+                        self.say(format!("A parallel session did not start: {e}"), true);
+                    }
+                }
+                Err(e) => self.say(format!("Start in parallel stopped: {e}"), true),
+            }
+        }
     }
 
     /// Write a session's output to Downloads on a thread; a toast says where.
@@ -3630,6 +3711,9 @@ impl App {
 
     fn frame(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
+        // A menu open as the frame begins has the keys: an Esc closing it,
+        // or what is typed in it, does not reach the shell.
+        self.menu_open = egui::Popup::is_any_open(&ctx);
         let Some(client) = self.client.clone() else {
             self.message(ui);
             return;
@@ -3711,6 +3795,7 @@ impl App {
                         }
                         let shell_changed = s.shell.program != self.settings_now.shell.program;
                         self.settings_now = s.clone();
+                        price::set(&s.prices);
                         facts_again |= shell_changed && self.prefs.is_some();
                         self.alerts.rules = alert::Rules::from(&s.notify);
                         self.tag_rules = s.tags.rule;
@@ -3799,7 +3884,7 @@ impl App {
             // keys while it is focused; the pane gets them otherwise.
             // A key being changed in the settings is the settings'.
             let capturing = self.prefs.as_ref().is_some_and(|p| p.edit.capturing.is_some());
-            let field = ctx.memory(|m| m.focused().is_some()) || self.new_session.is_some() || self.search.is_some() || self.lists.is_some() || self.diff.is_some() || capturing;
+            let field = ctx.memory(|m| m.focused().is_some()) || self.new_session.is_some() || self.search.is_some() || self.lists.is_some() || self.diff.is_some() || self.parallel.is_some() || self.menu_open || self.input.had_keys(&ctx) || capturing;
             if self.key_log {
                 // `TSUMUGI_KEYLOG=1`: every key press as the window gets it,
                 // to see on a real machine why a key does nothing.
@@ -3864,7 +3949,8 @@ impl App {
                 let used = self.usage.get();
                 let conversation = focus_info.as_ref().filter(|i| !i.conversation.is_empty()).and_then(|i| used.conversations.get(&i.conversation).copied());
                 let tokens = (used.today.total() > 0 || conversation.is_some()).then_some((conversation, used.today));
-                let extra = chrome::StatusExtra { up_ms: up, nerd: self.nerd(), clock: clock.show.then(|| clock.format()), git, tokens, block: used.block };
+                let cost = (focus_info.as_ref().and_then(|i| used.costs.get(&i.conversation).copied()), used.today_cost);
+                let extra = chrome::StatusExtra { up_ms: up, nerd: self.nerd(), clock: clock.show.then(|| clock.format()), git, tokens, block: used.block, cost };
                 chrome::status_bar(ui, &self.palette, &sessions, focus_info.as_ref(), size, &extra)
             })
             .inner
@@ -3999,6 +4085,7 @@ impl App {
                 self.diff = None;
             }
         }
+        self.start_parallel(&ctx, &client);
 
         self.bell_opening = false;
         // Files dropped on the window go with the next prompt.
@@ -4047,6 +4134,10 @@ impl App {
                 self.first_run(ui, &client);
             }
         });
+        // Prompts kept or forgotten in the input box.
+        if std::mem::take(&mut self.input.prompts_changed) {
+            prompts::save(self.input.prompts.clone());
+        }
         // What the input box in the pane sent (the design's 12).
         if let Some(send) = self.input_sent.take() {
             let targets: Vec<SessionId> = match &send.to {
@@ -4055,10 +4146,15 @@ impl App {
                 inputbox::To::Tags(want) => sessions.iter().filter(|i| i.tags.iter().any(|t| want.contains(t))).map(|i| i.id).collect(),
             };
             for id in targets {
+                // `{folder}`, `{project}`, `{branch}`: each session's own.
+                let text = match sessions.iter().find(|i| i.id == id) {
+                    Some(i) => prompts::fill(&send.text, &i.cwd, &i.project, &i.branch),
+                    None => send.text.clone(),
+                };
                 if send.later {
-                    self.queue.push(Queued { id, text: send.text.clone() });
+                    self.queue.push(Queued { id, text });
                 } else {
-                    client.send_prompt(id, send.text.clone());
+                    client.send_prompt(id, text);
                 }
             }
             save_history(self.input.history.clone());
@@ -4106,6 +4202,7 @@ impl App {
             let used = self.usage.get();
             for (info, last) in ended {
                 let tokens = used.conversations.get(&info.conversation).map_or(0, usage::Tokens::total);
+                let cost = used.costs.get(&info.conversation).copied().unwrap_or(0.0);
                 let c = history::Closed {
                     title: info.title,
                     command: info.command,
@@ -4120,6 +4217,7 @@ impl App {
                         _ => String::new(),
                     },
                     tokens,
+                    cost,
                     ended_ms: chrome::now_ms(),
                     last,
                 };
@@ -4137,6 +4235,7 @@ impl App {
             let lines = self.watch_lines(i.id);
             let choices = answer::choices(&lines);
             let asking = answer::asking(&lines);
+            let rule = permit::rule(&asking);
             rows.push(lists::Row {
                 id: i.id,
                 name: sort::display_title(&i.title, &i.command),
@@ -4145,6 +4244,8 @@ impl App {
                 waited: chrome::elapsed(now.saturating_sub(i.since_ms)),
                 choices,
                 asking,
+                rule,
+                rule_file: permit::file(&i.project),
             });
         }
         let colors = theme::colors();
@@ -4153,6 +4254,19 @@ impl App {
             match d {
                 lists::Do::Type(id, key) => {
                     if let Some(pane) = self.panes.get(&id) {
+                        tsumugi_pane::Pane::send(pane, vec![key as u8]);
+                    }
+                }
+                lists::Do::Allow(id, rule) => {
+                    let Some(info) = sessions.iter().find(|i| i.id == id) else { continue };
+                    let yes = rows.iter().find(|r| r.id == id).and_then(|r| answer::yes(&r.choices));
+                    let project = info.project.clone();
+                    let (tx, ctx2) = (self.jobs.0.clone(), ctx.clone());
+                    let _ = std::thread::Builder::new().name("permit".into()).spawn(move || {
+                        let _ = tx.send(permit::allow(&project, &rule).map(|p| format!("Claude Code runs {rule} without asking now ({})", p.display())));
+                        ctx2.request_repaint();
+                    });
+                    if let (Some(key), Some(pane)) = (yes, self.panes.get(&id)) {
                         tsumugi_pane::Pane::send(pane, vec![key as u8]);
                     }
                 }

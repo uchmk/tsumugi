@@ -29,13 +29,15 @@ pub struct View {
     off: HashSet<SessionId>,
     /// The closed session whose last lines are shown.
     shown: Option<usize>,
+    /// The waiting session whose "Always allow" is being confirmed.
+    confirming: Option<SessionId>,
     /// Opened this frame: the click that opened it is not a click outside.
     opening: bool,
 }
 
 impl View {
     pub fn new(page: Page) -> Self {
-        Self { page, off: HashSet::new(), shown: None, opening: true }
+        Self { page, off: HashSet::new(), shown: None, confirming: None, opening: true }
     }
 }
 
@@ -52,6 +54,11 @@ pub struct Row {
     /// What the question is about, as its screen says it (the command, the
     /// file), read above the menu.
     pub asking: Vec<String>,
+    /// Claude Code's rule that would allow it from now on (`permit.rs`),
+    /// when it asks about one Bash command.
+    pub rule: Option<String>,
+    /// Where that rule would be written (its project's settings).
+    pub rule_file: std::path::PathBuf,
 }
 
 /// What the panel asks the window to do.
@@ -59,6 +66,8 @@ pub struct Row {
 pub enum Do {
     /// Type this key into the session.
     Type(SessionId, char),
+    /// Write Claude Code's rule into the project's settings, then say yes.
+    Allow(SessionId, String),
     /// Go to the session (and close the panel).
     Go(SessionId),
     /// Start the closed session again in its folder.
@@ -164,6 +173,22 @@ fn waiting(ui: &mut egui::Ui, view: &mut View, rows: &[Row], c: &Colors, max: f3
                             }
                         });
                     }
+                    // The command on Claude Code's list from now on: the exact
+                    // rule and file shown before anything is written.
+                    if let Some(rule) = &r.rule {
+                        if view.confirming == Some(r.id) {
+                            ui.label(RichText::new(format!("Adds {rule} to {}, then says yes", r.rule_file.display())).size(11.5).color(c.dim));
+                            ui.horizontal(|ui| {
+                                if ui.button(RichText::new("Add and say yes").strong()).clicked() {
+                                    out.push(Do::Allow(r.id, rule.clone()));
+                                    view.confirming = None;
+                                }
+                                if ui.button("Cancel").clicked() {
+                                    view.confirming = None;
+                                }
+                            });
+                        }
+                    }
                     ui.horizontal_wrapped(|ui| {
                         if r.choices.is_empty() {
                             ui.label(RichText::new("No menu on its screen: answer it there").size(11.5).color(c.faint()));
@@ -173,6 +198,10 @@ fn waiting(ui: &mut egui::Ui, view: &mut View, rows: &[Row], c: &Colors, max: f3
                             if ui.button(RichText::new(label).size(12.0)).on_hover_text(format!("Type {}: {}", ch.key, ch.text)).clicked() {
                                 out.push(Do::Type(r.id, ch.key));
                             }
+                        }
+                        let offered = r.rule.is_some() && view.confirming != Some(r.id) && answer::yes(&r.choices).is_some();
+                        if offered && ui.button(RichText::new("Always allow…").size(12.0)).on_hover_text("Claude Code runs this exact command without asking from now on, in this project").clicked() {
+                            view.confirming = Some(r.id);
                         }
                     });
                 });
@@ -228,6 +257,9 @@ fn history(ui: &mut egui::Ui, view: &mut View, closed: &[Closed], c: &Colors, ma
                     }
                     if s.tokens > 0 {
                         facts.push(format!("{} tokens", crate::usage::short(s.tokens)));
+                    }
+                    if s.cost > 0.0 {
+                        facts.push(format!("≈{}", crate::price::dollars(s.cost)));
                     }
                     ui.label(RichText::new(facts.join(" · ")).size(11.5).color(c.dim));
                 });
@@ -297,7 +329,7 @@ mod tests {
 
     fn row(id: SessionId, texts: &[&str]) -> Row {
         let choices = texts.iter().enumerate().map(|(k, t)| Choice { key: char::from_digit(k as u32 + 1, 10).unwrap(), text: t.to_string() }).collect();
-        Row { id, name: format!("s{id}"), folder: "f".into(), note: String::new(), waited: "1m".into(), choices, asking: Vec::new() }
+        Row { id, name: format!("s{id}"), folder: "f".into(), note: String::new(), waited: "1m".into(), choices, asking: Vec::new(), rule: None, rule_file: Default::default() }
     }
 
     #[test]
