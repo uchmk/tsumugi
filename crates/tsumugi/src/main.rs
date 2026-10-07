@@ -761,6 +761,8 @@ struct App {
     zoom: bool,
     /// A divider being dragged: the tab's shape as the drag has it so far.
     dragging: Option<(WorkspaceId, Node<SessionId>)>,
+    /// Whether the card's note and name fields were drawn this frame.
+    fields_drawn: (bool, bool),
     /// A pane being carried by its header to another place in its tab.
     moving: Option<(WorkspaceId, SessionId)>,
     palette: Palette,
@@ -1039,6 +1041,7 @@ impl App {
             views: HashMap::new(),
             zoom: false,
             dragging: None,
+            fields_drawn: (false, false),
             moving: None,
             palette,
             font: egui::FontId::monospace(first_font.size),
@@ -1665,6 +1668,7 @@ impl App {
         // Each switch between the two starts the panel at its own width: a
         // fresh id, since egui keeps a panel's width by its id.
         self.side_rect = None;
+        self.fields_drawn = (false, false);
         let picked = if self.prefs.is_some() {
             None
         } else if self.view.rail {
@@ -1698,6 +1702,15 @@ impl App {
         };
         if let Some(id) = picked {
             self.active = Some(id);
+        }
+        // A card's note or name field not drawn this frame (its card
+        // filtered out, the rail, the settings) is let go: while it is set
+        // the pane gets no keys (the source review, 2026-10-07).
+        if !self.fields_drawn.0 {
+            self.noting_card = None;
+        }
+        if !self.fields_drawn.1 {
+            self.renaming_card = None;
         }
         if let (true, Some(side)) = (top > 0.0, self.side_rect) {
             let strip = egui::Rect::from_min_size(side.min, egui::vec2(side.width(), top));
@@ -2272,6 +2285,7 @@ impl App {
                 // it off), Esc to leave it as it was.
                 if let Some((id, text)) = &mut self.noting_card {
                     if *id == w.id {
+                        self.fields_drawn.0 = true;
                         let at = egui::Rect::from_min_size(egui::pos2(left - 4.0, rect.top() + note_y - 3.0), egui::vec2(width - 10.0, 20.0));
                         let field = ui.put(at, egui::TextEdit::singleline(text).id(egui::Id::new(("note-card", w.id))).hint_text("A note: what this tab is for").font(egui::FontId::proportional(12.0)));
                         field.request_focus();
@@ -2287,6 +2301,7 @@ impl App {
                 // F2: the name in a field over it, Enter to keep, Esc to leave.
                 if let Some((id, text)) = &mut self.renaming_card {
                     if *id == w.id {
+                        self.fields_drawn.1 = true;
                         let at = egui::Rect::from_min_size(egui::pos2(left - 4.0, rect.top() + 3.0), egui::vec2(width - 10.0, 22.0));
                         let field = ui.put(at, egui::TextEdit::singleline(text).id(egui::Id::new(("rename-card", w.id))).hint_text("The tab's name").font(egui::FontId::proportional(13.5)));
                         field.request_focus();
@@ -2417,6 +2432,7 @@ impl App {
                                 let label = if w.note.is_empty() { "Note…" } else { "Edit the note…" };
                                 if ui.button(label).on_hover_text("A line of your own on the card: what the tab is for").clicked() {
                                     self.noting_card = Some((w.id, w.note.clone()));
+                                    self.fields_drawn.0 = true;
                                     ui.close();
                                 }
                             }
@@ -3327,6 +3343,14 @@ impl App {
     fn panes(&mut self, ui: &mut egui::Ui, w: &Workspace, sessions: &[Info]) {
         // The panes are cards with room round them (the design's Main).
         let area = to_rect(ui.max_rect().shrink(MARGIN));
+        // A drag whose release was never seen here (the zoom or the tab
+        // changed under it, or the panes changed) is let go, so the tab
+        // does not keep showing the split as it was (the source review,
+        // 2026-10-07).
+        let held = ui.input(|i| i.pointer.primary_down());
+        if self.dragging.as_ref().is_some_and(|(id, l)| !held || *id != w.id || self.zoom || l.leaves() != w.layout.leaves()) {
+            self.dragging = None;
+        }
         let layout = match &self.dragging {
             Some((id, l)) if *id == w.id => l.clone(),
             _ => w.layout.clone(),
@@ -4076,7 +4100,7 @@ impl App {
             // keys while it is focused; the pane gets them otherwise.
             // A key being changed in the settings is the settings'.
             let capturing = self.prefs.as_ref().is_some_and(|p| p.edit.capturing.is_some());
-            let field = ctx.memory(|m| m.focused().is_some()) || self.new_session.is_some() || self.search.is_some() || self.lists.is_some() || self.diff.is_some() || self.parallel.is_some() || self.menu_open || self.input.had_keys(&ctx) || capturing;
+            let field = ctx.memory(|m| m.focused().is_some()) || self.new_session.is_some() || self.search.is_some() || self.lists.is_some() || self.diff.is_some() || self.parallel.is_some() || self.menu_open || self.input.had_keys(&ctx) || capturing || self.renaming_card.is_some() || self.noting_card.is_some();
             if self.key_log {
                 // `TSUMUGI_KEYLOG=1`: every key press as the window gets it,
                 // to see on a real machine why a key does nothing.
@@ -4090,13 +4114,17 @@ impl App {
             // The settings screen has the keys while it is open: none reach
             // the shell behind it, and of the window's own only its own key,
             // which closes it again.
+            // Whether the settings were open as this frame began: their key
+            // closes them, and must not then reach the pane as the key that
+            // opens them again (the source review, 2026-10-07).
+            let prefs_were_open = self.prefs.is_some();
             if self.prefs.is_some() && !capturing {
                 let closing = ctx.input(|i| i.events.iter().any(|e| matches!(e, egui::Event::Key { key, pressed: true, modifiers, .. } if keys::action(*key, *modifiers) == Some(keys::Action::Settings))));
                 if closing {
                     self.prefs = None;
                 }
             }
-            if let Some(pane) = self.panes.get(&w.focus).filter(|_| !field && self.prefs.is_none()) {
+            if let Some(pane) = self.panes.get(&w.focus).filter(|_| !field && !prefs_were_open) {
                 let events = ctx.input(|i| i.events.clone());
                 tsumugi_pane::input::feed(pane, &events, |key, m| match keys::action(key, m) {
                     Some(a) => {

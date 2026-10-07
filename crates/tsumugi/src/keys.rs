@@ -338,7 +338,8 @@ fn action_on(key: Key, m: Modifiers, mac: bool) -> Option<Action> {
             }
         }
         return match key {
-            Key::D if cmd && !m.shift => Some(Action::SplitRight),
+            // Cmd+Option+D is Duplicate, below: not a split.
+            Key::D if cmd && !m.shift && !m.alt => Some(Action::SplitRight),
             Key::D if cmd && m.shift => Some(Action::SplitDown),
             Key::Z if cmd && m.shift => Some(Action::Zoom),
             Key::T if cmd && !m.shift => Some(Action::NewTab),
@@ -483,6 +484,9 @@ mod tests {
         assert_eq!(action_on(Key::W, CMD, true), Some(Action::CloseTab));
         assert_eq!(action_on(Key::Num1, CMD, true), Some(Action::Tab(0)));
         assert_eq!(action_on(Key::D, CMD, true), Some(Action::SplitRight));
+        // Cmd+Option+D duplicates; it was taken for Cmd+D's split before
+        // (the source review, 2026-10-07).
+        assert_eq!(action_on(Key::D, Modifiers { alt: true, ..CMD }, true), Some(Action::Duplicate));
         let cmd_shift = Modifiers { shift: true, ..CMD };
         assert_eq!(action_on(Key::P, cmd_shift, true), Some(Action::Search));
         let cmd_opt = Modifiers { alt: true, ctrl: false, shift: false, mac_cmd: true, command: true };

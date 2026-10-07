@@ -41,6 +41,7 @@
 - [ ] **2.14** A split tab, `Ctrl+Shift+I`, type `echo hi`, Enter; `Ctrl+Shift+I` again → **TYPING INTO ALL** on every pane's heading; `hi` in each; after the second press only the pane with the keys gets keys; the window's own keys (`Ctrl+Shift+T`) act once
 - [ ] **2.15** Three panes split both ways: hover each divider, drag it, double-click it → Near it the cyan line and the resize pointer; the split follows the drag and stays where dropped (and after a restart); a double-click halves it. Unchanged from before the dividers moved into `tsumugi-layout` (v0.52.0)
 - [ ] **2.16** Copy `echo one` + Esc `[201~` + `echo two` (e.g. `printf 'echo one\033[201~echo two' \| clip` / `pbcopy`) and paste it into bash or pwsh with bracketed paste → It lands as one line held on the prompt (`echo one[201~echo two`), not run: the Esc is dropped from a paste
+- [ ] **2.17** Drag a divider and, still holding the button, press `Ctrl+Shift+Z` (or switch tabs with the keyboard); let go; split again → The tab shows its real split afterwards; the new split appears
 
 ## 3. The sidebar
 
@@ -72,6 +73,7 @@
 - [ ] **3.26** Claude Code working (its title `✳ …` or a braille spinner), and pwsh → The card's and pane heading's name without the `✳` or spinner: one mark only, the card's own on the left
 - [ ] **3.27** Click a waiting card, then a running one, then a shell → The card's ground stays dark (no fill): its ring in its state's colour, brighter, with a soft glow past it (cyan for a shell); a running card's line still runs along its top edge
 - [ ] **3.28** A plain shell's card beside an agent's → The shell's card is a line shorter: no empty third line
+- [ ] **3.29** Claude Code working in a tab: `F2`, type, `Esc`; right-click → Note…, type, `Esc`; and `F2` on a tab, then pick a tag filter that hides it → Each field closes as it was and Claude Code keeps working (no Esc reached it, `TSUMUGI_PTY_LOG` has no `in key` line); a hidden card's field is let go and the pane gets keys again
 
 ## 4. States, notifications and answering
 
@@ -139,6 +141,7 @@
 - [ ] **7.13** Write `Run the tests in {project} on {branch}`, **Prompts…** → name it, Save; empty the box, **Prompts…** → it, `Ctrl+Enter` → The menu stays open while the name is typed; `prompts.toml` beside the settings holds it; picked, it fills the box and the keys are back in it; the session gets the project's and branch's names in place of the braces; with **+ Sessions**, each its own
 - [ ] **7.14** Open **Prompts…** or **+ Sessions**, press `Esc`, type → The menu closes, the box stays open with the keys; nothing reaches the shell
 - [ ] **7.15** Queue a prompt for a session in another tab that is running Claude Code; let it stop on a permission question (`1. Yes / 2. No`) → The prompt stays queued while the question is up; it is sent only once the question is answered and the session waits with no question
+- [ ] **7.16** In the input box of session A press `↑` (a past prompt shows), switch to session B and press `↑` / `↓`; then `Shift+↑` in a two-line draft → B's own draft is never replaced by A's; Shift+↑ selects in the draft, it does not walk the history
 
 ## 8. Restoring after a restart
 
@@ -158,6 +161,7 @@
 - [ ] **9.6** Next to the design's "Settings: every page" → The same pages, sections and rows in the same order
 - [ ] **9.7** Only the keyboard: `Ctrl+Tab` / `Ctrl+Shift+Tab` through the pages, `Tab` through a page, `Space` on a switch, `Esc` twice → A cyan ring on the control with the keys; Tab never stops on the top band or the list of pages; Space flips the switch (the file changes); the first Esc leaves the control, the second closes the screen; nothing typed reaches the shell behind it
 - [ ] **9.8** Notifications → WHEN A SESSION… → A line between rows; the three state columns the same width, each switch in the middle of its column and row, under its heading's dot
+- [ ] **9.9** `Ctrl+,` (macOS `Cmd+,`) with the settings open → They close and stay closed (not reopened on their first page)
 
 ## 10. Themes
 

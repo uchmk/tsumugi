@@ -35,6 +35,9 @@ pub struct InputBox {
     pub history: Vec<String>,
     /// Where `↑` has got to in the history, and the draft it left.
     back: Option<(usize, String)>,
+    /// The session `back` was walked in: another session's draft is never
+    /// put in place of this one's (the source review, 2026-10-07).
+    back_for: Option<SessionId>,
     /// Tags chosen as where to send instead of the pane.
     to_tags: Vec<String>,
     /// Other sessions to send to as well as the pane (the same prompt to
@@ -195,6 +198,10 @@ impl InputBox {
         let id = egui::Id::new("input-box");
         let focused = ui.ctx().memory(|m| m.has_focus(id));
         let esc_for_box = self.had_keys(ui.ctx()) && !focused && ui.input(|i| i.key_pressed(egui::Key::Escape));
+        if self.back_for != Some(to) {
+            self.back = None;
+            self.back_for = Some(to);
+        }
         let mut draft = self.drafts.remove(&to).unwrap_or_default();
         let mut sent = None;
         // The keys the field would take otherwise: send, history, close.
@@ -209,12 +216,16 @@ impl InputBox {
                 return (false, false, false, false, false);
             }
             let cmd = egui::Modifiers::COMMAND;
+            // Up and Down with nothing held: egui's own match lets Shift
+            // through, and Shift+↑ is the selection's, not the history's.
+            let bare = |i: &egui::InputState, key: egui::Key| !i.events.iter().any(|e| matches!(e, egui::Event::Key { key: k, pressed: true, modifiers, .. } if *k == key && !modifiers.is_none()));
+            let (bare_up, bare_down) = (bare(i, egui::Key::ArrowUp), bare(i, egui::Key::ArrowDown));
             (
                 // Before the plain one, which would match it too.
                 i.consume_key(cmd | egui::Modifiers::SHIFT, egui::Key::Enter),
                 i.consume_key(cmd, egui::Key::Enter),
-                walking && i.consume_key(egui::Modifiers::NONE, egui::Key::ArrowUp),
-                walking && self.back.is_some() && i.consume_key(egui::Modifiers::NONE, egui::Key::ArrowDown),
+                walking && bare_up && i.consume_key(egui::Modifiers::NONE, egui::Key::ArrowUp),
+                walking && bare_down && self.back.is_some() && i.consume_key(egui::Modifiers::NONE, egui::Key::ArrowDown),
                 i.consume_key(cmd, egui::Key::I) || (!menu_open && i.consume_key(egui::Modifiers::NONE, egui::Key::Escape)),
             )
         });
