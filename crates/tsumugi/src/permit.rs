@@ -20,8 +20,17 @@ pub fn rule(asking: &[String]) -> Option<String> {
     if !question.trim().ends_with('?') || before.is_empty() || before.len() > 2 {
         return None;
     }
+    // A second line is the description only when it reads as one (it
+    // starts with a capital); otherwise the command may have wrapped on
+    // screen, and half of it would be allowed (the source review,
+    // 2026-10-07).
+    if before.len() == 2 && !before[1].trim().starts_with(|c: char| c.is_uppercase()) {
+        return None;
+    }
     let command = before[0].trim();
-    (!command.is_empty() && !command.contains(['(', ')'])).then(|| format!("Bash({command})"))
+    // `*` (and `:*`) make a rule a pattern that allows more than this one
+    // command: those are for a person to write.
+    (!command.is_empty() && !command.contains(['(', ')', '*'])).then(|| format!("Bash({command})"))
 }
 
 /// Where the project's own settings for this machine are.
@@ -82,6 +91,8 @@ mod tests {
         assert_eq!(rule(&lines(&["Bash command", "a", "b", "c", "Do you want to proceed?"])), None, "several lines");
         assert_eq!(rule(&lines(&["Bash command", "echo $(rm -rf /)", "Do you want to proceed?"])), None, "no brackets in a rule");
         assert_eq!(rule(&lines(&["Bash command", "ls"])), None, "no question");
+        assert_eq!(rule(&lines(&["Bash command", "rm -rf build/*", "Do you want to proceed?"])), None, "a * is a pattern");
+        assert_eq!(rule(&lines(&["Bash command", "cargo test --workspace --all-features --", "-q", "Do you want to proceed?"])), None, "a command wrapped on screen");
     }
 
     #[test]

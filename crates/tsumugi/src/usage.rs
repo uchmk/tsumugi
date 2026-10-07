@@ -132,24 +132,37 @@ struct Answer {
     tokens: Tokens,
 }
 
-/// An answer's line; `None` for any other line.
+/// An answer's line; `None` for any other line. Read as JSON, so the
+/// numbers are the message's own `usage` and not the first of the name
+/// anywhere on the line: a tool's result can hold a helper's `usage`, and
+/// `iterations` repeats `output_tokens` before the total (the source
+/// review, 2026-10-07). Only Claude Code's `assistant` lines are answers.
 fn line(text: &str) -> Option<Answer> {
-    let at = text.find("\"usage\":{")?;
-    let usage = &text[at..];
-    let n = |key: &str| number(usage, key).unwrap_or(0);
-    let tokens = Tokens { input: n("input_tokens"), cache_write: n("cache_creation_input_tokens"), cache_write_1h: n("ephemeral_1h_input_tokens"), cache_read: n("cache_read_input_tokens"), output: n("output_tokens") };
-    let id = string(text, "\"id\":\"msg_").map(|s| format!("msg_{s}")).unwrap_or_default();
-    let when = string(text, "\"timestamp\":\"")?;
-    let at = DateTime::parse_from_rfc3339(&when).ok()?;
-    let model = string(text, "\"model\":\"").unwrap_or_default();
+    if !text.contains("\"usage\"") || !text.contains("\"assistant\"") {
+        return None;
+    }
+    let v = crate::json::Json::parse(text).ok()?;
+    if v.get("type").and_then(crate::json::Json::string) != Some("assistant") {
+        return None;
+    }
+    let message = v.get("message")?;
+    let usage = message.get("usage")?;
+    let n = |o: Option<&crate::json::Json>, key: &str| match o.and_then(|o| o.get(key)) {
+        Some(crate::json::Json::Number(x)) if *x >= 0.0 => *x as u64,
+        _ => 0,
+    };
+    let tokens = Tokens {
+        input: n(Some(usage), "input_tokens"),
+        cache_write: n(Some(usage), "cache_creation_input_tokens"),
+        cache_write_1h: n(usage.get("cache_creation"), "ephemeral_1h_input_tokens"),
+        cache_read: n(Some(usage), "cache_read_input_tokens"),
+        output: n(Some(usage), "output_tokens"),
+    };
+    let text_of = |o: Option<&crate::json::Json>| o.and_then(crate::json::Json::string).map(str::to_owned);
+    let id = text_of(message.get("id")).filter(|i| i.starts_with("msg_")).unwrap_or_default();
+    let at = DateTime::parse_from_rfc3339(&text_of(v.get("timestamp"))?).ok()?;
+    let model = text_of(message.get("model")).or_else(|| text_of(v.get("model"))).unwrap_or_default();
     Some(Answer { id, day: at.with_timezone(&Local).date_naive(), ms: at.timestamp_millis(), model, tokens })
-}
-
-/// The number after `"key":` in `json`, the first one.
-fn number(json: &str, key: &str) -> Option<u64> {
-    let at = json.find(&format!("\"{key}\":"))? + key.len() + 3;
-    let digits: String = json[at..].trim_start().chars().take_while(char::is_ascii_digit).collect();
-    digits.parse().ok()
 }
 
 /// What follows `start` up to the next quote.
@@ -252,19 +265,23 @@ fn transcripts(dir: &Path) -> Vec<(PathBuf, Option<String>)> {
 }
 
 pub struct Watcher {
-    latest: Arc<Mutex<Usage>>,
+    /// Shared, not copied: the window asks for it several times a frame.
+    latest: Arc<Mutex<Arc<Usage>>>,
 }
 
 impl Watcher {
     /// Read now and every 20 seconds after; `wake` when something changed.
     pub fn start(wake: impl Fn() + Send + 'static) -> Self {
-        let latest = Arc::new(Mutex::new(Usage::default()));
+        let latest = Arc::new(Mutex::new(Arc::new(Usage::default())));
         let out = latest.clone();
         let _ = std::thread::Builder::new().name("usage".into()).spawn(move || {
             let mut files: HashMap<PathBuf, (File, Option<String>)> = HashMap::new();
             loop {
                 if let Some(dir) = projects() {
-                    for (path, id) in transcripts(&dir) {
+                    let now = transcripts(&dir);
+                    // Those gone past the week are let go, not kept for ever.
+                    files.retain(|p, _| now.iter().any(|(q, _)| q == p));
+                    for (path, id) in now {
                         files.entry(path.clone()).or_insert_with(|| (File::default(), id)).0.read_more(&path);
                     }
                 }
@@ -287,7 +304,7 @@ impl Watcher {
                 }
                 let changed = out.lock().map(|mut l| {
                     let changed = l.today != u.today || l.conversations != u.conversations || l.talks != u.talks || l.block != u.block || l.today_cost != u.today_cost;
-                    *l = u;
+                    *l = Arc::new(u);
                     changed
                 });
                 if changed.unwrap_or(false) {
@@ -299,7 +316,7 @@ impl Watcher {
         Self { latest }
     }
 
-    pub fn get(&self) -> Usage {
+    pub fn get(&self) -> Arc<Usage> {
         self.latest.lock().map(|u| u.clone()).unwrap_or_default()
     }
 }
@@ -332,6 +349,11 @@ mod tests {
         assert_eq!(t, Tokens { input: 2, cache_write: 39581, cache_write_1h: 39581, cache_read: 42941, output: 492 });
         assert_eq!(t.total(), 40075, "the cache's reads apart");
         assert!(line(r#"{"type":"user","message":{"content":"hi"},"timestamp":"2026-10-06T03:57:00Z"}"#).is_none());
+        // A tool's result carrying a helper's usage is no answer of this
+        // conversation's; and the total, not the first iteration's, counts.
+        assert!(line(r#"{"type":"user","toolUseResult":{"usage":{"output_tokens":9}},"message":{"content":"x"},"timestamp":"2026-10-06T03:57:00Z"}"#).is_none());
+        let two = ANSWER.replace(r#""iterations":[{"input_tokens":2,"output_tokens":492}],"output_tokens":492"#, r#""iterations":[{"output_tokens":100},{"output_tokens":392}],"output_tokens":492"#);
+        assert_eq!(line(&two).unwrap().tokens.output, 492);
         let mut f = File::default();
         f.take(&format!("{ANSWER}\n{ANSWER}\nnot json\n"));
         assert_eq!(f.total.output, 492, "the same message twice is one answer");

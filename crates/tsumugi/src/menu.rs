@@ -23,9 +23,20 @@ fn shell(line: &str) -> Command {
     use std::os::windows::process::CommandExt;
     // No console window flashing up for it.
     const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+    // `/S /C "…"`: cmd takes off exactly the outer pair of quotes and runs
+    // the rest as it is. A bare `/C` with more than two quotes strips the
+    // first and the last, so a line starting with a quoted program
+    // (`"C:\Program Files\…\Code.exe" {folder}`) broke (the source review,
+    // 2026-10-07).
     let mut cmd = Command::new("cmd");
-    cmd.arg("/C").raw_arg(line).creation_flags(CREATE_NO_WINDOW);
+    cmd.raw_arg(windows_line(line)).creation_flags(CREATE_NO_WINDOW);
     cmd
+}
+
+/// What follows `cmd` for `line`.
+#[cfg_attr(not(windows), allow(dead_code))]
+fn windows_line(line: &str) -> String {
+    format!("/S /C \"{line}\"")
 }
 
 #[cfg(not(windows))]
@@ -79,4 +90,15 @@ pub fn new_window(tab: WorkspaceId) {
             let _ = child.wait();
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    /// A line starting with a quoted program keeps every quote: only the
+    /// outer pair `/S` takes off is added.
+    #[test]
+    fn a_line_with_quotes_goes_to_cmd_whole() {
+        let line = r#""C:\Program Files\Code\Code.exe" "C:\dev\x""#;
+        assert_eq!(super::windows_line(line), format!("/S /C \"{line}\""));
+    }
 }

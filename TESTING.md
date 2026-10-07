@@ -101,6 +101,9 @@ what happened, and the steps.
 | 2.15 | Three panes split both ways: hover each divider, drag it, double-click it | Near it the cyan line and the resize pointer; the split follows the drag and stays where dropped (and after a restart); a double-click halves it. Unchanged from before the dividers moved into `tsumugi-layout` (v0.52.0) |
 | 2.16 | Copy `echo one` + Esc `[201~` + `echo two` (e.g. `printf 'echo one\033[201~echo two' \| clip` / `pbcopy`) and paste it into bash or pwsh with bracketed paste | It lands as one line held on the prompt (`echo one[201~echo two`), not run: the Esc is dropped from a paste |
 | 2.17 | Drag a divider and, still holding the button, press `Ctrl+Shift+Z` (or switch tabs with the keyboard); let go; split again | The tab shows its real split afterwards; the new split appears |
+| 2.18 | A German (or other AltGr) keyboard layout: `AltGr+Q` and `AltGr+7` in bash and in pwsh | `@` and `{` typed, nothing else before them (`TSUMUGI_PTY_LOG` shows only the character); `Ctrl+Alt+X` with no character still reaches emacs as C-M-x |
+| 2.19 | A pane in Shift_JIS (the status bar's charset), type or paste `日本😀` | `日本?` reaches the program, not `&#128512;` |
+| 2.20 | Close a tab whose shell runs a deep tree (`cmd /c "cmd /c ping -t localhost"` three levels) | The window closes it within a second; every process of the tree is gone (`Get-Process ping`); nothing else is |
 
 ## 3. The sidebar
 
@@ -354,6 +357,7 @@ what happened, and the steps.
 | 17.30 | Export…, then Import on another machine (or after changing things) | One file in Downloads; importing brings the settings, themes and profiles back, the old ones kept as `.bak` |
 | 17.31 | Keys → set a key to `Ctrl+[` by hand in `settings.toml`, then change another key and a font size in Settings | `settings.toml` still has every table and comment it had; only the changed lines differ |
 | 17.32 | Put a mistake in `settings.toml` (`[broken`), then change anything in Settings | A toast says the file does not read and is left as it is; the file is unchanged |
+| 17.33 | `[[menu.session]] command = "\"C:\\Program Files\\Microsoft VS Code\\Code.exe\" {folder}"` (Windows), then the card menu item | VS Code opens on the tab's folder (cmd took the line whole) |
 
 ## 18. From a script
 

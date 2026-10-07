@@ -11,13 +11,18 @@ pub enum Json {
     Array(Vec<Json>),
     String(String),
     Number(f64),
+    /// A number an `f64` would change (an integer past 2^53, `1e400`),
+    /// kept as it was written so it is written back the same.
+    RawNumber(String),
     Bool(bool),
     Null,
 }
 
 impl Json {
     pub fn parse(text: &str) -> Result<Json, String> {
-        let mut p = Parser { s: text.as_bytes(), at: 0 };
+        // A UTF-8 byte order mark, as some editors save one, is no value.
+        let text = text.strip_prefix('\u{feff}').unwrap_or(text);
+        let mut p = Parser { s: text.as_bytes(), at: 0, depth: 0 };
         let v = p.value()?;
         p.space();
         if p.at < p.s.len() {
@@ -77,7 +82,10 @@ impl Json {
                 out.push('"');
             }
             Json::Number(n) if n.fract() == 0.0 && n.abs() < 1e15 => out.push_str(&format!("{}", *n as i64)),
-            Json::Number(n) => out.push_str(&n.to_string()),
+            Json::Number(n) if n.is_finite() => out.push_str(&n.to_string()),
+            // JSON has no infinity: `null`, not `inf`, which would not read.
+            Json::Number(_) => out.push_str("null"),
+            Json::RawNumber(t) => out.push_str(t),
             Json::Bool(b) => out.push_str(if *b { "true" } else { "false" }),
             Json::Null => out.push_str("null"),
         }
@@ -105,12 +113,23 @@ impl Json {
     }
 }
 
+/// How deep arrays and objects may go.
+const MAX_DEPTH: usize = 256;
+
 struct Parser<'a> {
     s: &'a [u8],
     at: usize,
+    depth: usize,
 }
 
 impl Parser<'_> {
+    /// Four hex digits at the cursor, as a number; the cursor past them.
+    fn hex4(&mut self) -> Option<u32> {
+        let code = std::str::from_utf8(self.s.get(self.at..self.at + 4)?).ok().and_then(|h| u32::from_str_radix(h, 16).ok());
+        self.at += 4;
+        code
+    }
+
     fn err<T>(&self, what: &str) -> Result<T, String> {
         Err(format!("{what} at byte {}", self.at))
     }
@@ -143,7 +162,19 @@ impl Parser<'_> {
         }
     }
 
+    /// A value, no deeper than `MAX_DEPTH` (a file of a million `[` would
+    /// otherwise run the stack out).
     fn value(&mut self) -> Result<Json, String> {
+        self.depth += 1;
+        if self.depth > MAX_DEPTH {
+            return self.err("nested too deep");
+        }
+        let v = self.value_here();
+        self.depth -= 1;
+        v
+    }
+
+    fn value_here(&mut self) -> Result<Json, String> {
         self.space();
         match self.s.get(self.at) {
             Some(b'{') => {
@@ -199,8 +230,14 @@ impl Parser<'_> {
                 while self.at < self.s.len() && matches!(self.s[self.at], b'0'..=b'9' | b'-' | b'+' | b'.' | b'e' | b'E') {
                     self.at += 1;
                 }
-                let n = std::str::from_utf8(&self.s[start..self.at]).ok().and_then(|t| t.parse().ok());
-                n.map(Json::Number).ok_or_else(|| format!("a bad number at byte {start}"))
+                let text = std::str::from_utf8(&self.s[start..self.at]).unwrap_or_default();
+                let n: f64 = text.parse().map_err(|_| format!("a bad number at byte {start}"))?;
+                let integer = !text.contains(['.', 'e', 'E']);
+                if !n.is_finite() || (integer && n.abs() > 9_007_199_254_740_992.0) {
+                    Ok(Json::RawNumber(text.to_owned()))
+                } else {
+                    Ok(Json::Number(n))
+                }
             }
             _ => self.err("a value expected"),
         }
@@ -223,13 +260,23 @@ impl Parser<'_> {
                         b'n' => out.push(b'\n'),
                         b't' => out.push(b'\t'),
                         b'r' => out.push(b'\r'),
+                        b'b' => out.push(0x08),
+                        b'f' => out.push(0x0c),
+                        b'"' | b'\\' | b'/' => out.push(e),
                         b'u' => {
-                            let code = std::str::from_utf8(self.s.get(self.at..self.at + 4).unwrap_or_default()).ok().and_then(|h| u32::from_str_radix(h, 16).ok());
-                            self.at += 4;
+                            let mut code = self.hex4();
+                            // A pair (an emoji written escaped) is one
+                            // character, not two replacement marks.
+                            if let Some(high @ 0xD800..=0xDBFF) = code {
+                                if self.s.get(self.at..self.at + 2) == Some(b"\\u") {
+                                    self.at += 2;
+                                    code = self.hex4().filter(|low| (0xDC00..=0xDFFF).contains(low)).map(|low| 0x10000 + ((high - 0xD800) << 10) + (low - 0xDC00));
+                                }
+                            }
                             let c = code.and_then(char::from_u32).unwrap_or('\u{fffd}');
                             out.extend(c.to_string().bytes());
                         }
-                        other => out.push(other),
+                        _ => return self.err("an unknown escape"),
                     }
                 }
                 other => out.push(other),
@@ -242,6 +289,19 @@ impl Parser<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// What the source review found lost on a round trip (2026-10-07).
+    #[test]
+    fn awkward_json_comes_back_as_it_was() {
+        let v = Json::parse("\u{feff}{\"e\": \"\\uD83D\\uDE00 \\b\\f\\/\", \"big\": 12345678901234567890, \"huge\": 1e400}").unwrap();
+        assert_eq!(v.get("e"), Some(&Json::String("\u{1F600} \u{8}\u{c}/".into())));
+        let back = v.pretty();
+        assert!(back.contains("12345678901234567890") && back.contains("1e400"), "{back}");
+        assert_eq!(Json::parse(&back).unwrap(), v, "the same again");
+        assert!(Json::parse("\"\\q\"").is_err(), "an unknown escape");
+        assert!(Json::parse(&"[".repeat(100_000)).is_err(), "too deep: an error, not a stack overflow");
+        assert_eq!(Json::Number(f64::INFINITY).pretty(), "null\n");
+    }
 
     #[test]
     fn json_reads_what_a_settings_file_has() {
