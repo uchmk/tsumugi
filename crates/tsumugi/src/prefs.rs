@@ -478,25 +478,6 @@ fn row<R>(ui: &mut egui::Ui, l: Look, label: &str, note: &str, control: impl FnO
     r.expect("the control ran")
 }
 
-/// Several controls at the right of a row, laid out left to right so Tab
-/// goes through them in the order they read (a row places its control right
-/// to left, which would send Tab from the right). The width is the one they
-/// took last frame; the first frame they sit at the left, then settle.
-fn in_order<R>(ui: &mut egui::Ui, add: impl FnOnce(&mut egui::Ui) -> R) -> R {
-    let key = ui.id().with("in-order");
-    // At first all the room there is, so nothing is squeezed while it is
-    // measured.
-    let w = ui.data(|d| d.get_temp::<f32>(key)).unwrap_or(ui.available_width());
-    let h = ui.available_height();
-    let shown = ui.allocate_ui_with_layout(egui::vec2(w, h), egui::Layout::left_to_right(egui::Align::Center), add);
-    let now = shown.response.rect.width();
-    if (now - w).abs() > 0.5 {
-        ui.data_mut(|d| d.insert_temp(key, now));
-        ui.ctx().request_repaint();
-    }
-    shown.inner
-}
-
 /// The design's switch: a pill with a knob, cyan when on.
 fn switch(ui: &mut egui::Ui, l: Look, on: bool) -> bool {
     let c = l.c;
@@ -810,7 +791,7 @@ fn keys(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut Vec<
             None if now != own => format!("Its own: {own}"),
             None => String::new(),
         };
-        row(ui, l, crate::keys::title(a), &note, |ui| in_order(ui, |ui| {
+        row(ui, l, crate::keys::title(a), &note, |ui| crate::chrome::in_order(ui, |ui| {
             let waiting = edit.capturing == Some(*name);
             let text = if waiting { "Press a key… (Esc: leave it)".to_owned() } else { now.clone() };
             if keycap(ui, l, &text, waiting).on_hover_text("Click, then press the key to use (Esc: leave it)").clicked() {
@@ -947,7 +928,7 @@ fn notifications(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: 
         }
         for (key, label, now) in [("sound_waiting", "Sound for waits", &n.sound_waiting), ("sound_error", "Sound for fails", &n.sound_error)] {
             sep(ui, l);
-            let picked = row(ui, l, label, "", |ui| in_order(ui, |ui| {
+            let picked = row(ui, l, label, "", |ui| crate::chrome::in_order(ui, |ui| {
                 let picked = select(ui, key, now.as_str(), &SOUND_NAMES);
                 if ui.small_button("▶").on_hover_text("Play it").clicked() {
                     out.push(Change::PlaySound(now.clone()));
@@ -1166,14 +1147,15 @@ fn sessions(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut 
             let taken = seen.profiles.iter().any(|o| o.name == p.name && Some(&o.name) != d.was.as_ref());
             ui.horizontal(|ui| {
                 let ok = !p.name.is_empty() && !p.folder.is_empty() && !taken;
-                if ui.add_enabled(ok, egui::Button::new("Save")).clicked() {
-                    done = Some(Some(Change::SaveProfile(d.was.clone(), p)));
-                }
-                if ui.button("Cancel").clicked() {
-                    done = Some(None);
-                }
                 if taken {
                     ui.label(RichText::new("Another profile has that name").size(12.0).color(c.err));
+                }
+                let (save, cancel) = crate::chrome::foot(ui, egui::Button::new("Save"), ok, "Cancel");
+                if save.clicked() {
+                    done = Some(Some(Change::SaveProfile(d.was.clone(), p)));
+                }
+                if cancel.clicked() {
+                    done = Some(None);
                 }
             });
             ui.add_space(10.0);
@@ -1208,7 +1190,7 @@ fn tab_menu(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut 
                 sep(ui, l);
             }
             let shown = !m.hide.iter().any(|h| h == word);
-            let (up, down, flip) = row(ui, l, cfg::menu_label(word), "", |ui| in_order(ui, |ui| {
+            let (up, down, flip) = row(ui, l, cfg::menu_label(word), "", |ui| crate::chrome::in_order(ui, |ui| {
                 let up = ui.add_enabled(k > 0, egui::Button::new("↑").small()).on_hover_text("Higher in the menu").clicked();
                 let down = ui.add_enabled(k + 1 < words.len(), egui::Button::new("↓").small()).on_hover_text("Lower in the menu").clicked();
                 ui.add_space(8.0);
@@ -1351,7 +1333,7 @@ fn tags(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut Vec<
             }
             sep(ui, l);
         }
-        row(ui, l, "New rule", "A folder (ending in * for each folder in it) or a branch pattern, then a tag ({name}: the folder's name)", |ui| in_order(ui, |ui| {
+        row(ui, l, "New rule", "A folder (ending in * for each folder in it) or a branch pattern, then a tag ({name}: the folder's name)", |ui| crate::chrome::in_order(ui, |ui| {
             let (branch, pattern, tag) = &mut edit.rule;
             if let Some(b) = select(ui, "rule-kind", *branch, &[(false, "Folder"), (true, "Branch")]) {
                 *branch = b;
@@ -1428,7 +1410,11 @@ fn shell(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut Vec
                 }
                 let names: Vec<&str> = vars.iter().map(|(n, _)| n.trim()).filter(|n| !n.is_empty()).collect();
                 let bad = names.iter().any(|n| n.contains(['=', ' ']));
-                if ui.add_enabled(!bad, egui::Button::new("Save")).clicked() {
+                if bad {
+                    ui.label(RichText::new("A name has no = or space").size(12.0).color(c.err));
+                }
+                let (save, cancel) = crate::chrome::foot(ui, egui::Button::new("Save"), !bad, "Cancel");
+                if save.clicked() {
                     for old in sh.env.keys().filter(|k| !names.contains(&k.as_str())) {
                         out.push(Change::SetIn("shell.env".into(), toml_key(old), None));
                     }
@@ -1439,11 +1425,8 @@ fn shell(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut Vec
                     }
                     done = true;
                 }
-                if ui.button("Cancel").clicked() {
+                if cancel.clicked() {
                     done = true;
-                }
-                if bad {
-                    ui.label(RichText::new("A name has no = or space").size(12.0).color(c.err));
                 }
             });
             ui.add_space(8.0);

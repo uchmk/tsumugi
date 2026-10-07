@@ -2758,10 +2758,12 @@ impl App {
                     ui.label(egui::RichText::new(format!("The last session in {} has ended. Its branch stays; git refuses if anything is not committed.", home_short(&path))).size(12.5).color(crate::theme::colors().dim));
                     ui.add_space(10.0);
                     ui.horizontal(|ui| {
-                        if ui.add(egui::Button::new(egui::RichText::new("Remove").color(crate::theme::colors().on_accent()).strong()).fill(chrome::red()).min_size(egui::vec2(90.0, 28.0))).clicked() {
+                        let remove = egui::Button::new(egui::RichText::new("Remove").color(crate::theme::colors().on_accent()).strong()).fill(chrome::red());
+                        let (remove, keep) = chrome::foot(ui, remove, true, "Keep");
+                        if remove.clicked() {
                             answer = Some(true);
                         }
-                        if ui.add(egui::Button::new("Keep").min_size(egui::vec2(80.0, 28.0))).clicked() {
+                        if keep.clicked() {
                             answer = Some(false);
                         }
                     });
@@ -2821,10 +2823,12 @@ impl App {
                     ui.add_space(10.0);
                     ui.horizontal(|ui| {
                         let fill = if general.keep_sessions { chrome::gold() } else { chrome::red() };
-                        if ui.add(egui::Button::new(egui::RichText::new("Close").color(crate::theme::colors().on_accent()).strong()).fill(fill).min_size(egui::vec2(90.0, 28.0))).clicked() {
+                        let close = egui::Button::new(egui::RichText::new("Close").color(crate::theme::colors().on_accent()).strong()).fill(fill);
+                        let (close, cancel) = chrome::foot(ui, close, true, "Cancel");
+                        if close.clicked() {
                             answer = Some(true);
                         }
-                        if ui.add(egui::Button::new("Cancel").min_size(egui::vec2(80.0, 28.0))).clicked() || ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+                        if cancel.clicked() || ui.input(|i| i.key_pressed(egui::Key::Escape)) {
                             answer = Some(false);
                         }
                     });

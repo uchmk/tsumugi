@@ -99,11 +99,12 @@ pub fn show(ctx: &egui::Context, view: &mut View, c: &Colors) -> Option<Answer> 
             let ready = view.start();
             ui.horizontal(|ui| {
                 let n = ready.as_ref().map_or(0, |s| s.tasks.len());
-                let go = egui::Button::new(RichText::new(format!("Start {n}")).color(c.on_accent()).strong()).fill(c.run).min_size(egui::vec2(100.0, 30.0));
-                if ui.add_enabled(ready.is_some(), go).clicked() {
+                let go = egui::Button::new(RichText::new(format!("Start {n}")).color(c.on_accent()).strong()).fill(c.run);
+                let (go, cancel) = crate::chrome::foot(ui, go, ready.is_some(), "Cancel");
+                if go.clicked() {
                     answer = ready.clone().map(Answer::Start);
                 }
-                if ui.button("Cancel").clicked() {
+                if cancel.clicked() {
                     answer = Some(Answer::Close);
                 }
             });

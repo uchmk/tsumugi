@@ -1282,9 +1282,57 @@ fn when_words(at: chrono::NaiveDateTime, now: chrono::NaiveDateTime) -> String {
     }
 }
 
+/// Several controls at the right of a row, laid out left to right so Tab
+/// goes through them in the order they read (a row places its control right
+/// to left, which would send Tab from the right). The width is the one they
+/// took last frame; the first frame they sit at the left, then settle.
+pub fn in_order<R>(ui: &mut egui::Ui, add: impl FnOnce(&mut egui::Ui) -> R) -> R {
+    let key = ui.id().with("in-order");
+    // At first all the room there is, so nothing is squeezed while it is
+    // measured.
+    let w = ui.data(|d| d.get_temp::<f32>(key)).unwrap_or(ui.available_width());
+    let h = ui.available_height();
+    let shown = ui.allocate_ui_with_layout(egui::vec2(w, h), egui::Layout::left_to_right(egui::Align::Center), add);
+    let now = shown.response.rect.width();
+    if (now - w).abs() > 0.5 {
+        ui.data_mut(|d| d.insert_temp(key, now));
+        ui.ctx().request_repaint();
+    }
+    shown.inner
+}
+
+/// A dialog's buttons, the same everywhere (the new-session dialog's, the
+/// design's): at the right, Cancel then the main one, in the order they read
+/// and Tab goes. Whether each was clicked, and their responses (for a ring).
+pub fn foot(ui: &mut egui::Ui, main: egui::Button<'_>, enabled: bool, cancel: &str) -> (egui::Response, egui::Response) {
+    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+        in_order(ui, |ui| {
+            let c = ui.add(egui::Button::new(cancel).min_size(egui::vec2(80.0, 30.0)));
+            let m = ui.add_enabled(enabled, main.min_size(egui::vec2(90.0, 30.0)));
+            (m, c)
+        })
+    })
+    .inner
+}
+
 #[cfg(test)]
 mod tests {
     use super::{BREATHE, SWEEP, breathe, edge_at, elapsed, sweep_at, when_words};
+
+    /// Every dialog's Cancel goes through `foot`, so the buttons sit alike
+    /// everywhere: no Cancel button made by hand anywhere else.
+    #[test]
+    fn every_cancel_is_a_dialogs_foot() {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        for entry in std::fs::read_dir(&dir).unwrap() {
+            let path = entry.unwrap().path();
+            let Ok(text) = std::fs::read_to_string(&path) else { continue };
+            for (k, line) in text.lines().enumerate() {
+                let by_hand = ["button(\"Cancel\")", "Button::new(\"Cancel\")", "button(\"Keep\")", "Button::new(\"Keep\")"];
+                assert!(!by_hand.iter().any(|b| line.contains(b)), "{}:{}: a Cancel made by hand; use chrome::foot", path.display(), k + 1);
+            }
+        }
+    }
 
     #[test]
     fn the_states_read_on_every_theme() {

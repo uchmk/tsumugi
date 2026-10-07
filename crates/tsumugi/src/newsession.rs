@@ -544,19 +544,14 @@ pub fn show(ctx: &egui::Context, pal: &Palette, d: &mut Dialog, recents: &[Recen
                         ui.label(RichText::new(what).size(12.0).color(pal.fg_dim));
                         ui.add_space(6.0);
                     }
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        let create = egui::Button::new(RichText::new("Create").color(crate::theme::colors().on_accent()).strong())
-                            .fill(chrome::cyan())
-                            .min_size(egui::vec2(90.0, 30.0));
-                        let create = ui.add(create);
-                        if ring(ui, create).clicked() {
-                            answer = Some(d.create(rules, false));
-                        }
-                        let cancel = ui.add(egui::Button::new("Cancel").min_size(egui::vec2(70.0, 30.0)));
-                        if ring(ui, cancel).clicked() {
-                            answer = Some(Answer::Cancel);
-                        }
-                    });
+                    let create = egui::Button::new(RichText::new("Create").color(crate::theme::colors().on_accent()).strong()).fill(chrome::cyan());
+                    let (create, cancel) = chrome::foot(ui, create, true, "Cancel");
+                    if ring(ui, cancel).clicked() {
+                        answer = Some(Answer::Cancel);
+                    }
+                    if ring(ui, create).clicked() {
+                        answer = Some(d.create(rules, false));
+                    }
                 });
             });
     });
@@ -664,6 +659,27 @@ mod tests {
             format!("{id:?} {rect:?}")
         }
 
+        /// The texts drawn in a frame, with where.
+        fn texts(&self, d: &mut Dialog) -> Vec<(String, egui::Rect)> {
+            let input = egui::RawInput { screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(900.0, 800.0))), ..Default::default() };
+            let mut out = self.ctx.run_ui(input, |ui| {
+                show(ui.ctx(), &Palette::default(), d, &self.recents, &[], &[]);
+            });
+            out.textures_delta.clear();
+            fn walk(s: &egui::Shape, v: &mut Vec<(String, egui::Rect)>) {
+                match s {
+                    egui::Shape::Text(t) => v.push((t.galley.text().to_owned(), t.galley.rect.translate(t.pos.to_vec2()))),
+                    egui::Shape::Vec(list) => list.iter().for_each(|s| walk(s, v)),
+                    _ => {}
+                }
+            }
+            let mut v = Vec::new();
+            for c in &out.shapes {
+                walk(&c.shape, &mut v);
+            }
+            v
+        }
+
         fn in_folder(&self) -> bool {
             self.ctx.memory(|m| m.has_focus(egui::Id::new("ns-folder")))
         }
@@ -701,14 +717,32 @@ mod tests {
         assert_eq!(c.folder, PathBuf::from("/srv/app"));
     }
 
+    /// The dialog's buttons sit as every dialog's do (`chrome::foot`): at
+    /// the right, Cancel then Create, on one line.
+    #[test]
+    fn the_buttons_sit_as_in_every_dialog() {
+        let run = Run::new();
+        let mut d = Dialog::new(std::path::Path::new("/srv/app"));
+        run.frame(&mut d, Vec::new());
+        run.frame(&mut d, Vec::new());
+        let texts = run.texts(&mut d);
+        let at = |w: &str| texts.iter().find(|(t, _)| t == w).map(|(_, r)| *r).unwrap_or_else(|| panic!("{w}"));
+        let (cancel, create, folder) = (at("Cancel"), at("Create"), at("FOLDER"));
+        assert!(cancel.right() < create.left(), "Cancel {cancel:?} before Create {create:?}");
+        assert!((cancel.center().y - create.center().y).abs() < 2.0, "on one line");
+        assert!(create.left() > folder.left() + 300.0, "at the right: {create:?}");
+    }
+
     #[test]
     fn enter_on_a_button_presses_it() {
         let run = Run::new();
         let mut d = Dialog::new(std::path::Path::new("/srv/app"));
         run.frame(&mut d, Vec::new());
         run.frame(&mut d, Vec::new());
-        // Shift+Tab from the folder wraps round to the last of the dialog:
+        // Shift+Tab from the folder wraps round to the last of the dialog,
+        // Create (Cancel reads, and is tabbed to, before it); once more,
         // Cancel.
+        run.key(&mut d, egui::Key::Tab, egui::Modifiers::SHIFT);
         run.key(&mut d, egui::Key::Tab, egui::Modifiers::SHIFT);
         let answer = run.key(&mut d, egui::Key::Enter, egui::Modifiers::NONE);
         assert!(matches!(answer, Some(Answer::Cancel)), "Enter on Cancel cancels: {}", run.focused());

@@ -179,11 +179,12 @@ fn waiting(ui: &mut egui::Ui, view: &mut View, rows: &[Row], c: &Colors, max: f3
                         if view.confirming == Some(r.id) {
                             ui.label(RichText::new(format!("Adds {rule} to {}, then says yes", r.rule_file.display())).size(11.5).color(c.dim));
                             ui.horizontal(|ui| {
-                                if ui.button(RichText::new("Add and say yes").strong()).clicked() {
+                                let (yes, cancel) = crate::chrome::foot(ui, egui::Button::new(RichText::new("Add and say yes").strong()), true, "Cancel");
+                                if yes.clicked() {
                                     out.push(Do::Allow(r.id, rule.clone()));
                                     view.confirming = None;
                                 }
-                                if ui.button("Cancel").clicked() {
+                                if cancel.clicked() {
                                     view.confirming = None;
                                 }
                             });

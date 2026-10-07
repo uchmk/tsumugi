@@ -30,6 +30,7 @@ row a look, find something that can be **read**:
 | a toast, a notification, the taskbar number | a screenshot read as text; the toast's words are in the bell's list too (`Ctrl+Shift+N`) |
 | a program was started, and how | `Get-CimInstance Win32_Process` for tsumugi's children: `CommandLine` |
 | where Tab went, the keys' order through a screen | `TSUMUGI_KEYLOG=1`: a `focus x,y wxh` line each time the keys move to another control. Reading order is y, then x; a jump back, a control never named, or `focus none` in the middle of a walk is a finding |
+| buttons sit alike on every screen | the focus log's rectangles: Cancel's x smaller than the main button's, both on the same y and the same height, the main one's right edge the same distance from the dialog's edge on every dialog. A dialog that differs is a finding with both sets of numbers |
 | a click, a hover | `SendInput` for the mouse (a 64-bit `INPUT` is 40 bytes); never `PostMessage` for the mouse, egui ignores a posted click |
 
 Start a test with its own state and settings so nothing of the owner's is
