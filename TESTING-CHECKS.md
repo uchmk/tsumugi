@@ -17,7 +17,7 @@
 - [ ] **1.4** With the window closed, `tsumugi new . -- echo hi` → Prints a number; the next window has a tab with `hi` in it
 - [ ] **1.5** `tsumugi attach <that number>`, and `tsumugi attach <folder name>` → The window opens on that session. A name two sessions share says so and names their numbers
 - [ ] **1.6** With tsumugi running, `cargo build` (Windows) → The build replaces `tsumugi.exe` -- no `アクセスが拒否されました` -- because the server runs from its copy in `%LOCALAPPDATA%\tsumugi\server\`
-- [ ] **1.7** Start the newly built window while the older server runs → It says the server is another version and offers **Stop it and start this version**; pressed, the tabs come back through Welcome back
+- [ ] **1.7** Start the newly built window while the older server runs (a build of 0.45.0 or 0.46.0 too) → **tsumugi was updated**, what that means in a sentence, **Restart the server** lit; Enter (no Tab or click) restarts it and every tab comes back at once, with no Welcome back; Esc closes the window and the old sessions go on
 - [ ] **1.8** Task Manager after 1.3 → One `tsumugi-<version>-<hash>.exe` server, and no console window anywhere
 - [ ] **1.9** The taskbar, Alt+Tab, and the window's corner → The logo (two threads, cyan and gold, on a dark tile) as the window's icon
 - [ ] **1.10** `tsumugi new . --tag a --tag b --tag c -- bash` → All three tags on the new session (`tsumugi ls`'s last column)

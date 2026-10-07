@@ -4087,30 +4087,50 @@ impl App {
 
     fn message(&mut self, ui: &mut egui::Ui) {
         let Some(why) = self.failed.clone() else { return };
-        let other = why.starts_with(OTHER_VERSION);
         let rect = ui.max_rect();
         ui.painter().rect_filled(rect, 0.0, theme::colors().bg);
         let mut inner = ui.new_child(egui::UiBuilder::new().max_rect(rect.shrink(40.0)).layout(egui::Layout::top_down(egui::Align::Center)));
-        inner.add_space((rect.height() / 2.0 - 80.0).max(0.0));
-        inner.label(egui::RichText::new(&why).font(self.font.clone()).color(self.palette.fg));
-        if !other {
+        let Some(detail) = why.strip_prefix(OTHER_VERSION) else {
+            inner.add_space((rect.height() / 2.0 - 80.0).max(0.0));
+            inner.label(egui::RichText::new(&why).font(self.font.clone()).color(self.palette.fg));
             self.replaced();
             if self.replacing.is_some() {
                 inner.ctx().request_repaint_after(Duration::from_millis(200));
             }
             return;
-        }
-        // A server of another version (an update, a new build): stopped,
-        // its tabs written down, and this version's started, which offers
-        // them back.
-        inner.add_space(12.0);
+        };
+        // A server of another version (an update, a new build): what that
+        // means, and Enter to stop it -- its tabs written down -- and start
+        // this version's, which offers them back.
+        let c = theme::colors();
+        inner.add_space((rect.height() / 2.0 - 140.0).max(0.0));
+        inner.label(egui::RichText::new("tsumugi was updated").size(20.0).strong().color(c.strong()));
+        inner.add_space(10.0);
+        inner.scope(|ui| {
+            ui.set_max_width(560.0);
+            let words = "Your sessions are still running in the server of the version you had before, which this version cannot talk to. \
+                         Restart the server to open them here: their shells stop, and the tabs come back in their folders, \
+                         Claude Code resuming its conversations.";
+            ui.label(egui::RichText::new(words).size(13.5).color(c.dim));
+        });
+        inner.add_space(18.0);
         if self.replacing.is_some() {
             inner.ctx().request_repaint_after(Duration::from_millis(200));
-            inner.label(egui::RichText::new("Stopping it…").color(self.palette.fg_dim));
-        } else if inner.button("Stop it and start this version (the tabs come back)").clicked() {
-            let ctx = inner.ctx().clone();
-            self.replacing = Some(replace_server(move || ctx.request_repaint()));
+            inner.label(egui::RichText::new("Restarting the server…").size(13.5).color(c.dim));
+        } else {
+            let (enter, esc) = inner.input(|i| (i.key_pressed(egui::Key::Enter), i.key_pressed(egui::Key::Escape)));
+            let restart = inner.add(egui::Button::new(egui::RichText::new("Restart the server   Enter").color(c.on_accent()).strong()).fill(c.run).min_size(egui::vec2(220.0, 32.0)));
+            inner.add_space(6.0);
+            let later = inner.add(egui::Button::new(egui::RichText::new("Not now   Esc").size(12.5)).frame(false));
+            if restart.clicked() || enter {
+                let ctx = inner.ctx().clone();
+                self.replacing = Some(replace_server(move || ctx.request_repaint()));
+            } else if later.on_hover_text("Close this window; the sessions go on running").clicked() || esc {
+                inner.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
+            }
         }
+        inner.add_space(24.0);
+        inner.label(egui::RichText::new(detail).size(11.0).color(c.faint()));
         self.replaced();
     }
 
@@ -4121,8 +4141,11 @@ impl App {
         self.replacing = None;
         match answer.and_then(|client| first_session(&client).map(|restore| (client, restore))) {
             Ok((client, restore)) => {
+                // The restart was asked for here (an update, or Restart the
+                // server): every tab comes back at once, with no Welcome
+                // back to answer again.
+                self.restore = if restore.is_some() && client.restore().unwrap_or(0) > 0 { None } else { restore };
                 self.client = Some(client);
-                self.restore = restore;
                 self.failed = None;
             }
             Err(e) => self.failed = Some(e),

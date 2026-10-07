@@ -28,8 +28,8 @@ of its own (the server too, if it is not running) and prints its number;
 program or tag. On Windows the server runs from a copy of the exe kept in
 `%LOCALAPPDATA%\tsumugi\server\`, so a rebuild or an update can replace
 `tsumugi.exe` while sessions run. A window that finds a server of another
-version offers to stop it -- the tabs are written down first -- and to start
-its own, which brings them back. The sidebar rings each one in its state's
+version says tsumugi was updated and offers, on Enter, to restart the
+server -- the tabs are written down first -- and brings every one back. The sidebar rings each one in its state's
 colour, with a mark that says it without the colour: cyan and a turning arc
 while an agent works, yellow, breathing, and a clock when it wants you, a
 thin yellow ring and a dotted circle when its output has stopped for 10

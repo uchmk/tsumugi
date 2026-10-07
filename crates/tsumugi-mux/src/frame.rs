@@ -49,6 +49,25 @@ mod tests {
         assert_eq!(read::<_, ToServer>(&mut r).unwrap_err().kind(), io::ErrorKind::UnexpectedEof, "then the end");
     }
 
+    /// What a server of another version says at `Hello` must read in every
+    /// version: `Hello` first and `Error` sixteenth, as they were in
+    /// protocol 16. Moving either breaks "Stop it and start this version".
+    #[test]
+    fn hello_and_error_keep_their_places() {
+        use crate::proto::ToClient;
+        let tag = |m: &ToClient| postcard::to_allocvec(m).unwrap()[0];
+        assert_eq!(tag(&ToClient::Hello { version: 1 }), 0);
+        assert_eq!(tag(&ToClient::Error("x".into())), 15);
+        assert_eq!(postcard::to_allocvec(&ToServer::Hello { version: 1 }).unwrap()[0], 0);
+        // The answer a protocol-16 server gives a newer client.
+        let mut buf = Vec::new();
+        let old = (15u8, "the server speaks version 16, the client 18".to_string());
+        let body = postcard::to_allocvec(&old).unwrap();
+        buf.extend((body.len() as u32).to_le_bytes());
+        buf.extend(body);
+        assert!(matches!(read::<_, ToClient>(&mut &buf[..]).unwrap(), ToClient::Error(e) if e.contains("version 16")));
+    }
+
     #[test]
     fn a_length_out_of_step_is_refused() {
         let mut r = &[0xff, 0xff, 0xff, 0xff, 1, 2][..];

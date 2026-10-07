@@ -97,11 +97,18 @@ impl Client {
     pub fn connect(at: &Address, wake: impl Fn() + Send + Sync + 'static) -> io::Result<Self> {
         let (mut r, mut w) = transport::connect(at)?.split()?;
         frame::write(&mut w, &ToServer::Hello { version: VERSION })?;
-        match frame::read::<_, ToClient>(&mut r)? {
+        // An answer that does not read is a server of another version too
+        // (one from before `Error` kept its place).
+        let answer = frame::read::<_, ToClient>(&mut r).map_err(|e| match e.kind() {
+            io::ErrorKind::InvalidData => io::Error::new(io::ErrorKind::InvalidData, "the server speaks another version"),
+            _ => e,
+        })?;
+        match answer {
             ToClient::Hello { version: VERSION } => {}
             // A server of another version: told apart, so a window can offer
             // to stop it (`stop`).
             ToClient::Error(e) => return Err(io::Error::new(io::ErrorKind::InvalidData, e)),
+            ToClient::Hello { version } => return Err(io::Error::new(io::ErrorKind::InvalidData, format!("the server speaks version {version}, the client {VERSION}"))),
             other => return Err(io::Error::other(format!("the server answered {other:?}"))),
         }
         let (tx, rx) = crossbeam_channel::unbounded::<ToServer>();

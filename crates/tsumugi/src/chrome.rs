@@ -1137,7 +1137,8 @@ pub fn restore_screen(ui: &mut egui::Ui, pal: &Palette, view: &mut RestoreView) 
     let mut child = ui.new_child(egui::UiBuilder::new().max_rect(egui::Rect::from_center_size(rect.center(), egui::vec2(width, rect.height().min(560.0)))));
     egui::Frame::NONE.fill(crate::theme::colors().panel).corner_radius(12.0).stroke(egui::Stroke::new(1.0, crate::theme::colors().border_strong())).inner_margin(20.0).show(&mut child, |ui| {
         ui.label(RichText::new("Welcome back").size(18.0).strong().color(pal.fg));
-        ui.label(RichText::new(format!("{} sessions were open when tsumugi stopped, {when}.", panes.len())).color(pal.fg_dim));
+        let open = if panes.len() == 1 { "1 session was open".to_owned() } else { format!("{} sessions were open", panes.len()) };
+        ui.label(RichText::new(format!("{open} when tsumugi stopped, {when}.")).color(pal.fg_dim));
         ui.add_space(10.0);
         // The rows scroll, so Restore and Start fresh stay in sight however
         // many there were.

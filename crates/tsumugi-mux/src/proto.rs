@@ -7,7 +7,7 @@ use tsumugi_pane::Size;
 
 /// Bumped whenever a message changes shape: a client and a server that
 /// disagree say so at `Hello` instead of misreading each other.
-pub const VERSION: u32 = 17;
+pub const VERSION: u32 = 18;
 
 /// A `Hello` with this version asks the server to stop, writing down its
 /// tabs first so the next window can bring them back. `Hello` stays the
@@ -264,9 +264,6 @@ pub enum ToClient {
     Screen { id: SessionId, update: crate::diff::Update },
     /// The session's shell is gone; the session is no more.
     Exited { id: SessionId },
-    /// A session ended, to every client: what it was, and the last lines on
-    /// its screen (the history of closed sessions).
-    Ended { info: Info, last: Vec<String> },
     /// Text for the clipboard: a program set it (OSC 52), or `Copy` asked.
     Clipboard(String),
     /// Whether someone is at one of the windows (`looking`), and whether this
@@ -275,5 +272,11 @@ pub enum ToClient {
     Attention { looking: bool, teller: bool },
     /// The tags whose sessions are told of in the bell only.
     MutedTags(Vec<String>),
+    /// Keeps its place (the 16th) for good: a server of another version
+    /// answers `Hello` with it, and a client must read it whatever its own
+    /// version. New messages go after it.
     Error(String),
+    /// A session ended, to every client: what it was, and the last lines on
+    /// its screen (the history of closed sessions).
+    Ended { info: Info, last: Vec<String> },
 }
