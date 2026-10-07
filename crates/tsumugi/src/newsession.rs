@@ -420,7 +420,12 @@ pub fn show(ctx: &egui::Context, pal: &Palette, d: &mut Dialog, recents: &[Recen
                 ui.horizontal(|ui| {
                     d.start_ids.clear();
                     for (k, s) in Start::ALL.into_iter().enumerate() {
-                        let b = start_button(ui, s.label(), d.start == s);
+                        // While Profile… has the keys, nothing else in the
+                        // row is lit: one place lit in the row at a time
+                        // (seen on Windows, 2026-10-07). The way picked
+                        // comes back lit when the keys leave Profile….
+                        let profile_has_keys = d.profile_id.is_some_and(|id| ui.memory(|m| m.has_focus(id)));
+                        let b = start_button(ui, s.label(), d.start == s && !profile_has_keys);
                         d.start_ids.push(b.id);
                         if d.start_focus == Some(k) {
                             b.request_focus();
