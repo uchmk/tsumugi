@@ -927,6 +927,8 @@ struct App {
     animated: bool,
     /// `TSUMUGI_KEYLOG` is set: print the key presses.
     key_log: bool,
+    /// What the key log last said had the keys.
+    focus_logged: Option<egui::Id>,
     settings_error: Option<String>,
     /// From the settings and `profiles.toml`, for the new-session dialog.
     tag_rules: Vec<tsumugi_mux::settings::TagRule>,
@@ -1128,6 +1130,7 @@ impl App {
             prefs: None,
             input: inputbox::InputBox::with_history(load_history(), prompts::load()),
             key_log: std::env::var_os("TSUMUGI_KEYLOG").is_some(),
+            focus_logged: None,
             replacing: None,
             replaced_unasked: false,
             animated: false,
@@ -4271,6 +4274,19 @@ impl App {
         self.start_parallel(&ctx, &client);
 
         self.bell_opening = false;
+        // `TSUMUGI_KEYLOG=1` also says where the keys went when that changes
+        // (the control's rectangle, in points), so a check of the Tab order
+        // reads it from stderr instead of a picture.
+        if self.key_log {
+            let now = ctx.memory(|m| m.focused());
+            if now != self.focus_logged {
+                self.focus_logged = now;
+                match now.and_then(|id| ctx.read_response(id)) {
+                    Some(r) => eprintln!("focus {:.0},{:.0} {:.0}x{:.0}", r.rect.left(), r.rect.top(), r.rect.width(), r.rect.height()),
+                    None => eprintln!("focus none"),
+                }
+            }
+        }
         // Files dropped on the window go with the next prompt.
         let dropped: Vec<std::path::PathBuf> = ctx.input(|i| i.raw.dropped_files.iter().map(|f| f.path().to_path_buf()).filter(|p| !p.as_os_str().is_empty()).collect());
         if let (false, Some(w)) = (dropped.is_empty(), &current) {

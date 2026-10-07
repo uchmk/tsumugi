@@ -557,8 +557,11 @@ pub fn show(ctx: &egui::Context, pal: &Palette, d: &mut Dialog, recents: &[Recen
 }
 
 fn start_button(ui: &mut egui::Ui, text: &str, on: bool) -> egui::Response {
+    // The way picked is filled, its edge as the others': cyan edges are the
+    // ring's alone, so the picked one does not read as having the keys
+    // when they have moved on (to Profile…, seen on Windows, 2026-10-07).
     let (fill, stroke, color) = if on {
-        (crate::theme::colors().run.gamma_multiply(0.12), chrome::cyan(), crate::theme::colors().strong())
+        (crate::theme::colors().run.gamma_multiply(0.28), crate::theme::colors().border_strong(), crate::theme::colors().strong())
     } else {
         (Color32::TRANSPARENT, crate::theme::colors().border, crate::theme::colors().fg)
     };

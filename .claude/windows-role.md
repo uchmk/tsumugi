@@ -29,6 +29,7 @@ row a look, find something that can be **read**:
 | the server kept running / the window closed | `Get-Process tsumugi` (the server runs from `%LOCALAPPDATA%\tsumugi\server\`) |
 | a toast, a notification, the taskbar number | a screenshot read as text; the toast's words are in the bell's list too (`Ctrl+Shift+N`) |
 | a program was started, and how | `Get-CimInstance Win32_Process` for tsumugi's children: `CommandLine` |
+| where Tab went, the keys' order through a screen | `TSUMUGI_KEYLOG=1`: a `focus x,y wxh` line each time the keys move to another control. Reading order is y, then x; a jump back, a control never named, or `focus none` in the middle of a walk is a finding |
 | a click, a hover | `SendInput` for the mouse (a 64-bit `INPUT` is 40 bytes); never `PostMessage` for the mouse, egui ignores a posted click |
 
 Start a test with its own state and settings so nothing of the owner's is
@@ -75,6 +76,7 @@ both halves. Only flip `[ ]` to `[x]`; then
 | **1. The window and the server** | The server outliving the window, `tsumugi new` / `attach` / `ls`, the update screen: all text |
 | **18. From a script** | The CLI: `send`, `read`, `split`, `close`, `wait`, `ls --json` -- all text |
 | **12. Claude Code's hooks** | `~/.claude/settings.json` before and after (a copy first, hash afterwards) |
+| **19. Keys through every screen** | The focus log turns the Tab order into text; only the ring (`[~]`) and 19.6's looks are pictures. Also, on any screen you touch for another row: if Tab goes right to left, skips a control, or leaves a ring behind, write it down as a finding |
 | **4. States, notifications and answering** | Toasts and the taskbar number: Windows only |
 | **2. Panes and splits** | ConPTY: lazygit, Japanese, the PTY log |
 | **16. Keys**, **17. What the settings' rows do**, **8. Restoring after a restart** | `settings.toml` and `tsumugi ls --json` before and after |

@@ -264,3 +264,12 @@
 - [ ] **18.4** `tsumugi split N --down -- claude` → A pane below session N in its folder with Claude Code started; its number printed; the window shows the split
 - [ ] **18.5** `tsumugi wait N --state done --timeout 600` while Claude Code works there → Returns `done` (exit 0) when it finishes; with a short timeout, exit 1; for a closed session, exit 3
 - [ ] **18.6** `tsumugi close N` → The session ends and its pane goes
+
+## 19. Keys through every screen
+
+- [ ] **19.1** The new-session dialog: `Tab` all the way round, then `Shift+Tab` all the way back → The folder, the way picked in START (one stop), + Pane, the tag, the two ticks, Cancel, Create, the folder again; the log's positions go left to right, top to bottom; back the same in reverse
+- [ ] **19.2** In START, `→` four times, then `←` four times → Claude Code, Resume last, Shell, Profile…, round to Claude Code; only the way picked is filled, only the one with the keys has the ring (no ring left on the one before)
+- [ ] **19.3** Settings, each page in turn: `Tab` through it → Every switch, list, field and button on the page, in reading order; inside a row of several (Tags' New rule, a key and Its own, a sound and ▶, the menu's ↑ ↓ and switch) left to right
+- [ ] **19.4** The search box (`Ctrl+Shift+P`), the waiting list (`Ctrl+Shift+Y`), the bell's list (`Ctrl+Shift+N`), Start in parallel → Each opens with the keys in its first field or line; `Tab` walks it in reading order; `Esc` closes it and the keys go back to the pane they came from
+- [ ] **19.5** Every dialog and list in 19.1 to 19.4: `Enter` on a field, and on each button → As the dialog's foot says: Enter in a field does the main thing; on a button it presses that button; nothing reaches the shell behind
+- [ ] **19.6** The same screens at 150% (Windows display scale) and with the window 1000 px wide → Nothing cut, nothing on top of something else, no row's words touching the line under it (a screenshot each, `[~]`)
