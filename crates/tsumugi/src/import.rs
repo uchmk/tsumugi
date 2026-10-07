@@ -103,11 +103,15 @@ pub fn iterm(text: &str, name: &str) -> Result<Scheme, String> {
     let color = |key: &str| -> Option<Color32> {
         let at = text.find(&format!("<key>{key}</key>"))?;
         let rest = &text[at..];
-        let dict = &rest[rest.find("<dict>")?..rest.find("</dict>")?];
+        // Each end looked for after its start: a file with them the wrong
+        // way round is read as nothing, not a panic (the source review).
+        let open = rest.find("<dict>")?;
+        let dict = &rest[open..open + rest[open..].find("</dict>")?];
         let part = |c: &str| -> Option<u8> {
             let at = dict.find(&format!("<key>{c} Component</key>"))?;
             let r = &dict[at..];
-            let v = &r[r.find("<real>")? + 6..r.find("</real>")?];
+            let from = r.find("<real>")? + 6;
+            let v = &r[from..from + r[from..].find("</real>")?];
             Some((v.trim().parse::<f32>().ok()?.clamp(0.0, 1.0) * 255.0).round() as u8)
         };
         Some(Color32::from_rgb(part("Red")?, part("Green")?, part("Blue")?))
@@ -151,6 +155,13 @@ mod tests {
         let settings = format!("{{ /* mine */ \"profiles\": {{}}, \"schemes\": [ {CAMPBELL}, ], }}");
         assert_eq!(windows_terminal(&settings, "x").unwrap().len(), 1);
         assert!(windows_terminal("{\"profiles\": {}}", "x").is_err());
+    }
+
+    /// A file with its ends the wrong way round is not a panic.
+    #[test]
+    fn a_broken_iterm_file_is_refused() {
+        let text = "<key>Background Color</key></dict><dict><key>Red Component</key></real><real>1";
+        assert!(iterm(text, "broken").is_err());
     }
 
     #[test]

@@ -306,8 +306,15 @@ pub fn store(path: &Path, saved: &Saved) -> io::Result<()> {
     }
     let mut bytes = VERSION.to_le_bytes().to_vec();
     bytes.extend(postcard::to_allocvec(saved).map_err(io::Error::other)?);
+    // To the disk before it takes the old one's place: a power cut right
+    // after a save leaves the old file or the new, never an empty one.
     let aside = path.with_extension("new");
-    std::fs::write(&aside, bytes)?;
+    {
+        use std::io::Write;
+        let mut f = std::fs::File::create(&aside)?;
+        f.write_all(&bytes)?;
+        f.sync_all()?;
+    }
     std::fs::rename(&aside, path)
 }
 

@@ -88,6 +88,11 @@ struct Shared {
     /// Seconds of silence after which a running program reads as probably
     /// waiting (Q2: Konsole's 10). 0 turns the guess off.
     quiet: Duration,
+    /// Each folder's branch and repository as last read, and the folders
+    /// to read, by a thread of its own: `.git` on a slow share is never
+    /// read while `sessions` is held (the source review, 2026-10-07).
+    git: Mutex<BTreeMap<PathBuf, (String, PathBuf)>>,
+    git_ask: crossbeam_channel::Sender<PathBuf>,
 }
 
 /// A running server; [`ServerHandle::wait`] returns when it stops.
@@ -146,6 +151,7 @@ pub fn start_with(at: &Address, options: Options) -> io::Result<ServerHandle> {
     let listener = Listener::bind(at)?;
     let (dirty_tx, dirty_rx) = crossbeam_channel::unbounded();
     let (done_tx, done_rx) = crossbeam_channel::bounded(1);
+    let (git_tx, git_rx) = crossbeam_channel::unbounded::<PathBuf>();
     let shared = Arc::new(Shared {
         sessions: Mutex::new(BTreeMap::new()),
         workspaces: Mutex::new(BTreeMap::new()),
@@ -168,7 +174,17 @@ pub fn start_with(at: &Address, options: Options) -> io::Result<ServerHandle> {
         quiet: Duration::from_secs(
             std::env::var("TSUMUGI_QUIET_SECS").ok().and_then(|s| s.parse().ok()).unwrap_or(10),
         ),
+        git: Mutex::new(BTreeMap::new()),
+        git_ask: git_tx,
     });
+    let reader = shared.clone();
+    std::thread::Builder::new().name("mux-git".into()).spawn(move || {
+        for dir in git_rx {
+            let found = git_info(&dir);
+            lock(&reader.git).insert(dir, found);
+            let _ = reader.dirty.send(0);
+        }
+    })?;
     let pump = shared.clone();
     std::thread::Builder::new().name("mux-pump".into()).spawn(move || run_pump(pump, dirty_rx))?;
     let accept = shared.clone();
@@ -290,9 +306,16 @@ fn handle(shared: &Arc<Shared>, client: ClientId, tx: &Sender<ToClient>, msg: To
         }
         ToServer::SetLayout { id, layout, focus } => {
             // Only panes that are still sessions: the window may have sent
-            // this before it heard that one ended.
+            // this before it heard that one ended. And only panes of no
+            // other tab, each once: a window that had not heard a pane
+            // moved could otherwise put one session in two tabs (the
+            // source review, 2026-10-07).
             let mut workspaces = lock(&shared.workspaces);
-            if let (Some(w), Some(layout)) = (workspaces.get_mut(&id), layout.retain(&|s| sessions.contains_key(s))) {
+            let elsewhere: std::collections::HashSet<SessionId> = workspaces.iter().filter(|(k, _)| **k != id).flat_map(|(_, w)| w.layout.leaves()).collect();
+            let leaves = layout.leaves();
+            let twice = leaves.iter().enumerate().any(|(k, s)| leaves[..k].contains(s));
+            let layout = if twice { None } else { layout.retain(&|s| sessions.contains_key(s) && !elsewhere.contains(s)) };
+            if let (Some(w), Some(layout)) = (workspaces.get_mut(&id), layout) {
                 w.focus = if layout.contains(&focus) { focus } else { layout.leaves()[0] };
                 w.layout = layout;
             }
@@ -484,6 +507,10 @@ fn handle(shared: &Arc<Shared>, client: ClientId, tx: &Sender<ToClient>, msg: To
         }
         ToServer::Kill { id } => end(shared, sessions, id),
         ToServer::Notify { id, state, note, claude } => {
+            // A conversation is typed back into the shell as `claude
+            // --resume <id>`: only an id of letters, digits, `-` and `_`
+            // is kept (the source review, 2026-10-07).
+            let claude = claude.filter(|c| conversation_id(c));
             if let Some(s) = sessions.get_mut(&id) {
                 if claude.is_some() && claude != s.claude {
                     s.info.conversation = claude.clone().unwrap_or_default();
@@ -628,7 +655,7 @@ impl Rules {
 
     /// The line a restored or restarted Claude Code pane types, if any.
     fn resume_line(&self, conversation: &str) -> Option<Vec<u8>> {
-        self.resume.then(|| format!("{} --resume {conversation}\r", self.claude).into_bytes())
+        (self.resume && conversation_id(conversation)).then(|| format!("{} --resume {conversation}\r", self.claude).into_bytes())
     }
 
     /// Put on `info` the tags its folder's and branch's rules give it. Only
@@ -689,8 +716,15 @@ fn save_if_due(shared: &Shared) {
     if std::time::Instant::now() < at {
         return;
     }
+    // One write at a time (the pump's and a STOP's), each of the latest.
+    static ONE_WRITE: Mutex<()> = Mutex::new(());
+    let _turn = lock(&ONE_WRITE);
     let sessions = lock(&shared.sessions);
     let workspaces = lock(&shared.workspaces);
+    // Not due any more from here: a change made while the file is being
+    // written asks for another save, which clearing afterwards would have
+    // thrown away (the source review, 2026-10-07).
+    *lock(&shared.save_due) = None;
     let saved = crate::state::Saved {
         // In the sidebar's order, which a restore keeps.
         workspaces: ordered(shared, &workspaces)
@@ -726,8 +760,10 @@ fn save_if_due(shared: &Shared) {
     };
     drop(workspaces);
     drop(sessions);
-    let _ = crate::state::store(path, &saved);
-    *lock(&shared.save_due) = None;
+    if let Err(e) = crate::state::store(path, &saved) {
+        eprintln!("tsumugi: the tabs could not be written to {}: {e}", path.display());
+        save_soon(shared, Duration::from_secs(5));
+    }
 }
 
 /// Start a shell in a session of its own. `client`, when there is one, is
@@ -969,8 +1005,12 @@ fn screen_still_for(s: &mut Session, quiet: Duration) -> bool {
     let mut h = std::collections::hash_map::DefaultHasher::new();
     s.term.screen_text().hash(&mut h);
     let now = h.finish();
+    // A key starts the count again, as it does for the bytes: the same
+    // screen from before it says nothing about after it (the source
+    // review, 2026-10-07).
+    let input = s.term.last_input();
     match s.screen {
-        Some((was, since)) if was == now => since.elapsed() >= quiet,
+        Some((was, since)) if was == now && input.is_none_or(|i| since >= i) => since.elapsed() >= quiet,
         _ => {
             s.screen = Some((now, std::time::Instant::now()));
             false
@@ -1027,6 +1067,11 @@ fn broadcast_notices(shared: &Shared, list: &std::collections::VecDeque<Notice>)
     for tx in lock(&shared.clients).values() {
         let _ = tx.send(ToClient::Notices(list.clone()));
     }
+}
+
+/// Have the git thread read `dir`'s branch (again: a checkout changes it).
+fn ask_git(shared: &Shared, dir: &std::path::Path) {
+    let _ = shared.git_ask.send(dir.to_path_buf());
 }
 
 fn git_info(dir: &std::path::Path) -> (String, PathBuf) {
@@ -1112,23 +1157,36 @@ pub fn agent_of(procs: &[&tsumugi_pane::Proc], names: &[String]) -> String {
     procs.iter().find_map(|p| is(&p.name).or_else(|| p.args.iter().take(3).find_map(|a| is(a)))).unwrap_or_default()
 }
 
-/// Each session's AI program and listening ports, from one look at the
-/// process table; whether any changed.
-fn look_at_processes(shared: &Shared, sessions: &mut BTreeMap<SessionId, Session>) -> bool {
+/// Each shell's AI program and listening ports, from one look at the
+/// process table: `shells` is each session's shell and whether Claude
+/// Code's hooks know it. Run without `sessions` held -- reading the table
+/// and the ports (`lsof` on macOS) takes a while (the source review,
+/// 2026-10-07).
+fn look_at_processes(shared: &Shared, shells: &[(SessionId, u32, bool)]) -> Vec<(SessionId, String, Vec<u16>)> {
     let table = tsumugi_pane::process_table();
     let names = lock(&shared.rules).agent_names.clone();
+    shells
+        .iter()
+        .map(|&(id, pid, claude)| {
+            let under = tsumugi_pane::descendants(&table, pid);
+            let mut agent = agent_of(&under, &names);
+            // Claude Code's hooks know it even where its process does not say.
+            if agent.is_empty() && claude && !under.is_empty() {
+                agent = "claude".into();
+            }
+            let mut pids: Vec<u32> = under.iter().map(|p| p.pid).collect();
+            pids.push(pid);
+            (id, agent, tsumugi_pane::listening_ports(&pids))
+        })
+        .collect()
+}
+
+/// What `look_at_processes` saw, put on the sessions still there; whether
+/// any changed.
+fn apply_looks(sessions: &mut BTreeMap<SessionId, Session>, seen: Vec<(SessionId, String, Vec<u16>)>) -> bool {
     let mut changed = false;
-    for s in sessions.values_mut() {
-        let Some(pid) = s.term.shell_pid() else { continue };
-        let under = tsumugi_pane::descendants(&table, pid);
-        let mut agent = agent_of(&under, &names);
-        // Claude Code's hooks know it even where its process does not say.
-        if agent.is_empty() && s.info.claude && !under.is_empty() {
-            agent = "claude".into();
-        }
-        let mut pids: Vec<u32> = under.iter().map(|p| p.pid).collect();
-        pids.push(pid);
-        let ports = tsumugi_pane::listening_ports(&pids);
+    for (id, agent, ports) in seen {
+        let Some(s) = sessions.get_mut(&id) else { continue };
         // An AI program seen stays the session's until another is: between
         // its runs the shell is idle, and a restart should still take it up.
         if !agent.is_empty() && agent != s.info.agent {
@@ -1142,6 +1200,15 @@ fn look_at_processes(shared: &Shared, sessions: &mut BTreeMap<SessionId, Session
     }
     changed
 }
+
+/// Whether `id` can be typed after `--resume` as it is: Claude Code's ids
+/// are UUIDs; nothing that a shell would read as more than a word.
+fn conversation_id(id: &str) -> bool {
+    !id.is_empty() && id.len() <= 128 && id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+}
+
+/// How many messages a window may have waiting before its screens stop.
+const BACKLOG: usize = 2048;
 
 fn run_pump(shared: Arc<Shared>, dirty: Receiver<SessionId>) {
     let mut last_settle = std::time::Instant::now();
@@ -1181,11 +1248,18 @@ fn run_pump(shared: Arc<Shared>, dirty: Receiver<SessionId>) {
                 // Where the shell is now, for the sidebar and for a restore:
                 // a bash that never says (no OSC 7) still has a folder.
                 if let Some(cwd) = s.term.current_dir().filter(|c| *c != s.info.cwd) {
-                    (s.info.branch, s.info.project) = git_info(&cwd);
+                    ask_git(&shared, &cwd);
                     s.info.cwd = cwd;
                     lock(&shared.rules).apply(&mut s.info);
                     changed = true;
                     save_soon(&shared, SAVE_AFTER_CHANGE);
+                }
+                // Its folder's branch, once the git thread has read it.
+                let read = lock(&shared.git).get(&s.info.cwd).cloned();
+                if let Some((branch, project)) = read.filter(|(b, p)| *b != s.info.branch || *p != s.info.project) {
+                    (s.info.branch, s.info.project) = (branch, project);
+                    lock(&shared.rules).apply(&mut s.info);
+                    changed = true;
                 }
                 // A restored session's `claude --resume`, once the shell
                 // has shown its prompt (or gone quiet after its first output).
@@ -1204,7 +1278,11 @@ fn run_pump(shared: Arc<Shared>, dirty: Receiver<SessionId>) {
             // listens on.
             if last_look.elapsed() >= Duration::from_secs(2) {
                 last_look = std::time::Instant::now();
-                if look_at_processes(&shared, &mut sessions) {
+                let shells: Vec<(SessionId, u32, bool)> = sessions.iter().filter_map(|(id, s)| s.term.shell_pid().map(|p| (*id, p, s.info.claude))).collect();
+                drop(sessions);
+                let seen = look_at_processes(&shared, &shells);
+                sessions = lock(&shared.sessions);
+                if apply_looks(&mut sessions, seen) {
                     broadcast(&shared, &sessions);
                 }
             }
@@ -1227,7 +1305,7 @@ fn run_pump(shared: Arc<Shared>, dirty: Receiver<SessionId>) {
             // the once-a-second pass, since asking whether anything runs under
             // the shell reads the process table.
             if before.1 != s.info.cwd {
-                (s.info.branch, s.info.project) = git_info(&s.info.cwd);
+                ask_git(&shared, &s.info.cwd);
                 lock(&shared.rules).apply(&mut s.info);
                 save_soon(&shared, SAVE_AFTER_CHANGE);
             }
@@ -1251,10 +1329,19 @@ fn run_pump(shared: Arc<Shared>, dirty: Receiver<SessionId>) {
             let change = crate::diff::diff(s.sent.as_ref().map(|(sc, ex)| (sc, ex)), &screen, &extra);
             let whole = (!s.fresh.is_empty()).then(|| crate::diff::diff(None, &screen, &extra)).flatten();
             let clients = lock(&shared.clients);
+            // A window that stopped reading (hung, suspended) gets no more
+            // screens once it is this far behind, and a whole one when it
+            // catches up: its queue no longer grows until the server runs
+            // out of memory (the source review, 2026-10-07).
+            let mut behind = Vec::new();
             for c in &s.watchers {
                 if let Some(tx) = clients.get(c) {
                     for text in &clipboard {
                         let _ = tx.send(ToClient::Clipboard(text.clone()));
+                    }
+                    if tx.len() > BACKLOG {
+                        behind.push(*c);
+                        continue;
                     }
                     let update = if s.fresh.contains(c) { whole.clone() } else { change.clone() };
                     if let Some(update) = update {
@@ -1264,6 +1351,7 @@ fn run_pump(shared: Arc<Shared>, dirty: Receiver<SessionId>) {
             }
             drop(clients);
             s.fresh.clear();
+            s.fresh.extend(behind);
             s.sent = Some((screen, extra));
             if changed {
                 broadcast(&shared, &sessions);
@@ -1293,5 +1381,17 @@ mod branch {
         let outside = std::env::temp_dir();
         assert_eq!(super::git(&outside), (None, outside.clone()), "no repository: the folder itself");
         let _ = std::fs::remove_dir_all(&dir);
+    }
+}
+
+#[cfg(test)]
+mod review {
+    /// Only an id a shell reads as one word is typed after `--resume`.
+    #[test]
+    fn a_conversation_id_is_one_safe_word() {
+        assert!(super::conversation_id("3f2a9c1e-77b0-4c1e-9d0e-5b2f7a6c8d10"));
+        for bad in ["", "x; rm -rf ~", "a b", "a\r", "$(id)", "a`b`"] {
+            assert!(!super::conversation_id(bad), "{bad:?}");
+        }
     }
 }
