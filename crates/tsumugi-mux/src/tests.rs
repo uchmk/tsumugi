@@ -645,3 +645,48 @@ fn one_server_per_address() {
 fn no_server_no_connection() {
     assert!(Client::connect(&address(), || {}).is_err());
 }
+
+/// The AI program in a session is told by a process under its shell: its
+/// program's name, a build of it (`codex-x86_64-…`), or a script node runs.
+#[test]
+fn an_ai_program_is_told_by_its_process() {
+    use tsumugi_pane::Proc;
+    let names: Vec<String> = crate::settings::AGENTS.iter().map(|s| s.to_string()).collect();
+    let p = |name: &str, args: &[&str]| Proc { pid: 1, ppid: 0, name: name.into(), args: args.iter().map(|a| a.to_string()).collect() };
+    let codex = p("codex-x86_64-unknown-linux-musl", &[]);
+    let gemini = p("node", &["node", "/usr/local/bin/gemini"]);
+    let vim = p("vim", &["vim", "codex.md"]);
+    let claude_exe = p("claude", &[]);
+    assert_eq!(server::agent_of(&[&codex], &names), "codex");
+    assert_eq!(server::agent_of(&[&gemini], &names), "gemini");
+    assert_eq!(server::agent_of(&[&vim], &names), "", "a file named after one is not it");
+    assert_eq!(server::agent_of(&[&vim, &claude_exe], &names), "claude");
+    let s = crate::settings::parse("[agents.mine]\nresume = \"mine --again\"\n").unwrap();
+    assert_eq!(server::agent_of(&[&p("mine", &[])], &s.agent_names()), "mine", "one of the settings' own");
+    assert_eq!((s.resume_for("mine").as_deref(), s.resume_for("codex").as_deref(), s.resume_for("gemini")), (Some("mine --again"), Some("codex resume --last"), None));
+}
+
+/// What runs in a session and what it listens on reach every window: a
+/// script called `codex` under the shell is the AI program, and the port its
+/// child listens on is the session's.
+#[cfg(target_os = "linux")]
+#[test]
+fn a_sessions_program_and_ports_are_seen() {
+    let dir = std::env::temp_dir().join(format!("tsumugi-agent-test-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let probe = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = probe.local_addr().unwrap().port();
+    drop(probe);
+    let script = dir.join("codex");
+    std::fs::write(&script, format!("#!/bin/sh\npython3 -c \"import socket,time; s=socket.socket(); s.bind(('127.0.0.1',{port})); s.listen(); time.sleep(30)\"\n")).unwrap();
+    std::process::Command::new("chmod").arg("+x").arg(&script).status().unwrap();
+    let at = address();
+    let _srv = serve(&at).expect("the server starts");
+    let c = Client::connect(&at, || {}).expect("a client connects");
+    let pane = c.spawn(dir.clone(), None, Size::new(80, 24), (8, 16)).expect("a shell starts");
+    until(&pane, "a prompt", |t| !t.trim().is_empty());
+    c.send_prompt(pane.id(), format!("{} &", script.display()));
+    eventually("codex and its port", || c.sessions().iter().any(|i| i.id == pane.id() && i.agent == "codex" && i.ports.contains(&port)));
+    pane.kill();
+    let _ = std::fs::remove_dir_all(&dir);
+}

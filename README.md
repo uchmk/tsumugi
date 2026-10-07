@@ -481,6 +481,57 @@ conversation id, which is what `claude --resume` takes after a restart.
 `TSUMUGI_SESSION`). Programs that send OSC 9, 99 or 777 notifications are
 marked without any setup.
 
+### Other AI programs
+
+A session running Codex, Gemini CLI, OpenCode, aider, Amp, Cursor's agent,
+Copilot CLI, Qwen Code, Crush, Goose, Droid, Auggie or Kiro is told by a
+process under its shell (its program, or the script node runs for it) and is
+an agent, not a plain shell: its name on the card, its states shown. On
+Windows a program run by `node.exe` cannot be told this way (Windows gives no
+process's arguments); Codex's and Claude Code's own builds can. After a
+restart such a session types its program's resume line where one is known --
+`codex resume --last` -- or the settings' own:
+
+```toml
+[agents.gemini]
+resume = "gemini --resume latest"   # whatever your version takes
+
+[agents.mytool]                      # a program of your own, told apart too
+resume = "mytool --continue"
+```
+
+Codex says when a turn is done through its `notify` setting
+(`~/.codex/config.toml`): `notify = ["tsumugi", "notify", "--state", "done"]`
+-- the card turns green with the first line of its last answer.
+
+### Ports
+
+The TCP ports a session's programs listen on -- a dev server's `:3000` -- are
+on its card, a click away in the browser (`http://localhost:3000`): `/proc`
+on Linux, `lsof` on macOS, the system's table of listeners on Windows.
+
+### From a script, or from another AI
+
+```text
+tsumugi ls [--json]                      the sessions (--json: one array, every field)
+tsumugi send N|NAME TEXT...              type TEXT into the session, then Enter
+tsumugi read N|NAME [--lines K] [--all]  its last K lines (40), or its whole scrollback
+tsumugi split N|NAME [--down] [-- CMD]   a new pane beside it, in its folder; prints its number
+tsumugi close N|NAME                     end the session
+tsumugi wait N|NAME [--state S] [--timeout SECS]
+                                         until it is waiting, done or failed
+```
+
+`tsumugi wait` exits 0 when the state comes (printing it), 1 on timeout and 3
+when the session has ended -- so one agent can start another in a split, give
+it work, wait for it and read what it said:
+
+```sh
+n=$(tsumugi split 3 -- claude)
+tsumugi send $n "write the tests for src/parse.rs"
+tsumugi wait $n --state done && tsumugi read $n --lines 20
+```
+
 The terminal pane is the crate `tsumugi-pane` (`crates/tsumugi-pane`), shared
 with [filer](https://github.com/uchmk/filer).
 

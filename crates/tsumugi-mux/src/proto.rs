@@ -7,7 +7,7 @@ use tsumugi_pane::Size;
 
 /// Bumped whenever a message changes shape: a client and a server that
 /// disagree say so at `Hello` instead of misreading each other.
-pub const VERSION: u32 = 19;
+pub const VERSION: u32 = 20;
 
 /// A `Hello` with this version asks the server to stop, writing down its
 /// tabs first so the next window can bring them back. `Hello` stays the
@@ -126,6 +126,11 @@ pub struct Info {
     pub conversation: String,
     /// The character set its program reads and writes: `UTF-8`, `Shift_JIS`.
     pub charset: String,
+    /// The AI program running in it (`claude`, `codex`), by its process;
+    /// empty for a plain shell.
+    pub agent: String,
+    /// The TCP ports its programs listen on (a dev server's `3000`).
+    pub ports: Vec<u16>,
 }
 
 /// How many tags a session can have (the design's 1o).
@@ -285,7 +290,7 @@ pub enum ToClient {
     Error(String),
     /// A session ended, to every client: what it was, and the last lines on
     /// its screen (the history of closed sessions).
-    Ended { info: Info, last: Vec<String> },
+    Ended { info: Box<Info>, last: Vec<String> },
     /// The answer to `AllText`: the scrollback and the screen.
     Text { id: SessionId, text: String },
 }

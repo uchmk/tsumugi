@@ -395,7 +395,7 @@ fn receive(inner: &Inner, msg: ToClient) {
             (r.scrolled_back, r.win32_input, r.title) = (extra.scrolled_back, extra.win32_input, extra.title);
         }
         ToClient::Exited { id } => st.screens.entry(id).or_default().exited = true,
-        ToClient::Ended { info, last } => st.ended.push((info, last)),
+        ToClient::Ended { info, last } => st.ended.push((*info, last)),
         ToClient::Text { id, text } => st.texts.push((id, text)),
         ToClient::Clipboard(text) => st.clipboard.push(text),
         ToClient::Attention { looking, teller } => (st.looking, st.teller) = (looking, teller),

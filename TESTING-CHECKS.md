@@ -64,6 +64,9 @@
 - [ ] **3.20** A tab with uncommitted changes: click its `+N −M` (or search `changes`) → The diff over the window: each file under its name, added lines green, removed red, hunks cyan, new files at the end; Esc or a click outside closes it; a lock file's large diff is cut at 512 KB
 - [ ] **3.21** Right-click a card → Save the output to a file (or search `save the pane`) → A toast names `Downloads\tsumugi-<name>-<date>-<time>.txt`; it holds the whole scrollback as the program wrote it, Japanese whole, long lines unbroken
 - [ ] **3.22** A tab on a branch other than main (a worktree's), right-click → Create a pull request (`gh` signed in) → The branch pushed, a pull request made from its commits and opened in the browser; a toast with its address; on `main` the item is not there; without `gh`, a toast says why
+- [ ] **3.23** Run `codex` (or `gemini`, `opencode`) in a session → The card is an agent's, not a grey shell: its name (`codex`) on a line under the folder, its states shown; on Windows, Gemini CLI (run by node) stays a shell
+- [ ] **3.24** `npm run dev` (or `python -m http.server 8123`) in a session → `:3000` (`:8123`) on its card within a few seconds; a click opens `http://localhost:3000` in the browser; gone when the server stops
+- [ ] **3.25** A card with tags and a PR (and a note), a card with neither → The extra lines (note, agent and ports, PR, numbers) under the tags, or under the third line; none over another
 
 ## 4. States, notifications and answering
 
@@ -132,6 +135,7 @@
 - [ ] **8.2** A restored Claude Code pane → `claude --resume <id>` was typed: the conversation is back
 - [ ] **8.3** Settings → General → On start → Restore the last sessions, then 8.1 → No Welcome back; the tabs simply return
 - [ ] **8.4** 8.1 with fourteen or more tabs → The list scrolls; Restore and Start fresh stay in sight; the time reads `today at …` or `yesterday at …`
+- [ ] **8.5** A session where `codex` ran; restart the machine (or the server) → The restored tab types `codex resume --last`; with `[agents.gemini] resume = "…"`, a Gemini session types that
 
 ## 9. The settings screen
 
@@ -168,6 +172,7 @@
 - [ ] **12.2** Add the hooks → Both in the file beside any there, `settings.json.tsumugi-backup` next to it, and a toast
 - [ ] **12.3** Not now / Don't ask again → Asked again at the next start / never again
 - [ ] **12.4** Settings → Shell & hooks → Claude Code hooks → Add → Added, the row says Installed; Remove takes only tsumugi's out, the backup beside it
+- [ ] **12.5** `notify = ["tsumugi", "notify", "--state", "done"]` in `~/.codex/config.toml`; ask Codex something in a session → When its turn ends the card turns done (green) with the first line of its answer
 
 ## 13. The window's frame
 
@@ -242,3 +247,12 @@
 - [ ] **17.28** Scrollback 200; a new session; `seq 1000` → Only about 200 lines to scroll back
 - [ ] **17.29** Log what each pane sends and receives on; a new session → `pane-logs/session-N.log` beside the saved tabs grows as it runs
 - [ ] **17.30** Export…, then Import on another machine (or after changing things) → One file in Downloads; importing brings the settings, themes and profiles back, the old ones kept as `.bak`
+
+## 18. From a script
+
+- [ ] **18.1** `tsumugi ls --json` (PowerShell: `tsumugi ls --json \| ConvertFrom-Json`) → One array, a session an object: id, state, command, agent, cwd, project, branch, title, note, tags, ports
+- [ ] **18.2** `tsumugi send N "echo hi"` → `echo hi` typed into session N and run
+- [ ] **18.3** `tsumugi read N --lines 5`; `tsumugi read N --all > out.txt` → Its last five lines; the whole scrollback in the file, Japanese whole
+- [ ] **18.4** `tsumugi split N --down -- claude` → A pane below session N in its folder with Claude Code started; its number printed; the window shows the split
+- [ ] **18.5** `tsumugi wait N --state done --timeout 600` while Claude Code works there → Returns `done` (exit 0) when it finishes; with a short timeout, exit 1; for a closed session, exit 3
+- [ ] **18.6** `tsumugi close N` → The session ends and its pane goes

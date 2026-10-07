@@ -401,7 +401,7 @@ fn handle(shared: &Arc<Shared>, client: ClientId, tx: &Sender<ToClient>, msg: To
                     s.info.state = State::Running;
                     s.info.since_ms = now_ms();
                     s.info.note.clear();
-                    s.pending = s.claude.as_ref().and_then(|c| lock(&shared.rules).resume_line(c));
+                    s.pending = lock(&shared.rules).take_up(s.claude.as_deref(), &s.info.agent);
                     // Ending a shell can take a moment: not under the lock.
                     std::thread::spawn(move || drop(old));
                     broadcast(shared, &sessions);
@@ -580,6 +580,10 @@ struct Rules {
     webhook: String,
     webhook_format: String,
     webhook_after: u64,
+    /// The AI programs told apart from a shell, and the settings' `[agents]`
+    /// (the rest left default) to take one up again after a restart.
+    agent_names: Vec<String>,
+    settings: crate::settings::Settings,
 }
 
 impl Rules {
@@ -588,6 +592,8 @@ impl Rules {
     fn read(path: Option<&Path>) -> Self {
         let stamp = path.and_then(crate::settings::stamp);
         let s = path.and_then(|p| crate::settings::load(p).ok()).unwrap_or_default();
+        let agent_names = s.agent_names();
+        let agents = crate::settings::Settings { agents: s.agents.clone(), ..Default::default() };
         Self {
             stamp,
             tags: s.tags.rule,
@@ -600,9 +606,20 @@ impl Rules {
             scrollback: s.advanced.scrollback,
             pane_log: s.advanced.pane_log,
             webhook: s.notify.webhook.trim().to_owned(),
-            webhook_format: s.notify.webhook_format,
+            webhook_format: s.notify.webhook_format.clone(),
             webhook_after: s.notify.webhook_after.saturating_mul(1000),
+            agent_names,
+            settings: agents,
         }
+    }
+
+    /// What a restored or restarted session types: Claude Code's
+    /// conversation resumed, else the other AI program's own line.
+    fn take_up(&self, claude: Option<&str>, agent: &str) -> Option<Vec<u8>> {
+        if let Some(c) = claude {
+            return self.resume_line(c);
+        }
+        self.resume.then(|| self.settings.resume_for(agent)).flatten().map(|l| format!("{l}\r").into_bytes())
     }
 
     /// The line a restored or restarted Claude Code pane types, if any.
@@ -695,6 +712,7 @@ fn save_if_due(shared: &Shared) {
                         muted: s.info.muted,
                         tags: s.info.tags.clone(),
                         charset: s.info.charset.clone(),
+                        agent: s.info.agent.clone(),
                     })
                     .collect(),
             })
@@ -727,7 +745,7 @@ fn spawn_session(
     shared.ever.store(true, Ordering::Relaxed);
     let (branch, project) = git(&cwd);
     let branch = branch.unwrap_or_default();
-    let mut info = Info { id, cwd, title: String::new(), command, state: State::Running, note: String::new(), since_ms: now_ms(), branch, project, muted: false, tags: Vec::new(), claude: false, conversation: String::new(), charset: "UTF-8".into() };
+    let mut info = Info { id, cwd, title: String::new(), command, state: State::Running, note: String::new(), since_ms: now_ms(), branch, project, muted: false, tags: Vec::new(), claude: false, conversation: String::new(), charset: "UTF-8".into(), agent: String::new(), ports: Vec::new() };
     lock(&shared.rules).apply(&mut info);
     let watchers: BTreeSet<ClientId> = client.into_iter().collect();
     sessions.insert(
@@ -806,8 +824,9 @@ fn restore(shared: &Arc<Shared>, sessions: &mut BTreeMap<SessionId, Session>, on
             s.info.conversation = p.claude.clone().unwrap_or_default();
             if let Some(conversation) = &p.claude {
                 s.claude = Some(conversation.clone());
-                s.pending = lock(&shared.rules).resume_line(conversation);
             }
+            s.info.agent.clone_from(&p.agent);
+            s.pending = lock(&shared.rules).take_up(p.claude.as_deref(), &p.agent);
             ids.insert(p.id, id);
             started += 1;
         }
@@ -879,7 +898,7 @@ fn end(shared: &Shared, mut sessions: std::sync::MutexGuard<'_, BTreeMap<Session
         if s.watchers.contains(c) {
             let _ = tx.send(ToClient::Exited { id });
         }
-        let _ = tx.send(ToClient::Ended { info: s.info.clone(), last: last.clone() });
+        let _ = tx.send(ToClient::Ended { info: Box::new(s.info.clone()), last: last.clone() });
         let _ = tx.send(ToClient::Sessions(list.clone()));
     }
     drop(s);
@@ -1062,8 +1081,50 @@ fn send_webhooks(shared: &Shared, sessions: &mut BTreeMap<SessionId, Session>) {
     }
 }
 
+/// The AI program among `procs` (a session's processes): the first whose
+/// program, or a script it runs, is one of `names`. Empty for none.
+pub fn agent_of(procs: &[&tsumugi_pane::Proc], names: &[String]) -> String {
+    let is = |word: &str| {
+        let s = tsumugi_pane::stem(word);
+        names.iter().find(|n| s == **n || s.starts_with(&format!("{n}-"))).cloned()
+    };
+    procs.iter().find_map(|p| is(&p.name).or_else(|| p.args.iter().take(3).find_map(|a| is(a)))).unwrap_or_default()
+}
+
+/// Each session's AI program and listening ports, from one look at the
+/// process table; whether any changed.
+fn look_at_processes(shared: &Shared, sessions: &mut BTreeMap<SessionId, Session>) -> bool {
+    let table = tsumugi_pane::process_table();
+    let names = lock(&shared.rules).agent_names.clone();
+    let mut changed = false;
+    for s in sessions.values_mut() {
+        let Some(pid) = s.term.shell_pid() else { continue };
+        let under = tsumugi_pane::descendants(&table, pid);
+        let mut agent = agent_of(&under, &names);
+        // Claude Code's hooks know it even where its process does not say.
+        if agent.is_empty() && s.info.claude && !under.is_empty() {
+            agent = "claude".into();
+        }
+        let mut pids: Vec<u32> = under.iter().map(|p| p.pid).collect();
+        pids.push(pid);
+        let ports = tsumugi_pane::listening_ports(&pids);
+        // An AI program seen stays the session's until another is: between
+        // its runs the shell is idle, and a restart should still take it up.
+        if !agent.is_empty() && agent != s.info.agent {
+            s.info.agent = agent;
+            changed = true;
+        }
+        if ports != s.info.ports {
+            s.info.ports = ports;
+            changed = true;
+        }
+    }
+    changed
+}
+
 fn run_pump(shared: Arc<Shared>, dirty: Receiver<SessionId>) {
     let mut last_settle = std::time::Instant::now();
+    let mut last_look = std::time::Instant::now();
     loop {
         let mut ids = BTreeSet::new();
         match dirty.recv_timeout(Duration::from_millis(500)) {
@@ -1118,6 +1179,14 @@ fn run_pump(shared: Arc<Shared>, dirty: Receiver<SessionId>) {
                 broadcast(&shared, &sessions);
             }
             send_webhooks(&shared, &mut sessions);
+            // Every other second: what runs under each shell, and what it
+            // listens on.
+            if last_look.elapsed() >= Duration::from_secs(2) {
+                last_look = std::time::Instant::now();
+                if look_at_processes(&shared, &mut sessions) {
+                    broadcast(&shared, &sessions);
+                }
+            }
         }
         let mut ended = Vec::new();
         for id in ids {

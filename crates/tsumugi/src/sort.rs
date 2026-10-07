@@ -78,7 +78,7 @@ pub enum Kind {
 /// by having told tsumugi something (`tsumugi notify`). At its prompt or
 /// running a command, such a session is just a shell.
 pub fn is_shell(info: &Info) -> bool {
-    !info.claude && info.note.is_empty() && matches!(info.state, State::Running | State::Done)
+    !info.claude && info.agent.is_empty() && info.note.is_empty() && matches!(info.state, State::Running | State::Done)
 }
 
 impl Kind {
@@ -372,6 +372,8 @@ mod tests {
             claude: true,
             conversation: String::new(),
             charset: String::new(),
+            agent: String::new(),
+            ports: Vec::new(),
         }
     }
 

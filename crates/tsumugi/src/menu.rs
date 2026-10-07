@@ -50,8 +50,10 @@ pub fn open_with_system(path: &std::path::Path) {
 
 /// Open a web page in the system's browser.
 pub fn open_url(url: &str) {
-    // Only what a pull request's address is made of reaches the shell.
-    if !url.starts_with("https://") || url.contains(|c: char| c.is_whitespace() || "\"'`$&|;<>^%".contains(c)) {
+    // Only what a pull request's address is made of reaches the shell, or
+    // a port on this machine (a session's dev server).
+    let local = url.strip_prefix("http://localhost:").is_some_and(|p| !p.is_empty() && p.chars().all(|c| c.is_ascii_digit()));
+    if !(url.starts_with("https://") || local) || url.contains(|c: char| c.is_whitespace() || "\"'`$&|;<>^%".contains(c)) {
         return;
     }
     let line = if cfg!(windows) {

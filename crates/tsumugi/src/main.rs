@@ -74,7 +74,12 @@ fn main() -> std::process::ExitCode {
     match args.first().map(String::as_str) {
         None => window(),
         Some("server") => server(),
-        Some("ls") => ls(),
+        Some("ls") => ls(&args[1..]),
+        Some("send" | "read" | "split" | "close" | "wait") => remote(&args[0], &args[1..]),
+        Some("help" | "--help" | "-h") => {
+            println!("tsumugi: the window, or one of\n{}\n{}\ntsumugi attach N|NAME\ntsumugi notify [--state S] [--session N] [MESSAGE]\ntsumugi tag [--session N] [--remove] TAG...\ntsumugi shell-hook bash|zsh|pwsh", cli::NEW_USAGE, cli::REMOTE_USAGE);
+            std::process::ExitCode::SUCCESS
+        }
         Some("notify") => notify(&args[1..]),
         Some("tag") => tag(&args[1..]),
         Some("new") => new_cli(&args[1..]),
@@ -94,7 +99,7 @@ fn main() -> std::process::ExitCode {
             std::process::ExitCode::SUCCESS
         }
         Some(other) => {
-            eprintln!("tsumugi: unknown command `{other}` (server, ls, new, attach, notify, tag, shell-hook, --version)");
+            eprintln!("tsumugi: unknown command `{other}` (server, ls, new, attach, send, read, split, close, wait, notify, tag, shell-hook, help, --version)");
             std::process::ExitCode::from(2)
         }
     }
@@ -177,9 +182,13 @@ fn attach(args: &[String]) -> std::process::ExitCode {
     }
 }
 
-fn ls() -> std::process::ExitCode {
+fn ls(args: &[String]) -> std::process::ExitCode {
     let listed = Client::connect(&Address::for_user(), || {}).and_then(|c| c.list());
     match listed {
+        Ok(list) if args.iter().any(|a| a == "--json") => {
+            print!("{}", cli::ls_json(&list));
+            std::process::ExitCode::SUCCESS
+        }
         Ok(list) => {
             for i in list {
                 println!("{}\t{}\t{}\t{}\t{}\t{}\t{}", i.id, i.state.word(), i.command, i.cwd.display(), i.title, i.note, i.tags.join(","));
@@ -189,6 +198,107 @@ fn ls() -> std::process::ExitCode {
         Err(e) => {
             eprintln!("tsumugi ls: no server ({e})");
             std::process::ExitCode::FAILURE
+        }
+    }
+}
+
+/// The remote control (`cli::REMOTE_USAGE`): send, read, split, close and
+/// wait on a session from another program, or an AI in another pane.
+fn remote(what: &str, args: &[String]) -> std::process::ExitCode {
+    use std::process::ExitCode;
+    let fail = |e: String| {
+        eprintln!("tsumugi {what}: {e}");
+        ExitCode::FAILURE
+    };
+    let Some(who) = args.iter().find(|a| !a.starts_with('-')).cloned() else {
+        eprintln!("usage:\n{}", cli::REMOTE_USAGE);
+        return ExitCode::from(2);
+    };
+    let client = match Client::connect(&Address::for_user(), || {}) {
+        Ok(c) => c,
+        Err(e) => return fail(format!("no server ({e})")),
+    };
+    let list = match client.list() {
+        Ok(l) => l,
+        Err(e) => return fail(e.to_string()),
+    };
+    let id = match cli::find(&list, &who) {
+        Ok(id) => id,
+        // Waiting on a session that has already ended: its own exit code.
+        Err(_) if what == "wait" && who.parse::<SessionId>().is_ok() => {
+            eprintln!("tsumugi wait: session {who} ended");
+            return ExitCode::from(3);
+        }
+        Err(e) => return fail(e),
+    };
+    match what {
+        "send" => {
+            let rest: Vec<String> = args.iter().skip_while(|a| **a != who).skip(1).cloned().collect();
+            if rest.is_empty() {
+                return fail("nothing to send".into());
+            }
+            client.send_prompt(id, rest.join(" "));
+            // Sent before this process ends: a question after it is answered
+            // once the server has it.
+            match client.list() {
+                Ok(_) => ExitCode::SUCCESS,
+                Err(e) => fail(e.to_string()),
+            }
+        }
+        "read" => {
+            let r = match cli::parse_read(args) {
+                Ok(r) => r,
+                Err(e) => return fail(e),
+            };
+            client.all_text(id);
+            let deadline = std::time::Instant::now() + Duration::from_secs(5);
+            loop {
+                if let Some((_, text)) = client.take_texts().into_iter().find(|(i, _)| *i == id) {
+                    print!("{}", if r.all { text } else { cli::last_lines(&text, r.lines) });
+                    return ExitCode::SUCCESS;
+                }
+                if std::time::Instant::now() > deadline {
+                    return fail("the server did not answer".into());
+                }
+                std::thread::sleep(Duration::from_millis(20));
+            }
+        }
+        "split" => match cli::parse_split(args).and_then(|s| cli::split(&client, &list, id, &s)) {
+            Ok(new) => {
+                println!("{new}");
+                ExitCode::SUCCESS
+            }
+            Err(e) => fail(e),
+        },
+        "close" => {
+            client.attach(id).kill();
+            match client.list() {
+                Ok(_) => ExitCode::SUCCESS,
+                Err(e) => fail(e.to_string()),
+            }
+        }
+        _ => {
+            let w = match cli::parse_wait(args) {
+                Ok(w) => w,
+                Err(e) => return fail(e),
+            };
+            let start = std::time::Instant::now();
+            loop {
+                let Ok(list) = client.list() else { return fail("the server went away".into()) };
+                let Some(info) = list.iter().find(|i| i.id == id) else {
+                    eprintln!("tsumugi wait: session {id} ended");
+                    return ExitCode::from(3);
+                };
+                if w.states.contains(&info.state) {
+                    println!("{}", info.state.word());
+                    return ExitCode::SUCCESS;
+                }
+                if w.timeout.is_some_and(|t| start.elapsed() >= t) {
+                    eprintln!("tsumugi wait: still {} after {:?}", info.state.word(), w.timeout.unwrap_or_default());
+                    return ExitCode::FAILURE;
+                }
+                std::thread::sleep(Duration::from_millis(250));
+            }
         }
     }
 }
@@ -226,6 +336,16 @@ fn notify(args: &[String]) -> std::process::ExitCode {
                 // Its conversation, for `claude --resume` after a restart.
                 claude = json_string(&input, "session_id");
             }
+            // Codex's `notify` program gets its event as one JSON argument:
+            // a turn finished, and what it said last.
+            a if a.trim_start().starts_with('{') => {
+                if let Some((done, said)) = codex_event(a) {
+                    if done {
+                        state = tsumugi_mux::State::Done;
+                    }
+                    words.push(said);
+                }
+            }
             _ => words.push(a.clone()),
         }
     }
@@ -240,6 +360,17 @@ fn notify(args: &[String]) -> std::process::ExitCode {
             std::process::ExitCode::FAILURE
         }
     }
+}
+
+/// Codex's notice (`{"type":"agent-turn-complete","last-assistant-message":…}`):
+/// whether a turn finished, and the first line of what it said last (cut to
+/// 200 characters). `None` for JSON that is not one.
+fn codex_event(text: &str) -> Option<(bool, String)> {
+    let v = json::Json::parse(text).ok()?;
+    let kind = v.get("type")?.string()?;
+    let said = v.get("last-assistant-message").and_then(json::Json::string).unwrap_or_default();
+    let first: String = said.lines().find(|l| !l.trim().is_empty()).unwrap_or_default().trim().chars().take(200).collect();
+    Some((kind == "agent-turn-complete", first))
 }
 
 /// `tsumugi tag [--session N] [--remove] [TAG...]`: put tags on a session
@@ -1860,12 +1991,17 @@ impl App {
                     let cost = used.costs.get(c).filter(|c| **c > 0.0).map(|c| format!(" · ≈{}", price::dollars(*c))).unwrap_or_default();
                     Some(format!("{prompts} · {} · {} tokens{cost}", chrome::elapsed(talk.ms), usage::short(tokens)))
                 }).flatten();
+                // What runs in it other than Claude Code (`codex`) and the
+                // ports its programs listen on, a click away in the browser.
+                let ports: Vec<u16> = infos.iter().flat_map(|i| i.ports.iter().copied()).take(4).collect();
+                let other_agent = infos.iter().map(|i| i.agent.as_str()).find(|a| !a.is_empty() && *a != "claude").map(str::to_owned);
+                let run_line = as_card && (other_agent.is_some() || !ports.is_empty());
                 // A note of one's own (the tab menu's Note…), and room for
                 // the field while it is written.
                 let noting = self.noting_card.as_ref().is_some_and(|(id, _)| *id == w.id);
                 let note_line = as_card && (!w.note.is_empty() || noting);
                 let base = if !as_card { 28.0 } else if tags.is_empty() { 62.0 } else { 82.0 };
-                let height = base + 18.0 * (usize::from(note_line) + usize::from(pr.is_some()) + usize::from(numbers.is_some())) as f32;
+                let height = base + 18.0 * (usize::from(note_line) + usize::from(run_line) + usize::from(pr.is_some()) + usize::from(numbers.is_some())) as f32;
                 let (rect, resp) = ui.allocate_exact_size(egui::vec2(ui.available_width(), height), sense);
                 rows.push((w.id, rect));
                 let painter = ui.painter_at(rect);
@@ -2058,11 +2194,36 @@ impl App {
                     }
                     x = chrome::tag_chip(&painter, at, t, muted_tags.contains(*t)).right() + 5.0;
                 }
-                let mut y = base - 22.0;
+                // Under the third line, or under the tags when there are.
+                let mut y = base - 2.0;
                 let note_y = y;
                 if note_line {
                     if !noting {
                         line(format!("“{}”", w.note), y, egui::FontId::proportional(11.5), pal.fg, width);
+                    }
+                    y += 18.0;
+                }
+                if run_line {
+                    let mut x = left;
+                    if let Some(a) = &other_agent {
+                        let g = ui.fonts_mut(|f| f.layout_no_wrap(a.clone(), egui::FontId::proportional(11.5), pal.fg));
+                        let w_a = g.size().x;
+                        painter.galley(egui::pos2(x, rect.top() + y), g, pal.fg);
+                        x += w_a + 10.0;
+                    }
+                    for port in &ports {
+                        let g = ui.fonts_mut(|f| f.layout_no_wrap(format!(":{port}"), egui::FontId::monospace(11.0), chrome::ink(chrome::cyan())));
+                        let r = egui::Rect::from_min_size(egui::pos2(x, rect.top() + y - 1.0), g.size() + egui::vec2(8.0, 2.0));
+                        if r.right() > left + width {
+                            break;
+                        }
+                        let b = ui.interact(r, egui::Id::new(("port", w.id, *port)), egui::Sense::click()).on_hover_text(format!("Open http://localhost:{port} in the browser"));
+                        painter.rect_filled(r, 4.0, if b.hovered() { crate::theme::colors().hover() } else { crate::theme::colors().panel });
+                        painter.galley(egui::pos2(r.left() + 4.0, r.top() + 1.0), g, chrome::ink(chrome::cyan()));
+                        if b.clicked() {
+                            menu::open_url(&format!("http://localhost:{port}"));
+                        }
+                        x = r.right() + 5.0;
                     }
                     y += 18.0;
                 }
@@ -4392,6 +4553,14 @@ impl App {
 #[cfg(test)]
 mod tests {
     use super::{escape_line, json_string, unescape_line, View};
+
+    #[test]
+    fn codexs_notice_is_read() {
+        let e = r#"{"type":"agent-turn-complete","turn-id":"1","input-messages":["fix it"],"last-assistant-message":"\n  Fixed the bug in main.rs.\nAnd more."}"#;
+        assert_eq!(super::codex_event(e), Some((true, "Fixed the bug in main.rs.".to_string())));
+        assert_eq!(super::codex_event(r#"{"type":"other"}"#), Some((false, String::new())));
+        assert_eq!(super::codex_event("{not json"), None);
+    }
 
     #[test]
     fn a_prompt_of_several_lines_is_one_line_of_the_history() {

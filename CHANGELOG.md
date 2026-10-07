@@ -5,6 +5,41 @@
 
 ## [未リリース]
 
+## [0.49.0] - 2026-10-07
+
+### 追加
+
+- Claude Code 以外の AI に対応した。Codex・Gemini CLI・OpenCode・aider・Amp・Cursor の agent・Copilot CLI・Qwen Code・Crush・Goose・Droid・Auggie・Kiro を、
+  シェルの下のプロセス（プログラムの名前か、node が動かすスクリプトの名前）から見分け、シェルではなく AI のセッションとして扱う（カードに名前、状態を表示）。
+  再起動の後は、その AI の再開の行を打つ（Codex は `codex resume --last`。ほかは `[agents.<名前>] resume = "…"` で設定。自分の道具も足せる）。
+  Codex の `notify` の JSON を `tsumugi notify` が読み、ターンが終わったら完了にして、最後の答えの 1 行目を出す。
+  Windows では node が動かす AI（Gemini CLI など）は見分けられない（Windows はプロセスの引数を渡さない）。
+- 外から操作するコマンド。`tsumugi send N テキスト`・`tsumugi read N [--lines K] [--all]`・`tsumugi split N [--down] [-- コマンド]`・`tsumugi close N`・
+  `tsumugi wait N [--state S] [--timeout 秒]`（0 で来た、1 で時間切れ、3 で終わっていた）・`tsumugi ls --json`・`tsumugi help`。
+  AI が別のペインを開いて仕事を渡し、終わるのを待って結果を読める。
+- 待ち受けているポート。セッションのプログラムが待ち受けている TCP ポート（開発サーバーの `:3000` など）をカードに出し、押すとブラウザで
+  `http://localhost:3000` を開く（Linux は `/proc`、macOS は `lsof`、Windows はシステムの表）。
+
+### 修正
+
+- タブのカードで、PR の行・数字の行（v0.45.0）とメモの行（v0.46.0）が、タグの無いカードでは 3 行目に、タグのあるカードではタグに重なっていた。
+  タグか 3 行目の下に出す。
+
+### 確認事項
+
+- アプリ内のブラウザ（cmux・Orca にあるもの）は、Linux で C のライブラリ（WebKitGTK）を抱えることになり、6 ターゲットのビルドに響くので、
+  QUESTIONS.md の Q12 で持ち主に聞いた。それまではポートから OS のブラウザで開く。
+
+### 変更
+
+- サーバーとのやり取りの版を 20 に、状態ファイルの版を 8 に上げた（セッションの AI とポート、再開する AI）。7 以前の状態ファイルも読む。
+
+### 追加（テスト）
+
+- プロセスの木の辿り方、名前の比べ方、`/proc/net/tcp` の読み方、自分の待ち受けているポートが見つかること（Linux と Windows）、AI の見分け方と再開の行、
+  サーバーを通して `codex` という名前のスクリプトとその子の待ち受けポートが `Info` に出ること、版 7 の状態ファイル、Codex の通知、CLI の引数の読み方（8 件）。
+- TESTING.md に 3.23〜3.25・8.5・12.5 と、18 節（スクリプトから）を足した。
+
 ## [0.48.0] - 2026-10-07
 
 ### 追加

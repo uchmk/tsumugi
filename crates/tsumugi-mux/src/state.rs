@@ -14,7 +14,7 @@ use crate::proto::SessionId;
 
 /// Bumped when the shape below changes; a file of another version is left
 /// alone rather than misread.
-const VERSION: u32 = 7;
+const VERSION: u32 = 8;
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Saved {
@@ -56,12 +56,14 @@ pub struct SavedPane {
     pub tags: Vec<String>,
     /// Its character set, `UTF-8` or another (v7).
     pub charset: String,
+    /// The AI program that ran in it, to take up again (v8).
+    pub agent: String,
 }
 
 /// The shapes before this one, read so that an update does not lose the
 /// tabs: v2 (tsumugi 0.5 to 0.7) had no `muted`, v3 (0.8) no tags, v4
 /// (0.9 to 0.13) no tab names or pins, v5 (0.14 to 0.45) no notes, v6
-/// (0.46) no character sets.
+/// (0.46) no character sets, v7 (0.47 to 0.48) no AI program's name.
 mod old {
     use super::*;
 
@@ -103,13 +105,13 @@ mod old {
 
     impl From<V2> for super::SavedPane {
         fn from(p: V2) -> Self {
-            Self { id: p.id, cwd: p.cwd, shell: p.shell, claude: p.claude, title: p.title, state: p.state, muted: false, tags: Vec::new(), charset: String::new() }
+            Self { id: p.id, cwd: p.cwd, shell: p.shell, claude: p.claude, title: p.title, state: p.state, muted: false, tags: Vec::new(), charset: String::new(), agent: String::new() }
         }
     }
 
     impl From<V3> for super::SavedPane {
         fn from(p: V3) -> Self {
-            Self { id: p.id, cwd: p.cwd, shell: p.shell, claude: p.claude, title: p.title, state: p.state, muted: p.muted, tags: Vec::new(), charset: String::new() }
+            Self { id: p.id, cwd: p.cwd, shell: p.shell, claude: p.claude, title: p.title, state: p.state, muted: p.muted, tags: Vec::new(), charset: String::new(), agent: String::new() }
         }
     }
 
@@ -141,7 +143,7 @@ mod old {
 
     impl From<V4Pane> for super::SavedPane {
         fn from(p: V4Pane) -> Self {
-            Self { id: p.id, cwd: p.cwd, shell: p.shell, claude: p.claude, title: p.title, state: p.state, muted: p.muted, tags: p.tags, charset: String::new() }
+            Self { id: p.id, cwd: p.cwd, shell: p.shell, claude: p.claude, title: p.title, state: p.state, muted: p.muted, tags: p.tags, charset: String::new(), agent: String::new() }
         }
     }
 
@@ -173,6 +175,51 @@ mod old {
     impl From<V5> for super::Saved {
         fn from(s: V5) -> Self {
             let workspaces = s.workspaces.into_iter().map(|w| super::SavedWorkspace { name: w.name, pinned: w.pinned, note: String::new(), layout: w.layout, focus: w.focus, panes: w.panes.into_iter().map(Into::into).collect() }).collect();
+            Self { workspaces, at_ms: s.at_ms, muted_tags: s.muted_tags }
+        }
+    }
+
+    /// A pane of v7: with a character set, without an AI program's name.
+    #[derive(Deserialize)]
+    pub struct V7Pane {
+        id: SessionId,
+        cwd: PathBuf,
+        shell: Option<(String, Vec<String>)>,
+        claude: Option<String>,
+        title: String,
+        state: crate::proto::State,
+        muted: bool,
+        tags: Vec<String>,
+        charset: String,
+    }
+
+    impl From<V7Pane> for super::SavedPane {
+        fn from(p: V7Pane) -> Self {
+            Self { id: p.id, cwd: p.cwd, shell: p.shell, claude: p.claude, title: p.title, state: p.state, muted: p.muted, tags: p.tags, charset: p.charset, agent: String::new() }
+        }
+    }
+
+    /// v7: as now, but the panes' AI program.
+    #[derive(Deserialize)]
+    pub struct V7 {
+        workspaces: Vec<V7Workspace>,
+        at_ms: u64,
+        muted_tags: Vec<String>,
+    }
+
+    #[derive(Deserialize)]
+    struct V7Workspace {
+        name: String,
+        pinned: bool,
+        note: String,
+        layout: Node<SessionId>,
+        focus: SessionId,
+        panes: Vec<V7Pane>,
+    }
+
+    impl From<V7> for super::Saved {
+        fn from(s: V7) -> Self {
+            let workspaces = s.workspaces.into_iter().map(|w| super::SavedWorkspace { name: w.name, pinned: w.pinned, note: w.note, layout: w.layout, focus: w.focus, panes: w.panes.into_iter().map(Into::into).collect() }).collect();
             Self { workspaces, at_ms: s.at_ms, muted_tags: s.muted_tags }
         }
     }
@@ -234,6 +281,7 @@ pub fn load(path: &Path) -> Option<Saved> {
     let (version, rest) = bytes.split_first_chunk::<4>()?;
     match u32::from_le_bytes(*version) {
         VERSION => postcard::from_bytes(rest).ok(),
+        7 => postcard::from_bytes::<old::V7>(rest).ok().map(Into::into),
         6 => postcard::from_bytes::<old::V6>(rest).ok().map(Into::into),
         5 => postcard::from_bytes::<old::V5>(rest).ok().map(Into::into),
         4 => postcard::from_bytes::<old::V4>(rest).ok().map(Into::into),
@@ -346,6 +394,43 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// A file from before the AI program's name (v7) keeps its character sets.
+    #[test]
+    fn a_version_7_file_is_read() {
+        #[derive(Serialize)]
+        struct Pane {
+            id: SessionId,
+            cwd: PathBuf,
+            shell: Option<(String, Vec<String>)>,
+            claude: Option<String>,
+            title: String,
+            state: crate::proto::State,
+            muted: bool,
+            tags: Vec<String>,
+            charset: String,
+        }
+        #[derive(Serialize)]
+        struct Tab {
+            name: String,
+            pinned: bool,
+            note: String,
+            layout: Node<SessionId>,
+            focus: SessionId,
+            panes: Vec<Pane>,
+        }
+        let pane = Pane { id: 4, cwd: "/tmp".into(), shell: None, claude: None, title: "t".into(), state: crate::proto::State::Done, muted: false, tags: vec![], charset: "EUC-JP".into() };
+        let old = (vec![Tab { name: "n".into(), pinned: false, note: "x".into(), layout: Node::Leaf(4), focus: 4, panes: vec![pane] }], 7u64, Vec::<String>::new());
+        let dir = std::env::temp_dir().join(format!("tsumugi-state-v7-test-{}", std::process::id()));
+        let path = dir.join("state");
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut bytes = 7u32.to_le_bytes().to_vec();
+        bytes.extend(postcard::to_allocvec(&old).unwrap());
+        std::fs::write(&path, bytes).unwrap();
+        let p = &load(&path).expect("read v7").workspaces[0].panes[0];
+        assert_eq!((p.charset.as_str(), p.agent.as_str()), ("EUC-JP", ""));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     #[test]
     fn the_state_comes_back_as_it_was_written() {
         let dir = std::env::temp_dir().join(format!("tsumugi-state-test-{}", std::process::id()));
@@ -367,6 +452,7 @@ mod tests {
                     muted: true,
                     tags: vec!["review".into()],
                     charset: "Shift_JIS".into(),
+                    agent: "codex".into(),
                 }],
             }],
             at_ms: 1,

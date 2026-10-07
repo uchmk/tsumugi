@@ -70,6 +70,10 @@
 //! webhook_format = "ntfy"
 //! webhook_after = 120
 //!
+//! # Other AI programs: what a restored session types to take one up again.
+//! [agents.gemini]
+//! resume = "gemini --resume latest"
+//!
 //! # What tokens cost, per million in US dollars, by the start of the model's id.
 //! [prices."claude-opus-5-5"]
 //! input = 4.0
@@ -157,6 +161,45 @@ pub struct Settings {
     /// Prices per million tokens in US dollars, by the start of a model's id
     /// (`claude-opus-5-5`): the window's own are used for the rest.
     pub prices: std::collections::BTreeMap<String, Price>,
+    /// AI programs other than Claude Code, by the name of their program
+    /// (`codex`): told apart from a plain shell, and what a restored session
+    /// types to take up its conversation again. Those in [`AGENTS`] are
+    /// known without being named here.
+    pub agents: std::collections::BTreeMap<String, Agent>,
+}
+
+/// The AI programs a session is told to be running by the name of a
+/// process under its shell (`codex`, or `codex-x86_64-…`, or a script
+/// `…/bin/gemini` run by node).
+pub const AGENTS: [&str; 14] = ["claude", "codex", "gemini", "opencode", "aider", "amp", "cursor-agent", "copilot", "qwen", "crush", "goose", "droid", "auggie", "kiro-cli"];
+
+/// What to do for one AI program.
+#[derive(Clone, Debug, Default, PartialEq, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct Agent {
+    /// Typed in a restored or restarted session where it ran, to take up the
+    /// last conversation (`codex resume --last`). Empty: nothing typed.
+    pub resume: String,
+}
+
+impl Settings {
+    /// The line typed to take `agent` up again after a restart: the
+    /// settings', else the one known for it.
+    pub fn resume_for(&self, agent: &str) -> Option<String> {
+        let set = self.agents.get(agent).map(|a| a.resume.trim().to_owned());
+        let own = match agent {
+            "codex" => Some("codex resume --last".to_owned()),
+            _ => None,
+        };
+        set.or(own).filter(|l| !l.is_empty())
+    }
+
+    /// Every AI program's name: the known ones and the settings' own.
+    pub fn agent_names(&self) -> Vec<String> {
+        let mut out: Vec<String> = AGENTS.iter().map(|s| (*s).to_owned()).collect();
+        out.extend(self.agents.keys().filter(|k| !AGENTS.contains(&k.as_str())).cloned());
+        out
+    }
 }
 
 /// What a model's tokens cost, in US dollars per million. A cache write is
@@ -385,6 +428,7 @@ impl Default for Settings {
             open: Open::default(),
             menu: Menu::default(),
             prices: std::collections::BTreeMap::new(),
+            agents: std::collections::BTreeMap::new(),
         }
     }
 }

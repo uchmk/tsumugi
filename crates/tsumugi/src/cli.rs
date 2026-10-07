@@ -130,6 +130,8 @@ mod tests {
             claude: false,
             conversation: String::new(),
             charset: String::new(),
+            agent: String::new(),
+            ports: Vec::new(),
         }
     }
 
@@ -157,5 +159,169 @@ mod tests {
         assert_eq!(find(&list, "claude"), Ok(1));
         assert!(find(&list, "bash").unwrap_err().contains("2, 3"), "two of them");
         assert!(find(&list, "nothing").is_err());
+    }
+}
+
+/// The remote control's usage: what another program (or an AI) runs to
+/// work the sessions without the window.
+pub const REMOTE_USAGE: &str = "\
+tsumugi ls [--json]                      the sessions (--json: one array, every field)
+tsumugi send N|NAME TEXT...              type TEXT into the session, then Enter
+tsumugi read N|NAME [--lines K] [--all]  its last K lines (40), or its whole scrollback
+tsumugi split N|NAME [--down] [-- CMD]   a new pane beside it, in its folder; prints its number
+tsumugi close N|NAME                     end the session
+tsumugi wait N|NAME [--state S] [--timeout SECS]
+                                         until it is waiting, done or failed (or S: waiting,
+                                         done, error, running); exit 1 on timeout, 3 if it ended";
+
+/// `tsumugi read`'s choices.
+#[derive(Debug, PartialEq)]
+pub struct Read {
+    pub who: String,
+    pub lines: usize,
+    pub all: bool,
+}
+
+pub fn parse_read(args: &[String]) -> Result<Read, String> {
+    let mut out = Read { who: String::new(), lines: 40, all: false };
+    let mut it = args.iter();
+    while let Some(a) = it.next() {
+        match a.as_str() {
+            "--all" => out.all = true,
+            "--lines" | "-n" => out.lines = it.next().and_then(|n| n.parse().ok()).ok_or("--lines takes a number")?,
+            s if s.starts_with('-') => return Err(format!("unknown option `{s}`")),
+            _ if out.who.is_empty() => out.who = a.clone(),
+            _ => return Err(format!("one session only (`{a}` is a second)")),
+        }
+    }
+    if out.who.is_empty() {
+        return Err("which session? (tsumugi ls lists them)".into());
+    }
+    Ok(out)
+}
+
+/// The last `n` lines of `text` with something on them below.
+pub fn last_lines(text: &str, n: usize) -> String {
+    let lines: Vec<&str> = text.trim_end().lines().collect();
+    let from = lines.len().saturating_sub(n);
+    let mut out = lines[from..].join("\n");
+    out.push('\n');
+    out
+}
+
+/// `tsumugi split`'s choices.
+#[derive(Debug, PartialEq)]
+pub struct Split {
+    pub who: String,
+    pub down: bool,
+    pub command: Vec<String>,
+}
+
+pub fn parse_split(args: &[String]) -> Result<Split, String> {
+    let mut out = Split { who: String::new(), down: false, command: Vec::new() };
+    let mut it = args.iter();
+    while let Some(a) = it.next() {
+        match a.as_str() {
+            "--" => out.command = it.by_ref().cloned().collect(),
+            "--down" => out.down = true,
+            "--right" => out.down = false,
+            s if s.starts_with('-') => return Err(format!("unknown option `{s}`")),
+            _ if out.who.is_empty() => out.who = a.clone(),
+            _ => return Err(format!("one session only (`{a}` is a second); a command goes after --")),
+        }
+    }
+    if out.who.is_empty() {
+        return Err("which session? (tsumugi ls lists them)".into());
+    }
+    Ok(out)
+}
+
+/// `tsumugi wait`'s choices: the states that end the wait.
+#[derive(Debug, PartialEq)]
+pub struct Wait {
+    pub who: String,
+    pub states: Vec<tsumugi_mux::State>,
+    pub timeout: Option<std::time::Duration>,
+}
+
+pub fn parse_wait(args: &[String]) -> Result<Wait, String> {
+    use tsumugi_mux::State;
+    let mut out = Wait { who: String::new(), states: vec![State::Waiting, State::MaybeWaiting, State::Done, State::Error], timeout: None };
+    let mut it = args.iter();
+    while let Some(a) = it.next() {
+        match a.as_str() {
+            "--state" => {
+                let s = it.next().and_then(|s| State::from_word(s)).ok_or("--state takes waiting, done, error or running")?;
+                out.states = if s == State::Waiting { vec![State::Waiting, State::MaybeWaiting] } else { vec![s] };
+            }
+            "--timeout" => out.timeout = Some(std::time::Duration::from_secs_f64(it.next().and_then(|n| n.parse::<f64>().ok()).filter(|n| *n >= 0.0).ok_or("--timeout takes seconds")?)),
+            s if s.starts_with('-') => return Err(format!("unknown option `{s}`")),
+            _ if out.who.is_empty() => out.who = a.clone(),
+            _ => return Err(format!("one session only (`{a}` is a second)")),
+        }
+    }
+    if out.who.is_empty() {
+        return Err("which session? (tsumugi ls lists them)".into());
+    }
+    Ok(out)
+}
+
+/// The sessions as one JSON array, every field `tsumugi ls` knows.
+pub fn ls_json(list: &[Info]) -> String {
+    use crate::json::Json;
+    let s = |v: &str| Json::String(v.to_owned());
+    Json::Array(
+        list.iter()
+            .map(|i| {
+                Json::Object(vec![
+                    ("id".into(), Json::Number(i.id as f64)),
+                    ("state".into(), s(i.state.word())),
+                    ("command".into(), s(&i.command)),
+                    ("agent".into(), s(&i.agent)),
+                    ("cwd".into(), s(&i.cwd.to_string_lossy())),
+                    ("project".into(), s(&i.project.to_string_lossy())),
+                    ("branch".into(), s(&i.branch)),
+                    ("title".into(), s(&i.title)),
+                    ("note".into(), s(&i.note)),
+                    ("since_ms".into(), Json::Number(i.since_ms as f64)),
+                    ("tags".into(), Json::Array(i.tags.iter().map(|t| s(t)).collect())),
+                    ("ports".into(), Json::Array(i.ports.iter().map(|p| Json::Number(f64::from(*p))).collect())),
+                    ("muted".into(), Json::Bool(i.muted)),
+                    ("charset".into(), s(&i.charset)),
+                ])
+            })
+            .collect(),
+    )
+    .pretty()
+}
+
+/// A new pane beside session `id`, in its folder, running `command`; its
+/// number.
+pub fn split(client: &Client, list: &[Info], id: SessionId, s: &Split) -> Result<SessionId, String> {
+    let info = list.iter().find(|i| i.id == id).ok_or_else(|| format!("no session {id}"))?;
+    let dir = if s.down { tsumugi_mux::Dir::Down } else { tsumugi_mux::Dir::Right };
+    let pane = client
+        .spawn_typing(info.cwd.clone(), None, Size::new(80, 24), (8, 16), Place::Split { beside: id, dir }, command_line(&s.command))
+        .map_err(|e| format!("the pane did not start: {e}"))?;
+    Ok(pane.id())
+}
+
+#[cfg(test)]
+mod remote_tests {
+    use super::*;
+
+    fn words(s: &str) -> Vec<String> {
+        s.split_whitespace().map(str::to_owned).collect()
+    }
+
+    #[test]
+    fn the_remote_controls_words_are_read() {
+        assert_eq!(parse_read(&words("3 --lines 10")).unwrap(), Read { who: "3".into(), lines: 10, all: false });
+        assert!(parse_read(&words("--all")).is_err(), "which session");
+        assert_eq!(parse_split(&words("filer --down -- npm run dev")).unwrap(), Split { who: "filer".into(), down: true, command: words("npm run dev") });
+        let w = parse_wait(&words("2 --state waiting --timeout 1.5")).unwrap();
+        assert_eq!((w.states.len(), w.timeout), (2, Some(std::time::Duration::from_millis(1500))), "waiting takes probably waiting too");
+        assert!(parse_wait(&words("2 --state soon")).is_err());
+        assert_eq!(last_lines("a\nb\nc\n\n\n", 2), "b\nc\n");
     }
 }
