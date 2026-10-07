@@ -891,18 +891,22 @@ fn notifications(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: 
             ("sound", "Sound", "Once, the sound picked below", &n.sound),
         ] {
             sep(ui, l);
-            let (row, _) = ui.allocate_exact_size(egui::vec2(width, 56.0), egui::Sense::hover());
+            // A line's height of room round the two lines of words, so the
+            // note does not touch the rule under it (seen on Windows,
+            // 2026-10-07).
+            let (row, _) = ui.allocate_exact_size(egui::vec2(width, 66.0), egui::Sense::hover());
             let cols = columns(row);
-            let words = egui::Rect::from_center_size(cols[0].center(), egui::vec2(cols[0].width(), 36.0));
-            ui.scope_builder(egui::UiBuilder::new().max_rect(words), |ui| {
-                ui.spacing_mut().item_spacing.y = 2.0;
-                ui.label(RichText::new(label).size(13.0).color(c.strong()));
-                ui.add(egui::Label::new(RichText::new(note).size(12.0).color(c.dim)).truncate());
-            });
+            let words = egui::Rect::from_center_size(cols[0].center(), egui::vec2(cols[0].width(), 40.0));
+            // Children of their own: a scope would move the card's cursor
+            // to their bottom and take back the row's room.
+            let mut inner = ui.new_child(egui::UiBuilder::new().max_rect(words));
+            inner.spacing_mut().item_spacing.y = 2.0;
+            inner.label(RichText::new(label).size(13.0).color(c.strong()));
+            inner.add(egui::Label::new(RichText::new(note).size(12.0).color(c.dim)).truncate());
             for ((word, _, _), r) in states.iter().zip(&cols[1..]) {
                 let on = list.iter().any(|w| w == word);
                 let at = egui::Rect::from_center_size(r.center(), egui::vec2(40.0, 22.0));
-                let flipped = ui.scope_builder(egui::UiBuilder::new().max_rect(at), |ui| switch(ui, l, on)).inner;
+                let flipped = switch(&mut ui.new_child(egui::UiBuilder::new().max_rect(at)), l, on);
                 if flipped {
                     let mut next: Vec<String> = list.iter().filter(|w| w != word).cloned().collect();
                     if !on {
@@ -1233,65 +1237,15 @@ fn tab_menu(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut 
 fn tags(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut Vec<Change>) {
     let c = l.c;
     let t = &seen.settings.tags;
-    section(ui, l, "AUTOMATIC TAGS", |ui| {
-        for (k, r) in t.rule.iter().enumerate() {
-            let what = match (r.folder.is_empty(), r.branch.is_empty()) {
-                (false, true) => format!("Folder {}", r.folder),
-                (true, false) => format!("Branch {}", r.branch),
-                _ => format!("Folder {} on branch {}", r.folder, r.branch),
-            };
-            let gone = row(ui, l, &what, "", |ui| {
-                let gone = button(ui, l, "Remove");
-                ui.add_space(8.0);
-                let w = ui.fonts_mut(|f| f.layout_no_wrap(r.tag.clone(), FontId::proportional(11.0), c.fg).size().x) + 12.0;
-                let (rect, _) = ui.allocate_exact_size(egui::vec2(w, 16.0), egui::Sense::hover());
-                crate::chrome::tag_chip(ui.painter(), rect.min, &r.tag, false);
-                gone
-            });
-            if gone {
-                let mut next = t.rule.clone();
-                next.remove(k);
-                out.push(Change::Rules(next));
-            }
-            sep(ui, l);
-        }
-        row(ui, l, "New rule", "A folder (ending in * for each folder in it) or a branch pattern, then a tag ({name}: the folder's name)", |ui| {
-            let (branch, pattern, tag) = &mut edit.rule;
-            let ok = !pattern.trim().is_empty() && !tag.trim().is_empty();
-            if ui.add_enabled(ok, egui::Button::new("Add")).clicked() {
-                let mut next = t.rule.clone();
-                let mut rule = TagRule { tag: tag.trim().to_owned(), ..TagRule::default() };
-                if *branch {
-                    rule.branch = pattern.trim().to_owned();
-                } else {
-                    rule.folder = pattern.trim().to_owned();
-                }
-                next.push(rule);
-                out.push(Change::Rules(next));
-                *pattern = String::new();
-                *tag = String::new();
-            }
-            ui.add(egui::TextEdit::singleline(tag).hint_text("tag").desired_width(90.0));
-            let hint = if *branch { "claude/*" } else { "~/dev/*" };
-            ui.add(egui::TextEdit::singleline(pattern).hint_text(hint).desired_width(150.0).font(FontId::monospace(12.5)));
-            if let Some(b) = select(ui, "rule-kind", *branch, &[(false, "Folder"), (true, "Branch")]) {
-                *branch = b;
-            }
-        });
-    });
     let mut known: Vec<String> = seen.tags.to_vec();
     for name in t.rule.iter().map(|r| &r.tag).chain(t.colors.keys()).filter(|n| !n.contains('{')) {
         if !known.contains(name) {
             known.push(name.clone());
         }
     }
-    section(ui, l, "COLOURS", |ui| {
-        row(ui, l, "Colour new tags", "Picked from the tag's name, so a tag is the same colour everywhere", |ui| {
-            select(ui, "tag-colour-kind", "auto", &[("auto", "Automatic")]);
-        });
-        sep(ui, l);
-        row(ui, l, "Tags per session", "The title bar and tabs show 3, then +N", |ui| status(ui, &format!("At most {}", tsumugi_mux::proto::MAX_TAGS), c.fg));
-        sep(ui, l);
+    // The tags themselves first (the one to edit, how they are coloured and
+    // how many a session takes), then the rules that hand them out.
+    section(ui, l, "TAGS", |ui| {
         let names: Vec<(&str, &str)> = known.iter().map(|n| (n.as_str(), n.as_str())).collect();
         let now = edit.tag.clone().unwrap_or_default();
         let picked = row(ui, l, "Edit a tag", "Rename, recolour, quiet", |ui| {
@@ -1348,6 +1302,58 @@ fn tags(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut Vec<
                 out.push(Change::MuteTag(tag.clone(), !quiet));
             }
         }
+        sep(ui, l);
+        row(ui, l, "Colour new tags", "Picked from the tag's name, so a tag is the same colour everywhere", |ui| {
+            select(ui, "tag-colour-kind", "auto", &[("auto", "Automatic")]);
+        });
+        sep(ui, l);
+        row(ui, l, "Tags per session", "The title bar and tabs show 3, then +N", |ui| status(ui, &format!("At most {}", tsumugi_mux::proto::MAX_TAGS), c.fg));
+    });
+    section(ui, l, "AUTOMATIC TAGS", |ui| {
+        for (k, r) in t.rule.iter().enumerate() {
+            let what = match (r.folder.is_empty(), r.branch.is_empty()) {
+                (false, true) => format!("Folder {}", r.folder),
+                (true, false) => format!("Branch {}", r.branch),
+                _ => format!("Folder {} on branch {}", r.folder, r.branch),
+            };
+            let gone = row(ui, l, &what, "", |ui| {
+                let gone = button(ui, l, "Remove");
+                ui.add_space(8.0);
+                let w = ui.fonts_mut(|f| f.layout_no_wrap(r.tag.clone(), FontId::proportional(11.0), c.fg).size().x) + 12.0;
+                let (rect, _) = ui.allocate_exact_size(egui::vec2(w, 16.0), egui::Sense::hover());
+                crate::chrome::tag_chip(ui.painter(), rect.min, &r.tag, false);
+                gone
+            });
+            if gone {
+                let mut next = t.rule.clone();
+                next.remove(k);
+                out.push(Change::Rules(next));
+            }
+            sep(ui, l);
+        }
+        row(ui, l, "New rule", "A folder (ending in * for each folder in it) or a branch pattern, then a tag ({name}: the folder's name)", |ui| {
+            let (branch, pattern, tag) = &mut edit.rule;
+            let ok = !pattern.trim().is_empty() && !tag.trim().is_empty();
+            if ui.add_enabled(ok, egui::Button::new("Add")).clicked() {
+                let mut next = t.rule.clone();
+                let mut rule = TagRule { tag: tag.trim().to_owned(), ..TagRule::default() };
+                if *branch {
+                    rule.branch = pattern.trim().to_owned();
+                } else {
+                    rule.folder = pattern.trim().to_owned();
+                }
+                next.push(rule);
+                out.push(Change::Rules(next));
+                *pattern = String::new();
+                *tag = String::new();
+            }
+            ui.add(egui::TextEdit::singleline(tag).hint_text("tag").desired_width(90.0));
+            let hint = if *branch { "claude/*" } else { "~/dev/*" };
+            ui.add(egui::TextEdit::singleline(pattern).hint_text(hint).desired_width(150.0).font(FontId::monospace(12.5)));
+            if let Some(b) = select(ui, "rule-kind", *branch, &[(false, "Folder"), (true, "Branch")]) {
+                *branch = b;
+            }
+        });
     });
 }
 
