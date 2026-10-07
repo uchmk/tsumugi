@@ -3,7 +3,7 @@
 Claude Code などの AI CLI のセッションを何本も並べて動かすためのターミナル。Rust + egui、Windows 優先。
 姉妹プロジェクトの [filer](https://github.com/uchmk/filer)（yazi 風のファイルマネージャー）のターミナルペインを土台にする。
 
-最初の版の範囲は [docs/v1-scope.md](docs/v1-scope.md)。今は filer のターミナルペインを `crates/tsumugi-pane` に切り出している（[docs/pane-extraction.md](docs/pane-extraction.md)。段階と進み具合もそこ）。
+前の会話からの引き継ぎ（今の版と次の手順）は [docs/handoff.md](docs/handoff.md)。最初の版の範囲は [docs/v1-scope.md](docs/v1-scope.md)。今は filer のターミナルペインを `crates/tsumugi-pane` に切り出している（[docs/pane-extraction.md](docs/pane-extraction.md)。段階と進み具合もそこ）。
 
 - Cargo の workspace。クレートは `crates/` の下に置く。版はルートの `Cargo.toml` の `[workspace.package]` で 1 つ。
 - **push の前に `scripts/verify.sh` を 1 回回す。**最後の行が `ALL OK: …` なら push してよい（test、clippy を Linux と `x86_64-pc-windows-msvc` の両方で `-D warnings`）。
