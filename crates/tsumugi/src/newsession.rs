@@ -84,6 +84,8 @@ pub struct Dialog {
     opening: bool,
     /// The start button the arrows moved to, to give the keys next frame.
     start_focus: Option<usize>,
+    /// The ways-to-start buttons as last drawn, for Enter on one of them.
+    start_ids: Vec<egui::Id>,
 }
 
 /// What the dialog was asked to do.
@@ -146,6 +148,7 @@ impl Dialog {
             selected: None,
             opening: true,
             start_focus: None,
+            start_ids: Vec::new(),
         }
     }
 
@@ -239,7 +242,10 @@ pub fn show(ctx: &egui::Context, pal: &Palette, d: &mut Dialog, recents: &[Recen
         None => shown.first().map(|r| crate::home_short(&r.folder)),
     }
     .filter(|f| *f != d.folder.trim());
-    let enter_creates = focused.is_none() || ["ns-folder", "ns-branch", "ns-name", "ns-tag"].iter().any(|n| in_field(n));
+    // Enter on a way to start (Claude Code, Resume last, Shell) picks it and
+    // creates, as the dialog's foot says; on another button it presses it.
+    let on_start = Start::ALL.into_iter().zip(&d.start_ids).find(|(_, id)| focused == Some(**id)).map(|(s, _)| s);
+    let enter_creates = focused.is_none() || on_start.is_some() || ["ns-folder", "ns-branch", "ns-name", "ns-tag"].iter().any(|n| in_field(n));
     // Alt+Enter before Enter: egui's plain Enter also matches it.
     let (esc, alt_enter, enter, up, down, tab, back) = ctx.input_mut(|i| {
         (
@@ -280,6 +286,9 @@ pub fn show(ctx: &egui::Context, pal: &Palette, d: &mut Dialog, recents: &[Recen
         }
     }
     if (enter || alt_enter) && !d.opening {
+        if let Some(s) = on_start {
+            d.start = s;
+        }
         if let Some(r) = d.selected.and_then(|s| shown.get(s)) {
             d.folder = crate::home_short(&r.folder);
         }
@@ -354,8 +363,10 @@ pub fn show(ctx: &egui::Context, pal: &Palette, d: &mut Dialog, recents: &[Recen
                 ui.horizontal(|ui| {
                     let (left, right) = ui.input(|i| (i.key_pressed(egui::Key::ArrowLeft), i.key_pressed(egui::Key::ArrowRight)));
                     let mut went = None;
+                    d.start_ids.clear();
                     for (k, s) in Start::ALL.into_iter().enumerate() {
                         let b = start_button(ui, s.label(), d.start == s);
+                        d.start_ids.push(b.id);
                         if d.start_focus == Some(k) {
                             b.request_focus();
                             d.start_focus = None;
@@ -656,5 +667,9 @@ mod tests {
         let answer = run.key(&mut d, egui::Key::Space, egui::Modifiers::NONE);
         assert!(answer.is_none());
         assert_eq!(d.start, Start::ALL[2], "Space chose the button Tab went to: {}", run.focused());
+        // Enter on a way to start picks it and creates (seen on Windows,
+        // 2026-10-07: Enter on Shell did nothing, Alt+Enter worked).
+        let answer = run.key(&mut d, egui::Key::Enter, egui::Modifiers::NONE);
+        assert!(matches!(answer, Some(Answer::Create(_))), "Enter on Shell creates: {}", run.focused());
     }
 }

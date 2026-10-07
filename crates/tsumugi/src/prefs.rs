@@ -478,6 +478,25 @@ fn row<R>(ui: &mut egui::Ui, l: Look, label: &str, note: &str, control: impl FnO
     r.expect("the control ran")
 }
 
+/// Several controls at the right of a row, laid out left to right so Tab
+/// goes through them in the order they read (a row places its control right
+/// to left, which would send Tab from the right). The width is the one they
+/// took last frame; the first frame they sit at the left, then settle.
+fn in_order<R>(ui: &mut egui::Ui, add: impl FnOnce(&mut egui::Ui) -> R) -> R {
+    let key = ui.id().with("in-order");
+    // At first all the room there is, so nothing is squeezed while it is
+    // measured.
+    let w = ui.data(|d| d.get_temp::<f32>(key)).unwrap_or(ui.available_width());
+    let h = ui.available_height();
+    let shown = ui.allocate_ui_with_layout(egui::vec2(w, h), egui::Layout::left_to_right(egui::Align::Center), add);
+    let now = shown.response.rect.width();
+    if (now - w).abs() > 0.5 {
+        ui.data_mut(|d| d.insert_temp(key, now));
+        ui.ctx().request_repaint();
+    }
+    shown.inner
+}
+
 /// The design's switch: a pill with a knob, cyan when on.
 fn switch(ui: &mut egui::Ui, l: Look, on: bool) -> bool {
     let c = l.c;
@@ -791,7 +810,13 @@ fn keys(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut Vec<
             None if now != own => format!("Its own: {own}"),
             None => String::new(),
         };
-        row(ui, l, crate::keys::title(a), &note, |ui| {
+        row(ui, l, crate::keys::title(a), &note, |ui| in_order(ui, |ui| {
+            let waiting = edit.capturing == Some(*name);
+            let text = if waiting { "Press a key… (Esc: leave it)".to_owned() } else { now.clone() };
+            if keycap(ui, l, &text, waiting).on_hover_text("Click, then press the key to use (Esc: leave it)").clicked() {
+                edit.capturing = Some(name);
+                edit.clash = None;
+            }
             if let Some((_, _, chord)) = &clash {
                 if ui.small_button("Use it anyway").clicked() {
                     out.push(Change::Set(Some("keys"), name, cfg::quote(chord)));
@@ -801,13 +826,7 @@ fn keys(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut Vec<
             } else if now != own && ui.small_button("Its own").clicked() {
                 out.push(Change::Set(Some("keys"), name, cfg::quote(own)));
             }
-            let waiting = edit.capturing == Some(*name);
-            let text = if waiting { "Press a key… (Esc: leave it)".to_owned() } else { now };
-            if keycap(ui, l, &text, waiting).on_hover_text("Click, then press the key to use (Esc: leave it)").clicked() {
-                edit.capturing = Some(name);
-                edit.clash = None;
-            }
-        });
+        }));
     };
     let fixed_row = |ui: &mut egui::Ui, title: &str, key: &str| {
         row(ui, l, title, "", |ui| {
@@ -928,12 +947,13 @@ fn notifications(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: 
         }
         for (key, label, now) in [("sound_waiting", "Sound for waits", &n.sound_waiting), ("sound_error", "Sound for fails", &n.sound_error)] {
             sep(ui, l);
-            let picked = row(ui, l, label, "", |ui| {
+            let picked = row(ui, l, label, "", |ui| in_order(ui, |ui| {
+                let picked = select(ui, key, now.as_str(), &SOUND_NAMES);
                 if ui.small_button("▶").on_hover_text("Play it").clicked() {
                     out.push(Change::PlaySound(now.clone()));
                 }
-                select(ui, key, now.as_str(), &SOUND_NAMES)
-            });
+                picked
+            }));
             if let Some(s) = picked {
                 out.push(Change::Set(Some("notify"), key, cfg::quote(s)));
             }
@@ -1188,13 +1208,13 @@ fn tab_menu(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut 
                 sep(ui, l);
             }
             let shown = !m.hide.iter().any(|h| h == word);
-            let (up, down, flip) = row(ui, l, cfg::menu_label(word), "", |ui| {
-                let flip = switch(ui, l, shown);
-                ui.add_space(8.0);
-                let down = ui.add_enabled(k + 1 < words.len(), egui::Button::new("↓").small()).on_hover_text("Lower in the menu").clicked();
+            let (up, down, flip) = row(ui, l, cfg::menu_label(word), "", |ui| in_order(ui, |ui| {
                 let up = ui.add_enabled(k > 0, egui::Button::new("↑").small()).on_hover_text("Higher in the menu").clicked();
+                let down = ui.add_enabled(k + 1 < words.len(), egui::Button::new("↓").small()).on_hover_text("Lower in the menu").clicked();
+                ui.add_space(8.0);
+                let flip = switch(ui, l, shown);
                 (up, down, flip)
-            });
+            }));
             if up || down {
                 let mut next: Vec<String> = words.iter().map(|w| w.to_string()).collect();
                 next.swap(k, if up { k - 1 } else { k + 1 });
@@ -1331,8 +1351,14 @@ fn tags(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut Vec<
             }
             sep(ui, l);
         }
-        row(ui, l, "New rule", "A folder (ending in * for each folder in it) or a branch pattern, then a tag ({name}: the folder's name)", |ui| {
+        row(ui, l, "New rule", "A folder (ending in * for each folder in it) or a branch pattern, then a tag ({name}: the folder's name)", |ui| in_order(ui, |ui| {
             let (branch, pattern, tag) = &mut edit.rule;
+            if let Some(b) = select(ui, "rule-kind", *branch, &[(false, "Folder"), (true, "Branch")]) {
+                *branch = b;
+            }
+            let hint = if *branch { "claude/*" } else { "~/dev/*" };
+            ui.add(egui::TextEdit::singleline(pattern).hint_text(hint).desired_width(150.0).font(FontId::monospace(12.5)));
+            ui.add(egui::TextEdit::singleline(tag).hint_text("tag").desired_width(90.0));
             let ok = !pattern.trim().is_empty() && !tag.trim().is_empty();
             if ui.add_enabled(ok, egui::Button::new("Add")).clicked() {
                 let mut next = t.rule.clone();
@@ -1347,13 +1373,7 @@ fn tags(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut Vec<
                 *pattern = String::new();
                 *tag = String::new();
             }
-            ui.add(egui::TextEdit::singleline(tag).hint_text("tag").desired_width(90.0));
-            let hint = if *branch { "claude/*" } else { "~/dev/*" };
-            ui.add(egui::TextEdit::singleline(pattern).hint_text(hint).desired_width(150.0).font(FontId::monospace(12.5)));
-            if let Some(b) = select(ui, "rule-kind", *branch, &[(false, "Folder"), (true, "Branch")]) {
-                *branch = b;
-            }
-        });
+        }));
     });
 }
 
@@ -1841,6 +1861,23 @@ mod tests {
         let left = find(&texts, "Colours, applied as you pick.").unwrap().left();
         let (mode_x, follow, dark) = (find(&texts, "Mode").unwrap().left(), find(&texts, "Follow OS").unwrap().left(), find(&texts, "Dark").unwrap().left());
         assert!((mode_x - left).abs() < 4.0 && mode_x < follow && follow < dark, "Mode at {mode_x}, the heading at {left}, Follow OS at {follow}, Dark at {dark}");
+    }
+
+    /// A row of several controls reads, and is tabbed through, left to
+    /// right (seen on Windows, 2026-10-07: Tab went tag, folder, kind), and
+    /// still ends at the right edge with the other rows.
+    #[test]
+    fn a_rows_controls_go_left_to_right() {
+        let run = Run::new();
+        let mut screen = at_page(Page::Tags);
+        run.frame(&mut screen, Vec::new());
+        let (_, texts) = run.frame(&mut screen, Vec::new());
+        let x = |w: &str| find(&texts, w).unwrap_or_else(|| panic!("{w}")).left();
+        let (kind, pattern, tag, add) = (x("Folder"), x("~/dev/*"), x("tag"), x("Add"));
+        assert!(kind < pattern && pattern < tag && tag < add, "Folder {kind}, pattern {pattern}, tag {tag}, Add {add}");
+        let add_right = find(&texts, "Add").unwrap().right();
+        let edge = find(&texts, "At most").unwrap().right();
+        assert!((add_right - edge).abs() < 12.0, "Add ends at {add_right}, the other rows at {edge}");
     }
 
     fn at_page(page: Page) -> Screen {

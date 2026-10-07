@@ -185,6 +185,7 @@ what happened, and the steps.
 | 6.8 | `exit` the last session in that worktree | **Remove the worktree?**; Remove takes the folder (the branch stays); with uncommitted changes git refuses and the toast says why |
 | 6.9 | `Ctrl+Shift+T`, then only the keyboard: `Tab` through the dialog, `←`/`→` on the ways to start, `Space` on a button, `Shift+Tab` back | A cyan ring shows where the keys are; Tab completes the folder once and then moves on, through the start buttons, + Pane, the tag, the two ticks, Create and Cancel; `Enter` on Cancel cancels, `Enter` in a field creates |
 | 6.10 | Search `parallel` → Start in parallel; two prompts; Start 2 | Two folders `<repo>-tsumugi-MMDD-HHMM-1`/`-2` beside the repository on branches `tsumugi/MMDD-HHMM-1`/`-2`, two tabs, Claude Code started in each on its own prompt (quotes in a prompt kept); Esc or Cancel starts nothing |
+| 6.11 | `Ctrl+Shift+T`, `Tab` to Shell (the ring on it), `Enter` | A shell starts, as Alt+Enter would split one: Enter on a way to start picks it and creates |
 
 ## 7. The input box
 
