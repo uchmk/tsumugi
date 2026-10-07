@@ -23,20 +23,23 @@ fn json_string(text: &str) -> String {
     out
 }
 
-/// The `curl` arguments for one notice, before the address.
+/// The `curl` arguments for one notice, before the address. The body goes
+/// with `--data-raw`: with `-d`, a message starting `@` (a program's own
+/// notification can say anything) has curl send the file it names (the
+/// source review, 2026-10-07).
 pub fn args(format: &str, title: &str, message: &str, folder: &str) -> Vec<String> {
     let json = |fields: Vec<(&str, &str)>| format!("{{{}}}", fields.iter().map(|(k, v)| format!("{}: {}", json_string(k), json_string(v))).collect::<Vec<_>>().join(", "));
     let mut out: Vec<String> = ["-sS", "-m", "10", "-X", "POST"].iter().map(|s| (*s).to_owned()).collect();
     match format {
         "slack" => {
-            out.extend(["-H".into(), "Content-Type: application/json".into(), "-d".into(), json(vec![("text", &format!("*{title}*\n{message}"))])]);
+            out.extend(["-H".into(), "Content-Type: application/json".into(), "--data-raw".into(), json(vec![("text", &format!("*{title}*\n{message}"))])]);
         }
         "json" => {
-            out.extend(["-H".into(), "Content-Type: application/json".into(), "-d".into(), json(vec![("title", title), ("message", message), ("folder", folder)])]);
+            out.extend(["-H".into(), "Content-Type: application/json".into(), "--data-raw".into(), json(vec![("title", title), ("message", message), ("folder", folder)])]);
         }
         // ntfy: the body is the message, the title a header.
         _ => {
-            out.extend(["-H".into(), format!("Title: {}", title.replace(['\r', '\n'], " ")), "-H".into(), "Tags: hourglass".into(), "-d".into(), message.to_owned()]);
+            out.extend(["-H".into(), format!("Title: {}", title.replace(['\r', '\n'], " ")), "-H".into(), "Tags: hourglass".into(), "--data-raw".into(), message.to_owned()]);
         }
     }
     out
@@ -46,7 +49,7 @@ pub fn args(format: &str, title: &str, message: &str, folder: &str) -> Vec<Strin
 pub fn send(url: String, format: String, title: String, message: String, folder: String) {
     let _ = std::thread::Builder::new().name("webhook".into()).spawn(move || {
         let mut cmd = std::process::Command::new("curl");
-        cmd.args(args(&format, &title, &message, &folder)).arg(&url).stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null());
+        cmd.args(args(&format, &title, &message, &folder)).arg("--url").arg(&url).stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null());
         #[cfg(windows)]
         {
             use std::os::windows::process::CommandExt;
@@ -68,6 +71,9 @@ mod tests {
     fn each_format_says_it_its_way() {
         let ntfy = args("ntfy", "filer is waiting", "Claude needs your permission", "/home/u/filer");
         assert!(ntfy.contains(&"Title: filer is waiting".to_string()) && ntfy.last().unwrap() == "Claude needs your permission");
+        // A message that starts with @ is sent as it is, not as a file.
+        let at = args("ntfy", "t", "@/home/u/.ssh/id_rsa", "/");
+        assert!(!at.iter().any(|a| a == "-d") && at[at.len() - 2] == "--data-raw", "{at:?}");
         let slack = args("slack", "filer is waiting", "say \"yes\"", "/f");
         assert!(slack.last().unwrap().contains(r#""text": "*filer is waiting*\nsay \"yes\"""#), "{slack:?}");
         let json = args("json", "t", "m", "C:\\dev\\x");

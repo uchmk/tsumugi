@@ -72,10 +72,10 @@ pub fn remove(text: &str) -> Result<String, String> {
 /// beside it first.
 pub fn uninstall() -> Result<PathBuf, String> {
     let path = settings_path().ok_or("no home folder")?;
-    let old = std::fs::read_to_string(&path).map_err(|e| format!("{}: {e}", path.display()))?;
+    let old = crate::files::read_or_empty(&path)?;
     let new = remove(&old)?;
-    std::fs::write(path.with_extension("json.tsumugi-backup"), &old).map_err(|e| format!("the backup: {e}"))?;
-    std::fs::write(&path, new).map_err(|e| format!("{}: {e}", path.display()))?;
+    crate::files::write_atomic(&path.with_extension("json.tsumugi-backup"), &old).map_err(|e| format!("the backup: {e}"))?;
+    crate::files::write_atomic(&path, new)?;
     Ok(path)
 }
 
@@ -95,15 +95,14 @@ fn entry<'a>(fields: &'a mut Vec<(String, Json)>, key: &str, empty: Json) -> &'a
 /// beside it first.
 pub fn install() -> Result<PathBuf, String> {
     let path = settings_path().ok_or("no home folder")?;
-    let old = std::fs::read_to_string(&path).unwrap_or_default();
+    // A file that is there but does not read is an error, not an empty one
+    // to write over (the source review, 2026-10-07).
+    let old = crate::files::read_or_empty(&path)?;
     let new = add(&old)?;
-    if let Some(dir) = path.parent() {
-        std::fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
-    }
     if !old.is_empty() {
-        std::fs::write(path.with_extension("json.tsumugi-backup"), &old).map_err(|e| format!("the backup: {e}"))?;
+        crate::files::write_atomic(&path.with_extension("json.tsumugi-backup"), &old).map_err(|e| format!("the backup: {e}"))?;
     }
-    std::fs::write(&path, new).map_err(|e| format!("{}: {e}", path.display()))?;
+    crate::files::write_atomic(&path, new)?;
     Ok(path)
 }
 

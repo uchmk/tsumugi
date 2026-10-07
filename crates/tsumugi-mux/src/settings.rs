@@ -709,131 +709,106 @@ pub fn parse(text: &str) -> Result<Settings, String> {
     Ok(s)
 }
 
-/// `text` with `key` in `table` (`None`: the top, before any table) set to
-/// `value`, already written as TOML. Only that key's line changes (its
-/// array, if it runs over several lines), so what a person wrote around it
-/// -- comments, order, blank lines -- stays. A key not there is added at
-/// the end of its table, and a table not there at the end of the file.
-pub fn set_key(text: &str, table: Option<&str>, key: &str, value: &str) -> String {
-    let lines: Vec<&str> = text.split_inclusive('\n').collect();
-    let header = |l: &str| -> Option<String> {
-        let t = l.trim();
-        let inner = t.strip_prefix("[[").and_then(|r| r.split("]]").next()).or_else(|| t.strip_prefix('[').and_then(|r| r.split(']').next()))?;
-        // An array of tables never takes a plain key from here.
-        Some(if t.starts_with("[[") { format!("[[{}]]", inner.trim()) } else { inner.trim().to_owned() })
-    };
-    let is_key = |l: &str| {
-        let t = l.trim_start();
-        t.strip_prefix(key).is_some_and(|rest| rest.trim_start().starts_with('='))
-    };
-    let mut section: Option<String> = None;
-    let mut start = None;
-    let mut last_in_table = None;
-    let mut first_header = None;
-    for (k, l) in lines.iter().enumerate() {
-        if let Some(h) = header(l) {
-            first_header.get_or_insert(k);
-            section = Some(h);
-            if section.as_deref() == table {
-                last_in_table = Some(k);
-            }
-            continue;
-        }
-        if section.as_deref() != table {
-            continue;
-        }
-        if !l.trim().is_empty() && !l.trim_start().starts_with('#') {
-            last_in_table = Some(k);
-        }
-        if start.is_none() && is_key(l) {
-            start = Some(k);
-        }
+/// The table at the dotted `path` (`None`: the top), made when it is not
+/// there; an error when the path is something else (an array of tables).
+fn table_at<'a>(doc: &'a mut toml_edit::DocumentMut, path: Option<&str>) -> Result<&'a mut toml_edit::Table, String> {
+    let mut t = doc.as_table_mut();
+    let Some(path) = path else { return Ok(t) };
+    for part in path.split('.') {
+        let item = t.entry(part).or_insert_with(|| {
+            let mut new = toml_edit::Table::new();
+            new.set_implicit(true);
+            toml_edit::Item::Table(new)
+        });
+        t = item.as_table_mut().ok_or_else(|| format!("[{path}] is not a table in the file"))?;
     }
-    let line = format!("{key} = {value}\n");
-    let mut out: Vec<String> = lines.iter().map(|l| (*l).to_owned()).collect();
-    match start {
-        Some(k) => {
-            // An array over several lines ends where its brackets close.
-            let mut end = k;
-            let mut depth: i32 = 0;
-            for (j, l) in lines.iter().enumerate().skip(k) {
-                let v = if j == k { l.split_once('=').map_or("", |(_, v)| v) } else { l };
-                depth += v.matches('[').count() as i32 - v.matches(']').count() as i32;
-                end = j;
-                if depth <= 0 {
-                    break;
-                }
-            }
-            let indent: String = lines[k].chars().take_while(|c| c.is_whitespace()).collect();
-            out.splice(k..=end, [format!("{indent}{line}")]);
-        }
-        None => match (table, last_in_table) {
-            (_, Some(k)) => {
-                if !out[k].ends_with('\n') {
-                    out[k].push('\n');
-                }
-                out.insert(k + 1, line);
-            }
-            (Some(t), None) => {
-                if out.last().is_some_and(|l| !l.ends_with('\n')) {
-                    out.push("\n".into());
-                }
-                if !out.is_empty() {
-                    out.push("\n".into());
-                }
-                out.push(format!("[{t}]\n{line}"));
-            }
-            (None, None) => out.insert(first_header.unwrap_or(out.len()), if first_header.is_some() { format!("{line}\n") } else { line }),
-        },
-    }
-    out.concat()
+    Ok(t)
 }
 
-/// `text` without `key` in `table` (its line, or its lines for an array
-/// over several); the same text when it is not there.
-pub fn remove_key(text: &str, table: Option<&str>, key: &str) -> String {
-    // Set it to a value no file holds, then take that line out.
-    const MARK: &str = "\u{0}tsumugi-remove\u{0}";
-    let marked = set_key(text, table, key, MARK);
-    let had = marked.lines().count() == text.lines().count();
-    let out: String = marked.split_inclusive('\n').filter(|l| !l.contains(MARK)).collect();
-    if had { out } else { text.to_owned() }
+fn document(text: &str) -> Result<toml_edit::DocumentMut, String> {
+    text.parse::<toml_edit::DocumentMut>().map_err(|e| format!("settings.toml does not read, so it is left as it is: {e}"))
+}
+
+/// A key as the settings write it (`A`, `"my tag"`), as the name it stands for.
+fn key_name(key: &str) -> Result<String, String> {
+    let parts = toml_edit::Key::parse(key).map_err(|e| format!("`{key}` is not a key: {e}"))?;
+    match parts.as_slice() {
+        [one] => Ok(one.get().to_owned()),
+        _ => Err(format!("`{key}` is not a single key")),
+    }
+}
+
+/// `text` with `key` in `table` (`None`: the top, before any table) set to
+/// `value`, already written as TOML. Only that key changes, so what a person
+/// wrote around it -- comments, order, blank lines -- stays. A key not there
+/// is added at the end of its table, and a table not there at the end of the
+/// file. An error, and nothing to write, when the file does not read as TOML
+/// or the value is not a TOML value.
+pub fn set_key(text: &str, table: Option<&str>, key: &str, value: &str) -> Result<String, String> {
+    let mut doc = document(text)?;
+    let mut new: toml_edit::Value = value.parse().map_err(|e| format!("`{value}` is not a TOML value: {e}"))?;
+    let name = key_name(key)?;
+    let t = table_at(&mut doc, table)?;
+    // A new table that only held tables before is shown now it has a key.
+    t.set_implicit(false);
+    match t.get_mut(&name).and_then(toml_edit::Item::as_value_mut) {
+        Some(old) => {
+            // The comment after the old value stays after the new one.
+            let suffix = old.decor().suffix().and_then(|s| s.as_str()).map(str::to_owned);
+            new.decor_mut().set_prefix(" ");
+            new.decor_mut().set_suffix(suffix.as_deref().filter(|s| s.contains('#')).unwrap_or(""));
+            *old = new;
+        }
+        None => {
+            t.insert(&name, toml_edit::Item::Value(new));
+        }
+    }
+    Ok(doc.to_string())
+}
+
+/// `text` without `key` in `table`; the same text when it is not there.
+pub fn remove_key(text: &str, table: Option<&str>, key: &str) -> Result<String, String> {
+    let mut doc = document(text)?;
+    let name = key_name(key)?;
+    let mut t = doc.as_table_mut();
+    if let Some(path) = table {
+        for part in path.split('.') {
+            match t.get_mut(part).and_then(toml_edit::Item::as_table_mut) {
+                Some(next) => t = next,
+                None => return Ok(text.to_owned()),
+            }
+        }
+    }
+    if t.remove(&name).is_none() {
+        return Ok(text.to_owned());
+    }
+    Ok(doc.to_string())
 }
 
 /// `text` with every `[[name]]` block taken out and `blocks` written at the
 /// end in their place, each a list of keys and their values as TOML.
 /// Comments inside the old blocks go with them; the rest stays.
-pub fn set_tables(text: &str, name: &str, blocks: &[Vec<(&str, String)>]) -> String {
-    let head = format!("[[{name}]]");
-    let mut out: Vec<&str> = Vec::new();
-    let mut inside = false;
-    for l in text.split_inclusive('\n') {
-        let t = l.trim();
-        if t.starts_with('[') {
-            inside = t == head;
-        }
-        if !inside {
-            out.push(l);
-        }
-    }
-    let mut s: String = out.concat();
-    while s.ends_with("\n\n") {
-        s.pop();
-    }
+pub fn set_tables(text: &str, name: &str, blocks: &[Vec<(&str, String)>]) -> Result<String, String> {
+    let mut doc = document(text)?;
+    let (parent, last) = match name.rsplit_once('.') {
+        Some((p, l)) => (Some(p), l),
+        None => (None, name),
+    };
+    let mut list = toml_edit::ArrayOfTables::new();
     for b in blocks {
-        if !s.is_empty() {
-            if !s.ends_with('\n') {
-                s.push('\n');
-            }
-            s.push('\n');
-        }
-        s.push_str(&head);
-        s.push('\n');
+        let mut t = toml_edit::Table::new();
         for (k, v) in b {
-            s.push_str(&format!("{k} = {v}\n"));
+            let v: toml_edit::Value = v.parse().map_err(|e| format!("`{v}` is not a TOML value: {e}"))?;
+            t.insert(&key_name(k)?, toml_edit::Item::Value(v));
         }
+        list.push(t);
     }
-    s
+    let t = table_at(&mut doc, parent)?;
+    t.remove(last);
+    if !list.is_empty() {
+        t.insert(last, toml_edit::Item::ArrayOfTables(list));
+    }
+    Ok(doc.to_string())
 }
 
 /// A string as TOML writes it, quoted and escaped.
@@ -1006,17 +981,18 @@ mod tests {
     #[test]
     fn keys_go_and_tables_are_rewritten() {
         let text = "# mine\n[shell.env]\nA = \"1\"\nB = \"2\"\n\n[[tags.rule]]\n# old\nfolder = \"~/a\"\ntag = \"a\"\n\n[clock]\nshow = true\n";
-        let t = remove_key(text, Some("shell.env"), "A");
+        let t = remove_key(text, Some("shell.env"), "A").unwrap();
         assert_eq!(t, "# mine\n[shell.env]\nB = \"2\"\n\n[[tags.rule]]\n# old\nfolder = \"~/a\"\ntag = \"a\"\n\n[clock]\nshow = true\n");
-        assert_eq!(remove_key(text, Some("shell.env"), "Z"), text, "not there: as it was");
+        assert_eq!(remove_key(text, Some("shell.env"), "Z").unwrap(), text, "not there: as it was");
         let rules = vec![vec![("folder", quote("~/b")), ("tag", quote("b"))], vec![("branch", quote("claude/*")), ("tag", quote("claude"))]];
-        let t = set_tables(text, "tags.rule", &rules);
-        assert!(t.starts_with("# mine\n[shell.env]\nA = \"1\"\nB = \"2\"\n\n[clock]\nshow = true\n\n[[tags.rule]]\nfolder = \"~/b\""), "{t}");
+        let t = set_tables(text, "tags.rule", &rules).unwrap();
+        assert!(t.starts_with("# mine\n[shell.env]\nA = \"1\"\nB = \"2\"\n") && t.contains("[clock]\nshow = true\n") && !t.contains("# old"), "{t}");
+        assert!(t.contains("[[tags.rule]]\nfolder = \"~/b\""), "{t}");
         let s = parse(&t).expect("reads");
         assert_eq!(s.tags.rule.len(), 2);
         assert_eq!(s.tags.rule[1].branch, "claude/*");
-        assert_eq!(set_tables(&t, "tags.rule", &rules), t, "the same twice");
-        assert!(parse(&set_tables(&t, "tags.rule", &[])).unwrap().tags.rule.is_empty());
+        assert_eq!(set_tables(&t, "tags.rule", &rules).unwrap(), t, "the same twice");
+        assert!(parse(&set_tables(&t, "tags.rule", &[]).unwrap()).unwrap().tags.rule.is_empty());
     }
 
     #[test]
@@ -1075,27 +1051,48 @@ mod tests {
 
     #[test]
     fn one_key_changes_and_the_rest_stays() {
-        let text = "# mine\ntheme = \"dark\" \n\n[notify]\n# the toasts\nsystem = [\n  \"waiting\",\n  \"error\",\n]\nflash = []\n\n[[tags.rule]]\nfolder = \"~\"\ntag = \"home\"\n";
-        let t = set_key(text, None, "theme", &quote("Nord"));
-        assert_eq!(t, text.replace("theme = \"dark\" ", "theme = \"Nord\""));
-        let t = set_key(text, Some("notify"), "system", &quote_list(&["done".into()]));
-        assert_eq!(t, "# mine\ntheme = \"dark\" \n\n[notify]\n# the toasts\nsystem = [\"done\"]\nflash = []\n\n[[tags.rule]]\nfolder = \"~\"\ntag = \"home\"\n");
+        let text = "# mine\ntheme = \"dark\" # was light\n\n[notify]\n# the toasts\nsystem = [\n  \"waiting\",\n  \"error\",\n]\nflash = []\n\n[[tags.rule]]\nfolder = \"~\"\ntag = \"home\"\n";
+        let set = |table, key, value: &str| set_key(text, table, key, value).unwrap();
+        let t = set(None, "theme", &quote("Nord"));
+        assert_eq!(t, text.replace("theme = \"dark\"", "theme = \"Nord\""), "its comment stays");
+        let t = set(Some("notify"), "system", &quote_list(&["done".into()]));
+        assert_eq!(t, "# mine\ntheme = \"dark\" # was light\n\n[notify]\n# the toasts\nsystem = [\"done\"]\nflash = []\n\n[[tags.rule]]\nfolder = \"~\"\ntag = \"home\"\n");
         // Added: at the end of its table (the top's too), a new table at
         // the end of the file.
-        let t = set_key(text, Some("notify"), "taskbar", "[]");
-        assert!(t.contains("flash = []\ntaskbar = []\n\n[[tags.rule]]"), "{t}");
-        let t = set_key(text, Some("clock"), "hour24", "false");
-        assert!(t.ends_with("tag = \"home\"\n\n[clock]\nhour24 = false\n"), "{t}");
-        let t = set_key(text, None, "dark_theme", &quote("Nord"));
-        assert!(t.contains("theme = \"dark\" \ndark_theme = \"Nord\"\n\n[notify]"), "{t}");
-        // An array of tables' key is not a table's.
-        let t = set_key(text, Some("tags.rule"), "tag", &quote("x"));
-        assert!(t.contains("tag = \"home\""), "{t}");
+        let t = set(Some("notify"), "taskbar", "[]");
+        assert!(t.contains("flash = []\ntaskbar = []\n"), "{t}");
+        let t = set(Some("clock"), "hour24", "false");
+        assert!(t.contains("[clock]\nhour24 = false\n"), "{t}");
+        let t = set(None, "dark_theme", &quote("Nord"));
+        assert!(t.contains("dark_theme = \"Nord\"\n") && t.find("dark_theme") < t.find("[notify]"), "{t}");
+        // An array of tables takes no plain key: nothing to write.
+        assert!(set_key(text, Some("tags.rule"), "tag", &quote("x")).is_err());
         // Every result still reads.
-        assert!(parse(&set_key(text, Some("clock"), "hour24", "false")).is_ok());
+        assert!(parse(&set(Some("clock"), "hour24", "false")).is_ok());
         // An empty file.
-        assert_eq!(set_key("", Some("clock"), "date", "true"), "[clock]\ndate = true\n");
-        assert_eq!(set_key("", None, "theme", &quote("light")), "theme = \"light\"\n");
+        assert_eq!(set_key("", Some("clock"), "date", "true").unwrap(), "[clock]\ndate = true\n");
+        assert_eq!(set_key("", None, "theme", &quote("light")).unwrap(), "theme = \"light\"\n");
+    }
+
+    /// What broke the hand-written editor (the source review, 2026-10-07):
+    /// brackets in a string, a multi-line string, an array of arrays, a
+    /// dotted table, a quoted key; and a file that does not read is left
+    /// alone rather than rewritten.
+    #[test]
+    fn awkward_toml_is_edited_without_loss() {
+        let text = "[keys]\nback = \"Ctrl+[\" # open\n\n[font]\nsize = 14\n";
+        let t = set_key(text, Some("keys"), "back", &quote("Ctrl+]")).unwrap();
+        assert_eq!(t, "[keys]\nback = \"Ctrl+]\" # open\n\n[font]\nsize = 14\n");
+        let text = "[notify]\nwebhook = \"\"\"\nhttps://a\n\"\"\"\nsound = []\n";
+        let t = set_key(text, Some("notify"), "webhook", &quote("https://b")).unwrap();
+        assert!(parse(&t).is_ok() && t.contains("webhook = \"https://b\"") && t.contains("sound = []"), "{t}");
+        let text = "[notify]\nsystem = [\n  [\"a\"],\n]\n[clock]\nshow = true\n";
+        let t = set_key(text, Some("notify"), "flash", "[]").unwrap();
+        assert!(t.contains("flash = []") && t.contains("[clock]\nshow = true"), "{t}");
+        let t = set_key("", Some("tags.colors"), "\"my tag\"", &quote("#112233")).unwrap();
+        assert_eq!(parse(&t).unwrap().tags.colors.get("my tag").map(String::as_str), Some("#112233"), "{t}");
+        assert_eq!(remove_key(&t, Some("tags.colors"), "\"my tag\"").map(|t| parse(&t).unwrap().tags.colors.len()), Ok(0));
+        assert!(set_key("[broken\n", None, "theme", &quote("x")).is_err(), "a file that does not read is not rewritten");
     }
 
     #[test]

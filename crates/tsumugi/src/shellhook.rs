@@ -127,13 +127,18 @@ pub fn set_installed(shell: &str, on: bool) -> Result<std::path::PathBuf, String
     let name = std::path::Path::new(shell).file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
     let hook = text(Some(&name))?;
     let path = profile(shell).ok_or_else(|| format!("no profile known for {name}"))?;
-    let old = std::fs::read_to_string(&path).unwrap_or_default();
+    // A profile that does not read as UTF-8 (Windows PowerShell 5.1 saves
+    // UTF-16) is refused, not replaced by the hook alone; and the old one
+    // is kept beside it (the source review, 2026-10-07).
+    let old = crate::files::read_or_empty(&path)?;
     let new = if on { with_hook(&old, hook) } else { without_hook(&old) };
     if new != old {
-        if let Some(dir) = path.parent() {
-            std::fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+        if !old.is_empty() {
+            let mut backup = path.as_os_str().to_owned();
+            backup.push(".tsumugi-backup");
+            crate::files::write_atomic(std::path::Path::new(&backup), &old).map_err(|e| format!("the backup: {e}"))?;
         }
-        std::fs::write(&path, new).map_err(|e| format!("{}: {e}", path.display()))?;
+        crate::files::write_atomic(&path, new)?;
     }
     Ok(path)
 }

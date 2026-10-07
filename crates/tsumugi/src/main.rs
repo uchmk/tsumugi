@@ -22,6 +22,7 @@ mod answer;
 mod chrome;
 mod cli;
 mod drop;
+mod files;
 mod fonts;
 mod hooks;
 mod import;
@@ -2867,7 +2868,14 @@ impl App {
             if self.queue_hold.get(&id).is_some_and(|t| t.elapsed() < std::time::Duration::from_secs(5)) {
                 continue;
             }
-            let ready = info.state == State::Done || info.state == State::Waiting && answer::choices(&self.watch_lines(id)).is_empty();
+            // Waiting is ready only once its screen is here and asks no
+            // question: a pane just watched has none yet, and an empty
+            // screen read as "no choices" sent the prompt into Claude
+            // Code's 1. Yes / 2. No (the source review, 2026-10-07).
+            let ready = info.state == State::Done || info.state == State::Waiting && {
+                let lines = self.watch_lines(id);
+                !lines.iter().all(|l| l.trim().is_empty()) && answer::choices(&lines).is_empty()
+            };
             if !ready {
                 continue;
             }
@@ -3131,12 +3139,12 @@ impl App {
         let key = |n: &str| if n.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-') { n.to_owned() } else { tsumugi_mux::settings::quote(n) };
         let (old_key, new_key) = (key(&old), key(&new));
         edit_settings(self.settings_tx.clone(), move |t| {
-            let mut t = write_rules(t, &rules);
+            let mut t = write_rules(t, &rules)?;
             if let Some(c) = colour {
-                t = tsumugi_mux::settings::remove_key(&t, Some("tags.colors"), &old_key);
-                t = tsumugi_mux::settings::set_key(&t, Some("tags.colors"), &new_key, &tsumugi_mux::settings::quote(&c));
+                t = tsumugi_mux::settings::remove_key(&t, Some("tags.colors"), &old_key)?;
+                t = tsumugi_mux::settings::set_key(&t, Some("tags.colors"), &new_key, &tsumugi_mux::settings::quote(&c))?;
             }
-            t
+            Ok(t)
         });
     }
 
@@ -3689,22 +3697,26 @@ fn watch_settings(ctx: egui::Context, tx: std::sync::mpsc::Sender<Read>) {
 
 /// Change one key of `settings.toml`, on a thread of its own, and say what
 /// the file now holds at once rather than at the next look.
-fn edit_settings(tx: std::sync::mpsc::Sender<Read>, change: impl FnOnce(&str) -> String + Send + 'static) {
+fn edit_settings(tx: std::sync::mpsc::Sender<Read>, change: impl FnOnce(&str) -> Result<String, String> + Send + 'static) {
+    // One change at a time, each on the file the last one wrote: several in
+    // one frame (the environment's Save) no longer write over each other.
+    static ONE_AT_A_TIME: std::sync::Mutex<()> = std::sync::Mutex::new(());
     let _ = std::thread::Builder::new().name("write-setting".into()).spawn(move || {
+        let _turn = ONE_AT_A_TIME.lock().unwrap_or_else(|e| e.into_inner());
         let Some(path) = tsumugi_mux::settings::default_path() else { return };
-        let text = std::fs::read_to_string(&path).unwrap_or_default();
-        let next = change(&text);
-        if let Some(dir) = path.parent() {
-            let _ = std::fs::create_dir_all(dir);
-        }
-        if std::fs::write(&path, next).is_ok() {
-            let _ = tx.send(Read::Settings(Box::new(tsumugi_mux::settings::load(&path))));
-        }
+        // A file that is there and does not read, or does not parse, is
+        // left alone and said so; never taken as empty and written over.
+        let written = files::read_or_empty(&path).and_then(|text| change(&text)).and_then(|next| files::write_atomic(&path, next));
+        let read = match written {
+            Ok(()) => tsumugi_mux::settings::load(&path),
+            Err(e) => Err(e),
+        };
+        let _ = tx.send(Read::Settings(Box::new(read)));
     });
 }
 
 /// The settings with every `[[tags.rule]]` replaced by `rules`.
-fn write_rules(text: &str, rules: &[tsumugi_mux::settings::TagRule]) -> String {
+fn write_rules(text: &str, rules: &[tsumugi_mux::settings::TagRule]) -> Result<String, String> {
     use tsumugi_mux::settings::quote;
     let blocks: Vec<Vec<(&str, String)>> = rules
         .iter()

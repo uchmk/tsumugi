@@ -99,6 +99,7 @@ what happened, and the steps.
 | 2.13 | One pane alone, and each pane of a split | Every pane is a card with room round it and a 30px heading: the state's mark, the name, the folder, short words on the right (none for a shell); its ring in the state's colour, the one with the keys too; the heading is not lit for the keys |
 | 2.14 | A split tab, `Ctrl+Shift+I`, type `echo hi`, Enter; `Ctrl+Shift+I` again | **TYPING INTO ALL** on every pane's heading; `hi` in each; after the second press only the pane with the keys gets keys; the window's own keys (`Ctrl+Shift+T`) act once |
 | 2.15 | Three panes split both ways: hover each divider, drag it, double-click it | Near it the cyan line and the resize pointer; the split follows the drag and stays where dropped (and after a restart); a double-click halves it. Unchanged from before the dividers moved into `tsumugi-layout` (v0.52.0) |
+| 2.16 | Copy `echo one` + Esc `[201~` + `echo two` (e.g. `printf 'echo one\033[201~echo two' \| clip` / `pbcopy`) and paste it into bash or pwsh with bracketed paste | It lands as one line held on the prompt (`echo one[201~echo two`), not run: the Esc is dropped from a paste |
 
 ## 3. The sidebar
 
@@ -160,6 +161,7 @@ what happened, and the steps.
 | 4.21 | Settings → Notifications → WHAT IT COSTS → Tell when the day costs → Past $5, with Claude Code's day already past $5 (or `[prices]` raised to get there) | `spend_day = 5` in the file; at once a toast `Today's Claude Code use passed $5: about $N at API prices`, and with the window not looked at the system's notification too; not again that day, again the next |
 | 4.22 | Tell when a 5-hour block costs → Past $5, the block past it | The same once for the block (`This 5-hour block passed $5`); again only in the next block |
 | 4.23 | Start `claude` in a session and type nothing for half a minute (with a plugin such as claude-mem printing at start too) | After about 10 s (`[sessions] quiet`) the card reads **Quiet for … · probably waiting**, not **Running**; typing a prompt makes it **Running** again |
+| 4.24 | With a webhook set, a waiting session whose note starts with `@` (`tsumugi notify --session N "@C:\Windows\win.ini"`), the window not looked at | The phone gets the text `@C:\Windows\win.ini`, not the file's contents |
 
 ## 5. Search
 
@@ -205,6 +207,7 @@ what happened, and the steps.
 | 7.12 | **+ Sessions** in the box, tick another session, `Esc`, write a prompt, `Ctrl+Enter` | `+ name` beside the pane under To; the menu's Esc does not reach the shell; both sessions get the prompt; a click on `+ name` takes it off |
 | 7.13 | Write `Run the tests in {project} on {branch}`, **Prompts…** → name it, Save; empty the box, **Prompts…** → it, `Ctrl+Enter` | The menu stays open while the name is typed; `prompts.toml` beside the settings holds it; picked, it fills the box and the keys are back in it; the session gets the project's and branch's names in place of the braces; with **+ Sessions**, each its own |
 | 7.14 | Open **Prompts…** or **+ Sessions**, press `Esc`, type | The menu closes, the box stays open with the keys; nothing reaches the shell |
+| 7.15 | Queue a prompt for a session in another tab that is running Claude Code; let it stop on a permission question (`1. Yes / 2. No`) | The prompt stays queued while the question is up; it is sent only once the question is answered and the session waits with no question |
 
 ## 8. Restoring after a restart
 
@@ -260,6 +263,7 @@ what happened, and the steps.
 | 12.3 | Not now / Don't ask again | Asked again at the next start / never again |
 | 12.4 | Settings → Shell & hooks → Claude Code hooks → Add | Added, the row says Installed; Remove takes only tsumugi's out, the backup beside it |
 | 12.5 | `notify = ["tsumugi", "notify", "--state", "done"]` in `~/.codex/config.toml`; ask Codex something in a session | When its turn ends the card turns done (green) with the first line of its answer |
+| 12.6 | Windows PowerShell 5.1: a `$PROFILE` saved as UTF-16 (`"# mine" \| Out-File $PROFILE`), then Settings → Shell & hooks → Shell integration → Install | A toast says the profile is not UTF-8 text and is left as it is; the profile is unchanged (its hash the same) |
 
 ## 13. The window's frame
 
@@ -344,6 +348,8 @@ what happened, and the steps.
 | 17.28 | Scrollback 200; a new session; `seq 1000` | Only about 200 lines to scroll back |
 | 17.29 | Log what each pane sends and receives on; a new session | `pane-logs/session-N.log` beside the saved tabs grows as it runs |
 | 17.30 | Export…, then Import on another machine (or after changing things) | One file in Downloads; importing brings the settings, themes and profiles back, the old ones kept as `.bak` |
+| 17.31 | Keys → set a key to `Ctrl+[` by hand in `settings.toml`, then change another key and a font size in Settings | `settings.toml` still has every table and comment it had; only the changed lines differ |
+| 17.32 | Put a mistake in `settings.toml` (`[broken`), then change anything in Settings | A toast says the file does not read and is left as it is; the file is unchanged |
 
 ## 18. From a script
 

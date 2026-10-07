@@ -43,10 +43,26 @@ pub fn branch(stamp: &str, k: usize) -> String {
 }
 
 /// The line typed in a new pane: Claude Code given the prompt, quoted for
-/// the shell, its lines run into one.
+/// the shell, its lines run into one. Free text, not a path: nothing in it
+/// may end the quotes and run as a command (the source review, 2026-10-07).
+/// `--` before a prompt that starts with `-`, so it is not read as a flag.
 pub fn typed(claude: &str, task: &str, how: tsumugi_pane::Quoting) -> String {
+    use tsumugi_pane::Quoting;
     let one: String = task.split_whitespace().collect::<Vec<_>>().join(" ");
-    format!("{claude} {}", tsumugi_pane::quote(&one, how))
+    let quoted = match how {
+        // Inside '…' nothing is special but the quote itself, closed,
+        // escaped and opened again.
+        Quoting::Posix => format!("'{}'", one.replace('\'', "'\\''")),
+        // PowerShell takes the curly single quotes (U+2018 to U+201B) as
+        // quotes too: all become ' and every ' is doubled.
+        Quoting::PowerShell => format!("'{}'", one.replace(['\u{2018}', '\u{2019}', '\u{201A}', '\u{201B}'], "'").replace('\'', "''")),
+        // cmd has no escape inside "…" and expands %NAME% there: a " would
+        // end the quotes and a % could run a variable into the line, so
+        // they are typed as ' and ％.
+        Quoting::Cmd => format!("\"{}\"", one.replace('"', "'").replace('%', "％")),
+    };
+    let dashes = if one.starts_with('-') { "-- " } else { "" };
+    format!("{claude} {dashes}{quoted}")
 }
 
 pub enum Answer {
@@ -120,8 +136,13 @@ mod tests {
     #[test]
     fn work_is_named_and_typed_safely() {
         assert_eq!(branch("tsumugi/1007-1432", 0), "tsumugi/1007-1432-1");
-        let line = typed("claude", "Fix the 'login'\n  bug", tsumugi_pane::Quoting::Posix);
-        assert!(line.starts_with("claude '") && line.contains("Fix the") && !line.contains('\n'), "{line}");
+        use tsumugi_pane::Quoting;
+        let line = typed("claude", "Fix the 'login'\n  bug", Quoting::Posix);
+        assert_eq!(line, "claude 'Fix the '\\''login'\\'' bug'");
+        // Nothing ends the quotes: PowerShell's curly quotes, cmd's " and %.
+        assert_eq!(typed("claude", "Don\u{2019}t; rm -r x", Quoting::PowerShell), "claude 'Don''t; rm -r x'");
+        assert_eq!(typed("claude", "fix \"x\" & del %TEMP%", Quoting::Cmd), "claude \"fix 'x' & del ％TEMP％\"");
+        assert_eq!(typed("claude", "-p hi", Quoting::Posix), "claude -- '-p hi'", "not a flag");
         let mut v = View::new(std::path::Path::new("/r"));
         assert_eq!(v.start(), None, "nothing written");
         v.tasks[1] = "  b ".into();

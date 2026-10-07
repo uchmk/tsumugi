@@ -53,10 +53,18 @@ pub fn load() -> Vec<Prompt> {
 pub fn save(list: Vec<Prompt>) {
     let _ = std::thread::Builder::new().name("prompts".into()).spawn(move || {
         let Some(p) = file() else { return };
-        if let Some(dir) = p.parent() {
-            let _ = std::fs::create_dir_all(dir);
+        // A file there that does not read as TOML (edited by hand, a
+        // mistake in it) is kept, not replaced by the list in memory, which
+        // is empty because of it.
+        match crate::files::read_or_empty(&p) {
+            Ok(old) if old.trim().is_empty() || old.parse::<toml::Table>().is_ok() => {
+                if let Err(e) = crate::files::write_atomic(&p, to_toml(&list)) {
+                    eprintln!("tsumugi: the prompts: {e}");
+                }
+            }
+            Ok(_) => eprintln!("tsumugi: {} does not read as TOML, so it is left as it is", p.display()),
+            Err(e) => eprintln!("tsumugi: the prompts: {e}"),
         }
-        let _ = std::fs::write(p, to_toml(&list));
     });
 }
 

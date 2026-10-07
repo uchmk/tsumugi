@@ -101,10 +101,7 @@ pub fn load() -> Vec<Closed> {
 pub fn save(list: Vec<Closed>) {
     let _ = std::thread::Builder::new().name("closed-sessions".into()).spawn(move || {
         let Some(p) = file() else { return };
-        if let Some(dir) = p.parent() {
-            let _ = std::fs::create_dir_all(dir);
-        }
-        let _ = std::fs::write(p, to_json(&list));
+        let _ = crate::files::write_atomic(&p, to_json(&list));
     });
 }
 

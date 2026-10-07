@@ -57,15 +57,12 @@ fn entry<'a>(fields: &'a mut Vec<(String, Json)>, key: &str, empty: Json) -> &'a
 /// beside it first as `settings.local.json.tsumugi-backup`.
 pub fn allow(project: &Path, rule: &str) -> Result<PathBuf, String> {
     let path = file(project);
-    let old = std::fs::read_to_string(&path).unwrap_or_default();
+    let old = crate::files::read_or_empty(&path)?;
     let new = add(&old, rule)?;
-    if let Some(dir) = path.parent() {
-        std::fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
-    }
     if !old.is_empty() {
-        std::fs::write(path.with_extension("json.tsumugi-backup"), &old).map_err(|e| format!("the backup: {e}"))?;
+        crate::files::write_atomic(&path.with_extension("json.tsumugi-backup"), &old).map_err(|e| format!("the backup: {e}"))?;
     }
-    std::fs::write(&path, new).map_err(|e| format!("{}: {e}", path.display()))?;
+    crate::files::write_atomic(&path, new)?;
     Ok(path)
 }
 
