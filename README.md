@@ -29,7 +29,9 @@ program or tag. On Windows the server runs from a copy of the exe kept in
 `%LOCALAPPDATA%\tsumugi\server\`, so a rebuild or an update can replace
 `tsumugi.exe` while sessions run. A window that finds a server of another
 version says tsumugi was updated and offers, on Enter, to restart the
-server -- the tabs are written down first -- and brings every one back. The sidebar rings each one in its state's
+server -- the tabs are written down first -- and brings every one back.
+`restart_after_update = true` under `[general]` (Settings, General) does it
+without asking. The sidebar rings each one in its state's
 colour, with a mark that says it without the colour: cyan and a turning arc
 while an agent works, yellow, breathing, and a clock when it wants you, a
 thin yellow ring and a dotted circle when its output has stopped for 10
@@ -42,7 +44,8 @@ macOS) goes to the session that has waited longest.
 
 `Ctrl+Shift+Y` (Cmd+Shift+Y on macOS, or **List ›** at the sidebar's foot)
 lists every session waiting for you: what it said, how long it has waited,
-and the numbered choices on its screen as buttons. Each row has a tick;
+what it asks about as its screen says it (Claude Code's "Bash command" and
+the command, the file to edit), and the numbered choices as buttons. Each row has a tick;
 **Yes to N** types `1` into every ticked menu whose first choice is "Yes",
 **No to N** types the choice that starts with "No". A menu without such a
 choice, or a session with no menu on its screen, is left alone. The same
@@ -126,11 +129,30 @@ click opens it). The pull request needs the GitHub CLI (`gh`) signed in.
 On the right, Claude Code's tokens -- the focused session's conversation
 and today's in all -- read from the transcripts under `~/.claude/projects/`
 (`CLAUDE_CONFIG_DIR` moves them); the totals leave out the cache's reads,
-which the tooltip shows.
+which the tooltip shows. `5h 1.2M · resets 14:00` is Claude Code's usage
+window: it opens at the hour of the first answer after the last one closed
+and lasts five hours, worked out from the same transcripts. How much a window
+allows depends on the plan, which tsumugi cannot read, so it says what was
+used and when the window closes.
+
+The character set of the pane with the keys is beside the clock. Off Windows,
+a click picks another for that pane -- Shift_JIS, EUC-JP, ISO-2022-JP, GBK,
+Big5, EUC-KR, windows-1252 -- for a file in it shown with `cat` or an old
+machine reached with `ssh`: what the program writes is read in it and what is
+typed is sent in it, the pane's heading says which, and it is kept across
+restarts. On Windows ConPTY hands over UTF-8 whatever the program wrote, so
+there is nothing to pick.
 
 A card in a git repository shows what its session has changed and not
 committed -- `+120 −8` lines, or `3 new` files -- with the list of files
-under the pointer.
+under the pointer; a click there (or **Changes not committed here** in the
+search box) shows the diff, each file under its heading, added lines green
+and removed ones red, the files git does not know yet at the end.
+
+`Ctrl+Shift+I` (`Cmd+Shift+I` on macOS, iTerm2's key) sends what is typed to
+every pane of the tab -- **TYPING INTO ALL** on each heading -- until it is
+pressed again. **Save the output to a file** in the tab's menu (or the search
+box) writes the pane's whole scrollback as text to Downloads.
 
 When a waiting session has a menu of numbered choices on its screen --
 Claude Code's "Do you want to proceed? 1. Yes 2. … 3. No" -- its card shows
@@ -386,7 +408,7 @@ new window**;
 `[[menu.session]]`; and **Close the session**, which asks a second click
 while something is running in it. `[menu] hide` leaves out any of rename,
 note, tags, mute, pin, restart, duplicate, new-window, filer, editor, copy-path,
-close.
+save-output, close.
 
 Themes: tsumugi Dark (the default) and Light, Tokyo Night, Catppuccin Mocha
 and Latte, Dracula, Nord, Gruvbox Dark and Light, Solarized Dark and Light,

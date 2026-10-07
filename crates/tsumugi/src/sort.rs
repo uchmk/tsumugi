@@ -371,6 +371,7 @@ mod tests {
             // Agents, so running and done are kinds of their own.
             claude: true,
             conversation: String::new(),
+            charset: String::new(),
         }
     }
 

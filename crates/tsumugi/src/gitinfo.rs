@@ -165,6 +165,32 @@ fn changes(cwd: &Path) -> Option<Changes> {
     Some(Changes { files: status.lines().filter(|l| !l.trim().is_empty()).map(String::from).collect(), added, removed })
 }
 
+/// The most of a diff that is shown (a lock file's can be megabytes).
+const DIFF_MOST: usize = 512 * 1024;
+
+/// What is changed and not committed, as `git diff HEAD` says it, then the
+/// files git does not know yet (a thread's work: git can take a moment).
+pub fn diff(cwd: &Path) -> Result<String, String> {
+    let mut text = run(Command::new("git").args(["-c", "core.quotepath=off", "diff", "HEAD", "--no-color", "--no-ext-diff"]).current_dir(cwd)).ok_or_else(|| format!("{} is not in a git repository with a commit", cwd.display()))?;
+    if text.len() > DIFF_MOST {
+        let mut cut = DIFF_MOST;
+        while !text.is_char_boundary(cut) {
+            cut -= 1;
+        }
+        text.truncate(cut);
+        text.push_str("\n… (cut here: the diff is larger than 512 KB)\n");
+    }
+    let status = run(Command::new("git").args(["-c", "core.quotepath=off", "status", "--porcelain=v1", "--untracked-files=normal"]).current_dir(cwd)).unwrap_or_default();
+    let new: Vec<&str> = status.lines().filter_map(|l| l.strip_prefix("?? ")).collect();
+    if !new.is_empty() {
+        text.push_str(&format!("new files, not added to git yet ({})\n", new.len()));
+        for f in new {
+            text.push_str(&format!("?? {f}\n"));
+        }
+    }
+    Ok(text)
+}
+
 /// `git diff --numstat`: added, removed and path a line; `-` for binary.
 fn sum_numstat(out: &str) -> (u32, u32) {
     out.lines().fold((0, 0), |(a, r), l| {

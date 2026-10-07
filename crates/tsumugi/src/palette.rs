@@ -35,10 +35,16 @@ pub enum Command {
     Waiting,
     /// The sessions that ended.
     Closed,
+    /// The changes not committed in the pane's folder.
+    Changes,
+    /// Type into every pane of the tab, or stop.
+    TypeAll,
+    /// Save the pane's output to a file.
+    SaveOutput,
 }
 
 impl Command {
-    pub const ALL: [Command; 15] = [
+    pub const ALL: [Command; 18] = [
         Command::NewSession,
         Command::SplitRight,
         Command::SplitDown,
@@ -46,6 +52,9 @@ impl Command {
         Command::NextWaiting,
         Command::Waiting,
         Command::Closed,
+        Command::Changes,
+        Command::TypeAll,
+        Command::SaveOutput,
         Command::CloseTab,
         Command::Sort(Sort::Manual),
         Command::Sort(Sort::Needs),
@@ -69,6 +78,9 @@ impl Command {
             Command::InputBox => "Input box: write a prompt".into(),
             Command::Waiting => "Waiting sessions: answer them together".into(),
             Command::Closed => "Recently closed sessions".into(),
+            Command::Changes => "Changes not committed here (git diff)".into(),
+            Command::TypeAll => "Type into every pane of the tab (or stop)".into(),
+            Command::SaveOutput => "Save the pane's output to a file".into(),
         }
     }
 
@@ -86,7 +98,8 @@ impl Command {
             Command::InputBox => Action::Input,
             Command::Settings => Action::Settings,
             Command::Waiting => Action::Waiting,
-            Command::Sort(_) | Command::Closed => return String::new(),
+            Command::TypeAll => Action::TypeAll,
+            Command::Sort(_) | Command::Closed | Command::Changes | Command::SaveOutput => return String::new(),
         };
         label(action)
     }

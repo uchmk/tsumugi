@@ -129,6 +129,7 @@ mod tests {
             tags: tags.iter().map(|t| t.to_string()).collect(),
             claude: false,
             conversation: String::new(),
+            charset: String::new(),
         }
     }
 

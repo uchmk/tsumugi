@@ -245,6 +245,20 @@ fn handle(shared: &Arc<Shared>, client: ClientId, tx: &Sender<ToClient>, msg: To
     let mut sessions = lock(&shared.sessions);
     match msg {
         ToServer::Hello { .. } => {}
+        ToServer::SetCharset { id, name } => {
+            if let Some(s) = sessions.get_mut(&id) {
+                if s.term.set_charset(&name) {
+                    s.info.charset = s.term.charset().to_owned();
+                    broadcast(shared, &sessions);
+                    save_soon(shared, SAVE_AFTER_CHANGE);
+                }
+            }
+        }
+        ToServer::AllText { id } => {
+            if let Some(s) = sessions.get(&id) {
+                let _ = tx.send(ToClient::Text { id, text: s.term.all_text() });
+            }
+        }
         ToServer::SearchAll { query } => {
             // Each session's newest first, the newest sessions' first.
             let mut hits = Vec::new();
@@ -375,6 +389,8 @@ fn handle(shared: &Arc<Shared>, client: ClientId, tx: &Sender<ToClient>, msg: To
             let Some(s) = sessions.get_mut(&id) else { return };
             match start_terminal(shared, id, &s.info.cwd.clone(), s.term.size(), (8, 16), s.shell.clone()) {
                 Ok(term) => {
+                    // The character set stays the session's.
+                    term.set_charset(&s.info.charset);
                     let old = std::mem::replace(&mut s.term, term);
                     // Every watcher gets the whole new screen.
                     s.sent = None;
@@ -669,6 +685,7 @@ fn save_if_due(shared: &Shared) {
                         state: s.info.state,
                         muted: s.info.muted,
                         tags: s.info.tags.clone(),
+                        charset: s.info.charset.clone(),
                     })
                     .collect(),
             })
@@ -701,7 +718,7 @@ fn spawn_session(
     shared.ever.store(true, Ordering::Relaxed);
     let (branch, project) = git(&cwd);
     let branch = branch.unwrap_or_default();
-    let mut info = Info { id, cwd, title: String::new(), command, state: State::Running, note: String::new(), since_ms: now_ms(), branch, project, muted: false, tags: Vec::new(), claude: false, conversation: String::new() };
+    let mut info = Info { id, cwd, title: String::new(), command, state: State::Running, note: String::new(), since_ms: now_ms(), branch, project, muted: false, tags: Vec::new(), claude: false, conversation: String::new(), charset: "UTF-8".into() };
     lock(&shared.rules).apply(&mut info);
     let watchers: BTreeSet<ClientId> = client.into_iter().collect();
     sessions.insert(
@@ -773,6 +790,9 @@ fn restore(shared: &Arc<Shared>, sessions: &mut BTreeMap<SessionId, Session>, on
             let s = sessions.get_mut(&id).expect("just started");
             s.info.muted = p.muted;
             s.info.tags.clone_from(&p.tags);
+            if s.term.set_charset(&p.charset) {
+                s.info.charset = s.term.charset().to_owned();
+            }
             s.info.claude = p.claude.is_some();
             s.info.conversation = p.claude.clone().unwrap_or_default();
             if let Some(conversation) = &p.claude {

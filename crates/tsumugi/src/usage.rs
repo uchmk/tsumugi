@@ -46,6 +46,41 @@ pub struct Usage {
     /// By conversation id: how many prompts were typed, and how long from
     /// its first line to its last (the selected card's numbers).
     pub talks: HashMap<String, Talk>,
+    /// Claude Code's five-hour window now, if one is open.
+    pub block: Option<Block>,
+}
+
+/// Claude Code's usage window: it opens at the hour of the first answer
+/// after the last one closed, and lasts five hours. Worked out from the
+/// transcripts' answers, so an estimate: the limit itself is the plan's,
+/// and is not written anywhere tsumugi can read.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Block {
+    pub start_ms: i64,
+    pub end_ms: i64,
+    pub tokens: Tokens,
+}
+
+/// How long a window lasts.
+const BLOCK_MS: i64 = 5 * 3600 * 1000;
+
+/// The window open at `now`, from the answers' times and tokens (any order).
+pub fn block(answers: &[(i64, Tokens)], now: i64) -> Option<Block> {
+    let mut sorted: Vec<&(i64, Tokens)> = answers.iter().collect();
+    sorted.sort_by_key(|(t, _)| *t);
+    let mut open: Option<Block> = None;
+    for (t, tokens) in sorted {
+        let mut b = match open {
+            Some(b) if *t < b.end_ms => b,
+            _ => {
+                let start = t - t.rem_euclid(3600 * 1000);
+                Block { start_ms: start, end_ms: start + BLOCK_MS, tokens: Tokens::default() }
+            }
+        };
+        b.tokens.add(*tokens);
+        open = Some(b);
+    }
+    open.filter(|b| now < b.end_ms)
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -75,17 +110,17 @@ pub fn short(n: u64) -> String {
     }
 }
 
-/// An answer's line: its message id, the local day it came, its tokens.
-/// `None` for any other line.
-fn line(text: &str) -> Option<(String, NaiveDate, Tokens)> {
+/// An answer's line: its message id, the local day it came, its time in
+/// Unix milliseconds, its tokens. `None` for any other line.
+fn line(text: &str) -> Option<(String, NaiveDate, i64, Tokens)> {
     let at = text.find("\"usage\":{")?;
     let usage = &text[at..];
     let n = |key: &str| number(usage, key).unwrap_or(0);
     let tokens = Tokens { input: n("input_tokens"), cache_write: n("cache_creation_input_tokens"), cache_read: n("cache_read_input_tokens"), output: n("output_tokens") };
     let id = string(text, "\"id\":\"msg_").map(|s| format!("msg_{s}")).unwrap_or_default();
     let when = string(text, "\"timestamp\":\"")?;
-    let day = DateTime::parse_from_rfc3339(&when).ok()?.with_timezone(&Local).date_naive();
-    Some((id, day, tokens))
+    let at = DateTime::parse_from_rfc3339(&when).ok()?;
+    Some((id, at.with_timezone(&Local).date_naive(), at.timestamp_millis(), tokens))
 }
 
 /// The number after `"key":` in `json`, the first one.
@@ -112,6 +147,8 @@ struct File {
     prompts: u32,
     /// The first and the last line's time.
     span: Option<(i64, i64)>,
+    /// The answers of the last day, by time: the five-hour window.
+    recent: Vec<(i64, Tokens)>,
 }
 
 impl File {
@@ -123,13 +160,16 @@ impl File {
             if let Some(t) = stamp(l) {
                 self.span = Some(self.span.map_or((t, t), |(a, b)| (a.min(t), b.max(t))));
             }
-            let Some((id, day, t)) = line(l) else { continue };
+            let Some((id, day, ms, t)) = line(l) else { continue };
             if !id.is_empty() && !self.seen.insert(id) {
                 continue;
             }
             self.total.add(t);
             self.days.entry(day).or_default().add(t);
+            self.recent.push((ms, t));
         }
+        let day_ago = chrono::Utc::now().timestamp_millis() - 24 * 3600 * 1000;
+        self.recent.retain(|(ms, _)| *ms > day_ago);
     }
 
     /// Read what was added since the last time.
@@ -203,6 +243,8 @@ impl Watcher {
                 }
                 let today = Local::now().date_naive();
                 let mut u = Usage::default();
+                let answers: Vec<(i64, Tokens)> = files.values().flat_map(|(f, _)| f.recent.iter().copied()).collect();
+                u.block = block(&answers, chrono::Utc::now().timestamp_millis());
                 for (f, id) in files.values() {
                     if let Some(t) = f.days.get(&today) {
                         u.today.add(*t);
@@ -214,7 +256,7 @@ impl Watcher {
                     }
                 }
                 let changed = out.lock().map(|mut l| {
-                    let changed = l.today != u.today || l.conversations != u.conversations || l.talks != u.talks;
+                    let changed = l.today != u.today || l.conversations != u.conversations || l.talks != u.talks || l.block != u.block;
                     *l = u;
                     changed
                 });
@@ -236,11 +278,25 @@ impl Watcher {
 mod tests {
     use super::*;
 
+    #[test]
+    fn the_five_hour_window_opens_at_the_hour_of_its_first_answer() {
+        let h = 3600 * 1000;
+        let t = |n: u64| Tokens { output: n, ..Tokens::default() };
+        // 09:20 and 11:00 in one window (09:00 to 14:00); 14:10 opens the
+        // next at 14:00, which 15:30 is in.
+        let answers = [(9 * h + 20 * 60 * 1000, t(1)), (11 * h, t(2)), (14 * h + 10 * 60 * 1000, t(4)), (15 * h + 30 * 60 * 1000, t(8))];
+        let b = block(&answers, 16 * h).unwrap();
+        assert_eq!((b.start_ms, b.end_ms, b.tokens.output), (14 * h, 19 * h, 12));
+        assert_eq!(block(&answers[..2], 12 * h).unwrap().tokens.output, 3);
+        assert_eq!(block(&answers[..2], 14 * h), None, "closed at 14:00");
+        assert_eq!(block(&[], 0), None);
+    }
+
     const ANSWER: &str = r#"{"message":{"id":"msg_011Cf","role":"assistant","usage":{"cache_creation":{"ephemeral_1h_input_tokens":39581},"cache_creation_input_tokens":39581,"cache_read_input_tokens":42941,"input_tokens":2,"iterations":[{"input_tokens":2,"output_tokens":492}],"output_tokens":492}},"sessionId":"abc","timestamp":"2026-10-06T03:57:00.000Z","type":"assistant"}"#;
 
     #[test]
     fn an_answers_tokens_are_read_once() {
-        let (id, _, t) = line(ANSWER).expect("an answer");
+        let (id, _, _, t) = line(ANSWER).expect("an answer");
         assert_eq!(id, "msg_011Cf");
         assert_eq!(t, Tokens { input: 2, cache_write: 39581, cache_read: 42941, output: 492 });
         assert_eq!(t.total(), 40075, "the cache's reads apart");

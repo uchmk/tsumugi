@@ -90,6 +90,22 @@ pub fn import(dir: &Path, from: &Path) -> Result<usize, String> {
     Ok(files.len())
 }
 
+/// A session's output, written as `tsumugi-<name>-<date>-<time>.txt` in
+/// `to` (a thread's work): the file's path.
+pub fn save_output(to: &Path, name: &str, text: &str) -> Result<PathBuf, String> {
+    let file = to.join(format!("tsumugi-{}-{}.txt", file_word(name), chrono::Local::now().format("%Y%m%d-%H%M%S")));
+    std::fs::write(&file, text).map_err(|e| format!("{}: {e}", file.display()))?;
+    Ok(file)
+}
+
+/// A name made safe for a file's: letters, digits, `-` and `_` kept, the
+/// rest a dash, at most 40.
+fn file_word(name: &str) -> String {
+    let w: String = name.chars().map(|c| if c.is_alphanumeric() || c == '-' || c == '_' { c } else { '-' }).take(40).collect();
+    let w = w.trim_matches('-').to_owned();
+    if w.is_empty() { "session".into() } else { w }
+}
+
 /// Where an export goes: Downloads when there is one, else the home folder.
 pub fn place() -> Option<PathBuf> {
     let home = tsumugi_mux::settings::home()?;
@@ -111,6 +127,13 @@ mod tests {
         assert!(unpack("hello").is_err());
         assert!(unpack(&format!("{HEAD} 0\n=== ../evil.toml ===\nx\n")).is_err(), "nothing outside the folder");
         assert!(unpack(&format!("{HEAD} 0\n=== themes/../../x.toml ===\nx\n")).is_err());
+    }
+
+    #[test]
+    fn an_output_file_is_named_safely() {
+        assert_eq!(file_word("claude · fix/the bug"), "claude---fix-the-bug");
+        assert_eq!(file_word("../.."), "session");
+        assert_eq!(file_word("日本語"), "日本語");
     }
 
     #[test]

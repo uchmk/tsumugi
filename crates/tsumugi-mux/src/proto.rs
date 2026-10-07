@@ -7,7 +7,7 @@ use tsumugi_pane::Size;
 
 /// Bumped whenever a message changes shape: a client and a server that
 /// disagree say so at `Hello` instead of misreading each other.
-pub const VERSION: u32 = 18;
+pub const VERSION: u32 = 19;
 
 /// A `Hello` with this version asks the server to stop, writing down its
 /// tabs first so the next window can bring them back. `Hello` stays the
@@ -124,6 +124,8 @@ pub struct Info {
     pub claude: bool,
     /// That conversation's id (its transcript's name), or empty.
     pub conversation: String,
+    /// The character set its program reads and writes: `UTF-8`, `Shift_JIS`.
+    pub charset: String,
 }
 
 /// How many tags a session can have (the design's 1o).
@@ -227,6 +229,11 @@ pub enum ToServer {
     SearchAll { query: String },
     /// Put a line found on the session's screen, the match selected.
     Reveal { id: SessionId, line: i32, col: usize, len: usize },
+    /// The session's whole buffer as text; answered with `Text`.
+    AllText { id: SessionId },
+    /// Read and write the session's bytes in this character set (one of
+    /// `tsumugi_pane::CHARSETS`).
+    SetCharset { id: SessionId, name: String },
 }
 
 /// A line `SearchAll` found.
@@ -279,4 +286,6 @@ pub enum ToClient {
     /// A session ended, to every client: what it was, and the last lines on
     /// its screen (the history of closed sessions).
     Ended { info: Info, last: Vec<String> },
+    /// The answer to `AllText`: the scrollback and the screen.
+    Text { id: SessionId, text: String },
 }

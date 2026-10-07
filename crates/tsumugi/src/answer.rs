@@ -73,6 +73,32 @@ pub fn short(text: &str) -> String {
     if s.chars().count() > 18 { format!("{}…", s.chars().take(17).collect::<String>()) } else { s }
 }
 
+/// What the question is about: the lines above the last menu, up to the
+/// top of its box (or a rule, or 10 lines), the box's sides and blank lines
+/// left out -- Claude Code's "Bash command", the command and what it is
+/// for, then "Do you want to proceed?". Empty when there is no menu.
+pub fn asking(lines: &[String]) -> Vec<String> {
+    let found = choices(lines);
+    if found.is_empty() {
+        return Vec::new();
+    }
+    // The last line that is the menu's first choice.
+    let Some(first) = lines.iter().rposition(|l| choice(l).is_some_and(|c| c.key == '1' && c.text == found[0].text)) else { return Vec::new() };
+    let mut out = Vec::new();
+    for line in lines[..first].iter().rev().take(10) {
+        let t = line.trim();
+        if t.starts_with(['╭', '┌']) || (!t.is_empty() && t.chars().all(|c| matches!(c, '─' | '━' | '-' | '╌' | '┄'))) {
+            break;
+        }
+        let s = strip_box(line);
+        if !s.is_empty() {
+            out.push(s.to_owned());
+        }
+    }
+    out.reverse();
+    out
+}
+
 /// The choice that says yes once (the menu's first, when it starts with
 /// "Yes"): what the waiting list's "Yes to all" types.
 pub fn yes(choices: &[Choice]) -> Option<char> {
@@ -116,6 +142,26 @@ mod tests {
         assert_eq!(short(&c[1].text), "Yes");
         assert_eq!(short(&c[2].text), "No");
         assert_eq!(short("Don't ask again for this whole long thing"), "Don't ask again");
+    }
+
+    #[test]
+    fn what_is_asked_is_read_above_the_menu() {
+        let screen = lines(
+            "some earlier output\n\
+             ╭──────────────────────────────╮\n\
+             │ Bash command                 │\n\
+             │                              │\n\
+             │   rm -rf target              │\n\
+             │   Remove the build output    │\n\
+             │ Do you want to proceed?      │\n\
+             │ ❯ 1. Yes                     │\n\
+             │   2. No                      │\n\
+             ╰──────────────────────────────╯",
+        );
+        assert_eq!(asking(&screen), ["Bash command", "rm -rf target", "Remove the build output", "Do you want to proceed?"]);
+        let ruled = lines("old\n────────────\n Edit file\n src/main.rs\n Do you want to make this edit?\n ❯ 1. Yes\n   2. No");
+        assert_eq!(asking(&ruled), ["Edit file", "src/main.rs", "Do you want to make this edit?"]);
+        assert!(asking(&lines("just output")).is_empty());
     }
 
     #[test]

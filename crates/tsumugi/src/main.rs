@@ -48,6 +48,7 @@ mod export;
 mod icon;
 mod clip;
 mod history;
+mod diffview;
 mod lists;
 
 use std::time::Duration;
@@ -468,6 +469,12 @@ fn replace_server(wake: impl Fn() + Send + Sync + Clone + 'static) -> std::sync:
     rx
 }
 
+/// `[general] restart_after_update`, read from the file: with no server to
+/// talk to, the window has not read the settings yet.
+fn restart_after_update() -> bool {
+    tsumugi_mux::settings::default_path().and_then(|p| tsumugi_mux::settings::load(&p).ok()).is_some_and(|s| s.general.restart_after_update)
+}
+
 /// What the server has to show. After a restart (no session, but a saved
 /// state) that is the "Welcome back" screen, or the saved tabs at once when
 /// it was told not to ask; else nothing, and the window shows "Start your
@@ -695,6 +702,12 @@ struct App {
     lists: Option<lists::View>,
     /// The sessions that ended, newest first (`history.rs`).
     ended: Vec<history::Closed>,
+    /// A tab's changes not committed, over the window.
+    diff: Option<diffview::View>,
+    /// Sessions whose whole buffer was asked for, to save, by name.
+    saving: HashMap<SessionId, String>,
+    /// Tabs where what is typed goes to every pane (`Ctrl+Shift+I`).
+    typing_all: std::collections::HashSet<WorkspaceId>,
     /// The hooks were offered on the first-run screen.
     hooks_seen_first: bool,
     /// Where the sidebar (or the rail) is this frame: a pane dropped there
@@ -759,6 +772,10 @@ struct App {
     input: inputbox::InputBox,
     /// Stopping a server of another version, and its answer.
     replacing: Option<std::sync::mpsc::Receiver<Result<Client, String>>>,
+    /// Whether to replace the older server without asking
+    /// (`restart_after_update`) has been looked at: once, so a failure is
+    /// shown, not tried again and again.
+    replaced_unasked: bool,
     /// Something drawn this frame moves (a breathing ring, a running line):
     /// draw again soon. Nothing moving, nothing drawn until there is news.
     animated: bool,
@@ -807,6 +824,10 @@ enum SideOp {
     /// A new tab in this folder; Claude Code in it when it ran here.
     Duplicate(std::path::PathBuf, bool),
     Close(Vec<SessionId>),
+    /// Show the changes not committed in this folder, under this name.
+    Diff(String, std::path::PathBuf),
+    /// Ask for the session's whole buffer, to save it under this name.
+    SaveOutput(SessionId, String),
 }
 
 /// Where in the server's order a tab dropped at `gap` among the rows shown
@@ -916,6 +937,9 @@ impl App {
             noting_card: None,
             lists: None,
             ended: history::load(),
+            diff: None,
+            typing_all: std::collections::HashSet::new(),
+            saving: HashMap::new(),
             hooks_seen_first: false,
             side_rect: None,
             first_shown: false,
@@ -952,6 +976,7 @@ impl App {
             input: inputbox::InputBox::with_history(load_history()),
             key_log: std::env::var_os("TSUMUGI_KEYLOG").is_some(),
             replacing: None,
+            replaced_unasked: false,
             animated: false,
             settings_error: None,
             tag_rules: Vec::new(),
@@ -1077,6 +1102,11 @@ impl App {
             keys::Action::Input => self.input.toggle(),
             // The tab's name in a field on its card (the menu's Rename).
             keys::Action::Rename => self.renaming_card = Some((w.id, w.name.clone())),
+            keys::Action::TypeAll => {
+                if !self.typing_all.remove(&w.id) && w.layout.leaves().len() > 1 {
+                    self.typing_all.insert(w.id);
+                }
+            }
             keys::Action::Waiting => {
                 self.lists = match &self.lists {
                     Some(v) if v.page == lists::Page::Waiting => None,
@@ -1415,6 +1445,20 @@ impl App {
                 Err(e) => self.failed = Some(e),
             },
             palette::Pick::Command(palette::Command::Closed) => self.lists = Some(lists::View::new(lists::Page::Closed)),
+            palette::Pick::Command(palette::Command::SaveOutput) => {
+                let focus = current.and_then(|w| client.sessions().into_iter().find(|i| i.id == w.focus));
+                if let Some(i) = focus {
+                    self.saving.insert(i.id, sort::display_title(&i.title, &i.command));
+                    client.all_text(i.id);
+                }
+            }
+            palette::Pick::Command(palette::Command::Changes) => {
+                let focus = current.and_then(|w| client.sessions().into_iter().find(|i| i.id == w.focus));
+                if let Some(i) = focus {
+                    let ctx = self.ctx.clone();
+                    self.diff = Some(diffview::View::open(sort::display_title(&i.title, &i.command), i.cwd, move || ctx.request_repaint()));
+                }
+            }
             palette::Pick::Command(palette::Command::Sort(s)) => {
                 self.view.sort = s;
                 self.view.save();
@@ -1431,7 +1475,8 @@ impl App {
                     palette::Command::Settings => keys::Action::Settings,
                     palette::Command::InputBox => keys::Action::Input,
                     palette::Command::Waiting => keys::Action::Waiting,
-                    palette::Command::Sort(_) | palette::Command::Closed => return,
+                    palette::Command::TypeAll => keys::Action::TypeAll,
+                    palette::Command::Sort(_) | palette::Command::Closed | palette::Command::Changes | palette::Command::SaveOutput => return,
                 };
                 if let Some(w) = current {
                     self.act(action, w, workspaces, area);
@@ -1911,14 +1956,18 @@ impl App {
                     painter.galley(at, g, pal.fg);
                     let list: Vec<String> = c.files.iter().take(15).cloned().collect();
                     let more = c.files.len().saturating_sub(15);
-                    let over = ui.interact(r, egui::Id::new(("changes", w.id)), egui::Sense::hover());
+                    let over = ui.interact(r, egui::Id::new(("changes", w.id)), egui::Sense::click());
                     over_changes = over.hovered();
+                    if over.clicked() {
+                        ops.push(SideOp::Diff(sort::display_title(&focus.title, &focus.command), focus.cwd.clone()));
+                    }
                     over.on_hover_ui(|ui| {
                         ui.label(egui::RichText::new(format!("{} file(s) changed, not committed", c.files.len())).strong());
                         ui.label(egui::RichText::new(list.join("\n")).monospace().size(11.0).color(pal.fg_dim));
                         if more > 0 {
                             ui.label(egui::RichText::new(format!("and {more} more")).size(11.0).color(pal.fg_dim));
                         }
+                        ui.label(egui::RichText::new("Click to see the diff").size(11.0).color(pal.fg_dim));
                     });
                 }
                 let words = chrome::card_words(urgent, now);
@@ -2226,6 +2275,12 @@ impl App {
                                     ui.close();
                                 }
                             }
+                            "save-output" => {
+                                if ui.button("Save the output to a file").on_hover_text("The scrollback and the screen of the pane with the keys, as text in Downloads").clicked() {
+                                    ops.push(SideOp::SaveOutput(focus.id, sort::display_title(&focus.title, &focus.command)));
+                                    ui.close();
+                                }
+                            }
                             "close" => {
                                 // Something running in it: a second click, to be sure.
                                 let busy = infos.iter().any(|i| matches!(i.state, State::Running | State::MaybeWaiting));
@@ -2278,6 +2333,14 @@ impl App {
                     SideOp::Move(id, to) => client.move_workspace(id, to),
                     SideOp::Rename(id, name) => client.rename_workspace(id, name),
                     SideOp::Note(id, note) => client.note_workspace(id, note),
+                    SideOp::SaveOutput(id, name) => {
+                        self.saving.insert(id, name);
+                        client.all_text(id);
+                    }
+                    SideOp::Diff(title, cwd) => {
+                        let ctx = ui.ctx().clone();
+                        self.diff = Some(diffview::View::open(title, cwd, move || ctx.request_repaint()));
+                    }
                     SideOp::Pin(id, on) => client.pin_workspace(id, on),
                     SideOp::Restart(id) => client.restart(id),
                     SideOp::Duplicate(cwd, claude) => {
@@ -2750,6 +2813,14 @@ impl App {
         });
     }
 
+    /// Write a session's output to Downloads on a thread; a toast says where.
+    fn save_output(&self, name: String, text: String) {
+        self.job(move || {
+            let to = export::place().ok_or("no home folder to save in")?;
+            export::save_output(&to, &name, &text).map(|f| format!("Saved the output to {}", f.display()))
+        });
+    }
+
     fn save_profiles(&self) {
         let all = self.profiles.clone();
         let _ = std::thread::Builder::new().name("profiles".into()).spawn(move || {
@@ -3045,6 +3116,16 @@ impl App {
                     let t = if look == chrome::Look::State(State::Running) { self.moving(ui) } else { None };
                     chrome::state_mark(&p, egui::pos2(head.left() + 14.0, head.center().y), look, t);
                     let mut right_x = head.right() - 10.0;
+                    // Typing into every pane: said on each, in gold.
+                    if self.typing_all.contains(&w.id) {
+                        let r = p.text(egui::pos2(right_x, head.center().y), egui::Align2::RIGHT_CENTER, "TYPING INTO ALL", egui::FontId::proportional(10.5), chrome::ink(chrome::gold()));
+                        right_x = r.left() - 10.0;
+                    }
+                    // A character set other than UTF-8, said where it applies.
+                    if !info.charset.is_empty() && info.charset != "UTF-8" {
+                        let r = p.text(egui::pos2(right_x, head.center().y), egui::Align2::RIGHT_CENTER, &info.charset, egui::FontId::monospace(10.5), chrome::ink(chrome::gold()));
+                        right_x = r.left() - 10.0;
+                    }
                     if self.zoom {
                         right_x = chrome::zoom_mark(&p, egui::pos2(right_x, head.center().y), self.palette.fg_dim).left() - 10.0;
                     }
@@ -3718,7 +3799,7 @@ impl App {
             // keys while it is focused; the pane gets them otherwise.
             // A key being changed in the settings is the settings'.
             let capturing = self.prefs.as_ref().is_some_and(|p| p.edit.capturing.is_some());
-            let field = ctx.memory(|m| m.focused().is_some()) || self.new_session.is_some() || self.search.is_some() || self.lists.is_some() || capturing;
+            let field = ctx.memory(|m| m.focused().is_some()) || self.new_session.is_some() || self.search.is_some() || self.lists.is_some() || self.diff.is_some() || capturing;
             if self.key_log {
                 // `TSUMUGI_KEYLOG=1`: every key press as the window gets it,
                 // to see on a real machine why a key does nothing.
@@ -3747,6 +3828,15 @@ impl App {
                     }
                     None => false,
                 });
+                // Typing into every pane: the same keys to the tab's others
+                // (the window's own keys stay the window's, done once).
+                if self.typing_all.contains(&w.id) {
+                    for other in w.layout.leaves().into_iter().filter(|o| *o != w.focus) {
+                        if let Some(p) = self.panes.get(&other) {
+                            tsumugi_pane::input::feed(p, &events, |key, m| keys::action(key, m).is_some());
+                        }
+                    }
+                }
             }
             let area = to_rect(ctx.content_rect());
             for a in actions {
@@ -3774,7 +3864,7 @@ impl App {
                 let used = self.usage.get();
                 let conversation = focus_info.as_ref().filter(|i| !i.conversation.is_empty()).and_then(|i| used.conversations.get(&i.conversation).copied());
                 let tokens = (used.today.total() > 0 || conversation.is_some()).then_some((conversation, used.today));
-                let extra = chrome::StatusExtra { up_ms: up, nerd: self.nerd(), clock: clock.show.then(|| clock.format()), git, tokens };
+                let extra = chrome::StatusExtra { up_ms: up, nerd: self.nerd(), clock: clock.show.then(|| clock.format()), git, tokens, block: used.block };
                 chrome::status_bar(ui, &self.palette, &sessions, focus_info.as_ref(), size, &extra)
             })
             .inner
@@ -3785,6 +3875,11 @@ impl App {
                 self.bell_opening = true;
             }
             Some(chrome::StatusClick::Open(url)) => menu::open_url(&url),
+            Some(chrome::StatusClick::Charset(name)) => {
+                if let Some(i) = &focus_info {
+                    client.set_charset(i.id, name);
+                }
+            }
             None => {}
         }
         // The clock and the elapsed times move on without any output.
@@ -3899,6 +3994,11 @@ impl App {
         }
 
         self.waiting_and_closed(&ctx, &client, &workspaces, &sessions);
+        if let Some(view) = &mut self.diff {
+            if !diffview::show(&ctx, view, &theme::colors()) {
+                self.diff = None;
+            }
+        }
 
         self.bell_opening = false;
         // Files dropped on the window go with the next prompt.
@@ -3994,6 +4094,13 @@ impl App {
     /// Sessions that ended go on the recently closed list; the waiting list
     /// or that list is drawn when open, and what it asks is done.
     fn waiting_and_closed(&mut self, ctx: &egui::Context, client: &Client, workspaces: &[Workspace], sessions: &[Info]) {
+        // A whole buffer asked for: written to Downloads on a thread.
+        for (id, text) in client.take_texts() {
+            let Some(name) = self.saving.remove(&id) else { continue };
+            self.save_output(name, text);
+        }
+        // Typing into every pane ends with the split.
+        self.typing_all.retain(|id| workspaces.iter().any(|w| w.id == *id && w.layout.leaves().len() > 1));
         let ended = client.take_ended();
         if !ended.is_empty() {
             let used = self.usage.get();
@@ -4027,7 +4134,9 @@ impl App {
         let mut rows = Vec::new();
         for i in waiting {
             // Its menu, from its screen (attached for as long as it is shown).
-            let choices = answer::choices(&self.watch_lines(i.id));
+            let lines = self.watch_lines(i.id);
+            let choices = answer::choices(&lines);
+            let asking = answer::asking(&lines);
             rows.push(lists::Row {
                 id: i.id,
                 name: sort::display_title(&i.title, &i.command),
@@ -4035,6 +4144,7 @@ impl App {
                 note: i.note.clone(),
                 waited: chrome::elapsed(now.saturating_sub(i.since_ms)),
                 choices,
+                asking,
             });
         }
         let colors = theme::colors();
@@ -4067,6 +4177,13 @@ impl App {
                     keep = false;
                 }
                 lists::Do::Copy(text) => ctx.copy_text(text),
+                lists::Do::Save(k) => {
+                    if let Some(c) = self.ended.get(k) {
+                        let mut text = c.last.join("\n");
+                        text.push('\n');
+                        self.save_output(sort::display_title(&c.title, &c.command), text);
+                    }
+                }
                 lists::Do::Forget(k) => {
                     if k < self.ended.len() {
                         self.ended.remove(k);
@@ -4114,9 +4231,14 @@ impl App {
             ui.label(egui::RichText::new(words).size(13.5).color(c.dim));
         });
         inner.add_space(18.0);
+        // Told not to ask (Settings, General): read once, tried once.
+        let unasked = !std::mem::replace(&mut self.replaced_unasked, true) && restart_after_update();
         if self.replacing.is_some() {
             inner.ctx().request_repaint_after(Duration::from_millis(200));
             inner.label(egui::RichText::new("Restarting the server…").size(13.5).color(c.dim));
+        } else if unasked {
+            let ctx = inner.ctx().clone();
+            self.replacing = Some(replace_server(move || ctx.request_repaint()));
         } else {
             let (enter, esc) = inner.input(|i| (i.key_pressed(egui::Key::Enter), i.key_pressed(egui::Key::Escape)));
             let restart = inner.add(egui::Button::new(egui::RichText::new("Restart the server   Enter").color(c.on_accent()).strong()).fill(c.run).min_size(egui::vec2(220.0, 32.0)));

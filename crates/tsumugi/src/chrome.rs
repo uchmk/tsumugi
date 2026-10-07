@@ -303,6 +303,8 @@ pub enum StatusClick {
     Bell,
     /// The pull request's page.
     Open(String),
+    /// Read and write the focused pane in this character set.
+    Charset(String),
 }
 
 /// The status bar along the bottom (1d): the server and how long it has been
@@ -319,7 +321,7 @@ pub fn status_bar(
     size: Option<(usize, usize)>,
     extra: &StatusExtra,
 ) -> Option<StatusClick> {
-    let StatusExtra { up_ms, nerd, clock, git, tokens } = extra;
+    let StatusExtra { up_ms, nerd, clock, git, tokens, block } = extra;
     let (up_ms, nerd) = (*up_ms, *nerd);
     let mut click = None;
     let small = |t: String, c: Color32| RichText::new(t).font(FontId::proportional(11.5)).color(c);
@@ -369,7 +371,25 @@ pub fn status_bar(
                 ui.label(RichText::new(now.format(format).to_string()).font(FontId::monospace(11.5)).color(crate::theme::colors().strong())).on_hover_text(now.format("%A, %-d %B %Y").to_string());
                 ui.add_space(12.0);
             }
-            ui.label(small("UTF-8".into(), pal.fg_dim)).on_hover_text("What the panes read and write. On Windows, ConPTY turns any console program's output into UTF-8, whatever its code page");
+            // The pane's character set; a menu of others off Windows, where
+            // ConPTY hands over UTF-8 whatever the program wrote.
+            let charset = focus.map_or("UTF-8", |i| if i.charset.is_empty() { "UTF-8" } else { i.charset.as_str() });
+            if cfg!(windows) || focus.is_none() {
+                ui.label(small(charset.into(), pal.fg_dim)).on_hover_text("What the panes read and write. On Windows, ConPTY turns any console program's output into UTF-8, whatever its code page");
+            } else {
+                let color = if charset == "UTF-8" { pal.fg_dim } else { ink(gold()) };
+                ui.menu_button(small(charset.into(), color), |ui| {
+                    ui.label(RichText::new("The pane with the keys reads and writes").size(11.5).color(pal.fg_dim));
+                    for name in tsumugi_pane::CHARSETS {
+                        if ui.selectable_label(name == charset, name).clicked() {
+                            click = Some(StatusClick::Charset(name.to_owned()));
+                            ui.close();
+                        }
+                    }
+                })
+                .response
+                .on_hover_text("The character set of the pane with the keys: Shift_JIS or EUC-JP for an old file or machine");
+            }
             if let Some((conversation, today)) = tokens {
                 use crate::usage::short;
                 ui.add_space(12.0);
@@ -383,6 +403,21 @@ pub fn status_bar(
                     hover = format!("This conversation: {}\n{hover}", detail(c));
                 }
                 ui.label(small(said, pal.fg_dim)).on_hover_text(format!("{hover}\nThe totals leave out the cache's reads."));
+            }
+            if let Some(b) = block {
+                use crate::usage::short;
+                use chrono::TimeZone;
+                let end = chrono::Local.timestamp_millis_opt(b.end_ms).single().map(|t| t.format("%H:%M").to_string()).unwrap_or_default();
+                let start = chrono::Local.timestamp_millis_opt(b.start_ms).single().map(|t| t.format("%H:%M").to_string()).unwrap_or_default();
+                let left = (b.end_ms - now_ms() as i64).max(0) as u64;
+                ui.add_space(12.0);
+                ui.label(small(format!("5h {} · resets {end}", short(b.tokens.total())), pal.fg_dim)).on_hover_text(format!(
+                    "Claude Code's usage window: {start} to {end}, {} left; {} tokens in it so far.\n\
+                     Worked out from the transcripts: the window opens at the hour of the first answer after the last one closed. \
+                     How much a window allows depends on the plan, which tsumugi cannot read.",
+                    elapsed(left),
+                    short(b.tokens.total())
+                ));
             }
             if let (Some(i), Some((cols, lines))) = (focus, size) {
                 ui.add_space(12.0);
@@ -1021,6 +1056,8 @@ pub struct StatusExtra {
     /// Claude Code's tokens: the focused session's conversation, if it is
     /// one, and today's in all.
     pub tokens: Option<(Option<crate::usage::Tokens>, crate::usage::Tokens)>,
+    /// Claude Code's five-hour window, when one is open.
+    pub block: Option<crate::usage::Block>,
 }
 
 /// What the notification list was asked to do.

@@ -14,7 +14,7 @@ use crate::proto::SessionId;
 
 /// Bumped when the shape below changes; a file of another version is left
 /// alone rather than misread.
-const VERSION: u32 = 6;
+const VERSION: u32 = 7;
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Saved {
@@ -54,11 +54,14 @@ pub struct SavedPane {
     pub muted: bool,
     /// Its tags (v4).
     pub tags: Vec<String>,
+    /// Its character set, `UTF-8` or another (v7).
+    pub charset: String,
 }
 
 /// The shapes before this one, read so that an update does not lose the
 /// tabs: v2 (tsumugi 0.5 to 0.7) had no `muted`, v3 (0.8) no tags, v4
-/// (0.9 to 0.13) no tab names or pins, v5 (0.14 to 0.45) no notes.
+/// (0.9 to 0.13) no tab names or pins, v5 (0.14 to 0.45) no notes, v6
+/// (0.46) no character sets.
 mod old {
     use super::*;
 
@@ -100,13 +103,13 @@ mod old {
 
     impl From<V2> for super::SavedPane {
         fn from(p: V2) -> Self {
-            Self { id: p.id, cwd: p.cwd, shell: p.shell, claude: p.claude, title: p.title, state: p.state, muted: false, tags: Vec::new() }
+            Self { id: p.id, cwd: p.cwd, shell: p.shell, claude: p.claude, title: p.title, state: p.state, muted: false, tags: Vec::new(), charset: String::new() }
         }
     }
 
     impl From<V3> for super::SavedPane {
         fn from(p: V3) -> Self {
-            Self { id: p.id, cwd: p.cwd, shell: p.shell, claude: p.claude, title: p.title, state: p.state, muted: p.muted, tags: Vec::new() }
+            Self { id: p.id, cwd: p.cwd, shell: p.shell, claude: p.claude, title: p.title, state: p.state, muted: p.muted, tags: Vec::new(), charset: String::new() }
         }
     }
 
@@ -123,10 +126,29 @@ mod old {
         }
     }
 
-    /// v4: the panes as now, the tabs without names or pins.
+    /// A pane from v4 to v6: with tags, without a character set.
+    #[derive(Deserialize)]
+    pub struct V4Pane {
+        id: SessionId,
+        cwd: PathBuf,
+        shell: Option<(String, Vec<String>)>,
+        claude: Option<String>,
+        title: String,
+        state: crate::proto::State,
+        muted: bool,
+        tags: Vec<String>,
+    }
+
+    impl From<V4Pane> for super::SavedPane {
+        fn from(p: V4Pane) -> Self {
+            Self { id: p.id, cwd: p.cwd, shell: p.shell, claude: p.claude, title: p.title, state: p.state, muted: p.muted, tags: p.tags, charset: String::new() }
+        }
+    }
+
+    /// v4: the tabs without names or pins.
     #[derive(Deserialize)]
     pub struct V4 {
-        workspaces: Vec<SavedWorkspace<super::SavedPane>>,
+        workspaces: Vec<SavedWorkspace<V4Pane>>,
         at_ms: u64,
         muted_tags: Vec<String>,
     }
@@ -145,12 +167,37 @@ mod old {
         pinned: bool,
         layout: Node<SessionId>,
         focus: SessionId,
-        panes: Vec<super::SavedPane>,
+        panes: Vec<V4Pane>,
     }
 
     impl From<V5> for super::Saved {
         fn from(s: V5) -> Self {
-            let workspaces = s.workspaces.into_iter().map(|w| super::SavedWorkspace { name: w.name, pinned: w.pinned, note: String::new(), layout: w.layout, focus: w.focus, panes: w.panes }).collect();
+            let workspaces = s.workspaces.into_iter().map(|w| super::SavedWorkspace { name: w.name, pinned: w.pinned, note: String::new(), layout: w.layout, focus: w.focus, panes: w.panes.into_iter().map(Into::into).collect() }).collect();
+            Self { workspaces, at_ms: s.at_ms, muted_tags: s.muted_tags }
+        }
+    }
+
+    /// v6: the tabs with notes, the panes without character sets.
+    #[derive(Deserialize)]
+    pub struct V6 {
+        workspaces: Vec<V6Workspace>,
+        at_ms: u64,
+        muted_tags: Vec<String>,
+    }
+
+    #[derive(Deserialize)]
+    struct V6Workspace {
+        name: String,
+        pinned: bool,
+        note: String,
+        layout: Node<SessionId>,
+        focus: SessionId,
+        panes: Vec<V4Pane>,
+    }
+
+    impl From<V6> for super::Saved {
+        fn from(s: V6) -> Self {
+            let workspaces = s.workspaces.into_iter().map(|w| super::SavedWorkspace { name: w.name, pinned: w.pinned, note: w.note, layout: w.layout, focus: w.focus, panes: w.panes.into_iter().map(Into::into).collect() }).collect();
             Self { workspaces, at_ms: s.at_ms, muted_tags: s.muted_tags }
         }
     }
@@ -187,6 +234,7 @@ pub fn load(path: &Path) -> Option<Saved> {
     let (version, rest) = bytes.split_first_chunk::<4>()?;
     match u32::from_le_bytes(*version) {
         VERSION => postcard::from_bytes(rest).ok(),
+        6 => postcard::from_bytes::<old::V6>(rest).ok().map(Into::into),
         5 => postcard::from_bytes::<old::V5>(rest).ok().map(Into::into),
         4 => postcard::from_bytes::<old::V4>(rest).ok().map(Into::into),
         3 => postcard::from_bytes::<old::Saved<old::V3>>(rest).ok().map(Into::into),
@@ -246,29 +294,55 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// A file from before notes (v5) keeps its names and pins.
+    /// Files from before notes (v5) and before character sets (v6) keep
+    /// what they had; a pane's character set reads as none (UTF-8).
     #[test]
-    fn a_version_5_file_is_read() {
+    fn version_5_and_6_files_are_read() {
         #[derive(Serialize)]
-        struct Tab {
+        struct Pane {
+            id: SessionId,
+            cwd: PathBuf,
+            shell: Option<(String, Vec<String>)>,
+            claude: Option<String>,
+            title: String,
+            state: crate::proto::State,
+            muted: bool,
+            tags: Vec<String>,
+        }
+        #[derive(Serialize)]
+        struct Tab5 {
             name: String,
             pinned: bool,
             layout: Node<SessionId>,
             focus: SessionId,
-            panes: Vec<SavedPane>,
+            panes: Vec<Pane>,
         }
-        let pane = SavedPane { id: 3, cwd: "/tmp".into(), shell: None, claude: None, title: "t".into(), state: crate::proto::State::Done, muted: false, tags: vec!["a".into()] };
-        let old = (vec![Tab { name: "kept".into(), pinned: true, layout: Node::Leaf(3), focus: 3, panes: vec![pane] }], 5u64, vec!["ci".to_string()]);
+        #[derive(Serialize)]
+        struct Tab6 {
+            name: String,
+            pinned: bool,
+            note: String,
+            layout: Node<SessionId>,
+            focus: SessionId,
+            panes: Vec<Pane>,
+        }
+        let pane = || Pane { id: 3, cwd: "/tmp".into(), shell: None, claude: None, title: "t".into(), state: crate::proto::State::Done, muted: false, tags: vec!["a".into()] };
         let dir = std::env::temp_dir().join(format!("tsumugi-state-v5-test-{}", std::process::id()));
         let path = dir.join("state");
         std::fs::create_dir_all(&dir).unwrap();
-        let mut bytes = 5u32.to_le_bytes().to_vec();
-        bytes.extend(postcard::to_allocvec(&old).unwrap());
-        std::fs::write(&path, bytes).unwrap();
-        let saved = load(&path).expect("read");
+        let write = |version: u32, body: Vec<u8>| {
+            let mut bytes = version.to_le_bytes().to_vec();
+            bytes.extend(body);
+            std::fs::write(&path, bytes).unwrap();
+        };
+        write(5, postcard::to_allocvec(&(vec![Tab5 { name: "kept".into(), pinned: true, layout: Node::Leaf(3), focus: 3, panes: vec![pane()] }], 5u64, vec!["ci".to_string()])).unwrap());
+        let saved = load(&path).expect("read v5");
         let w = &saved.workspaces[0];
         assert_eq!((w.name.as_str(), w.pinned, w.note.as_str(), saved.muted_tags.clone()), ("kept", true, "", vec!["ci".to_string()]));
-        assert_eq!(w.panes[0].tags, vec!["a".to_string()]);
+        assert_eq!((w.panes[0].tags.clone(), w.panes[0].charset.as_str()), (vec!["a".to_string()], ""));
+        write(6, postcard::to_allocvec(&(vec![Tab6 { name: "n".into(), pinned: false, note: "the note".into(), layout: Node::Leaf(3), focus: 3, panes: vec![pane()] }], 6u64, Vec::<String>::new())).unwrap());
+        let saved = load(&path).expect("read v6");
+        assert_eq!((saved.workspaces[0].note.as_str(), saved.workspaces[0].panes[0].id), ("the note", 3));
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -292,6 +366,7 @@ mod tests {
                     state: crate::proto::State::Waiting,
                     muted: true,
                     tags: vec!["review".into()],
+                    charset: "Shift_JIS".into(),
                 }],
             }],
             at_ms: 1,

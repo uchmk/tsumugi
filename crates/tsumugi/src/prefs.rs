@@ -74,6 +74,7 @@ pub const INDEX: &[(Page, &str)] = &[
     (Page::General, "Keep sessions running when the window closes"),
     (Page::General, "Ask before closing a running session"),
     (Page::General, "Check for updates"),
+    (Page::General, "Restart the server after an update without asking"),
     (Page::General, "Show the time in the status bar"),
     (Page::General, "Time format"),
     (Page::General, "Show the date"),
@@ -98,6 +99,7 @@ pub const INDEX: &[(Page, &str)] = &[
     (Page::Keys, "Previous tab"),
     (Page::Keys, "Go to the session waiting longest"),
     (Page::Keys, "The waiting sessions, answered together"),
+    (Page::Keys, "Type into every pane of the tab"),
     (Page::Keys, "The Nth tab"),
     (Page::Keys, "Split right"),
     (Page::Keys, "Split down"),
@@ -606,6 +608,10 @@ fn general(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut V
         if row(ui, l, "Check for updates", "At each start, from GitHub releases; a note when there is a newer one", |ui| switch(ui, l, g.check_updates)) {
             out.push(set("check_updates", !g.check_updates));
         }
+        sep(ui, l);
+        if row(ui, l, "Restart the server after an update without asking", "The older version's server stops at once: running shells stop, the tabs come back. Off: the window asks", |ui| switch(ui, l, g.restart_after_update)) {
+            out.push(set("restart_after_update", !g.restart_after_update));
+        }
     });
     let k = &seen.settings.clock;
     section(ui, l, "CLOCK", |ui| {
@@ -806,7 +812,7 @@ fn keys(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut Vec<
         });
     };
     section(ui, l, "SESSIONS", |ui| {
-        for (k, a) in [Action::NewTab, Action::CloseTab, Action::Rename, Action::Duplicate, Action::NextTab, Action::PrevTab, Action::NextWaiting, Action::Waiting, Action::Search, Action::Input, Action::Rail, Action::Settings].into_iter().enumerate() {
+        for (k, a) in [Action::NewTab, Action::CloseTab, Action::Rename, Action::Duplicate, Action::NextTab, Action::PrevTab, Action::NextWaiting, Action::Waiting, Action::TypeAll, Action::Search, Action::Input, Action::Rail, Action::Settings].into_iter().enumerate() {
             if k > 0 {
                 sep(ui, l);
             }

@@ -45,6 +45,8 @@ struct State {
     clipboard: Vec<String>,
     /// Sessions that ended since the last `take_ended`, with their last lines.
     ended: Vec<(Info, Vec<String>)>,
+    /// Whole buffers `all_text` asked for, not taken yet.
+    texts: Vec<(SessionId, String)>,
     /// `ToClient::Attention`: someone is at a window, and this one tells.
     looking: bool,
     teller: bool,
@@ -344,6 +346,21 @@ impl Client {
         std::mem::take(&mut self.0.lock().ended)
     }
 
+    /// Read and write the session's bytes in this character set.
+    pub fn set_charset(&self, id: SessionId, name: String) {
+        self.0.send(ToServer::SetCharset { id, name });
+    }
+
+    /// Ask for a session's whole buffer as text; it comes to `take_texts`.
+    pub fn all_text(&self, id: SessionId) {
+        self.0.send(ToServer::AllText { id });
+    }
+
+    /// The whole buffers that arrived since the last call.
+    pub fn take_texts(&self) -> Vec<(SessionId, String)> {
+        std::mem::take(&mut self.0.lock().texts)
+    }
+
     /// Text that arrived for the clipboard since the last call.
     pub fn take_clipboard(&self) -> Vec<String> {
         std::mem::take(&mut self.0.lock().clipboard)
@@ -379,6 +396,7 @@ fn receive(inner: &Inner, msg: ToClient) {
         }
         ToClient::Exited { id } => st.screens.entry(id).or_default().exited = true,
         ToClient::Ended { info, last } => st.ended.push((info, last)),
+        ToClient::Text { id, text } => st.texts.push((id, text)),
         ToClient::Clipboard(text) => st.clipboard.push(text),
         ToClient::Attention { looking, teller } => (st.looking, st.teller) = (looking, teller),
         ToClient::MutedTags(list) => st.muted_tags = list,

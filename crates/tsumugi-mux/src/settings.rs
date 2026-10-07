@@ -94,6 +94,7 @@
 //! keep_sessions = true
 //! ask_before_close = true
 //! check_updates = true
+//! restart_after_update = false
 //! cmd_on_mac = true
 //!
 //! # What a new session runs, and how waiting is told.
@@ -158,6 +159,9 @@ pub struct General {
     pub ask_before_close: bool,
     /// Look once a day for a newer release on GitHub.
     pub check_updates: bool,
+    /// A window of a newer version restarts the older server at once (its
+    /// shells stop, its tabs come back), rather than asking first.
+    pub restart_after_update: bool,
     /// macOS: the window's keys with Cmd (Ctrl+Shift+T is Cmd+T); off, the
     /// same keys as elsewhere.
     pub cmd_on_mac: bool,
@@ -165,7 +169,7 @@ pub struct General {
 
 impl Default for General {
     fn default() -> Self {
-        Self { default_folder: String::new(), keep_sessions: true, ask_before_close: true, check_updates: true, cmd_on_mac: true }
+        Self { default_folder: String::new(), keep_sessions: true, ask_before_close: true, check_updates: true, restart_after_update: false, cmd_on_mac: true }
     }
 }
 
@@ -378,7 +382,7 @@ impl Default for Open {
 
 /// The tab's right-click menu: built-in items to leave out, by their words
 /// (`rename`, `note`, `tags`, `mute`, `pin`, `restart`, `duplicate`, `new-window`,
-/// `filer`, `editor`, `copy-path`, `close`), and items of one's own.
+/// `filer`, `editor`, `copy-path`, `save-output`, `close`), and items of one's own.
 #[derive(Clone, Debug, Default, PartialEq, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Menu {
@@ -399,7 +403,7 @@ pub struct MenuItem {
 }
 
 /// The words of the menu's own items, for `menu.hide`.
-pub const MENU_ITEMS: [&str; 12] = ["rename", "note", "tags", "mute", "pin", "restart", "duplicate", "new-window", "filer", "editor", "copy-path", "close"];
+pub const MENU_ITEMS: [&str; 13] = ["rename", "note", "tags", "mute", "pin", "restart", "duplicate", "new-window", "filer", "editor", "copy-path", "save-output", "close"];
 
 /// The menu's items in the order `order` asks for: those it names first,
 /// in its order, then the rest in their own.
@@ -420,7 +424,7 @@ pub fn menu_group(word: &str) -> &'static str {
     match word {
         "rename" | "note" | "tags" | "mute" | "pin" => "look",
         "restart" | "duplicate" | "new-window" => "start",
-        "filer" | "editor" | "copy-path" => "folder",
+        "filer" | "editor" | "copy-path" | "save-output" => "folder",
         _ => "close",
     }
 }
@@ -439,6 +443,7 @@ pub fn menu_label(word: &str) -> &'static str {
         "filer" => "Open the folder in filer",
         "editor" => "Open in the editor",
         "copy-path" => "Copy the folder path",
+        "save-output" => "Save the output to a file",
         "close" => "Close the session",
         _ => "",
     }

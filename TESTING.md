@@ -78,6 +78,7 @@ what happened, and the steps.
 | 1.8 | Task Manager after 1.3 | One `tsumugi-<version>-<hash>.exe` server, and no console window anywhere |
 | 1.9 | The taskbar, Alt+Tab, and the window's corner | The logo (two threads, cyan and gold, on a dark tile) as the window's icon |
 | 1.10 | `tsumugi new . --tag a --tag b --tag c -- bash` | All three tags on the new session (`tsumugi ls`'s last column) |
+| 1.11 | Settings → General → Restart the server after an update without asking on; then 1.7 | No question: the older server is restarted at once and every tab comes back |
 
 ## 2. Panes and splits
 
@@ -96,6 +97,7 @@ what happened, and the steps.
 | 2.11 | On a JIS keyboard: `Alt+Shift+;` (`+`), then `Alt+Shift+-` | To the right, then below: neither is taken for the other |
 | 2.12 | Drag a pane of a split by its header onto the sidebar | The sidebar lights up, **A tab of its own**, the pane's name with the pointer; dropped, the pane is a tab of its own after the one it left |
 | 2.13 | One pane alone, and each pane of a split | Every pane is a card with room round it and a 30px heading: the state's mark, the name, the folder, short words on the right (none for a shell); its ring in the state's colour, the one with the keys too; the heading is not lit for the keys |
+| 2.14 | A split tab, `Ctrl+Shift+I`, type `echo hi`, Enter; `Ctrl+Shift+I` again | **TYPING INTO ALL** on every pane's heading; `hi` in each; after the second press only the pane with the keys gets keys; the window's own keys (`Ctrl+Shift+T`) act once |
 
 ## 3. The sidebar
 
@@ -120,6 +122,8 @@ what happened, and the steps.
 | 3.17 | `Ctrl+Shift+D` (macOS `Cmd+Option+D`) in a Claude Code pane, then in a shell | A new tab in the same folder: `claude` typed in the first, a shell in the second |
 | 3.18 | Look at the sidebar on first start | 288px wide |
 | 3.19 | Right-click a card → Note…, type `the release`, Enter; restart the machine (or the server) | `“the release”` on the card under the folder; Edit the note… and an empty Enter takes it off; after the restart the note is back |
+| 3.20 | A tab with uncommitted changes: click its `+N −M` (or search `changes`) | The diff over the window: each file under its name, added lines green, removed red, hunks cyan, new files at the end; Esc or a click outside closes it; a lock file's large diff is cut at 512 KB |
+| 3.21 | Right-click a card → Save the output to a file (or search `save the pane`) | A toast names `Downloads\tsumugi-<name>-<date>-<time>.txt`; it holds the whole scrollback as the program wrote it, Japanese whole, long lines unbroken |
 
 ## 4. States, notifications and answering
 
@@ -141,6 +145,7 @@ what happened, and the steps.
 | 4.14 | In that panel, **Yes to 2** | Both go on as if `1` were typed in each; untick one first and only the other is answered; **No to N** types each menu's "No" choice |
 | 4.15 | A session waiting with a menu of other words (no "Yes"/"No") | Not counted in Yes to N / No to N; its own buttons still work |
 | 4.16 | `exit` a Claude Code session after some work; then the panel's **Recently closed** (or search `recently`) | It is listed: today at …, done, its tokens; **Last output** shows its last lines; **Resume** opens a new tab in its folder typing `claude --resume <id>`; the list survives a restart of tsumugi |
+| 4.17 | A Claude Code session asking to run a Bash command; `Ctrl+Shift+Y` | Under what it said: "Bash command", the command and its description, "Do you want to proceed?", in the terminal's font, before the buttons |
 
 ## 5. Search
 
@@ -271,6 +276,9 @@ what happened, and the steps.
 | 15.3 | A branch with an open pull request (`gh` signed in) | `PR #N` coloured by its checks; a click opens it in the browser |
 | 15.4 | A Claude Code session focused | `N tokens · Today M`; the tooltip breaks it down |
 | 15.5 | Rest the pointer on `UTF-8` | Says the panes read and write UTF-8, and that ConPTY turns any console program's output into it; `chcp 932` and a Japanese `dir` in cmd still read right |
+| 15.6 | Claude Code used in the last hours | `5h N · resets HH:MM` beside the tokens; the tooltip gives the window's start and end, what is left, and that the limit is the plan's |
+| 15.7 | Linux or macOS: click `UTF-8` → Shift_JIS; `cat` a Shift_JIS file; type Japanese into `cat > x.txt`, then `nkf -g x.txt` (or `file`) | The menu of eight; the file reads right; `Shift_JIS` on the pane's heading and in gold in the status bar; what was typed is Shift_JIS in the file; restart the machine: still Shift_JIS |
+| 15.8 | Windows: the `UTF-8` in the status bar | Only a label with its tooltip: no menu |
 
 ## 16. Keys
 

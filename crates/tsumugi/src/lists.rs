@@ -49,6 +49,9 @@ pub struct Row {
     /// How long it has waited.
     pub waited: String,
     pub choices: Vec<Choice>,
+    /// What the question is about, as its screen says it (the command, the
+    /// file), read above the menu.
+    pub asking: Vec<String>,
 }
 
 /// What the panel asks the window to do.
@@ -62,6 +65,8 @@ pub enum Do {
     StartAgain(usize),
     /// Put text on the clipboard.
     Copy(String),
+    /// Save the closed session's last lines to a file.
+    Save(usize),
     /// Take a closed session off the list.
     Forget(usize),
     /// Take every closed session off the list.
@@ -149,6 +154,15 @@ fn waiting(ui: &mut egui::Ui, view: &mut View, rows: &[Row], c: &Colors, max: f3
                     });
                     if !r.note.is_empty() {
                         ui.label(RichText::new(&r.note).size(12.0).color(crate::chrome::ink(crate::chrome::gold())));
+                    }
+                    // What would be said yes to: read before answering.
+                    if !r.asking.is_empty() {
+                        egui::Frame::NONE.fill(c.bg).corner_radius(6.0).inner_margin(egui::Margin::symmetric(8, 5)).show(ui, |ui| {
+                            ui.set_width(ui.available_width());
+                            for l in &r.asking {
+                                ui.label(RichText::new(l).monospace().size(11.5).color(c.fg));
+                            }
+                        });
                     }
                     ui.horizontal_wrapped(|ui| {
                         if r.choices.is_empty() {
@@ -240,9 +254,14 @@ fn history(ui: &mut egui::Ui, view: &mut View, closed: &[Closed], c: &Colors, ma
                         ui.label(RichText::new(l).monospace().size(11.5).color(c.fg));
                     }
                 });
-                if ui.small_button("Copy the output").clicked() {
-                    out.push(Do::Copy(s.last.join("\n")));
-                }
+                ui.horizontal(|ui| {
+                    if ui.small_button("Copy the output").clicked() {
+                        out.push(Do::Copy(s.last.join("\n")));
+                    }
+                    if ui.small_button("Save to a file").on_hover_text("These lines, as text in Downloads").clicked() {
+                        out.push(Do::Save(k));
+                    }
+                });
             }
             ui.separator();
         }
@@ -278,7 +297,7 @@ mod tests {
 
     fn row(id: SessionId, texts: &[&str]) -> Row {
         let choices = texts.iter().enumerate().map(|(k, t)| Choice { key: char::from_digit(k as u32 + 1, 10).unwrap(), text: t.to_string() }).collect();
-        Row { id, name: format!("s{id}"), folder: "f".into(), note: String::new(), waited: "1m".into(), choices }
+        Row { id, name: format!("s{id}"), folder: "f".into(), note: String::new(), waited: "1m".into(), choices, asking: Vec::new() }
     }
 
     #[test]

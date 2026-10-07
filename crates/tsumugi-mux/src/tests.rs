@@ -262,6 +262,27 @@ fn notes_stay_and_an_ended_session_leaves_its_last_lines() {
     keep.kill();
 }
 
+/// A session read as Shift_JIS shows Japanese written in it, says so in its
+/// info, and its whole buffer comes back as text.
+#[cfg(unix)]
+#[test]
+fn a_session_can_read_shift_jis() {
+    let at = address();
+    let _srv = serve(&at).expect("the server starts");
+    let c = Client::connect(&at, || {}).expect("a client connects");
+    let pane = c.spawn(std::env::temp_dir(), None, Size::new(80, 24), (8, 16)).expect("a shell starts");
+    until(&pane, "a prompt", |t| !t.trim().is_empty());
+    c.set_charset(pane.id(), "shift_jis".into());
+    eventually("said in its info", || c.sessions().iter().any(|i| i.id == pane.id() && i.charset == "Shift_JIS"));
+    // 日本 in Shift_JIS, as octal escapes: nothing typed is outside ASCII.
+    pane.send(b"printf '\\223\\372\\226\\173-sjis\\n'\r".to_vec());
+    // A wide character's spacer reads as a space on the screen sent.
+    until(&pane, "the words read", |t| t.replace(' ', "").contains("日本-sjis"));
+    c.all_text(pane.id());
+    eventually("the whole buffer", || c.take_texts().iter().any(|(id, t)| *id == pane.id() && t.contains("日本-sjis")));
+    pane.kill();
+}
+
 /// A prompt from the input box arrives whole and is sent with Enter.
 #[test]
 fn a_prompt_is_pasted_and_sent() {
