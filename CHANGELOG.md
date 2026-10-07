@@ -5,6 +5,25 @@
 
 ## [未リリース]
 
+## [0.52.0] - 2026-10-07
+
+### 追加
+
+- 費用の知らせ。`[notify] spend_day` と `spend_block`（設定の Notifications → WHAT IT COSTS）に金額（ドル）を入れると、その日の見積もり、
+  または Claude Code の 5 時間の枠の見積もりがそれを超えたときに 1 回だけ、トーストで知らせる（窓を見ていなければ OS の通知も）。
+  その日のうち・その枠のうちは繰り返さない。見積もりは API の値段でのトークンの額なので、Pro や Max では使い方の目安になる。既定は 0（知らせない）。
+- 分割の境目の操作（近づくと水色の線、ドラッグで動く、ダブルクリックで半分）を `tsumugi-layout` の `egui` 機能（`ui::dividers`）に移した。
+  tsumugi はそれを使い、filer も同じ部品を持ち帰れる（TODO.md、金曜日以降）。動きは変えていない。
+- `.github/workflows/release.yml` と `release-sums.yml`（filer のものの写し）。Actions タブから `tag` を渡して回すと、Windows（x64・ARM64、ConPTY を同梱した zip）、
+  macOS（ARM64・x64）、Linux（x64・ARM64）の 6 つをリリースに載せ、SHA-256 の表をノートに足す。
+- Windows 実機のテストの仕組み。`.claude/windows-role.md`（役割）と `scripts/auto-wintest.ps1`（filer のものの写し。毎時 :50、filer の実行中は待つ）。
+  始めるのは 2026-10-09 から（TODO.md）。
+- TODO.md。金曜日から始めるもの（実機のテスト、filer の `tsumugi-pane` の `rev` を上げること、最初のリリース）を書いた。
+
+### 変更
+
+- TESTING.md の 16.1 で付け替えるキーを `Ctrl+Shift+N` から `Ctrl+Shift+O` にした（`Ctrl+Shift+N` は v0.51.0 から通知の一覧のキー）。
+
 ## [0.51.0] - 2026-10-07
 
 ### 追加

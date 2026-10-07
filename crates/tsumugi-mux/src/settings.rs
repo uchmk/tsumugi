@@ -69,6 +69,9 @@
 //! webhook = "https://ntfy.sh/my-topic"
 //! webhook_format = "ntfy"
 //! webhook_after = 120
+//! # Say so once when the day's estimated cost passes $20, or a 5-hour block's $10.
+//! spend_day = 20
+//! spend_block = 10
 //!
 //! # Other AI programs: what a restored session types to take one up again.
 //! [agents.gemini]
@@ -578,6 +581,11 @@ pub struct Notify {
     pub webhook_format: String,
     /// How many seconds a session waits before it is sent.
     pub webhook_after: u64,
+    /// Say so once when the day's estimated cost (US dollars) passes this;
+    /// 0: never.
+    pub spend_day: u64,
+    /// The same for Claude Code's 5-hour block; 0: never.
+    pub spend_block: u64,
 }
 
 /// The sounds `sound_waiting` and `sound_error` name.
@@ -598,6 +606,8 @@ impl Default for Notify {
             webhook: String::new(),
             webhook_format: "ntfy".into(),
             webhook_after: 120,
+            spend_day: 0,
+            spend_block: 0,
         }
     }
 }
@@ -1028,7 +1038,7 @@ mod tests {
         let by_branch = TagRule { branch: "claude/*".into(), tag: "claude".into(), ..TagRule::default() };
         assert_eq!(s.tags.rule, vec![rule("~/dev/filer", "filer"), rule("~/dev/*", "{name}"), by_branch]);
         assert_eq!(s.tags.colors.get("claude").map(String::as_str), Some("#5e4a86"));
-        assert_eq!(s.notify, Notify { flash: vec![], webhook: "https://ntfy.sh/my-topic".into(), ..Notify::default() });
+        assert_eq!(s.notify, Notify { flash: vec![], webhook: "https://ntfy.sh/my-topic".into(), spend_day: 20, spend_block: 10, ..Notify::default() });
         assert_eq!(s.prices.get("claude-opus-5-5"), Some(&Price { input: 4.0, output: 20.0, cache_read: Some(0.2) }));
         assert!(parse("[notify]\nwebhook = \"file:///etc\"\n").is_err(), "an http(s) address only");
         assert!(parse("[notify]\nwebhook_format = \"xml\"\n").is_err());

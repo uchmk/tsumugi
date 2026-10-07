@@ -959,6 +959,27 @@ fn notifications(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: 
             out.push(Change::Set(Some("notify"), "webhook_after", v.to_string()));
         }
     });
+    section(ui, l, "WHAT IT COSTS", |ui| {
+        // Once a day, once a 5-hour block, at the estimate (API prices).
+        let pick = |now: u64, lines: &[u64]| -> Vec<(u64, String)> {
+            let mut v: Vec<(u64, String)> = std::iter::once((0, "Never".to_owned())).chain(lines.iter().map(|d| (*d, format!("Past ${d}")))).collect();
+            if !v.iter().any(|(d, _)| *d == now) {
+                v.push((now, format!("Past ${now}")));
+            }
+            v
+        };
+        let days = pick(n.spend_day, &[5, 10, 20, 50, 100, 200]);
+        let days: Vec<(u64, &str)> = days.iter().map(|(v, t)| (*v, t.as_str())).collect();
+        if let Some(v) = row(ui, l, "Tell when the day costs", "Once a day, when the day's estimate at API prices passes it", |ui| select(ui, "spend-day", n.spend_day, &days)) {
+            out.push(Change::Set(Some("notify"), "spend_day", v.to_string()));
+        }
+        sep(ui, l);
+        let blocks = pick(n.spend_block, &[5, 10, 20, 50]);
+        let blocks: Vec<(u64, &str)> = blocks.iter().map(|(v, t)| (*v, t.as_str())).collect();
+        if let Some(v) = row(ui, l, "Tell when a 5-hour block costs", "Once a block, the same estimate", |ui| select(ui, "spend-block", n.spend_block, &blocks)) {
+            out.push(Change::Set(Some("notify"), "spend_block", v.to_string()));
+        }
+    });
     section(ui, l, "QUIET TAGS", |ui| {
         ui.add_space(8.0);
         ui.horizontal(|ui| {

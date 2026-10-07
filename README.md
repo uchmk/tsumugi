@@ -121,6 +121,12 @@ webhook (`webhook_format = "slack"`) or any address taking JSON (`"json"`:
 system's `curl`, so it works with the window closed; muted sessions and quiet
 tags are not sent.
 
+`[notify] spend_day` and `spend_block` (Settings, Notifications, WHAT IT
+COSTS) say once when the day's estimated cost, or a 5-hour block's, passes
+that many dollars: a toast, and the system's notification while the window
+is not looked at. The estimate is the token counts at API prices (below), so
+on a Pro or Max plan it measures how hard the plan is used, not a bill.
+
 ### The input box
 
 `Ctrl+I` (`Cmd+I` on macOS) opens a box at the foot of the pane with the

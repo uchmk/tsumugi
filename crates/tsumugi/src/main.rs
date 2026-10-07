@@ -37,6 +37,7 @@ mod prefs;
 mod shellhook;
 mod sort;
 mod sound;
+mod spend;
 mod theme;
 mod usage;
 mod price;
@@ -890,6 +891,8 @@ struct App {
     bell_opening: bool,
     /// Telling someone who is not looking (the design's 1h).
     alerts: alert::Alerts,
+    /// `[notify] spend_day` and `spend_block`, each told once.
+    spend: spend::Watch,
     teller: alert::Teller,
     /// Whether the server was last told this window has the keyboard.
     focus_sent: Option<bool>,
@@ -1108,6 +1111,7 @@ impl App {
             fonts_rx: None,
             bell_opening: false,
             alerts: alert::Alerts::default(),
+            spend: spend::Watch::default(),
             teller: alert::Teller::start(window_handle(cc), {
                 let ctx = cc.egui_ctx.clone();
                 move || ctx.request_repaint()
@@ -3522,57 +3526,28 @@ impl App {
             return;
         }
 
-        // The dividers: only a gap until the pointer comes near, then a line
-        // to grab; dragged, the split follows; double-clicked, it halves.
-        for d in layout.dividers(area, GAP) {
-            let gap = from_rect(d.gap);
-            let grab = match d.dir {
-                Dir::Right => gap.expand2(egui::vec2((GRAB - GAP) / 2.0, 0.0)),
-                Dir::Down => gap.expand2(egui::vec2(0.0, (GRAB - GAP) / 2.0)),
-            };
-            let resp = ui.interact(grab, ui.id().with(("divider", &d.path)), egui::Sense::click_and_drag());
-            let cursor = match d.dir {
-                Dir::Right => egui::CursorIcon::ResizeHorizontal,
-                Dir::Down => egui::CursorIcon::ResizeVertical,
-            };
-            if resp.hovered() || resp.dragged() {
-                ui.ctx().set_cursor_icon(cursor);
-                ui.painter().rect_filled(gap.shrink2(match d.dir {
-                    Dir::Right => egui::vec2(GAP / 2.0 - 1.0, 0.0),
-                    Dir::Down => egui::vec2(0.0, GAP / 2.0 - 1.0),
-                }), 1.0, self.palette.cursor);
-            }
-            if resp.double_clicked() {
-                let mut l = layout.clone();
-                l.set_ratio(&d.path, 0.5);
+        // The dividers (tsumugi-layout's, shared with filer): only a gap
+        // until the pointer comes near; dragged, the split follows;
+        // double-clicked, it halves.
+        let look = tsumugi_layout::ui::Look { gap: GAP, grab: GRAB, line: self.palette.cursor };
+        match tsumugi_layout::ui::dividers(ui, ui.id(), &layout, area, look) {
+            Some(tsumugi_layout::ui::Moved::Dragging(l)) => self.dragging = Some((w.id, l)),
+            Some(tsumugi_layout::ui::Moved::Halved(l)) => {
                 if let Some(client) = &self.client {
                     client.set_layout(w.id, l, w.focus);
                 }
-            } else if let (true, Some(p)) = (resp.dragged(), resp.interact_pointer_pos()) {
-                let ratio = match d.dir {
-                    Dir::Right => (p.x - d.area.x) / d.area.w.max(1.0),
-                    Dir::Down => (p.y - d.area.y) / d.area.h.max(1.0),
-                };
-                let mut l = layout.clone();
-                l.set_ratio(&d.path, ratio);
-                self.dragging = Some((w.id, l));
             }
-            if resp.drag_stopped() {
+            Some(tsumugi_layout::ui::Moved::Released) => {
                 if let (Some((_, l)), Some(client)) = (self.dragging.take(), &self.client) {
                     client.set_layout(w.id, l, w.focus);
                 }
             }
+            None => {}
         }
     }
 }
 
-fn to_rect(r: egui::Rect) -> Rect {
-    Rect::new(r.min.x, r.min.y, r.width(), r.height())
-}
-
-fn from_rect(r: Rect) -> egui::Rect {
-    egui::Rect::from_min_size(egui::pos2(r.x, r.y), egui::vec2(r.w, r.h))
-}
+use tsumugi_layout::ui::{from_egui as to_rect, to_egui as from_rect};
 
 use chrome::state_color;
 
@@ -4043,6 +4018,18 @@ impl App {
                     sound::play(if error { &n.sound_error } else { &n.sound_waiting });
                 }
                 out => self.teller.send(out),
+            }
+        }
+        // The estimated cost past its line: a toast here, and the system's
+        // notification for a window not looked at.
+        let n = &self.settings_now.notify;
+        let (day, block) = (n.spend_day, n.spend_block);
+        if day > 0 || block > 0 {
+            for words in self.spend.check(&self.usage.get(), day, block) {
+                if !here {
+                    self.teller.send(alert::Out::Notify { session: 0, title: "tsumugi".into(), body: words.clone() });
+                }
+                self.say(words, false);
             }
         }
         let current = self.current(&workspaces);

@@ -13,6 +13,7 @@ Claude Code などの AI CLI のセッションを何本も並べて動かすた
 - 返答は日本語。コード・コメント・コミットメッセージは英語。
 - 頼まれるまでコミットしない。
 - 改行は LF。スクリプトで書き換えるときは改行を変えない（Python なら `newline=''`）。
+- やることは [TODO.md](TODO.md) に書く（`【人】` は持ち主の作業、`【金】` は 2026-10-09 以降に始めるもの）。
 - 人への確認事項は QUESTIONS.md に書く（形式は filer の CLAUDE.md の「確認事項」と同じ。選択肢に推奨を 1 つ付ける）。
 - **`cargo fmt` は走らせない。**filer と同じく手で整形する（`Self { a, b, c }` を 1 行に収める書き方）。整形の確認は `cargo fmt --check` で見るだけ。
 - clippy は `--all-targets -- -D warnings` で警告ゼロを保つ。検証は CI と同じ stable で回す。
@@ -30,6 +31,21 @@ Claude Code などの AI CLI のセッションを何本も並べて動かすた
 
 filer と同じ。`Cargo.toml` の `version` が正、版の繰り上げと CHANGELOG.md（日本語、Keep a Changelog、日付は JST）はセットでコミットする。
 `main` への直接の push を許す。マージは merge コミットで行う（rebase / squash を使わない）。
+
+## リリース
+
+- `.github/workflows/release.yml` を Actions タブから `workflow_dispatch` で回し、`tag` に `vX.Y.Z` を渡す（タグが無ければ作られる。
+  クラウドのセッションからタグは push できない）。`Cargo.toml` の版と違えば落ちる。成果物は 6 つ（Windows は ConPTY を同梱した `.zip`、
+  macOS と Linux は `.tar.gz`）、最後に `release-sums.yml` が SHA-256 の表をノートに足す。
+- ノートは前のタグからの `vX.Y.Z:` のコミットの最初の段落から作る。英語で、それだけで意味が通るように書く。前のリリースのタグができてから次を投げる。
+
+## Windows 実機のセッション
+
+- 役割は [.claude/windows-role.md](.claude/windows-role.md)。`scripts/auto-wintest.ps1` をタスク スケジューラで毎時 :50 に回すと、
+  TESTING.md / TESTING-CHECKS.md / 役割の定義が `main` で変わっていて `test/win-*` の PR が開いていないときに 1 本起動する（filer のものの写し。
+  filer の実行が走っている間は待つ）。報告は `qa-reports/<日付>-<ブランチ>.md`。
+- `[x]` を付けてよいのはこのセッションと持ち主だけ。版と CHANGELOG は触らず、PR 本文に 1 行書く。マージは merge コミット。
+- 始めるのは 2026-10-09（金）から（TODO.md）。
 
 ## 設計の約束事
 

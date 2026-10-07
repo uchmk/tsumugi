@@ -39,6 +39,7 @@
 - [ ] **2.12** Drag a pane of a split by its header onto the sidebar → The sidebar lights up, **A tab of its own**, the pane's name with the pointer; dropped, the pane is a tab of its own after the one it left
 - [ ] **2.13** One pane alone, and each pane of a split → Every pane is a card with room round it and a 30px heading: the state's mark, the name, the folder, short words on the right (none for a shell); its ring in the state's colour, the one with the keys too; the heading is not lit for the keys
 - [ ] **2.14** A split tab, `Ctrl+Shift+I`, type `echo hi`, Enter; `Ctrl+Shift+I` again → **TYPING INTO ALL** on every pane's heading; `hi` in each; after the second press only the pane with the keys gets keys; the window's own keys (`Ctrl+Shift+T`) act once
+- [ ] **2.15** Three panes split both ways: hover each divider, drag it, double-click it → Near it the cyan line and the resize pointer; the split follows the drag and stays where dropped (and after a restart); a double-click halves it. Unchanged from before the dividers moved into `tsumugi-layout` (v0.52.0)
 
 ## 3. The sidebar
 
@@ -93,6 +94,8 @@
 - [ ] **4.18** A Claude Code session asking to run one Bash command → `Ctrl+Shift+Y` → **Always allow…** → **Add and say yes** → Before: the rule `Bash(<command>)` and the file named; after: the project's `.claude/settings.local.json` has it under `permissions.allow` (the old file as `.tsumugi-backup`), `1` typed, a toast; next time Claude Code runs it without asking. No **Always allow…** for an edit or a command of several lines
 - [ ] **4.19** `[notify] webhook = "https://ntfy.sh/<a topic>"`, `webhook_after = 30`; a session waiting; minimize (or close) the window → Within a minute the phone (ntfy app on the topic) shows `<folder> is waiting for you` and what it said; once, not again for the same wait; nothing while the window is looked at; a muted session never
 - [ ] **4.20** `webhook_format = "slack"` with a Slack incoming webhook → The message in the channel, the title in bold
+- [ ] **4.21** Settings → Notifications → WHAT IT COSTS → Tell when the day costs → Past $5, with Claude Code's day already past $5 (or `[prices]` raised to get there) → `spend_day = 5` in the file; at once a toast `Today's Claude Code use passed $5: about $N at API prices`, and with the window not looked at the system's notification too; not again that day, again the next
+- [ ] **4.22** Tell when a 5-hour block costs → Past $5, the block past it → The same once for the block (`This 5-hour block passed $5`); again only in the next block
 
 ## 5. Search
 
@@ -213,7 +216,7 @@
 
 ## 16. Keys
 
-- [ ] **16.1** Settings → Keys → click New session, press `Ctrl+Shift+N` → `[keys] new_tab = "Ctrl+Shift+N"` in the file; `Ctrl+Shift+N` opens the dialog; `Ctrl+Shift+T` goes to the shell
+- [ ] **16.1** Settings → Keys → click New session, press `Ctrl+Shift+O` → `[keys] new_tab = "Ctrl+Shift+O"` in the file; `Ctrl+Shift+O` opens the dialog; `Ctrl+Shift+T` goes to the shell
 - [ ] **16.2** Its own → The key goes back; the search box and the dialog name the key in force
 - [ ] **16.3** `zoom = "none"` → `Ctrl+Shift+Z` reaches the shell
 - [ ] **16.4** Press only Ctrl while a key is being changed → Nothing is written until a real key comes
