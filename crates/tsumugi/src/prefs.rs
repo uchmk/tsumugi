@@ -1555,8 +1555,10 @@ fn theme(ui: &mut egui::Ui, l: Look, seen: &Seen, out: &mut Vec<Change>) {
             }
         }
     };
-    // The mode as one segmented control on the right (the design's Themes).
-    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+    // The mode as one segmented control on the right (the design's Themes),
+    // in a row of its own height: a bare right-to-left layout takes all the
+    // height left and centres itself in it.
+    ui.allocate_ui_with_layout(egui::vec2(ui.available_width(), 36.0), egui::Layout::right_to_left(egui::Align::Center), |ui| {
         egui::Frame::NONE.stroke(egui::Stroke::new(1.0, c.border_strong())).corner_radius(8.0).inner_margin(egui::Margin::same(3)).show(ui, |ui| {
             ui.horizontal(|ui| {
                 ui.spacing_mut().item_spacing.x = 2.0;
@@ -1785,6 +1787,21 @@ mod tests {
             let ev = |pressed| egui::Event::Key { key, physical_key: None, pressed, repeat: false, modifiers };
             self.frame(screen, vec![ev(true), ev(false)]).0
         }
+    }
+
+    /// The theme page's Mode sits just under the heading, the list of themes
+    /// right under it -- not centred in the page's height (seen on Windows,
+    /// 2026-10-07: a bare right-to-left layout took all the height left).
+    #[test]
+    fn the_theme_pages_mode_stays_under_its_heading() {
+        let run = Run::new();
+        let mut screen = at_page(Page::Theme);
+        let (_, texts) = run.frame(&mut screen, Vec::new());
+        let heading = find(&texts, "Colours, applied as you pick.").expect("the heading").bottom();
+        let mode = find(&texts, "Mode").expect("Mode").top();
+        let list = find(&texts, "THEME").expect("the list's heading").top();
+        assert!(mode - heading < 80.0, "Mode at {mode}, the heading ends at {heading}");
+        assert!(list - mode < 80.0, "the list at {list}, Mode at {mode}");
     }
 
     fn at_page(page: Page) -> Screen {
