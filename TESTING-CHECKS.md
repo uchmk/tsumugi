@@ -45,7 +45,7 @@
 - [ ] **3.3** Sort button → each of the five orders → The cards reorder accordingly; **Manual** keeps a dragged order across restarts
 - [ ] **3.4** Drag a card in Manual order → The grip shows on hover; the card lands where it is dropped
 - [ ] **3.5** The state and folder filters at the foot → Only matching cards; the count says `N of M`
-- [ ] **3.6** Right-click a card: rename, tag, mute, pin, restart, duplicate, new window, open in editor / filer, copy path, close → Each does what it says; close is red and last
+- [ ] **3.6** Right-click a card: rename, tag, mute, pin, restart, duplicate, new window, open in editor / filer, copy path, close → Each does what it says; close is red and last; Rename, Duplicate and Close show their keys on the right, in grey
 - [ ] **3.7** Sort → One line each; then `Ctrl+Shift+B` → One line per tab; then the 60px rail with first letters and state rings
 - [ ] **3.8** Rest the pointer on a card of another tab → Its last 12 lines in a box, the waiting pane's in a tab of several
 - [ ] **3.9** A tab in a repository with uncommitted changes → `+N −M` (or `N new`) on the card's second line; on hover, the files as `git status` lists them
@@ -53,6 +53,11 @@
 - [ ] **3.11** One session of each state (notify them) and a plain shell → Each card ringed in its state's colour with its own mark -- a clock (waiting, breathing), a turning arc (running), a dotted circle (probably waiting), a triangle (error), a tick (done, its ground sunken) -- and the shell grey with a small dot and no words; the foot's filters and the status bar count the shell as Shell, not Running
 - [ ] **3.12** Two waiting, then `[keys] next_waiting = "F8"` → Under a line at the foot: the key as a cap (`F8` once changed) and **Jump to waiting · 2** in grey; a click on either jumps
 - [ ] **3.13** Theme tsumugi Light (and each light theme) → The waiting and error words and counts read clearly on white (WCAG 4.5 or more)
+- [ ] **3.14** A tab on a branch with an open pull request (`gh` signed in) → A line on its card: `PR #N · checks passing` (green), `failing` (red), `running` (gold) or `no checks`
+- [ ] **3.15** The card of the tab with the keys, Claude Code talked to a few times → A line `N prompts · 12m · 3.4k tokens`; the other cards have none. A running card's third line ends with `· N tokens`
+- [ ] **3.16** `F2` → A field on the card with the name selected; Enter renames, Esc leaves it as it was
+- [ ] **3.17** `Ctrl+Shift+D` (macOS `Cmd+Option+D`) in a Claude Code pane, then in a shell → A new tab in the same folder: `claude` typed in the first, a shell in the second
+- [ ] **3.18** Look at the sidebar on first start → 288px wide
 
 ## 4. States, notifications and answering
 
@@ -91,13 +96,17 @@
 
 ## 7. The input box
 
-- [ ] **7.1** `Ctrl+I`, write two lines (Enter between), `Ctrl+Enter` → Both lines reach the session as one prompt, then Enter
+- [ ] **7.1** `Ctrl+I`, write two lines (Enter between), `Ctrl+Enter` → The box opens inside the focused pane's card, at its foot, the terminal shortened above it; both lines reach the session as one prompt, then Enter
 - [ ] **7.2** `↑` in the empty box → The last prompt sent; `↓` back
 - [ ] **7.3** Drop two files on the window → Chips in the box; sent, their paths follow the text, quoted when they have spaces
 - [ ] **7.4** Pick a tag as **To**, send → Every session wearing the tag gets it
 - [ ] **7.5** While a session runs, **When done** (or `Ctrl+Shift+Enter`) → `1 queued` on the card and in the box; when the session is done, the prompt goes and a toast says so
 - [ ] **7.6** Queue to a session showing a permission menu → It waits until the menu is answered and the session is done
 - [ ] **7.7** `Esc` → The box closes and the keys go back to the pane; the draft is kept for next time
+- [ ] **7.8** Take a screenshot (`Win+Shift+S`), `Ctrl+V` in the box → A chip `▣ paste-<date>-<time>.png · N KB`; the PNG is in the settings folder's `attachments`; sent, its path follows the text
+- [ ] **7.9** `Ctrl+V` with text on the clipboard → The text is pasted; no chip
+- [ ] **7.10** Drop a file of a few hundred KB → Its chip says its size, `▤ name · 214 KB`
+- [ ] **7.11** Split the tab, open the box, move the keys with `Alt+Arrows` → The box follows the pane with the keys; a pane narrower than 20 columns has none
 
 ## 8. Restoring after a restart
 
@@ -124,6 +133,7 @@
 - [ ] **10.3** Save a Windows Terminal scheme `.json` in `themes\` → It is in the list under its name; chosen, `ls` colours match Windows Terminal's with that scheme
 - [ ] **10.4** The same with an iTerm2 `.itermcolors` → As 10.3
 - [ ] **10.5** `theme.toml` with one colour → Only that colour changes in the theme in force
+- [ ] **10.6** Settings → Theme → Mode (Dark, Light, System) on the right of the heading; PREVIEW names the theme in force; a line with the font, the window and motion, a click goes to Appearance; each theme's swatches bordered and rounded
 
 ## 11. Fonts
 
@@ -152,7 +162,7 @@
 - [ ] **13.7** Settings → Appearance → tsumugi's own title bar off → The system's frame comes back at once; on again, gone
 - [ ] **13.8** Material → mica, restart → The desktop's colour through the band, sidebar and status bar; the panes stay solid
 - [ ] **13.9** Material → acrylic, restart → A blurred desktop instead; moving the window may lag (Windows' own limit)
-- [ ] **13.10** macOS: Material → vibrancy, restart → The sidebar's frosted material behind the band and sidebar; the traffic lights over the band, its name clear of them
+- [ ] **13.10** macOS: Material → vibrancy, restart → The sidebar's frosted material behind the band and sidebar; the sidebar runs up to the window's top and the traffic lights sit on it; the band starts to its right, and its empty top drags the window
 - [ ] **13.11** Linux on Wayland: tsumugi's own title bar off → The system's frame (Adwaita) with its buttons, moving and resizing the window; no title text on it
 
 ## 14. Motion
@@ -165,10 +175,10 @@
 
 ## 15. The status bar
 
-- [ ] **15.1** Look at it → Server uptime, counts per state, the folder and branch of the pane with the keys, its program and size, the clock
+- [ ] **15.1** Look at it → 28px tall: server uptime and counts per state, a divider, the folder (monospace) and branch of the pane with the keys, a divider, its program and size, the clock; the clock's tooltip gives the day and date, the program's says what each part is
 - [ ] **15.2** Commit without pushing in the focused repository → `↑1` in gold within half a minute
 - [ ] **15.3** A branch with an open pull request (`gh` signed in) → `PR #N` coloured by its checks; a click opens it in the browser
-- [ ] **15.4** A Claude Code session focused → `N tok · today M`; the tooltip breaks it down
+- [ ] **15.4** A Claude Code session focused → `N tokens · Today M`; the tooltip breaks it down
 
 ## 16. Keys
 

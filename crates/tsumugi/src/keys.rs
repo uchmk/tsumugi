@@ -35,6 +35,10 @@ pub enum Action {
     /// The input box below the panes (the design's 12, 1l). The Tab key
     /// stays the shell's; only the I key with Ctrl is taken.
     Input,
+    /// Name the tab with the keys (the tab menu's Rename, the design's F2).
+    Rename,
+    /// Another session in the same folder, as the tab menu's Duplicate.
+    Duplicate,
 }
 
 /// The action for a key press, if it is one of the window's: a key the
@@ -67,7 +71,7 @@ fn action_with(key: Key, m: Modifiers, mac: bool, bound: &[(Action, Option<Chord
 
 /// The actions the settings can give another key, by the name `[keys]`
 /// uses, with their own keys (elsewhere, then on macOS).
-pub const NAMED: [(Action, &str, &str, &str); 12] = [
+pub const NAMED: [(Action, &str, &str, &str); 14] = [
     (Action::NewTab, "new_tab", "Ctrl+Shift+T", "Cmd+T"),
     (Action::CloseTab, "close_tab", "Ctrl+Shift+W", "Cmd+W"),
     (Action::NextTab, "next_tab", "Ctrl+Tab", "Ctrl+Tab"),
@@ -80,6 +84,9 @@ pub const NAMED: [(Action, &str, &str, &str); 12] = [
     (Action::Rail, "rail", "Ctrl+Shift+B", "Cmd+Shift+B"),
     (Action::Settings, "settings", "Ctrl+,", "Cmd+,"),
     (Action::Input, "input", "Ctrl+I", "Cmd+I"),
+    // The design's menu keys. On a Mac Cmd+Shift+D splits down already.
+    (Action::Rename, "rename", "F2", "F2"),
+    (Action::Duplicate, "duplicate", "Ctrl+Shift+D", "Cmd+Option+D"),
 ];
 
 /// What a changeable action is called on the settings screen and in
@@ -98,6 +105,8 @@ pub fn title(a: Action) -> &'static str {
         Action::Rail => "Narrow rail",
         Action::Settings => "Settings",
         Action::Input => "Input box",
+        Action::Rename => "Rename the tab",
+        Action::Duplicate => "Duplicate in the same folder",
         Action::Tab(_) => "The Nth tab",
         Action::Move(_) => "Move between panes",
         Action::Resize(_) => "Resize the pane",
@@ -323,6 +332,8 @@ fn action_on(key: Key, m: Modifiers, mac: bool) -> Option<Action> {
             Key::B if cmd && m.shift => Some(Action::Rail),
             Key::Comma if cmd && !m.shift => Some(Action::Settings),
             Key::I if cmd && !m.shift => Some(Action::Input),
+            Key::D if cmd && m.alt && !m.shift => Some(Action::Duplicate),
+            Key::F2 if !m.any() => Some(Action::Rename),
             _ if cmd && !m.shift => digit().map(Action::Tab),
             _ => None,
         };
@@ -337,6 +348,8 @@ fn action_on(key: Key, m: Modifiers, mac: bool) -> Option<Action> {
         // Windows Terminal's and VS Code's.
         Key::Comma if m.ctrl && !m.shift && !m.alt => Some(Action::Settings),
         Key::I if m.ctrl && !m.shift && !m.alt => Some(Action::Input),
+        Key::D if ctrl_shift => Some(Action::Duplicate),
+        Key::F2 if !m.any() => Some(Action::Rename),
         // Alt+Shift++ / Alt+Shift+-, Windows Terminal's: `+` is Shift and
         // `=` on a US keyboard, Shift and `;` on a JIS one.
         Key::Equals | Key::Plus if m.alt && m.shift && !m.ctrl => Some(Action::SplitRight),

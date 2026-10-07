@@ -43,6 +43,27 @@ pub struct Usage {
     pub today: Tokens,
     /// By conversation id (the transcript's name), all of it.
     pub conversations: HashMap<String, Tokens>,
+    /// By conversation id: how many prompts were typed, and how long from
+    /// its first line to its last (the selected card's numbers).
+    pub talks: HashMap<String, Talk>,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Talk {
+    pub prompts: u32,
+    pub ms: u64,
+}
+
+/// A line that is a prompt someone typed: the user's, its content words,
+/// not a tool's result (a list) or a command's output.
+fn is_prompt(text: &str) -> bool {
+    text.contains("\"type\":\"user\"") && text.contains("\"role\":\"user\",\"content\":\"") && !text.contains("\"isMeta\":true") && !text.contains("<command-") && !text.contains("<local-command")
+}
+
+/// A line's time, in Unix milliseconds.
+fn stamp(text: &str) -> Option<i64> {
+    let when = string(text, "\"timestamp\":\"")?;
+    Some(DateTime::parse_from_rfc3339(&when).ok()?.timestamp_millis())
 }
 
 /// `12.3k`, `1.2M`: a count said short.
@@ -88,11 +109,20 @@ struct File {
     seen: HashSet<String>,
     total: Tokens,
     days: HashMap<NaiveDate, Tokens>,
+    prompts: u32,
+    /// The first and the last line's time.
+    span: Option<(i64, i64)>,
 }
 
 impl File {
     fn take(&mut self, text: &str) {
         for l in text.lines() {
+            if is_prompt(l) {
+                self.prompts += 1;
+            }
+            if let Some(t) = stamp(l) {
+                self.span = Some(self.span.map_or((t, t), |(a, b)| (a.min(t), b.max(t))));
+            }
             let Some((id, day, t)) = line(l) else { continue };
             if !id.is_empty() && !self.seen.insert(id) {
                 continue;
@@ -179,10 +209,12 @@ impl Watcher {
                     }
                     if let Some(id) = id {
                         u.conversations.insert(id.clone(), f.total);
+                        let ms = f.span.map_or(0, |(a, b)| (b - a).max(0) as u64);
+                        u.talks.insert(id.clone(), Talk { prompts: f.prompts, ms });
                     }
                 }
                 let changed = out.lock().map(|mut l| {
-                    let changed = l.today != u.today || l.conversations != u.conversations;
+                    let changed = l.today != u.today || l.conversations != u.conversations || l.talks != u.talks;
                     *l = u;
                     changed
                 });
@@ -217,6 +249,18 @@ mod tests {
         f.take(&format!("{ANSWER}\n{ANSWER}\nnot json\n"));
         assert_eq!(f.total.output, 492, "the same message twice is one answer");
         assert_eq!(f.days.values().map(|t| t.output).sum::<u64>(), 492);
+    }
+
+    #[test]
+    fn prompts_are_counted_and_the_talk_timed() {
+        let prompt = r#"{"type":"user","message":{"role":"user","content":"Split the pane"},"timestamp":"2026-10-06T03:00:00.000Z"}"#;
+        let tool = r#"{"type":"user","message":{"role":"user","content":[{"type":"tool_result"}]},"timestamp":"2026-10-06T03:10:00.000Z"}"#;
+        let command = r#"{"type":"user","message":{"role":"user","content":"<command-name>/clear</command-name>"},"timestamp":"2026-10-06T03:20:00.000Z"}"#;
+        let mut f = File::default();
+        f.take(&format!("{prompt}\n{tool}\n{command}\n{ANSWER}\n"));
+        assert_eq!(f.prompts, 1, "only what was typed");
+        let (a, b) = f.span.unwrap();
+        assert_eq!(b - a, 57 * 60 * 1000, "03:00 to the answer at 03:57");
     }
 
     #[test]

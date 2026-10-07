@@ -92,6 +92,8 @@ pub const INDEX: &[(Page, &str)] = &[
     (Page::Keys, "Use Cmd on macOS"),
     (Page::Keys, "New session"),
     (Page::Keys, "Close the session"),
+    (Page::Keys, "Rename the tab"),
+    (Page::Keys, "Duplicate in the same folder"),
     (Page::Keys, "Next tab"),
     (Page::Keys, "Previous tab"),
     (Page::Keys, "Go to the session waiting longest"),
@@ -803,7 +805,7 @@ fn keys(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut Vec<
         });
     };
     section(ui, l, "SESSIONS", |ui| {
-        for (k, a) in [Action::NewTab, Action::CloseTab, Action::NextTab, Action::PrevTab, Action::NextWaiting, Action::Search, Action::Input, Action::Rail, Action::Settings].into_iter().enumerate() {
+        for (k, a) in [Action::NewTab, Action::CloseTab, Action::Rename, Action::Duplicate, Action::NextTab, Action::PrevTab, Action::NextWaiting, Action::Search, Action::Input, Action::Rail, Action::Settings].into_iter().enumerate() {
             if k > 0 {
                 sep(ui, l);
             }
@@ -1524,19 +1526,34 @@ fn theme(ui: &mut egui::Ui, l: Look, seen: &Seen, out: &mut Vec<Change>) {
             }
         }
     };
-    ui.horizontal(|ui| {
+    // The mode as one segmented control on the right (the design's Themes).
+    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+        egui::Frame::NONE.stroke(egui::Stroke::new(1.0, c.border_strong())).corner_radius(8.0).inner_margin(egui::Margin::same(3)).show(ui, |ui| {
+            ui.horizontal(|ui| {
+                ui.spacing_mut().item_spacing.x = 2.0;
+                for (k, label) in [("dark", "Dark"), ("light", "Light"), ("system", "Follow OS")] {
+                    let on = mode == k;
+                    let b = egui::Button::new(RichText::new(label).size(12.5).color(if on { c.strong() } else { c.dim }))
+                        .fill(if on { c.chosen() } else { Color32::TRANSPARENT })
+                        .stroke(egui::Stroke::NONE)
+                        .corner_radius(6.0)
+                        .min_size(egui::vec2(84.0, 26.0));
+                    let r = ui.add(b);
+                    focus_ring(ui, &r);
+                    if r.clicked() && !on {
+                        // A mode keeps the theme picked for it.
+                        let value = match k {
+                            "system" => "system".to_owned(),
+                            "light" => s.light_theme.clone(),
+                            _ => s.dark_theme.clone(),
+                        };
+                        out.push(Change::Set(None, "theme", tsumugi_mux::settings::quote(&value)));
+                    }
+                }
+            });
+        });
+        ui.add_space(8.0);
         ui.label(RichText::new("Mode").size(12.0).color(c.dim));
-        for (k, label) in [("dark", "Dark"), ("light", "Light"), ("system", "Follow OS")] {
-            if ui.selectable_label(mode == k, label).clicked() && mode != k {
-                // A mode keeps the theme picked for it.
-                let value = match k {
-                    "system" => "system".to_owned(),
-                    "light" => s.light_theme.clone(),
-                    _ => s.dark_theme.clone(),
-                };
-                out.push(Change::Set(None, "theme", tsumugi_mux::settings::quote(&value)));
-            }
-        }
     });
     ui.add_space(10.0);
     let picked = |t: &Theme| {
@@ -1565,10 +1582,18 @@ fn theme(ui: &mut egui::Ui, l: Look, seen: &Seen, out: &mut Vec<Change>) {
                         p.rect_filled(r, 7.0, c.hover());
                     }
                     // Its background and three of its states, side by side.
+                    // A small chip of four: its ground and three of its states.
+                    let chip = egui::Rect::from_min_size(egui::pos2(r.left() + 10.0, r.center().y - 9.0), egui::vec2(40.0, 18.0));
                     for (k, sw) in [t.colors.bg, t.colors.wait, t.colors.run, t.colors.err].iter().enumerate() {
-                        let x = r.left() + 10.0 + k as f32 * 10.0;
-                        p.rect_filled(egui::Rect::from_min_size(egui::pos2(x, r.center().y - 9.0), egui::vec2(10.0, 18.0)), 0.0, *sw);
+                        let x = chip.left() + k as f32 * 10.0;
+                        let corner = match k {
+                            0 => egui::CornerRadius { nw: 4, sw: 4, ne: 0, se: 0 },
+                            3 => egui::CornerRadius { nw: 0, sw: 0, ne: 4, se: 4 },
+                            _ => egui::CornerRadius::ZERO,
+                        };
+                        p.rect_filled(egui::Rect::from_min_size(egui::pos2(x, chip.top()), egui::vec2(10.0, 18.0)), corner, *sw);
                     }
+                    p.rect_stroke(chip, 4.0, egui::Stroke::new(1.0, c.border_strong()), egui::StrokeKind::Outside);
                     p.text(egui::pos2(r.left() + 62.0, r.center().y), egui::Align2::LEFT_CENTER, &t.name, FontId::proportional(13.0), if on { c.strong() } else { c.fg });
                     let kind = if t.colors.light { "light" } else { "dark" };
                     p.text(egui::pos2(r.right() - 10.0, r.center().y), egui::Align2::RIGHT_CENTER, kind, FontId::proportional(11.0), c.faint());
@@ -1586,8 +1611,24 @@ fn theme(ui: &mut egui::Ui, l: Look, seen: &Seen, out: &mut Vec<Change>) {
         });
         ui.add_space(20.0);
         ui.vertical(|ui| {
-            ui.label(RichText::new("PREVIEW").size(11.0).strong().color(c.dim));
+            let name = seen.themes.iter().find(|t| t.colors == seen.current).map_or("", |t| t.name.as_str());
+            ui.label(RichText::new(format!("PREVIEW · {name}")).size(11.0).strong().color(c.dim));
             preview(ui, pal);
+            // What else the window looks like, a click away on its page.
+            let f = &s.font;
+            let family = if f.family.is_empty() { "Automatic" } else { f.family.as_str() };
+            let material = match s.window.material.as_str() {
+                "none" => "None",
+                "mica" => "Mica",
+                "acrylic" => "Acrylic",
+                other => other,
+            };
+            let motion = if s.appearance.animations { "On" } else { "Off" };
+            ui.add_space(6.0);
+            let line = format!("Font {family} {} · Window {material} · Motion {motion}", f.size);
+            if ui.add(egui::Label::new(RichText::new(line).size(12.0).color(c.dim)).sense(egui::Sense::click())).on_hover_text("On the Appearance page").clicked() {
+                out.push(Change::GoTo(Page::Appearance));
+            }
         });
     });
 }
@@ -1602,17 +1643,22 @@ fn preview(ui: &mut egui::Ui, pal: &Palette) {
     p.rect_stroke(rect, 10.0, egui::Stroke::new(1.0, c.border), egui::StrokeKind::Inside);
     let side = egui::Rect::from_min_size(rect.min, egui::vec2(170.0, rect.height()));
     p.rect_filled(side.shrink(1.0), 9.0, c.side);
-    let card = |y: f32, ring: Color32, fill: Color32, title: &str, words: &str, color: Color32| {
+    // The sidebar's cards as the window draws them: the state's ring, the
+    // name, the folder, the words; the running one's line along its top.
+    let card = |y: f32, ring: Color32, fill: Color32, title: &str, folder: &str, words: &str, color: Color32| {
         let r = egui::Rect::from_min_size(egui::pos2(side.left() + 10.0, side.top() + y), egui::vec2(150.0, 52.0));
         p.rect_filled(r, 8.0, fill);
         p.rect_stroke(r, 8.0, egui::Stroke::new(1.0, ring), egui::StrokeKind::Inside);
-        p.text(r.left_top() + egui::vec2(10.0, 9.0), egui::Align2::LEFT_TOP, title, FontId::proportional(12.0), c.strong());
-        p.text(r.left_top() + egui::vec2(10.0, 29.0), egui::Align2::LEFT_TOP, words, FontId::proportional(11.0), color);
+        p.text(r.left_top() + egui::vec2(10.0, 6.0), egui::Align2::LEFT_TOP, title, FontId::proportional(12.0), c.strong());
+        p.text(r.left_top() + egui::vec2(10.0, 22.0), egui::Align2::LEFT_TOP, folder, FontId::monospace(10.0), c.dim);
+        p.text(r.left_top() + egui::vec2(10.0, 36.0), egui::Align2::LEFT_TOP, words, FontId::proportional(10.5), crate::chrome::ink(color));
+        r
     };
-    card(12.0, c.wait, c.wait_bg(), "Approve the edit", "Waiting for you · 2m", c.wait);
-    card(72.0, c.run.gamma_multiply(0.6), c.panel, "Split the pane", "Running · 4m", c.dim);
-    card(132.0, c.err.gamma_multiply(0.7), c.panel, "Windows CI test", "Error · Exited 101", c.err);
-    card(192.0, c.done.gamma_multiply(0.5), c.panel, "Write the scope", "Done · 20m", c.dim);
+    card(12.0, c.wait, c.wait_bg(), "Approve the edit", "~/dev/filer", "Waiting for you · 2m", c.wait);
+    let running = card(72.0, c.run.gamma_multiply(0.6), c.panel, "Split the pane", "~/dev/tsumugi", "Running · 4m", c.dim);
+    p.line_segment([running.left_top() + egui::vec2(30.0, 1.0), running.left_top() + egui::vec2(80.0, 1.0)], egui::Stroke::new(2.0, c.run));
+    card(132.0, c.err.gamma_multiply(0.7), c.panel, "Windows CI test", "~/dev/filer", "Error · Exited 101", c.err);
+    card(192.0, c.done.gamma_multiply(0.5), c.panel, "Write the scope", "~/notes", "Done · 20m", c.dim);
     let pane = egui::Rect::from_min_max(egui::pos2(side.right() + 10.0, rect.top() + 10.0), rect.max - egui::vec2(10.0, 10.0));
     p.rect_filled(pane, 8.0, pal.bg);
     p.rect_stroke(pane, 8.0, egui::Stroke::new(1.0, c.wait), egui::StrokeKind::Inside);

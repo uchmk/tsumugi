@@ -22,6 +22,8 @@ Windows and Linux keys first; the macOS key is after `·`.
 - [ ] `Ctrl+Shift+B` · `Cmd+Shift+B` — Narrow rail · `rail`
 - [ ] `Ctrl+,` · `Cmd+,` — Settings · `settings`
 - [ ] `Ctrl+I` · `Cmd+I` — Input box · `input`
+- [ ] `F2` · `F2` — Rename the tab · `rename`
+- [ ] `Ctrl+Shift+D` · `Cmd+Option+D` — Duplicate in the same folder · `duplicate`
 
 ## The window, fixed
 

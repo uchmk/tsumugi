@@ -46,6 +46,7 @@ mod facts;
 mod update;
 mod export;
 mod icon;
+mod clip;
 
 use std::time::Duration;
 
@@ -429,6 +430,8 @@ fn hooks_card(ui: &mut egui::Ui, width: f32, full: bool) -> Option<u8> {
 /// What a settings job says when it is done: words for the toast, or why
 /// it failed.
 type JobDone = Result<String, String>;
+/// Files to attach to a session's draft, with their sizes (a thread's work).
+type Attach = (SessionId, Vec<(std::path::PathBuf, u64)>);
 
 /// How a failure to connect to a server of another version starts.
 const OTHER_VERSION: &str = "A tsumugi server of another version is running: ";
@@ -580,7 +583,7 @@ fn new_session(client: &Client, cwd: std::path::PathBuf, place: Place) -> Result
 
 /// The sidebar's width when the window first opens, and how far a drag may
 /// take it (docs/v1-scope.md 1f).
-const SIDEBAR: f32 = 240.0;
+const SIDEBAR: f32 = 288.0;
 /// Dragged narrower than `RAIL_AT`, the sidebar becomes the rail, and the
 /// rail dragged wider than it becomes the sidebar again (the design's 1i A).
 const SIDEBAR_RANGE: std::ops::RangeInclusive<f32> = 100.0..=480.0;
@@ -676,6 +679,14 @@ struct App {
     /// The window was asked to close while sessions were running: how many,
     /// until the question is answered.
     closing: Option<usize>,
+    /// What the input box sent this frame, from inside the pane.
+    input_sent: Option<inputbox::Send>,
+    /// The input box's height last frame, to keep its room in the pane.
+    input_h: f32,
+    /// Files for the input box with their sizes, read on threads.
+    attach: (std::sync::mpsc::Sender<Attach>, std::sync::mpsc::Receiver<Attach>),
+    /// The tab being named by F2, in a field on its card, and the words.
+    renaming_card: Option<(WorkspaceId, String)>,
     /// The hooks were offered on the first-run screen.
     hooks_seen_first: bool,
     /// Where the sidebar (or the rail) is this frame: a pane dropped there
@@ -889,6 +900,10 @@ impl App {
             worktree_lived: std::collections::HashSet::new(),
             worktree_ask: None,
             closing: None,
+            input_sent: None,
+            input_h: 170.0,
+            attach: std::sync::mpsc::channel(),
+            renaming_card: None,
             hooks_seen_first: false,
             side_rect: None,
             first_shown: false,
@@ -1048,6 +1063,16 @@ impl App {
             keys::Action::Search => self.search = Some(palette::View::new()),
             keys::Action::Settings => self.open_settings(),
             keys::Action::Input => self.input.toggle(),
+            // The tab's name in a field on its card (the menu's Rename).
+            keys::Action::Rename => self.renaming_card = Some((w.id, w.name.clone())),
+            keys::Action::Duplicate => {
+                if let Some(focus) = sessions.iter().find(|i| i.id == w.focus) {
+                    let typed = focus.claude.then(|| newsession::Start::Claude.typed(&self.settings_now.sessions.claude)).flatten();
+                    if let Ok(pane) = client.spawn_typing(focus.cwd.clone(), None, Size::new(80, 24), (8, 16), Place::NewWorkspace, typed) {
+                        self.pending = Some(pane.id());
+                    }
+                }
+            }
             keys::Action::Rail => {
                 self.view.rail = !self.view.rail;
                 self.view.save();
@@ -1395,6 +1420,61 @@ impl App {
         }
     }
 
+    /// The sidebar, or the rail, down the left; the tab picked there becomes
+    /// the one shown. `top`: room kept above it, which moves the window as
+    /// the band does.
+    fn side_panel(&mut self, ui: &mut egui::Ui, workspaces: &[Workspace], sessions: &[Info], top: f32) {
+        // Room at the top for macOS's traffic lights, when they sit on it.
+        let side = egui::Frame::NONE.fill(self.chrome_fill(self.palette.on_cursor)).inner_margin(egui::Margin { top: top as i8, ..Default::default() });
+        // Each switch between the two starts the panel at its own width: a
+        // fresh id, since egui keeps a panel's width by its id.
+        self.side_rect = None;
+        let picked = if self.prefs.is_some() {
+            None
+        } else if self.view.rail {
+            let shown = egui::Panel::left(egui::Id::new(("rail", self.side_gen)))
+                .resizable(true)
+                .default_size(RAIL)
+                .size_range(RAIL..=RAIL_AT + 40.0)
+                .frame(side)
+                .show(ui, |ui| self.rail(ui, workspaces, sessions));
+            if shown.response.rect.width() > RAIL_AT {
+                self.view.rail = false;
+                self.side_gen += 1;
+                self.view.save();
+            }
+            self.side_rect = Some(shown.response.rect);
+            shown.inner
+        } else {
+            let shown = egui::Panel::left(egui::Id::new(("sessions", self.side_gen)))
+                .resizable(true)
+                .default_size(SIDEBAR)
+                .size_range(SIDEBAR_RANGE)
+                .frame(side)
+                .show(ui, |ui| self.sidebar(ui, workspaces, sessions));
+            if shown.response.rect.width() < RAIL_AT {
+                self.view.rail = true;
+                self.side_gen += 1;
+                self.view.save();
+            }
+            self.side_rect = Some(shown.response.rect);
+            shown.inner
+        };
+        if let Some(id) = picked {
+            self.active = Some(id);
+        }
+        if let (true, Some(side)) = (top > 0.0, self.side_rect) {
+            let strip = egui::Rect::from_min_size(side.min, egui::vec2(side.width(), top));
+            let drag = ui.interact(strip, egui::Id::new("lights-strip"), egui::Sense::CLICK | egui::Sense::DRAG);
+            if drag.drag_started() {
+                ui.ctx().send_viewport_cmd(egui::ViewportCommand::StartDrag);
+            } else if drag.double_clicked() {
+                let max = ui.ctx().input(|i| i.viewport().maximized.unwrap_or(false));
+                ui.ctx().send_viewport_cmd(egui::ViewportCommand::Maximized(!max));
+            }
+        }
+    }
+
     /// The header (SESSIONS and the bell), one row per tab, and the jump to
     /// what waits at the bottom. A row is the design's sidebar: the state of
     /// its most urgent pane and the title of the pane with the keys; its
@@ -1405,6 +1485,7 @@ impl App {
         let mut ops = Vec::new();
         let now = chrome::now_ms();
         let muted_tags = self.client.as_ref().map(Client::muted_tags).unwrap_or_default();
+        let used = self.usage.get();
         let tabs: Vec<sort::Tab> = workspaces.iter().map(|w| sort::Tab::new(w, sessions)).collect();
         // Every tag in use, in the order the tabs show them.
         let mut all_tags: Vec<String> = Vec::new();
@@ -1671,7 +1752,19 @@ impl App {
                         tags.push(t);
                     }
                 }
-                let height = if !as_card { 28.0 } else if tags.is_empty() { 62.0 } else { 82.0 };
+                // More lines on a card: its pull request, when one is known
+                // for its branch, and on the selected card its conversation's
+                // numbers (the design's Sidebar, 4 and 5).
+                let pr = as_card.then(|| self.git.known(&focus.cwd, &focus.branch).and_then(|g| g.pr)).flatten();
+                let numbers = (as_card && Some(w.id) == self.active).then(|| {
+                    let c = &urgent.conversation;
+                    let talk = used.talks.get(c)?;
+                    let tokens = used.conversations.get(c).map_or(0, usage::Tokens::total);
+                    let prompts = if talk.prompts == 1 { "1 prompt".to_owned() } else { format!("{} prompts", talk.prompts) };
+                    Some(format!("{prompts} · {} · {} tokens", chrome::elapsed(talk.ms), usage::short(tokens)))
+                }).flatten();
+                let base = if !as_card { 28.0 } else if tags.is_empty() { 62.0 } else { 82.0 };
+                let height = base + 18.0 * (usize::from(pr.is_some()) + usize::from(numbers.is_some())) as f32;
                 let (rect, resp) = ui.allocate_exact_size(egui::vec2(ui.available_width(), height), sense);
                 rows.push((w.id, rect));
                 let painter = ui.painter_at(rect);
@@ -1798,6 +1891,12 @@ impl App {
                     State::Waiting | State::Error | State::Done if !urgent.note.is_empty() && !words.is_empty() => format!("{words} · {}", urgent.note),
                     _ => words,
                 };
+                // A working agent's tokens so far (the design's Main).
+                if urgent.state == State::Running {
+                    if let Some(t) = used.conversations.get(&urgent.conversation).filter(|t| t.total() > 0) {
+                        third = format!("{third} · {} tokens", usage::short(t.total()));
+                    }
+                }
                 let queued = self.queue.iter().filter(|q| infos.iter().any(|i| i.id == q.id)).count();
                 if queued > 0 {
                     third = format!("{queued} queued · {third}");
@@ -1853,6 +1952,30 @@ impl App {
                         break;
                     }
                     x = chrome::tag_chip(&painter, at, t, muted_tags.contains(*t)).right() + 5.0;
+                }
+                let mut y = base - 22.0;
+                if let Some(pr) = &pr {
+                    let (words, color) = chrome::pr_line(pr);
+                    line(words, y, egui::FontId::proportional(11.5), color, width);
+                    y += 18.0;
+                }
+                if let Some(n) = numbers {
+                    line(n, y, egui::FontId::monospace(11.0), pal.fg_dim, width);
+                }
+                // F2: the name in a field over it, Enter to keep, Esc to leave.
+                if let Some((id, text)) = &mut self.renaming_card {
+                    if *id == w.id {
+                        let at = egui::Rect::from_min_size(egui::pos2(left - 4.0, rect.top() + 3.0), egui::vec2(width - 10.0, 22.0));
+                        let field = ui.put(at, egui::TextEdit::singleline(text).id(egui::Id::new(("rename-card", w.id))).hint_text("The tab's name").font(egui::FontId::proportional(13.5)));
+                        field.request_focus();
+                        let (enter, esc) = ui.input(|i| (i.key_pressed(egui::Key::Enter), i.key_pressed(egui::Key::Escape)));
+                        if enter {
+                            ops.push(SideOp::Rename(w.id, text.clone()));
+                            self.renaming_card = None;
+                        } else if esc || field.lost_focus() {
+                            self.renaming_card = None;
+                        }
+                    }
                 }
                 } else {
                     // One line (the design's 1i C): the dot, the name, the
@@ -1924,7 +2047,9 @@ impl App {
                 // fields must not close it.
                 let menu = egui::Popup::context_menu(&resp).close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside);
                 menu.show(|ui| {
-                    ui.set_min_width(240.0);
+                    // The design's: 300 wide, rows of about 32.
+                    ui.set_min_width(300.0);
+                    ui.spacing_mut().button_padding = egui::vec2(10.0, 8.0);
                     // In the settings' order (`[menu] order`), a line between
                     // groups; one's own items before "Close the session".
                     let mut last_group = None;
@@ -1960,7 +2085,7 @@ impl App {
                                         }
                                     }
                                     _ => {
-                                        if ui.button("Rename…").clicked() {
+                                        if ui.add(egui::Button::new("Rename…").shortcut_text(keys::label(keys::Action::Rename))).clicked() {
                                             self.renaming = Some((w.id, w.name.clone()));
                                         }
                                     }
@@ -2007,7 +2132,7 @@ impl App {
                                 }
                             }
                             "duplicate" => {
-                                if ui.button("Duplicate in the same folder").clicked() {
+                                if ui.add(egui::Button::new("Duplicate in the same folder").shortcut_text(keys::label(keys::Action::Duplicate))).clicked() {
                                     ops.push(SideOp::Duplicate(focus.cwd.clone(), focus.claude));
                                     ui.close();
                                 }
@@ -2041,7 +2166,7 @@ impl App {
                                 let busy = infos.iter().any(|i| matches!(i.state, State::Running | State::MaybeWaiting));
                                 let armed = self.close_armed == Some(w.id);
                                 let label = if armed { "Click again to close: it is running" } else { "Close the session" };
-                                if ui.button(egui::RichText::new(label).color(crate::theme::colors().err)).clicked() {
+                                if ui.add(egui::Button::new(egui::RichText::new(label).color(crate::theme::colors().err)).shortcut_text(keys::label(keys::Action::CloseTab))).clicked() {
                                     if busy && !armed {
                                         self.close_armed = Some(w.id);
                                     } else {
@@ -2882,6 +3007,15 @@ impl App {
                     ctx.set_cursor_icon(egui::CursorIcon::Grab);
                 }
             }
+            // The input box inside the pane with the keys, 12 from its edges
+            // (the design's InputBox); the terminal gets the room above it.
+            let boxed = !narrow && focused && self.input.open && self.prefs.is_none();
+            let box_rect = boxed.then(|| {
+                let h = self.input_h.clamp(120.0, (rect.height() - 4.0 * row_h).max(120.0));
+                let r = egui::Rect::from_min_max(egui::pos2(rect.left() + 12.0, rect.bottom() - 12.0 - h), egui::pos2(rect.right() - 12.0, rect.bottom() - 12.0));
+                rect.max.y = r.top() - 8.0;
+                r
+            });
             if !narrow {
                 let (Some(pane), view) = (self.panes.get_mut(id), self.views.entry(*id).or_default()) else { continue };
                 let opts = ViewOptions { focused, wheel: true };
@@ -2899,6 +3033,29 @@ impl App {
                 }
                 if shown.paste {
                     ctx.send_viewport_cmd(egui::ViewportCommand::RequestPaste);
+                }
+            }
+            if let Some(at) = box_rect {
+                let info = sessions.iter().find(|i| i.id == *id);
+                let name = info.map(|i| {
+                    let n = sort::display_title(&i.title, &i.command);
+                    let project = i.project.file_name().map(|f| f.to_string_lossy().into_owned()).unwrap_or_default();
+                    if project.is_empty() { n } else { format!("{n} · {project}") }
+                });
+                let mut tags: Vec<String> = Vec::new();
+                for t in sessions.iter().flat_map(|i| &i.tags) {
+                    if !tags.contains(t) {
+                        tags.push(t.clone());
+                    }
+                }
+                let colors = theme::colors();
+                let queued = self.queue.iter().filter(|q| q.id == *id).count();
+                let shown = ui.scope_builder(egui::UiBuilder::new().max_rect(at).layout(egui::Layout::bottom_up(egui::Align::Min)), |ui| {
+                    ui.with_layout(egui::Layout::top_down(egui::Align::Min), |ui| self.input.show(ui, &colors, *id, name.as_deref().unwrap_or("this pane"), &tags, queued)).inner
+                });
+                self.input_h = shown.response.rect.height().max(1.0);
+                if let Some(send) = shown.inner {
+                    self.input_sent = Some(send);
                 }
             }
             // Coming in: the pane's colour over it, thinning to nothing.
@@ -3541,7 +3698,7 @@ impl App {
             None
         } else {
             egui::Panel::bottom("status")
-            .exact_size(24.0)
+            .exact_size(28.0)
             .frame(egui::Frame::NONE.fill(self.chrome_fill(crate::theme::colors().side)))
             .show(ui, |ui| {
                 let clock = &self.settings_now.clock;
@@ -3565,12 +3722,20 @@ impl App {
         // The clock and the elapsed times move on without any output.
         ctx.request_repaint_after(std::time::Duration::from_secs(1));
 
+        // On macOS with tsumugi's own title bar, the sidebar runs up to the
+        // window's top and the traffic lights sit on it (the design's Mac
+        // window); in full screen they are gone, and so is the room.
+        let lights_on_side = cfg!(target_os = "macos") && self.own_frame && self.prefs.is_none();
+        if lights_on_side {
+            let full = ctx.input(|i| i.viewport().fullscreen.unwrap_or(false));
+            self.side_panel(ui, &workspaces, &sessions, if full { 0.0 } else { 30.0 });
+        }
         // The band along the top (the design's 1c): the name, the search
         // box, and the tags of the session with the keys.
         let focus_tags = focus_info.as_ref().map(|i| i.tags.clone()).unwrap_or_default();
         let muted_tags_now = client.muted_tags();
         let maximized = ctx.input(|i| i.viewport().maximized.unwrap_or(false));
-        let band_frame = chrome::BandFrame { own: self.own_frame && !self.system_frame, left: if self.own_frame && cfg!(target_os = "macos") { 76.0 } else { 0.0 }, maximized, settings: self.prefs.is_some() };
+        let band_frame = chrome::BandFrame { own: self.own_frame && !self.system_frame, left: if self.own_frame && cfg!(target_os = "macos") && !lights_on_side { 76.0 } else { 0.0 }, maximized, settings: self.prefs.is_some() };
         let band = egui::Panel::top("band")
             .exact_size(40.0)
             .frame(egui::Frame::NONE.fill(self.chrome_fill(crate::theme::colors().side)))
@@ -3591,43 +3756,8 @@ impl App {
         }
 
 
-        let side = egui::Frame::NONE.fill(self.chrome_fill(self.palette.on_cursor));
-        // Each switch between the two starts the panel at its own width: a
-        // fresh id, since egui keeps a panel's width by its id.
-        self.side_rect = None;
-        let picked = if self.prefs.is_some() {
-            None
-        } else if self.view.rail {
-            let shown = egui::Panel::left(egui::Id::new(("rail", self.side_gen)))
-                .resizable(true)
-                .default_size(RAIL)
-                .size_range(RAIL..=RAIL_AT + 40.0)
-                .frame(side)
-                .show(ui, |ui| self.rail(ui, &workspaces, &sessions));
-            if shown.response.rect.width() > RAIL_AT {
-                self.view.rail = false;
-                self.side_gen += 1;
-                self.view.save();
-            }
-            self.side_rect = Some(shown.response.rect);
-            shown.inner
-        } else {
-            let shown = egui::Panel::left(egui::Id::new(("sessions", self.side_gen)))
-                .resizable(true)
-                .default_size(SIDEBAR)
-                .size_range(SIDEBAR_RANGE)
-                .frame(side)
-                .show(ui, |ui| self.sidebar(ui, &workspaces, &sessions));
-            if shown.response.rect.width() < RAIL_AT {
-                self.view.rail = true;
-                self.side_gen += 1;
-                self.view.save();
-            }
-            self.side_rect = Some(shown.response.rect);
-            shown.inner
-        };
-        if let Some(id) = picked {
-            self.active = Some(id);
+        if !lights_on_side {
+            self.side_panel(ui, &workspaces, &sessions, 0.0);
         }
 
         if let Some(at) = self.bell_open {
@@ -3704,45 +3834,13 @@ impl App {
         // Files dropped on the window go with the next prompt.
         let dropped: Vec<std::path::PathBuf> = ctx.input(|i| i.raw.dropped_files.iter().map(|f| f.path().to_path_buf()).filter(|p| !p.as_os_str().is_empty()).collect());
         if let (false, Some(w)) = (dropped.is_empty(), &current) {
-            self.input.drop_files(w.focus, dropped);
-        }
-        // The input box, below the panes (the design's 12).
-        if let (true, Some(w), None) = (self.input.open, &current, &self.prefs) {
-            let info = sessions.iter().find(|i| i.id == w.focus);
-            let name = info.map(|i| {
-                let n = sort::display_title(&i.title, &i.command);
-                let project = i.project.file_name().map(|f| f.to_string_lossy().into_owned()).unwrap_or_default();
-                if project.is_empty() { n } else { format!("{n} · {project}") }
+            self.input.drop_files(w.focus, dropped.clone());
+            // Their sizes for the chips, read on a thread.
+            let (tx, ctx, to) = (self.attach.0.clone(), ctx.clone(), w.focus);
+            let _ = std::thread::Builder::new().name("file-sizes".into()).spawn(move || {
+                let _ = tx.send((to, clip::sizes(dropped)));
+                ctx.request_repaint();
             });
-            let mut tags: Vec<String> = Vec::new();
-            for t in sessions.iter().flat_map(|i| &i.tags) {
-                if !tags.contains(t) {
-                    tags.push(t.clone());
-                }
-            }
-            let colors = theme::colors();
-            let focus = w.focus;
-            let sent = egui::Panel::bottom("input")
-                .frame(egui::Frame::NONE.fill(self.palette.on_cursor).inner_margin(egui::Margin::symmetric(10, 8)))
-                .show(ui, |ui| {
-                    let queued = self.queue.iter().filter(|q| q.id == focus).count();
-                    self.input.show(ui, &colors, focus, name.as_deref().unwrap_or("this pane"), &tags, queued)
-                })
-                .inner;
-            if let Some(send) = sent {
-                let targets: Vec<SessionId> = match &send.to {
-                    inputbox::To::Session(id) => vec![*id],
-                    inputbox::To::Tags(want) => sessions.iter().filter(|i| i.tags.iter().any(|t| want.contains(t))).map(|i| i.id).collect(),
-                };
-                for id in targets {
-                    if send.later {
-                        self.queue.push(Queued { id, text: send.text.clone() });
-                    } else {
-                        client.send_prompt(id, send.text.clone());
-                    }
-                }
-                save_history(self.input.history.clone());
-            }
         }
         egui::CentralPanel::default().frame(egui::Frame::NONE.fill(self.palette.on_cursor)).show(ui, |ui| {
             if self.failed.is_some() {
@@ -3779,6 +3877,45 @@ impl App {
                 self.first_run(ui, &client);
             }
         });
+        // What the input box in the pane sent (the design's 12).
+        if let Some(send) = self.input_sent.take() {
+            let targets: Vec<SessionId> = match &send.to {
+                inputbox::To::Session(id) => vec![*id],
+                inputbox::To::Tags(want) => sessions.iter().filter(|i| i.tags.iter().any(|t| want.contains(t))).map(|i| i.id).collect(),
+            };
+            for id in targets {
+                if send.later {
+                    self.queue.push(Queued { id, text: send.text.clone() });
+                } else {
+                    client.send_prompt(id, send.text.clone());
+                }
+            }
+            save_history(self.input.history.clone());
+        }
+        // A screenshot pasted into it: read on a thread, a chip when it is
+        // a file.
+        if self.input.take_image_request() {
+            if let (Some(w), Some(dir)) = (&current, clip::folder()) {
+                let (tx, ctx, to) = (self.attach.0.clone(), ctx.clone(), w.focus);
+                let jobs = self.jobs.0.clone();
+                let _ = std::thread::Builder::new().name("paste-image".into()).spawn(move || {
+                    match clip::paste_image(&dir) {
+                        Ok(Some(file)) => {
+                            let _ = tx.send((to, vec![file]));
+                        }
+                        Ok(None) => {}
+                        Err(e) => {
+                            let _ = jobs.send(Err(e));
+                        }
+                    }
+                    ctx.request_repaint();
+                });
+            }
+        }
+        let arrived: Vec<Attach> = self.attach.1.try_iter().collect();
+        for (to, files) in arrived {
+            self.input.sized_files(to, files);
+        }
     }
 }
 

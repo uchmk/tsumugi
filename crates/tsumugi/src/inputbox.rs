@@ -21,6 +21,8 @@ const HISTORY: usize = 100;
 pub struct Draft {
     pub text: String,
     pub files: Vec<PathBuf>,
+    /// The files' sizes in bytes, when known (read on a thread).
+    pub sizes: HashMap<PathBuf, u64>,
 }
 
 #[derive(Default)]
@@ -39,6 +41,13 @@ pub struct InputBox {
     focus: bool,
     /// Send when the session is next done rather than now.
     pub later: bool,
+    /// Ctrl+V came with no text: the clipboard may hold an image.
+    image_asked: bool,
+    /// Text was pasted in the frame before: its key's release is not an
+    /// image's.
+    pasted_text_lately: bool,
+    /// The V key's press was seen: typed, not pasted.
+    v_down: bool,
 }
 
 /// Where a prompt goes.
@@ -79,6 +88,20 @@ impl InputBox {
         }
         self.open = true;
         self.focus = true;
+    }
+
+    /// Files with their sizes, read on a thread: on the draft of `session`.
+    pub fn sized_files(&mut self, session: SessionId, files: Vec<(PathBuf, u64)>) {
+        let paths: Vec<PathBuf> = files.iter().map(|(p, _)| p.clone()).collect();
+        self.drop_files(session, paths);
+        let d = self.drafts.entry(session).or_default();
+        d.sizes.extend(files);
+    }
+
+    /// Whether Ctrl+V was pressed in the box with no text to paste: the
+    /// window then reads the clipboard's image (egui gives text only).
+    pub fn take_image_request(&mut self) -> bool {
+        std::mem::take(&mut self.image_asked)
     }
 
     /// The prompt as sent: the text, then the files' paths, each quoted when
@@ -164,6 +187,26 @@ impl InputBox {
                 i.consume_key(cmd, egui::Key::I) || i.consume_key(egui::Modifiers::NONE, egui::Key::Escape),
             )
         });
+        // Ctrl+V: egui-winit takes the V key's press as a paste and passes
+        // on only its release, with no text when the clipboard holds an
+        // image -- and Ctrl may be let go first. So a V let go whose press
+        // never came, with no text pasted, asks the window for the image.
+        if focused {
+            let (pasted, v_down, v_up) = ui.input(|i| {
+                let key = |down: bool| i.events.iter().any(|e| matches!(e, egui::Event::Key { key: egui::Key::V, pressed, .. } if *pressed == down));
+                (i.events.iter().any(|e| matches!(e, egui::Event::Paste(_))), key(true), key(false))
+            });
+            if v_down {
+                self.v_down = true;
+            }
+            if v_up && !self.v_down && !pasted && !self.pasted_text_lately {
+                self.image_asked = true;
+            }
+            if v_up {
+                self.v_down = false;
+            }
+            self.pasted_text_lately = pasted;
+        }
         if up {
             self.older(&mut draft);
         }
@@ -181,7 +224,7 @@ impl InputBox {
             .stroke(egui::Stroke::new(1.0, if focused { c.run } else { c.border_strong() }))
             .corner_radius(10.0)
             .inner_margin(egui::Margin::symmetric(12, 8));
-        frame.show(ui, |ui| {
+        let shown = frame.show(ui, |ui| {
             ui.set_width(ui.available_width());
             // Where it goes: the pane, or tags instead.
             ui.horizontal(|ui| {
@@ -213,12 +256,13 @@ impl InputBox {
                     if queued > 0 {
                         ui.label(RichText::new(format!("{queued} queued")).size(11.5).color(c.wait)).on_hover_text("Prompts that go when the session is next done");
                     }
-                    if !draft.text.is_empty() {
-                        ui.label(RichText::new("Draft kept").size(11.5).color(c.faint()));
-                    }
+                    // The design's: every session keeps its draft.
+                    ui.label(RichText::new("Draft saved").size(11.5).color(c.faint())).on_hover_text("Each session keeps its own draft, open or closed");
                 });
             });
-            ui.add_space(4.0);
+            // A line under where it goes (the design's).
+            let (line, _) = ui.allocate_exact_size(egui::vec2(ui.available_width(), 7.0), egui::Sense::hover());
+            ui.painter().hline(line.x_range().expand(12.0), line.center().y, egui::Stroke::new(1.0, c.border));
             let edit = egui::TextEdit::multiline(&mut draft.text)
                 .id(id)
                 .hint_text("Write a prompt: Enter is a new line, Ctrl+Enter sends")
@@ -237,7 +281,11 @@ impl InputBox {
                 let mut gone = None;
                 for (k, f) in draft.files.iter().enumerate() {
                     let name = f.file_name().map_or_else(|| f.display().to_string(), |n| n.to_string_lossy().into_owned());
-                    let chip = egui::Button::new(RichText::new(format!("{name}  ×")).size(12.0)).fill(c.panel).stroke(egui::Stroke::new(1.0, c.border));
+                    // An image's mark or a file's, and its size when known.
+                    let image = f.extension().and_then(|e| e.to_str()).is_some_and(|e| ["png", "jpg", "jpeg", "gif", "webp", "bmp"].contains(&e.to_ascii_lowercase().as_str()));
+                    let mark = if image { "▣" } else { "▤" };
+                    let size = draft.sizes.get(f).map(|b| format!(" · {}", size_words(*b))).unwrap_or_default();
+                    let chip = egui::Button::new(RichText::new(format!("{mark} {name}{size}  ×")).size(12.0)).fill(c.panel).stroke(egui::Stroke::new(1.0, c.border));
                     if ui.add(chip).on_hover_text(format!("{}: click to take it off", f.display())).clicked() {
                         gone = Some(k);
                     }
@@ -262,14 +310,29 @@ impl InputBox {
                         self.back = None;
                         draft = Draft::default();
                     }
-                    ui.label(RichText::new("↑ history · Enter new line · Esc back to the pane").size(11.5).color(c.faint()));
+                    let paste = if cfg!(target_os = "macos") { "Cmd+V" } else { "Ctrl+V" };
+                    ui.label(RichText::new(format!("↑ history · Enter new line · {paste} an image · Esc back to the pane")).size(11.5).color(c.faint()));
                 });
             });
         });
+        // Picked out by a glow while it has the keys (the design's).
+        if focused {
+            let r = shown.response.rect;
+            ui.painter().rect_stroke(r.expand(2.0), 12.0, egui::Stroke::new(4.0, c.run.gamma_multiply(0.18)), egui::StrokeKind::Outside);
+        }
         if draft != Draft::default() {
             self.drafts.insert(to, draft);
         }
         sent
+    }
+}
+
+/// `214 KB`, `1.2 MB`.
+pub fn size_words(bytes: u64) -> String {
+    match bytes {
+        0..1024 => format!("{bytes} B"),
+        1024..1_048_576 => format!("{} KB", bytes / 1024),
+        _ => format!("{:.1} MB", bytes as f64 / 1_048_576.0),
     }
 }
 
@@ -278,10 +341,17 @@ mod tests {
     use super::*;
 
     #[test]
+    fn sizes_are_said_as_people_do() {
+        assert_eq!(size_words(512), "512 B");
+        assert_eq!(size_words(219_136), "214 KB");
+        assert_eq!(size_words(1_258_291), "1.2 MB");
+    }
+
+    #[test]
     fn the_prompt_carries_the_files() {
-        let d = Draft { text: "look at these\n".into(), files: vec!["/tmp/a.png".into(), "/tmp/my shot.png".into()] };
+        let d = Draft { text: "look at these\n".into(), files: vec!["/tmp/a.png".into(), "/tmp/my shot.png".into()], ..Draft::default() };
         assert_eq!(InputBox::prompt(&d), "look at these\n/tmp/a.png \"/tmp/my shot.png\"");
-        let only = Draft { text: " ".into(), files: vec!["/tmp/a.png".into()] };
+        let only = Draft { text: " ".into(), files: vec!["/tmp/a.png".into()], ..Draft::default() };
         assert_eq!(InputBox::prompt(&only), "/tmp/a.png");
     }
 
@@ -292,7 +362,7 @@ mod tests {
             b.remember(p);
         }
         assert_eq!(b.history, ["one", "two"], "the same twice or nothing is kept once");
-        let mut d = Draft { text: "draft".into(), files: vec![] };
+        let mut d = Draft { text: "draft".into(), ..Draft::default() };
         b.older(&mut d);
         assert_eq!(d.text, "two");
         b.older(&mut d);

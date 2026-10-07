@@ -90,11 +90,13 @@ the taskbar does not flash.
 
 ### The input box
 
-`Ctrl+I` (`Cmd+I` on macOS) opens a box below the panes to write a prompt in
-as in any editor: `Enter` is a new line, `Ctrl+Enter` sends it to the pane
-with the keys whole (pasted, then Enter), so there is no fight with
-`Shift+Enter`. Files dropped on the window become chips whose paths go with
-the prompt. `↑` brings back what was sent (kept between runs), a draft
+`Ctrl+I` (`Cmd+I` on macOS) opens a box at the foot of the pane with the
+keys, inside its card, to write a prompt in as in any editor: `Enter` is a
+new line, `Ctrl+Enter` sends it to the pane whole (pasted, then Enter), so
+there is no fight with `Shift+Enter`. Files dropped on the window become
+chips, with their sizes, whose paths go with the prompt; `Ctrl+V` with an
+image on the clipboard (a screenshot) saves it as a PNG in the settings
+folder's `attachments` and adds it the same way. `↑` brings back what was sent (kept between runs), a draft
 stays with its session, and choosing a tag under **To** sends the same
 prompt to every session wearing it. `Esc` gives the keys back to the pane.
 
@@ -357,9 +359,11 @@ name = "Open lazygit here"
 command = "wt -d {folder} lazygit"
 ```
 
-The tab's right-click menu: **Rename…**, tags, **Mute notifications**, **Pin
+The tab's right-click menu: **Rename…** (`F2`, a field on the card), tags, **Mute notifications**, **Pin
 to top**; **Restart** (a fresh shell in its place, resuming the Claude Code
-conversation), **Duplicate in the same folder**, **Move to a new window**;
+conversation), **Duplicate in the same folder** (`Ctrl+Shift+D`, `Cmd+Option+D`
+on macOS; Claude Code is started again in it if it ran there), **Move to a
+new window**;
 **Open the folder in filer**, **Open in the editor** (the commands in
 `[open]` above), **Copy the folder path**; your own items from
 `[[menu.session]]`; and **Close the session**, which asks a second click

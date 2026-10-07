@@ -37,6 +37,11 @@ toml = "1.1"
 # The window's material: Mica / Acrylic on Windows 11, vibrancy on macOS
 # (QUESTIONS.md Q9). Pure Rust over windows-sys and objc2.
 window-vibrancy = "0.8"
+# A screenshot pasted into the input box (QUESTIONS.md Q7, changed by the
+# owner on 2026-10-07): the clipboard's image, and PNG to keep it as a file.
+# Both already built by eframe (egui-winit's clipboard), at these features.
+arboard = { version = "3.6", default-features = false, features = ["image-data"] }
+image = { version = "0.25", default-features = false, features = ["png"] }
 
 [target."cfg(windows)".dependencies]
 windows = { version = "0.62", features = [

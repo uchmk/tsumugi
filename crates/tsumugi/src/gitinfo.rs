@@ -71,6 +71,13 @@ impl Watcher {
         Self { full, ask, found, asked: Mutex::new(HashSet::new()) }
     }
 
+    /// What is known of `cwd` on `branch`, without asking: the cards show a
+    /// pull request found while their pane had the keys.
+    pub fn known(&self, cwd: &Path, branch: &str) -> Option<Git> {
+        let key = (cwd.to_path_buf(), branch.to_owned());
+        self.found.lock().ok()?.get(&key).map(|(_, g)| g.clone())
+    }
+
     /// What is known of `cwd` on `branch`, asking again when it is old.
     pub fn get(&self, cwd: &Path, branch: &str) -> Option<Git> {
         if branch.is_empty() {

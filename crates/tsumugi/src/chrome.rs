@@ -340,9 +340,16 @@ pub fn status_bar(
             }
             ui.add_space(6.0);
         }
+        // The design's two lines: after the counts, and before the right.
+        let divider = |ui: &mut egui::Ui| {
+            let (r, _) = ui.allocate_exact_size(egui::vec2(1.0, 14.0), egui::Sense::hover());
+            ui.painter().vline(r.center().x, r.y_range(), egui::Stroke::new(1.0, crate::theme::colors().border_strong()));
+        };
         if let Some(i) = focus {
+            ui.add_space(4.0);
+            divider(ui);
             ui.add_space(10.0);
-            ui.label(small(crate::home_short(&i.cwd), pal.fg));
+            ui.label(RichText::new(crate::home_short(&i.cwd)).font(FontId::monospace(11.0)).color(pal.fg));
             if !i.branch.is_empty() {
                 ui.add_space(4.0);
                 let (r, _) = ui.allocate_exact_size(egui::vec2(12.0, 12.0), egui::Sense::hover());
@@ -356,7 +363,10 @@ pub fn status_bar(
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             ui.add_space(10.0);
             if let Some(format) = clock {
-                ui.label(small(chrono::Local::now().format(format).to_string(), pal.fg));
+                // The design's: in the terminal's font and the strongest
+                // colour; the whole date on the pointer.
+                let now = chrono::Local::now();
+                ui.label(RichText::new(now.format(format).to_string()).font(FontId::monospace(11.5)).color(crate::theme::colors().strong())).on_hover_text(now.format("%A, %-d %B %Y").to_string());
                 ui.add_space(12.0);
             }
             ui.label(small("UTF-8".into(), pal.fg_dim));
@@ -364,8 +374,8 @@ pub fn status_bar(
                 use crate::usage::short;
                 ui.add_space(12.0);
                 let said = match conversation {
-                    Some(c) => format!("{} tok · today {}", short(c.total()), short(today.total())),
-                    None => format!("today {} tok", short(today.total())),
+                    Some(c) => format!("{} tokens · Today {}", short(c.total()), short(today.total())),
+                    None => format!("Today {} tokens", short(today.total())),
                 };
                 let detail = |t: &crate::usage::Tokens| format!("in {} · cache write {} · cache read {} · out {}", short(t.input), short(t.cache_write), short(t.cache_read), short(t.output));
                 let mut hover = format!("Claude Code's tokens today: {}", detail(today));
@@ -376,8 +386,10 @@ pub fn status_bar(
             }
             if let (Some(i), Some((cols, lines))) = (focus, size) {
                 ui.add_space(12.0);
-                ui.label(small(format!("{} · {cols}×{lines}", crate::program_name(&i.command)), pal.fg_dim));
+                ui.label(small(format!("{} · {cols}×{lines}", crate::program_name(&i.command)), pal.fg_dim)).on_hover_text("The program in the pane with the keys, and its size in columns × rows");
             }
+            ui.add_space(10.0);
+            divider(ui);
         });
     });
     click
@@ -415,6 +427,24 @@ fn git_marks(ui: &mut egui::Ui, pal: &Palette, g: &crate::gitinfo::Git, click: &
             *click = Some(StatusClick::Open(pr.url.clone()));
         }
     }
+}
+
+/// A card's pull request line (the design's Sidebar, 4): `PR #273 ·
+/// checks passing`, coloured by its checks.
+pub fn pr_line(pr: &crate::gitinfo::Pr) -> (String, Color32) {
+    use crate::gitinfo::Checks;
+    let (words, color) = match pr.checks {
+        Checks::Pass => ("checks passing", green()),
+        Checks::Fail => ("checks failing", red()),
+        Checks::Running => ("checks running", cyan()),
+        Checks::None => ("no checks", grey()),
+    };
+    let state = match pr.state.as_str() {
+        "MERGED" => " merged",
+        "CLOSED" => " closed",
+        _ => "",
+    };
+    (format!("PR #{}{state} · {words}", pr.number), ink(color))
 }
 
 /// A session's last lines, as a card's preview shows them: small, in the
