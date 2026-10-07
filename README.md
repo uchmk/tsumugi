@@ -40,6 +40,21 @@ no words: running and done say nothing about a shell. Each pane carries the
 same ring and mark in its heading. `Ctrl+Shift+U` (Cmd+Shift+U on
 macOS) goes to the session that has waited longest.
 
+`Ctrl+Shift+Y` (Cmd+Shift+Y on macOS, or **List ›** at the sidebar's foot)
+lists every session waiting for you: what it said, how long it has waited,
+and the numbered choices on its screen as buttons. Each row has a tick;
+**Yes to N** types `1` into every ticked menu whose first choice is "Yes",
+**No to N** types the choice that starts with "No". A menu without such a
+choice, or a session with no menu on its screen, is left alone. The same
+panel's other page, **Recently closed** (also in the search box), keeps the
+last 30 sessions that ended -- when, how, the tokens its conversation used,
+and the last 12 lines on its screen -- with **Resume** (Claude Code's
+conversation again, in a new tab in its folder) or **Start again**. The list
+is `closed-sessions.json` beside the state file.
+
+A tab's right-click menu has **Note…**: a line of your own (what the tab is
+for), shown in quotation marks on its card and kept across restarts.
+
 ### After a restart
 
 The server writes the tabs down as they change: each tab's splits, and per
@@ -98,7 +113,8 @@ chips, with their sizes, whose paths go with the prompt; `Ctrl+V` with an
 image on the clipboard (a screenshot) saves it as a PNG in the settings
 folder's `attachments` and adds it the same way. `↑` brings back what was sent (kept between runs), a draft
 stays with its session, and choosing a tag under **To** sends the same
-prompt to every session wearing it. `Esc` gives the keys back to the pane.
+prompt to every session wearing it; **+ Sessions** there picks other
+sessions to get it as well as the pane, or **Every session**. `Esc` gives the keys back to the pane.
 
 ### The status bar
 
@@ -359,8 +375,9 @@ name = "Open lazygit here"
 command = "wt -d {folder} lazygit"
 ```
 
-The tab's right-click menu: **Rename…** (`F2`, a field on the card), tags, **Mute notifications**, **Pin
-to top**; **Restart** (a fresh shell in its place, resuming the Claude Code
+The tab's right-click menu: **Rename…** (`F2`, a field on the card),
+**Note…** (a line of one's own on the card, kept across restarts), tags,
+**Mute notifications**, **Pin to top**; **Restart** (a fresh shell in its place, resuming the Claude Code
 conversation), **Duplicate in the same folder** (`Ctrl+Shift+D`, `Cmd+Option+D`
 on macOS; Claude Code is started again in it if it ran there), **Move to a
 new window**;
@@ -368,7 +385,7 @@ new window**;
 `[open]` above), **Copy the folder path**; your own items from
 `[[menu.session]]`; and **Close the session**, which asks a second click
 while something is running in it. `[menu] hide` leaves out any of rename,
-tags, mute, pin, restart, duplicate, new-window, filer, editor, copy-path,
+note, tags, mute, pin, restart, duplicate, new-window, filer, editor, copy-path,
 close.
 
 Themes: tsumugi Dark (the default) and Light, Tokyo Night, Catppuccin Mocha

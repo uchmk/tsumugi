@@ -37,6 +37,9 @@ pub struct InputBox {
     back: Option<(usize, String)>,
     /// Tags chosen as where to send instead of the pane.
     to_tags: Vec<String>,
+    /// Other sessions to send to as well as the pane (the same prompt to
+    /// several at once).
+    to_also: Vec<SessionId>,
     /// Focus the field on the next frame.
     focus: bool,
     /// Send when the session is next done rather than now.
@@ -54,6 +57,8 @@ pub struct InputBox {
 #[derive(Clone, Debug, PartialEq)]
 pub enum To {
     Session(SessionId),
+    /// Each of these: the pane and those picked beside it.
+    Sessions(Vec<SessionId>),
     /// Every session wearing any of these.
     Tags(Vec<String>),
 }
@@ -161,10 +166,13 @@ impl InputBox {
     }
 
     /// The box, for the session with the keys (`to`, called `name`), with
-    /// the tags in use to send to instead. What to send, when it is sent.
+    /// the tags in use to send to instead and the other sessions (`others`,
+    /// by name) to send to as well. What to send, when it is sent.
     /// `queued`: prompts waiting to go to `to`, shown so they can be seen.
-    pub fn show(&mut self, ui: &mut egui::Ui, c: &Colors, to: SessionId, name: &str, tags: &[String], queued: usize) -> Option<Send> {
+    #[allow(clippy::too_many_arguments)]
+    pub fn show(&mut self, ui: &mut egui::Ui, c: &Colors, to: SessionId, name: &str, tags: &[String], others: &[(SessionId, String)], queued: usize) -> Option<Send> {
         self.to_tags.retain(|t| tags.contains(t));
+        self.to_also.retain(|s| *s != to && others.iter().any(|(o, _)| o == s));
         let id = egui::Id::new("input-box");
         let focused = ui.ctx().memory(|m| m.has_focus(id));
         let mut draft = self.drafts.remove(&to).unwrap_or_default();
@@ -232,6 +240,53 @@ impl InputBox {
                 let pane_on = self.to_tags.is_empty();
                 if ui.selectable_label(pane_on, RichText::new(name).size(12.0)).on_hover_text("The pane with the keys").clicked() {
                     self.to_tags.clear();
+                }
+                // Others picked to get the same prompt, each taken off by a click.
+                if pane_on {
+                    let mut gone = None;
+                    for s in &self.to_also {
+                        let n = others.iter().find(|(o, _)| o == s).map_or("", |(_, n)| n.as_str());
+                        if ui.selectable_label(true, RichText::new(format!("+ {n}")).size(12.0)).on_hover_text("Gets the same prompt: click to take it off").clicked() {
+                            gone = Some(*s);
+                        }
+                    }
+                    if let Some(g) = gone {
+                        self.to_also.retain(|s| *s != g);
+                    }
+                }
+                let rest: Vec<&(SessionId, String)> = others.iter().filter(|(o, _)| *o != to).collect();
+                if !rest.is_empty() {
+                    let menu = ui.menu_button(RichText::new("+ Sessions").size(12.0).color(c.dim), |ui| {
+                        ui.set_min_width(220.0);
+                        ui.label(RichText::new("Send the same prompt to").size(11.5).color(c.dim));
+                        for (o, n) in &rest {
+                            let mut on = self.to_also.contains(o);
+                            if ui.checkbox(&mut on, n.as_str()).changed() {
+                                self.to_tags.clear();
+                                if on {
+                                    self.to_also.push(*o);
+                                } else {
+                                    self.to_also.retain(|s| s != o);
+                                }
+                            }
+                        }
+                        ui.separator();
+                        if ui.button("Every session").clicked() {
+                            self.to_tags.clear();
+                            self.to_also = rest.iter().map(|(o, _)| *o).collect();
+                            ui.close();
+                        }
+                        if !self.to_also.is_empty() && ui.button("Only this pane").clicked() {
+                            self.to_also.clear();
+                            ui.close();
+                        }
+                    });
+                    // The keys stay with the box (a click on the menu took
+                    // them): an Esc to close it must not reach the shell.
+                    if menu.response.clicked() || menu.inner.is_some() {
+                        self.focus = true;
+                    }
+                    menu.response.on_hover_text("Send the same prompt to other sessions as well");
                 }
                 if !tags.is_empty() {
                     ui.label(RichText::new("or").size(12.0).color(c.faint()));
@@ -304,7 +359,13 @@ impl InputBox {
                         .on_hover_text(format!("Queue the prompt: it goes when the session has finished what it is doing ({shift} queues once)"));
                     if (clicked || send || later_key) && !empty {
                         let text = Self::prompt(&draft);
-                        let to = if self.to_tags.is_empty() { To::Session(to) } else { To::Tags(self.to_tags.clone()) };
+                        let to = if !self.to_tags.is_empty() {
+                            To::Tags(self.to_tags.clone())
+                        } else if self.to_also.is_empty() {
+                            To::Session(to)
+                        } else {
+                            To::Sessions(std::iter::once(to).chain(self.to_also.iter().copied()).collect())
+                        };
                         sent = Some(Send { to, text: text.clone(), later: self.later || later_key });
                         self.remember(draft.text.trim_end());
                         self.back = None;

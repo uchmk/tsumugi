@@ -7,7 +7,7 @@ use tsumugi_pane::Size;
 
 /// Bumped whenever a message changes shape: a client and a server that
 /// disagree say so at `Hello` instead of misreading each other.
-pub const VERSION: u32 = 16;
+pub const VERSION: u32 = 17;
 
 /// A `Hello` with this version asks the server to stop, writing down its
 /// tabs first so the next window can bring them back. `Hello` stays the
@@ -33,11 +33,13 @@ pub struct Workspace {
     pub name: String,
     /// Kept at the top of the sidebar, whatever the order.
     pub pinned: bool,
+    /// A line written on it by hand (what it is for), shown on its card.
+    pub note: String,
 }
 
 impl Workspace {
     pub fn new(id: WorkspaceId, layout: Node<SessionId>, focus: SessionId) -> Self {
-        Self { id, layout, focus, name: String::new(), pinned: false }
+        Self { id, layout, focus, name: String::new(), pinned: false, note: String::new() }
     }
 }
 
@@ -215,6 +217,8 @@ pub enum ToServer {
     RenameWorkspace { id: WorkspaceId, name: String },
     /// Keep a tab at the top of the sidebar, or not.
     PinWorkspace { id: WorkspaceId, on: bool },
+    /// Write a note on a tab; empty takes it off.
+    NoteWorkspace { id: WorkspaceId, note: String },
     /// End the session's shell and start it again in its place, resuming
     /// the Claude Code conversation that ran in it.
     Restart { id: SessionId },
@@ -260,6 +264,9 @@ pub enum ToClient {
     Screen { id: SessionId, update: crate::diff::Update },
     /// The session's shell is gone; the session is no more.
     Exited { id: SessionId },
+    /// A session ended, to every client: what it was, and the last lines on
+    /// its screen (the history of closed sessions).
+    Ended { info: Info, last: Vec<String> },
     /// Text for the clipboard: a program set it (OSC 52), or `Copy` asked.
     Clipboard(String),
     /// Whether someone is at one of the windows (`looking`), and whether this

@@ -97,6 +97,7 @@ pub const INDEX: &[(Page, &str)] = &[
     (Page::Keys, "Next tab"),
     (Page::Keys, "Previous tab"),
     (Page::Keys, "Go to the session waiting longest"),
+    (Page::Keys, "The waiting sessions, answered together"),
     (Page::Keys, "The Nth tab"),
     (Page::Keys, "Split right"),
     (Page::Keys, "Split down"),
@@ -805,7 +806,7 @@ fn keys(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut Vec<
         });
     };
     section(ui, l, "SESSIONS", |ui| {
-        for (k, a) in [Action::NewTab, Action::CloseTab, Action::Rename, Action::Duplicate, Action::NextTab, Action::PrevTab, Action::NextWaiting, Action::Search, Action::Input, Action::Rail, Action::Settings].into_iter().enumerate() {
+        for (k, a) in [Action::NewTab, Action::CloseTab, Action::Rename, Action::Duplicate, Action::NextTab, Action::PrevTab, Action::NextWaiting, Action::Waiting, Action::Search, Action::Input, Action::Rail, Action::Settings].into_iter().enumerate() {
             if k > 0 {
                 sep(ui, l);
             }
@@ -1840,8 +1841,8 @@ mod tests {
         let mut screen = at_page(Page::Keys);
         run.frame(&mut screen, Vec::new());
         screen.edit.capturing = Some("new_tab");
-        let changes = run.key(&mut screen, egui::Key::Y, ctrl_shift);
-        assert_eq!(changes, vec![Change::Set(Some("keys"), "new_tab", "\"Ctrl+Shift+Y\"".into())]);
+        let changes = run.key(&mut screen, egui::Key::K, ctrl_shift);
+        assert_eq!(changes, vec![Change::Set(Some("keys"), "new_tab", "\"Ctrl+Shift+K\"".into())]);
         assert_eq!(screen.edit.capturing, None);
 
         // Another of the window's keys: named, and nothing written.

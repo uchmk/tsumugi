@@ -158,3 +158,20 @@
   v0.41.3 で eframe の既定の機能のうち `winit/default` だけを外し、winit の `wayland-csd-adwaita-notitle`（同じ窓飾りで、題名の文字だけ描かない）
   を選んだ。tsumugi は既定で自分の題名の帯を描くので、窓飾りが出るのは `titlebar = "system"` の Wayland だけ。これで `ttf-parser` は
   どのビルドからも消え、`cargo audit` の警告は 0 になった（持ち主の指示）。
+
+## Q11: ペインごとの文字コード（Shift_JIS など）のためのクレート
+- 状態: 未回答
+- タスク: 2026-10-07 の「直して。新機能も追加して。」の 9（ペインごとに文字コードを選べるようにする）。
+- 背景: ペインは端末の出力を UTF-8 として読む（`alacritty_terminal` の `vte` が UTF-8 しか読まない）。
+  Windows では ConPTY が、コンソールのプログラムの出力をコード ページに関わらず UTF-8 にしてから渡すので、`chcp 932` のプログラムも化けない。
+  化けるのは macOS と Linux で、Shift_JIS や EUC-JP のファイルをそのまま `cat` したときや、古い機械に `ssh` したとき。
+  直すには、PTY から読んだバイトを `vte` に渡す前に UTF-8 に変え、打った文字を逆に変える層を `tsumugi-pane` に足す。
+  Shift_JIS の表は 7000 字ほどあり、手で書くものではない。いまの依存には文字コードの変換が無い（`encoding_rs` も入っていない）。
+- 選択肢:
+  1. **`encoding_rs` を足す（推奨）**: Firefox が使っている、Pure Rust の変換。Shift_JIS・EUC-JP・ISO-2022-JP・GBK・Big5・EUC-KR など
+     WHATWG の全部を持ち、C のライブラリを抱えない。6 ターゲットのクロスコンパイルに影響しない。ペインの見出しの右クリックか設定で
+     「UTF-8 / Shift_JIS / EUC-JP」を選び、ステータスバーの `UTF-8` をその名前にする。Windows では ConPTY が UTF-8 にするので、選べるのは macOS と Linux だけにする。
+  2. Windows の `MultiByteToWideChar` だけで書く: クレートは要らないが、化けない Windows でしか動かず、化ける macOS と Linux で使えない。
+  3. やらない（ステータスバーに UTF-8 と出すだけ）。
+- 回答が来るまでは 3 のまま。ステータスバーの `UTF-8` のツールチップに、何を読み書きしているかを書いた（v0.46.0）。
+- 回答:

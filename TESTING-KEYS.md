@@ -24,6 +24,7 @@ Windows and Linux keys first; the macOS key is after `·`.
 - [ ] `Ctrl+I` · `Cmd+I` — Input box · `input`
 - [ ] `F2` · `F2` — Rename the tab · `rename`
 - [ ] `Ctrl+Shift+D` · `Cmd+Option+D` — Duplicate in the same folder · `duplicate`
+- [ ] `Ctrl+Shift+Y` · `Cmd+Shift+Y` — The waiting sessions, answered together · `waiting_list`
 
 ## The window, fixed
 

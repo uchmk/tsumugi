@@ -355,6 +355,14 @@ fn handle(shared: &Arc<Shared>, client: ClientId, tx: &Sender<ToClient>, msg: To
                 save_soon(shared, SAVE_AFTER_CHANGE);
             }
         }
+        ToServer::NoteWorkspace { id, note } => {
+            let mut workspaces = lock(&shared.workspaces);
+            if let Some(w) = workspaces.get_mut(&id) {
+                w.note = note.trim().chars().take(200).collect();
+                broadcast_workspaces(shared, &workspaces);
+                save_soon(shared, SAVE_AFTER_CHANGE);
+            }
+        }
         ToServer::PinWorkspace { id, on } => {
             let mut workspaces = lock(&shared.workspaces);
             if let Some(w) = workspaces.get_mut(&id) {
@@ -644,6 +652,7 @@ fn save_if_due(shared: &Shared) {
             .map(|w| crate::state::SavedWorkspace {
                 name: w.name.clone(),
                 pinned: w.pinned,
+                note: w.note.clone(),
                 layout: w.layout.clone(),
                 focus: w.focus,
                 panes: w
@@ -777,7 +786,7 @@ fn restore(shared: &Arc<Shared>, sessions: &mut BTreeMap<SessionId, Session>, on
         let layout = layout.map(&mut |old| ids[&old]);
         let focus = ids.get(&w.focus).copied().unwrap_or_else(|| layout.leaves()[0]);
         let ws = shared.next.fetch_add(1, Ordering::Relaxed);
-        workspaces.insert(ws, Workspace { name: w.name.clone(), pinned: w.pinned, ..Workspace::new(ws, layout, focus) });
+        workspaces.insert(ws, Workspace { name: w.name.clone(), pinned: w.pinned, note: w.note.clone(), ..Workspace::new(ws, layout, focus) });
     }
     broadcast_workspaces(shared, &workspaces);
     drop(workspaces);
@@ -836,16 +845,32 @@ fn end(shared: &Shared, mut sessions: std::sync::MutexGuard<'_, BTreeMap<Session
     let list: Vec<Info> = sessions.values().map(|s| s.info.clone()).collect();
     let empty = sessions.is_empty();
     drop(sessions);
+    let last = last_lines(&s.term.screen_text(), ENDED_LINES);
     for (c, tx) in lock(&shared.clients).iter() {
         if s.watchers.contains(c) {
             let _ = tx.send(ToClient::Exited { id });
         }
+        let _ = tx.send(ToClient::Ended { info: s.info.clone(), last: last.clone() });
         let _ = tx.send(ToClient::Sessions(list.clone()));
     }
     drop(s);
     if empty {
         let _ = shared.done.try_send(());
     }
+}
+
+/// How many of an ended session's last lines go with `Ended`.
+const ENDED_LINES: usize = 12;
+
+/// The last `n` lines of a screen's text with something on them, the blank
+/// ones below the last dropped.
+fn last_lines(text: &str, n: usize) -> Vec<String> {
+    let mut lines: Vec<String> = text.lines().map(|l| l.trim_end().to_owned()).collect();
+    while lines.last().is_some_and(String::is_empty) {
+        lines.pop();
+    }
+    let from = lines.len().saturating_sub(n);
+    lines.split_off(from)
 }
 
 fn now_ms() -> u64 {

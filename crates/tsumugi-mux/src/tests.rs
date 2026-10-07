@@ -237,6 +237,31 @@ fn tabs_can_be_named_and_pinned() {
     pane.kill();
 }
 
+/// A tab's note is the server's; a session that ends tells every window
+/// what it was and its last lines.
+#[test]
+fn notes_stay_and_an_ended_session_leaves_its_last_lines() {
+    let at = address();
+    let _srv = serve(&at).expect("the server starts");
+    let c = Client::connect(&at, || {}).expect("a client connects");
+    let keep = c.spawn(std::env::temp_dir(), None, Size::new(80, 24), (8, 16)).expect("a shell starts");
+    let pane = c.spawn(std::env::temp_dir(), None, Size::new(80, 24), (8, 16)).expect("a shell starts");
+    eventually("two tabs", || c.workspaces().len() == 2);
+    let id = c.workspaces()[0].id;
+    c.note_workspace(id, "  the release notes  ".into());
+    eventually("noted", || c.workspaces().iter().any(|w| w.id == id && w.note == "the release notes"));
+    until(&pane, "a prompt", |t| !t.trim().is_empty());
+    pane.send(b"echo last-$((40+2))\r".to_vec());
+    until(&pane, "the echo", |t| t.contains("last-42"));
+    let gone = pane.id();
+    pane.kill();
+    eventually("its end told", || {
+        let ended = c.take_ended();
+        ended.iter().any(|(info, last)| info.id == gone && last.iter().any(|l| l.contains("last-42")))
+    });
+    keep.kill();
+}
+
 /// A prompt from the input box arrives whole and is sent with Enter.
 #[test]
 fn a_prompt_is_pasted_and_sent() {

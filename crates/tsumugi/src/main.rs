@@ -47,6 +47,8 @@ mod update;
 mod export;
 mod icon;
 mod clip;
+mod history;
+mod lists;
 
 use std::time::Duration;
 
@@ -687,6 +689,12 @@ struct App {
     attach: (std::sync::mpsc::Sender<Attach>, std::sync::mpsc::Receiver<Attach>),
     /// The tab being named by F2, in a field on its card, and the words.
     renaming_card: Option<(WorkspaceId, String)>,
+    /// The tab whose note is being written on its card, and the text so far.
+    noting_card: Option<(WorkspaceId, String)>,
+    /// The waiting list or the recently closed, over the window.
+    lists: Option<lists::View>,
+    /// The sessions that ended, newest first (`history.rs`).
+    ended: Vec<history::Closed>,
     /// The hooks were offered on the first-run screen.
     hooks_seen_first: bool,
     /// Where the sidebar (or the rail) is this frame: a pane dropped there
@@ -793,6 +801,7 @@ enum SideOp {
     MuteTag(String, bool),
     Move(WorkspaceId, usize),
     Rename(WorkspaceId, String),
+    Note(WorkspaceId, String),
     Pin(WorkspaceId, bool),
     Restart(SessionId),
     /// A new tab in this folder; Claude Code in it when it ran here.
@@ -904,6 +913,9 @@ impl App {
             input_h: 170.0,
             attach: std::sync::mpsc::channel(),
             renaming_card: None,
+            noting_card: None,
+            lists: None,
+            ended: history::load(),
             hooks_seen_first: false,
             side_rect: None,
             first_shown: false,
@@ -1065,6 +1077,12 @@ impl App {
             keys::Action::Input => self.input.toggle(),
             // The tab's name in a field on its card (the menu's Rename).
             keys::Action::Rename => self.renaming_card = Some((w.id, w.name.clone())),
+            keys::Action::Waiting => {
+                self.lists = match &self.lists {
+                    Some(v) if v.page == lists::Page::Waiting => None,
+                    _ => Some(lists::View::new(lists::Page::Waiting)),
+                }
+            }
             keys::Action::Duplicate => {
                 if let Some(focus) = sessions.iter().find(|i| i.id == w.focus) {
                     let typed = focus.claude.then(|| newsession::Start::Claude.typed(&self.settings_now.sessions.claude)).flatten();
@@ -1396,6 +1414,7 @@ impl App {
                 Ok(pane) => self.pending = Some(pane.id()),
                 Err(e) => self.failed = Some(e),
             },
+            palette::Pick::Command(palette::Command::Closed) => self.lists = Some(lists::View::new(lists::Page::Closed)),
             palette::Pick::Command(palette::Command::Sort(s)) => {
                 self.view.sort = s;
                 self.view.save();
@@ -1411,7 +1430,8 @@ impl App {
                     palette::Command::CloseTab => keys::Action::CloseTab,
                     palette::Command::Settings => keys::Action::Settings,
                     palette::Command::InputBox => keys::Action::Input,
-                    palette::Command::Sort(_) => return,
+                    palette::Command::Waiting => keys::Action::Waiting,
+                    palette::Command::Sort(_) | palette::Command::Closed => return,
                 };
                 if let Some(w) = current {
                     self.act(action, w, workspaces, area);
@@ -1645,10 +1665,21 @@ impl App {
                     let a = key != "none" && ui.add(cap).clicked();
                     let words = egui::RichText::new(format!("Jump to waiting · {waiting}")).size(12.0).color(pal.fg_dim);
                     let b = ui.add(egui::Label::new(words).sense(egui::Sense::click()));
-                    a || b.clicked()
+                    // All of them in a list, to answer together.
+                    let list = ui
+                        .with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            ui.add_space(12.0);
+                            let words = egui::RichText::new("List ›").size(12.0).color(chrome::ink(chrome::cyan()));
+                            ui.add(egui::Label::new(words).sense(egui::Sense::click())).on_hover_text(format!("The waiting sessions, answered together ({})", keys::label(keys::Action::Waiting))).clicked()
+                        })
+                        .inner;
+                    (a || b.clicked(), list)
                 });
-                if resp.inner {
+                if resp.inner.0 {
                     self.jump_waiting = true;
+                }
+                if resp.inner.1 {
+                    self.lists = Some(lists::View::new(lists::Page::Waiting));
                 }
             }
             ui.add_space(6.0);
@@ -1763,8 +1794,12 @@ impl App {
                     let prompts = if talk.prompts == 1 { "1 prompt".to_owned() } else { format!("{} prompts", talk.prompts) };
                     Some(format!("{prompts} · {} · {} tokens", chrome::elapsed(talk.ms), usage::short(tokens)))
                 }).flatten();
+                // A note of one's own (the tab menu's Note…), and room for
+                // the field while it is written.
+                let noting = self.noting_card.as_ref().is_some_and(|(id, _)| *id == w.id);
+                let note_line = as_card && (!w.note.is_empty() || noting);
                 let base = if !as_card { 28.0 } else if tags.is_empty() { 62.0 } else { 82.0 };
-                let height = base + 18.0 * (usize::from(pr.is_some()) + usize::from(numbers.is_some())) as f32;
+                let height = base + 18.0 * (usize::from(note_line) + usize::from(pr.is_some()) + usize::from(numbers.is_some())) as f32;
                 let (rect, resp) = ui.allocate_exact_size(egui::vec2(ui.available_width(), height), sense);
                 rows.push((w.id, rect));
                 let painter = ui.painter_at(rect);
@@ -1954,6 +1989,13 @@ impl App {
                     x = chrome::tag_chip(&painter, at, t, muted_tags.contains(*t)).right() + 5.0;
                 }
                 let mut y = base - 22.0;
+                let note_y = y;
+                if note_line {
+                    if !noting {
+                        line(format!("“{}”", w.note), y, egui::FontId::proportional(11.5), pal.fg, width);
+                    }
+                    y += 18.0;
+                }
                 if let Some(pr) = &pr {
                     let (words, color) = chrome::pr_line(pr);
                     line(words, y, egui::FontId::proportional(11.5), color, width);
@@ -1961,6 +2003,22 @@ impl App {
                 }
                 if let Some(n) = numbers {
                     line(n, y, egui::FontId::monospace(11.0), pal.fg_dim, width);
+                }
+                // The note in a field on its line, Enter to keep (empty takes
+                // it off), Esc to leave it as it was.
+                if let Some((id, text)) = &mut self.noting_card {
+                    if *id == w.id {
+                        let at = egui::Rect::from_min_size(egui::pos2(left - 4.0, rect.top() + note_y - 3.0), egui::vec2(width - 10.0, 20.0));
+                        let field = ui.put(at, egui::TextEdit::singleline(text).id(egui::Id::new(("note-card", w.id))).hint_text("A note: what this tab is for").font(egui::FontId::proportional(12.0)));
+                        field.request_focus();
+                        let (enter, esc) = ui.input(|i| (i.key_pressed(egui::Key::Enter), i.key_pressed(egui::Key::Escape)));
+                        if enter {
+                            ops.push(SideOp::Note(w.id, text.clone()));
+                            self.noting_card = None;
+                        } else if esc || field.lost_focus() {
+                            self.noting_card = None;
+                        }
+                    }
                 }
                 // F2: the name in a field over it, Enter to keep, Esc to leave.
                 if let Some((id, text)) = &mut self.renaming_card {
@@ -2091,6 +2149,13 @@ impl App {
                                     }
                                 }
                             }
+                            "note" => {
+                                let label = if w.note.is_empty() { "Note…" } else { "Edit the note…" };
+                                if ui.button(label).on_hover_text("A line of your own on the card: what the tab is for").clicked() {
+                                    self.noting_card = Some((w.id, w.note.clone()));
+                                    ui.close();
+                                }
+                            }
                             "tags" => {
                                 for t in &tags {
                                     if ui.button(format!("Remove tag {t}")).clicked() {
@@ -2212,6 +2277,7 @@ impl App {
                     SideOp::MuteTag(tag, on) => client.mute_tag(tag, on),
                     SideOp::Move(id, to) => client.move_workspace(id, to),
                     SideOp::Rename(id, name) => client.rename_workspace(id, name),
+                    SideOp::Note(id, note) => client.note_workspace(id, note),
                     SideOp::Pin(id, on) => client.pin_workspace(id, on),
                     SideOp::Restart(id) => client.restart(id),
                     SideOp::Duplicate(cwd, claude) => {
@@ -3037,21 +3103,23 @@ impl App {
             }
             if let Some(at) = box_rect {
                 let info = sessions.iter().find(|i| i.id == *id);
-                let name = info.map(|i| {
+                let named = |i: &tsumugi_mux::Info| {
                     let n = sort::display_title(&i.title, &i.command);
                     let project = i.project.file_name().map(|f| f.to_string_lossy().into_owned()).unwrap_or_default();
                     if project.is_empty() { n } else { format!("{n} · {project}") }
-                });
+                };
+                let name = info.map(named);
                 let mut tags: Vec<String> = Vec::new();
                 for t in sessions.iter().flat_map(|i| &i.tags) {
                     if !tags.contains(t) {
                         tags.push(t.clone());
                     }
                 }
+                let others: Vec<(SessionId, String)> = sessions.iter().filter(|i| i.id != *id).map(|i| (i.id, named(i))).collect();
                 let colors = theme::colors();
                 let queued = self.queue.iter().filter(|q| q.id == *id).count();
                 let shown = ui.scope_builder(egui::UiBuilder::new().max_rect(at).layout(egui::Layout::bottom_up(egui::Align::Min)), |ui| {
-                    ui.with_layout(egui::Layout::top_down(egui::Align::Min), |ui| self.input.show(ui, &colors, *id, name.as_deref().unwrap_or("this pane"), &tags, queued)).inner
+                    ui.with_layout(egui::Layout::top_down(egui::Align::Min), |ui| self.input.show(ui, &colors, *id, name.as_deref().unwrap_or("this pane"), &tags, &others, queued)).inner
                 });
                 self.input_h = shown.response.rect.height().max(1.0);
                 if let Some(send) = shown.inner {
@@ -3650,7 +3718,7 @@ impl App {
             // keys while it is focused; the pane gets them otherwise.
             // A key being changed in the settings is the settings'.
             let capturing = self.prefs.as_ref().is_some_and(|p| p.edit.capturing.is_some());
-            let field = ctx.memory(|m| m.focused().is_some()) || self.new_session.is_some() || self.search.is_some() || capturing;
+            let field = ctx.memory(|m| m.focused().is_some()) || self.new_session.is_some() || self.search.is_some() || self.lists.is_some() || capturing;
             if self.key_log {
                 // `TSUMUGI_KEYLOG=1`: every key press as the window gets it,
                 // to see on a real machine why a key does nothing.
@@ -3830,6 +3898,8 @@ impl App {
             None => {}
         }
 
+        self.waiting_and_closed(&ctx, &client, &workspaces, &sessions);
+
         self.bell_opening = false;
         // Files dropped on the window go with the next prompt.
         let dropped: Vec<std::path::PathBuf> = ctx.input(|i| i.raw.dropped_files.iter().map(|f| f.path().to_path_buf()).filter(|p| !p.as_os_str().is_empty()).collect());
@@ -3881,6 +3951,7 @@ impl App {
         if let Some(send) = self.input_sent.take() {
             let targets: Vec<SessionId> = match &send.to {
                 inputbox::To::Session(id) => vec![*id],
+                inputbox::To::Sessions(ids) => ids.clone(),
                 inputbox::To::Tags(want) => sessions.iter().filter(|i| i.tags.iter().any(|t| want.contains(t))).map(|i| i.id).collect(),
             };
             for id in targets {
@@ -3920,6 +3991,100 @@ impl App {
 }
 
 impl App {
+    /// Sessions that ended go on the recently closed list; the waiting list
+    /// or that list is drawn when open, and what it asks is done.
+    fn waiting_and_closed(&mut self, ctx: &egui::Context, client: &Client, workspaces: &[Workspace], sessions: &[Info]) {
+        let ended = client.take_ended();
+        if !ended.is_empty() {
+            let used = self.usage.get();
+            for (info, last) in ended {
+                let tokens = used.conversations.get(&info.conversation).map_or(0, usage::Tokens::total);
+                let c = history::Closed {
+                    title: info.title,
+                    command: info.command,
+                    cwd: info.cwd,
+                    claude: info.claude,
+                    conversation: info.conversation,
+                    // How it ended, where that says something: a plain
+                    // shell "running" says nothing.
+                    state: match info.state {
+                        State::Error => "error".to_owned(),
+                        State::Done if info.claude => "done".to_owned(),
+                        _ => String::new(),
+                    },
+                    tokens,
+                    ended_ms: chrome::now_ms(),
+                    last,
+                };
+                history::push(&mut self.ended, c);
+            }
+            history::save(self.ended.clone());
+        }
+        let Some(mut view) = self.lists.take() else { return };
+        let mut waiting: Vec<&Info> = sessions.iter().filter(|i| i.state == State::Waiting).collect();
+        waiting.sort_by_key(|i| i.since_ms);
+        let now = chrome::now_ms();
+        let mut rows = Vec::new();
+        for i in waiting {
+            // Its menu, from its screen (attached for as long as it is shown).
+            let choices = answer::choices(&self.watch_lines(i.id));
+            rows.push(lists::Row {
+                id: i.id,
+                name: sort::display_title(&i.title, &i.command),
+                folder: i.project.file_name().map(|f| f.to_string_lossy().into_owned()).unwrap_or_default(),
+                note: i.note.clone(),
+                waited: chrome::elapsed(now.saturating_sub(i.since_ms)),
+                choices,
+            });
+        }
+        let colors = theme::colors();
+        let mut keep = true;
+        for d in lists::show(ctx, &mut view, &rows, &self.ended, &colors) {
+            match d {
+                lists::Do::Type(id, key) => {
+                    if let Some(pane) = self.panes.get(&id) {
+                        tsumugi_pane::Pane::send(pane, vec![key as u8]);
+                    }
+                }
+                lists::Do::Go(id) => {
+                    self.go_to(client, workspaces, id);
+                    keep = false;
+                }
+                lists::Do::StartAgain(k) => {
+                    let Some(c) = self.ended.get(k) else { continue };
+                    let claude = &self.settings_now.sessions.claude;
+                    let typed = if c.claude && c.conversation.chars().all(|ch| ch.is_ascii_alphanumeric() || ch == '-' || ch == '_') && !c.conversation.is_empty() {
+                        newsession::Start::Claude.typed(claude).map(|cmd| format!("{cmd} --resume {}", c.conversation))
+                    } else if c.claude {
+                        newsession::Start::Claude.typed(claude)
+                    } else {
+                        None
+                    };
+                    match client.spawn_typing(c.cwd.clone(), None, Size::new(80, 24), (8, 16), Place::NewWorkspace, typed) {
+                        Ok(pane) => self.pending = Some(pane.id()),
+                        Err(e) => self.failed = Some(e.to_string()),
+                    }
+                    keep = false;
+                }
+                lists::Do::Copy(text) => ctx.copy_text(text),
+                lists::Do::Forget(k) => {
+                    if k < self.ended.len() {
+                        self.ended.remove(k);
+                        history::save(self.ended.clone());
+                    }
+                }
+                lists::Do::ForgetAll => {
+                    self.ended.clear();
+                    history::save(Vec::new());
+                }
+                lists::Do::Close => keep = false,
+            }
+        }
+        if keep {
+            self.lists = Some(view);
+        }
+    }
+
     fn message(&mut self, ui: &mut egui::Ui) {
         let Some(why) = self.failed.clone() else { return };
         let other = why.starts_with(OTHER_VERSION);

@@ -73,6 +73,23 @@ pub fn short(text: &str) -> String {
     if s.chars().count() > 18 { format!("{}…", s.chars().take(17).collect::<String>()) } else { s }
 }
 
+/// The choice that says yes once (the menu's first, when it starts with
+/// "Yes"): what the waiting list's "Yes to all" types.
+pub fn yes(choices: &[Choice]) -> Option<char> {
+    choices.first().filter(|c| starts_with_word(&c.text, "yes")).map(|c| c.key)
+}
+
+/// The choice that says no (the first starting with "No"): what "No to all"
+/// types. None when the menu has no such choice: nothing is guessed.
+pub fn no(choices: &[Choice]) -> Option<char> {
+    choices.iter().find(|c| starts_with_word(&c.text, "no")).map(|c| c.key)
+}
+
+fn starts_with_word(text: &str, word: &str) -> bool {
+    let t = text.trim_start().to_lowercase();
+    t.strip_prefix(word).is_some_and(|rest| rest.is_empty() || !rest.starts_with(char::is_alphanumeric))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -99,6 +116,16 @@ mod tests {
         assert_eq!(short(&c[1].text), "Yes");
         assert_eq!(short(&c[2].text), "No");
         assert_eq!(short("Don't ask again for this whole long thing"), "Don't ask again");
+    }
+
+    #[test]
+    fn yes_and_no_are_found_only_where_they_are_said() {
+        let menu = |texts: &[&str]| texts.iter().enumerate().map(|(k, t)| Choice { key: char::from_digit(k as u32 + 1, 10).unwrap(), text: t.to_string() }).collect::<Vec<_>>();
+        let claude = menu(&["Yes", "Yes, and don't ask again", "No, and tell Claude what to do differently (esc)"]);
+        assert_eq!((yes(&claude), no(&claude)), (Some('1'), Some('3')));
+        let other = menu(&["Use the old one", "Nothing", "Notes"]);
+        assert_eq!((yes(&other), no(&other)), (None, None), "Nothing and Notes are not No");
+        assert_eq!(yes(&menu(&["No", "Yes"])), None, "yes only as the first");
     }
 
     #[test]

@@ -58,6 +58,7 @@
 - [ ] **3.16** `F2` → A field on the card with the name selected; Enter renames, Esc leaves it as it was
 - [ ] **3.17** `Ctrl+Shift+D` (macOS `Cmd+Option+D`) in a Claude Code pane, then in a shell → A new tab in the same folder: `claude` typed in the first, a shell in the second
 - [ ] **3.18** Look at the sidebar on first start → 288px wide
+- [ ] **3.19** Right-click a card → Note…, type `the release`, Enter; restart the machine (or the server) → `“the release”` on the card under the folder; Edit the note… and an empty Enter takes it off; after the restart the note is back
 
 ## 4. States, notifications and answering
 
@@ -73,6 +74,10 @@
 - [ ] **4.10** The bell → The list of notices, newest first; a click goes to the session and marks it read
 - [ ] **4.11** `printf '\e]9;hello\a'` in a pane → Marked waiting with `hello`, no hooks needed
 - [ ] **4.12** `Ctrl+Shift+U` with two waiting → The one waiting longest first, then the other
+- [ ] **4.13** Two Claude Code sessions asking permission, then `Ctrl+Shift+Y` (or **List ›** at the sidebar's foot) → A panel: each waiting session with what it said, how long, its choices as buttons and a tick; a choice's button types its number there
+- [ ] **4.14** In that panel, **Yes to 2** → Both go on as if `1` were typed in each; untick one first and only the other is answered; **No to N** types each menu's "No" choice
+- [ ] **4.15** A session waiting with a menu of other words (no "Yes"/"No") → Not counted in Yes to N / No to N; its own buttons still work
+- [ ] **4.16** `exit` a Claude Code session after some work; then the panel's **Recently closed** (or search `recently`) → It is listed: today at …, done, its tokens; **Last output** shows its last lines; **Resume** opens a new tab in its folder typing `claude --resume <id>`; the list survives a restart of tsumugi
 
 ## 5. Search
 
@@ -107,6 +112,7 @@
 - [ ] **7.9** `Ctrl+V` with text on the clipboard → The text is pasted; no chip
 - [ ] **7.10** Drop a file of a few hundred KB → Its chip says its size, `▤ name · 214 KB`
 - [ ] **7.11** Split the tab, open the box, move the keys with `Alt+Arrows` → The box follows the pane with the keys; a pane narrower than 20 columns has none
+- [ ] **7.12** **+ Sessions** in the box, tick another session, `Esc`, write a prompt, `Ctrl+Enter` → `+ name` beside the pane under To; the menu's Esc does not reach the shell; both sessions get the prompt; a click on `+ name` takes it off
 
 ## 8. Restoring after a restart
 
@@ -179,6 +185,7 @@
 - [ ] **15.2** Commit without pushing in the focused repository → `↑1` in gold within half a minute
 - [ ] **15.3** A branch with an open pull request (`gh` signed in) → `PR #N` coloured by its checks; a click opens it in the browser
 - [ ] **15.4** A Claude Code session focused → `N tokens · Today M`; the tooltip breaks it down
+- [ ] **15.5** Rest the pointer on `UTF-8` → Says the panes read and write UTF-8, and that ConPTY turns any console program's output into it; `chcp 932` and a Japanese `dir` in cmd still read right
 
 ## 16. Keys
 

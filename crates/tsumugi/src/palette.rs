@@ -31,15 +31,21 @@ pub enum Command {
     Sort(Sort),
     Settings,
     InputBox,
+    /// The waiting sessions, to answer together.
+    Waiting,
+    /// The sessions that ended.
+    Closed,
 }
 
 impl Command {
-    pub const ALL: [Command; 13] = [
+    pub const ALL: [Command; 15] = [
         Command::NewSession,
         Command::SplitRight,
         Command::SplitDown,
         Command::Zoom,
         Command::NextWaiting,
+        Command::Waiting,
+        Command::Closed,
         Command::CloseTab,
         Command::Sort(Sort::Manual),
         Command::Sort(Sort::Needs),
@@ -61,6 +67,8 @@ impl Command {
             Command::Sort(s) => format!("Sort sessions: {}", s.label()),
             Command::Settings => "Settings".into(),
             Command::InputBox => "Input box: write a prompt".into(),
+            Command::Waiting => "Waiting sessions: answer them together".into(),
+            Command::Closed => "Recently closed sessions".into(),
         }
     }
 
@@ -77,7 +85,8 @@ impl Command {
             Command::CloseTab => Action::CloseTab,
             Command::InputBox => Action::Input,
             Command::Settings => Action::Settings,
-            Command::Sort(_) => return String::new(),
+            Command::Waiting => Action::Waiting,
+            Command::Sort(_) | Command::Closed => return String::new(),
         };
         label(action)
     }

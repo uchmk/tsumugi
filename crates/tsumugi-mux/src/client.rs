@@ -43,6 +43,8 @@ struct State {
     notices: Vec<Notice>,
     started_ms: u64,
     clipboard: Vec<String>,
+    /// Sessions that ended since the last `take_ended`, with their last lines.
+    ended: Vec<(Info, Vec<String>)>,
     /// `ToClient::Attention`: someone is at a window, and this one tells.
     looking: bool,
     teller: bool,
@@ -273,6 +275,11 @@ impl Client {
         self.0.send(ToServer::RenameWorkspace { id, name });
     }
 
+    /// Write a note on a tab; empty takes it off.
+    pub fn note_workspace(&self, id: WorkspaceId, note: String) {
+        self.0.send(ToServer::NoteWorkspace { id, note });
+    }
+
     /// Keep a tab at the top of the sidebar, or not.
     pub fn pin_workspace(&self, id: WorkspaceId, on: bool) {
         self.0.send(ToServer::PinWorkspace { id, on });
@@ -324,6 +331,12 @@ impl Client {
         self.0.lock().latest.clone()
     }
 
+    /// Sessions that ended since the last call: what each was, and the last
+    /// lines on its screen.
+    pub fn take_ended(&self) -> Vec<(Info, Vec<String>)> {
+        std::mem::take(&mut self.0.lock().ended)
+    }
+
     /// Text that arrived for the clipboard since the last call.
     pub fn take_clipboard(&self) -> Vec<String> {
         std::mem::take(&mut self.0.lock().clipboard)
@@ -358,6 +371,7 @@ fn receive(inner: &Inner, msg: ToClient) {
             (r.scrolled_back, r.win32_input, r.title) = (extra.scrolled_back, extra.win32_input, extra.title);
         }
         ToClient::Exited { id } => st.screens.entry(id).or_default().exited = true,
+        ToClient::Ended { info, last } => st.ended.push((info, last)),
         ToClient::Clipboard(text) => st.clipboard.push(text),
         ToClient::Attention { looking, teller } => (st.looking, st.teller) = (looking, teller),
         ToClient::MutedTags(list) => st.muted_tags = list,

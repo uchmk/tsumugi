@@ -39,6 +39,8 @@ pub enum Action {
     Rename,
     /// Another session in the same folder, as the tab menu's Duplicate.
     Duplicate,
+    /// The list of sessions waiting, to answer them together.
+    Waiting,
 }
 
 /// The action for a key press, if it is one of the window's: a key the
@@ -71,7 +73,7 @@ fn action_with(key: Key, m: Modifiers, mac: bool, bound: &[(Action, Option<Chord
 
 /// The actions the settings can give another key, by the name `[keys]`
 /// uses, with their own keys (elsewhere, then on macOS).
-pub const NAMED: [(Action, &str, &str, &str); 14] = [
+pub const NAMED: [(Action, &str, &str, &str); 15] = [
     (Action::NewTab, "new_tab", "Ctrl+Shift+T", "Cmd+T"),
     (Action::CloseTab, "close_tab", "Ctrl+Shift+W", "Cmd+W"),
     (Action::NextTab, "next_tab", "Ctrl+Tab", "Ctrl+Tab"),
@@ -87,6 +89,8 @@ pub const NAMED: [(Action, &str, &str, &str); 14] = [
     // The design's menu keys. On a Mac Cmd+Shift+D splits down already.
     (Action::Rename, "rename", "F2", "F2"),
     (Action::Duplicate, "duplicate", "Ctrl+Shift+D", "Cmd+Option+D"),
+    // Y for yes: no shell's or Claude Code's key.
+    (Action::Waiting, "waiting_list", "Ctrl+Shift+Y", "Cmd+Shift+Y"),
 ];
 
 /// What a changeable action is called on the settings screen and in
@@ -107,6 +111,7 @@ pub fn title(a: Action) -> &'static str {
         Action::Input => "Input box",
         Action::Rename => "Rename the tab",
         Action::Duplicate => "Duplicate in the same folder",
+        Action::Waiting => "The waiting sessions, answered together",
         Action::Tab(_) => "The Nth tab",
         Action::Move(_) => "Move between panes",
         Action::Resize(_) => "Resize the pane",
@@ -333,6 +338,7 @@ fn action_on(key: Key, m: Modifiers, mac: bool) -> Option<Action> {
             Key::Comma if cmd && !m.shift => Some(Action::Settings),
             Key::I if cmd && !m.shift => Some(Action::Input),
             Key::D if cmd && m.alt && !m.shift => Some(Action::Duplicate),
+            Key::Y if cmd && m.shift => Some(Action::Waiting),
             Key::F2 if !m.any() => Some(Action::Rename),
             _ if cmd && !m.shift => digit().map(Action::Tab),
             _ => None,
@@ -349,6 +355,7 @@ fn action_on(key: Key, m: Modifiers, mac: bool) -> Option<Action> {
         Key::Comma if m.ctrl && !m.shift && !m.alt => Some(Action::Settings),
         Key::I if m.ctrl && !m.shift && !m.alt => Some(Action::Input),
         Key::D if ctrl_shift => Some(Action::Duplicate),
+        Key::Y if ctrl_shift => Some(Action::Waiting),
         Key::F2 if !m.any() => Some(Action::Rename),
         // Alt+Shift++ / Alt+Shift+-, Windows Terminal's: `+` is Shift and
         // `=` on a US keyboard, Shift and `;` on a JIS one.
@@ -406,6 +413,8 @@ mod tests {
         assert_eq!(action_on(Key::Comma, CTRL, false), Some(Action::Settings));
         assert_eq!(action_on(Key::Comma, CMD, true), Some(Action::Settings));
         assert_eq!(action_on(Key::I, CTRL, false), Some(Action::Input));
+        assert_eq!(action_on(Key::Y, CTRL_SHIFT, false), Some(Action::Waiting));
+        assert_eq!(action_on(Key::Y, CTRL, false), None, "Ctrl+Y is the shell's yank");
         assert_eq!(action_on(Key::Tab, Modifiers::NONE, false), None, "Tab is the shell's");
         assert_eq!(action_on(Key::Minus, alt, false), None, "Alt+- is the shell's");
     }
@@ -444,7 +453,7 @@ mod tests {
         assert_eq!(clash(&Chord::parse("Ctrl+Shift+W").unwrap(), Action::NewTab).as_deref(), Some("Ctrl+Shift+W is Close the session already"));
         assert!(clash(&Chord::parse("Ctrl+C").unwrap(), Action::NewTab).unwrap().contains("Claude Code"));
         assert_eq!(clash(&Chord::parse("Ctrl+Shift+T").unwrap(), Action::NewTab), None, "its own key");
-        assert_eq!(clash(&Chord::parse("Ctrl+Shift+Y").unwrap(), Action::NewTab), None);
+        assert_eq!(clash(&Chord::parse("Ctrl+Shift+K").unwrap(), Action::NewTab), None);
         // Every named action's own key reads.
         for (_, _, win, mac) in NAMED {
             assert!(Chord::parse(win).is_ok() && Chord::parse(mac).is_ok(), "{win} {mac}");

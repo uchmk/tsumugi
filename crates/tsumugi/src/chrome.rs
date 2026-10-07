@@ -369,7 +369,7 @@ pub fn status_bar(
                 ui.label(RichText::new(now.format(format).to_string()).font(FontId::monospace(11.5)).color(crate::theme::colors().strong())).on_hover_text(now.format("%A, %-d %B %Y").to_string());
                 ui.add_space(12.0);
             }
-            ui.label(small("UTF-8".into(), pal.fg_dim));
+            ui.label(small("UTF-8".into(), pal.fg_dim)).on_hover_text("What the panes read and write. On Windows, ConPTY turns any console program's output into UTF-8, whatever its code page");
             if let Some((conversation, today)) = tokens {
                 use crate::usage::short;
                 ui.add_space(12.0);
