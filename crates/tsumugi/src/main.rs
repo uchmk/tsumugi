@@ -31,6 +31,7 @@ mod gitinfo;
 mod inputbox;
 mod keys;
 mod material;
+mod backdrop;
 mod menu;
 mod newsession;
 mod palette;
@@ -477,7 +478,9 @@ fn window() -> std::process::ExitCode {
             viewport.with_decorations(false)
         };
     }
-    if (cfg!(windows) || cfg!(target_os = "macos")) && first.window.material != "none" {
+    // Material, or less than all of the window over the desktop: the
+    // window is made see-through when it opens.
+    if ((cfg!(windows) || cfg!(target_os = "macos")) && first.window.material != "none") || first.window.opacity < 100 {
         viewport = viewport.with_transparent(true);
     }
     let options = eframe::NativeOptions { viewport, wgpu_options: wgpu_options(&first.advanced.backend), ..Default::default() };
@@ -859,6 +862,11 @@ struct App {
     system_frame: bool,
     /// The desktop shows through the chrome (Mica or Acrylic, Windows 11).
     material: bool,
+    /// The window was opened see-through for `[window] opacity`: it follows
+    /// the setting from then on.
+    transparent: bool,
+    /// `[window] image`, behind the panes.
+    backdrop: backdrop::Backdrop,
     /// Each session's folder as last seen, and the folders of those that
     /// ended (the new-session dialog's "closed" ones).
     known_cwds: HashMap<SessionId, std::path::PathBuf>,
@@ -1200,6 +1208,8 @@ impl App {
             own_frame: first_window.own_titlebar(),
             system_frame: !first_window.own_titlebar(),
             material: (cfg!(windows) || cfg!(target_os = "macos")) && first_window.material != "none" && material::apply(cc, &first_window.material, theme::colors().light),
+            transparent: first_window.opacity < 100,
+            backdrop: backdrop::Backdrop::default(),
             known_cwds: HashMap::new(),
             closed: closed_file().and_then(|p| std::fs::read_to_string(p).ok()).map(|t| t.lines().filter(|l| !l.is_empty()).map(std::path::PathBuf::from).collect()).unwrap_or_default(),
             shown_tab: None,
@@ -3031,7 +3041,14 @@ impl App {
     /// The band, sidebar and status bar's fill: see-through over Mica or
     /// Acrylic, so the desktop's colour comes through; else as it is.
     fn chrome_fill(&self, c: egui::Color32) -> egui::Color32 {
-        if self.material { c.gamma_multiply(0.55) } else { c }
+        let a = self.alpha();
+        if self.material { c.gamma_multiply(a.min(0.55)) } else { c.gamma_multiply(a) }
+    }
+
+    /// How much of the window covers the desktop (`[window] opacity`, once
+    /// the window was opened see-through).
+    fn alpha(&self) -> f32 {
+        if self.transparent { self.settings_now.window.alpha() } else { 1.0 }
     }
 
     /// The worktrees' comings and goings: start the session in one just
@@ -3585,7 +3602,7 @@ impl App {
     fn strip(&self, ui: &egui::Ui, rect: egui::Rect, info: Option<&Info>, focused: bool) -> egui::Response {
         let resp = ui.interact(rect, egui::Id::new(("strip", info.map(|i| i.id))), egui::Sense::click_and_drag());
         let p = ui.painter_at(rect);
-        p.rect_filled(rect, 0.0, if focused { crate::theme::colors().hover() } else { crate::theme::colors().panel });
+        p.rect_filled(rect, 0.0, (if focused { crate::theme::colors().hover() } else { crate::theme::colors().panel }).gamma_multiply(self.alpha()));
         let Some(info) = info else { return resp };
         let name = sort::display_title(&info.title, &info.command);
         let color = if focused { self.palette.fg } else { self.palette.fg_dim };
@@ -3693,6 +3710,19 @@ impl App {
             _ => w.layout.clone(),
         };
         let rects = if self.zoom { vec![(w.focus, area)] } else { layout.layout(area, GAP) };
+        let alpha = self.alpha();
+        if self.transparent {
+            let holes: Vec<egui::Rect> = rects.iter().map(|(_, r)| from_rect(*r)).collect();
+            ui.painter().add(backdrop::around(ui.max_rect(), &holes, self.palette.on_cursor.gamma_multiply(alpha)));
+        }
+        // The picture behind the panes, and the panes' colour over it.
+        let image = self.backdrop.texture(ui.ctx(), &self.settings_now.window.image).cloned();
+        if let Some(e) = self.backdrop.error.take() {
+            self.say(e, true);
+        }
+        let mut pal = self.palette;
+        let through = if image.is_some() { f32::from(self.settings_now.window.image_opacity.min(100)) / 100.0 } else { 0.0 };
+        pal.bg = pal.bg.gamma_multiply(alpha * (1.0 - through));
         // Attach what is on screen, and let the rest go.
         if let Some(client) = &self.client {
             for (id, _) in &rects {
@@ -3731,6 +3761,7 @@ impl App {
         let cell_w = ui.fonts_mut(|f| f.glyph_width(&self.font, 'M'));
         for (id, r) in &rects {
             let mut rect = from_rect(*r);
+            let card = rect;
             let focused = *id == w.focus;
             // Narrower than 20 columns or lower than 4 rows: no room for a
             // terminal, so a strip with its name and state (1f), which is
@@ -3753,7 +3784,9 @@ impl App {
                 let p = ui.painter_at(head);
                 // Not lit for the keys (the design's Focus, B is not used):
                 // the dimming and the cursor say it.
-                p.rect_filled(head, egui::CornerRadius { nw: 8, ne: 8, sw: 0, se: 0 }, self.palette.on_cursor);
+                // Square when see-through: the corners would show the desktop.
+                let round = if self.transparent { 0 } else { 8 };
+                p.rect_filled(head, egui::CornerRadius { nw: round, ne: round, sw: 0, se: 0 }, self.palette.on_cursor.gamma_multiply(alpha));
                 p.hline(head.x_range(), head.bottom() - 0.5, egui::Stroke::new(1.0, crate::theme::colors().border));
                 if let Some(info) = sessions.iter().find(|i| i.id == *id) {
                     // The state's mark on the left; its words, short, on the
@@ -3818,7 +3851,15 @@ impl App {
             if !narrow {
                 let (Some(pane), view) = (self.panes.get_mut(id), self.views.entry(*id).or_default()) else { continue };
                 let opts = ViewOptions { focused, wheel: true };
-                let shown = ui.push_id(id, |ui| tsumugi_pane::show_faces(ui, Some(pane), view, rect, &faces, row_h, &self.palette, opts)).inner;
+                if self.transparent && rect.bottom() < card.bottom() {
+                    // Round the input box: the window's colour, as when solid.
+                    let below = egui::Rect::from_min_max(egui::pos2(card.left(), rect.bottom()), card.max);
+                    ui.painter().rect_filled(below, 0.0, self.palette.on_cursor.gamma_multiply(alpha));
+                }
+                if let Some(t) = &image {
+                    backdrop::paint(&ui.painter_at(rect), rect, t, alpha);
+                }
+                let shown = ui.push_id(id, |ui| tsumugi_pane::show_faces(ui, Some(pane), view, rect, &faces, row_h, &pal, opts)).inner;
                 if !focused {
                     // The panes without the keys sit back; their marks do not (1e).
                     let dim = f32::from(self.settings_now.appearance.dim) / 100.0;
@@ -4270,7 +4311,7 @@ impl eframe::App for App {
     /// See-through where nothing is drawn when the desktop is to show
     /// through (Mica or Acrylic).
     fn clear_color(&self, visuals: &egui::Visuals) -> [f32; 4] {
-        if self.material { [0.0; 4] } else { visuals.panel_fill.to_normalized_gamma_f32() }
+        if self.material || self.transparent { [0.0; 4] } else { visuals.panel_fill.to_normalized_gamma_f32() }
     }
 
     fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
@@ -4830,7 +4871,13 @@ impl App {
                 ctx.request_repaint();
             });
         }
-        egui::CentralPanel::default().frame(egui::Frame::NONE.fill(self.palette.on_cursor)).show(ui, |ui| {
+        // See-through: the panes draw the window's colour round themselves
+        // (backdrop::around), so it is not twice under them.
+        let main_fill = if self.transparent { egui::Color32::TRANSPARENT } else { self.palette.on_cursor };
+        egui::CentralPanel::default().frame(egui::Frame::NONE.fill(main_fill)).show(ui, |ui| {
+            if self.transparent && (self.failed.is_some() || self.restore.is_some() || self.prefs.is_some() || current.is_none()) {
+                ui.painter().rect_filled(ui.max_rect(), 0.0, self.palette.on_cursor.gamma_multiply(self.alpha()));
+            }
             if self.failed.is_some() {
                 self.message(ui);
                 return;

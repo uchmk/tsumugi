@@ -28,10 +28,15 @@
 //! # (Windows and Linux; on macOS the band runs under the traffic lights), or
 //! # "system". material is "none", or "mica" or "acrylic" (Windows 11) or
 //! # "vibrancy" (macOS; the other two are it there too): the desktop shows
-//! # through the band, sidebar and status bar (on restart).
+//! # through the band, sidebar and status bar (on restart). opacity (20 to
+//! # 100 %) lets the desktop show through all of it; image is a picture
+//! # behind the panes, image_opacity how much of it shows (%).
 //! [window]
 //! titlebar = "tsumugi"
 //! material = "none"
+//! opacity = 100
+//! image = ""
+//! image_opacity = 25
 //!
 //! # The window's keys, moved: an action's name and a key, or "none" to give
 //! # the key back to the shell. The names: new_tab, close_tab, next_tab,
@@ -392,17 +397,32 @@ pub struct Window {
     pub titlebar: String,
     /// `none`, `mica` or `acrylic` (Windows 11), `vibrancy` (macOS).
     pub material: String,
+    /// How much of the window covers the desktop, in %, 20 to 100: less
+    /// lets it show through (from when the window opens next, if it was
+    /// opened solid).
+    pub opacity: u8,
+    /// A picture behind the panes (png or jpeg); `~/` is the home folder,
+    /// a relative path is beside this file. Empty for none.
+    pub image: String,
+    /// How much of the picture shows through the panes, in %.
+    pub image_opacity: u8,
 }
 
 impl Window {
     pub fn own_titlebar(&self) -> bool {
         self.titlebar != "system"
     }
+
+    /// `opacity` as a share, kept from 0.2 (a window that cannot be seen
+    /// is not one) to 1.
+    pub fn alpha(&self) -> f32 {
+        f32::from(self.opacity.clamp(20, 100)) / 100.0
+    }
 }
 
 impl Default for Window {
     fn default() -> Self {
-        Self { titlebar: "tsumugi".into(), material: "none".into() }
+        Self { titlebar: "tsumugi".into(), material: "none".into(), opacity: 100, image: String::new(), image_opacity: 25 }
     }
 }
 
@@ -737,6 +757,12 @@ pub fn parse(text: &str) -> Result<Settings, String> {
     if !matches!(s.window.material.as_str(), "none" | "mica" | "acrylic" | "vibrancy") {
         return Err(format!("window.material: `{}` is not none, mica, acrylic or vibrancy", s.window.material));
     }
+    if !(20..=100).contains(&s.window.opacity) {
+        return Err(format!("window.opacity: {} is not 20 to 100", s.window.opacity));
+    }
+    if s.window.image_opacity > 100 {
+        return Err(format!("window.image_opacity: {} is more than 100", s.window.image_opacity));
+    }
     if !matches!(s.sessions.start.as_str(), "claude" | "resume" | "shell") {
         return Err(format!("sessions.start: `{}` is not claude, resume or shell", s.sessions.start));
     }
@@ -1062,6 +1088,10 @@ mod tests {
         assert_eq!(parse("[keys]\nnew_tab = \"Ctrl+Shift+N\"\nzoom = \"none\"\n").unwrap().keys.len(), 2);
         assert!(!parse("[window]\ntitlebar = \"system\"\n").unwrap().window.own_titlebar());
         assert!(parse("[window]\nmaterial = \"glass\"\n").is_err());
+        assert_eq!(parse("[window]\nopacity = 80\nimage = \"~/bg.png\"\n").unwrap().window.alpha(), 0.8);
+        assert_eq!(parse("").unwrap().window.alpha(), 1.0);
+        assert!(parse("[window]\nopacity = 10\n").is_err());
+        assert!(parse("[window]\nimage_opacity = 101\n").is_err());
     }
 
     #[test]

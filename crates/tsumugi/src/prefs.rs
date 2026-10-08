@@ -726,6 +726,24 @@ fn appearance(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mu
             }
         }
         sep(ui, l);
+        let note = "How much of the window covers the desktop, 20 to 100 %. Below 100 it shows through (when the window opens next, if it opened at 100)";
+        if let Some(t) = row(ui, l, "Opacity", note, |ui| field(ui, &mut edit.drafts, "opacity", &w.opacity.to_string(), "100", 80.0)) {
+            if let Ok(v) = t.trim().trim_end_matches('%').trim().parse::<u8>() {
+                out.push(Change::Set(Some("window"), "opacity", v.clamp(20, 100).to_string()));
+            }
+        }
+        sep(ui, l);
+        let note = "A png or jpeg behind the panes; ~/ is the home folder, a relative path is beside settings.toml. Empty for none";
+        if let Some(t) = row(ui, l, "Background image", note, |ui| field(ui, &mut edit.drafts, "image", &w.image, "~/Pictures/bg.png", 220.0)) {
+            out.push(Change::Set(Some("window"), "image", cfg::quote(t.trim())));
+        }
+        sep(ui, l);
+        if let Some(t) = row(ui, l, "Image strength", "How much of the background image shows through the panes, in %", |ui| field(ui, &mut edit.drafts, "image_opacity", &w.image_opacity.to_string(), "25", 80.0)) {
+            if let Ok(v) = t.trim().trim_end_matches('%').trim().parse::<u8>() {
+                out.push(Change::Set(Some("window"), "image_opacity", v.min(100).to_string()));
+            }
+        }
+        sep(ui, l);
         if let Some(t) = row(ui, l, "Dim unfocused panes", "How much darker the panes without the keys get, in %", |ui| field(ui, &mut edit.drafts, "dim", &a.dim.to_string(), "35", 80.0)) {
             if let Ok(v) = t.trim().trim_end_matches('%').trim().parse::<u8>() {
                 out.push(Change::Set(Some("appearance"), "dim", v.min(90).to_string()));

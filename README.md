@@ -485,10 +485,17 @@ weekday = true
 # buttons; on macOS under the traffic lights), "system" the OS's own.
 # material = "mica" or "acrylic" (Windows 11) or "vibrancy" (macOS) lets the
 # desktop show through the band, sidebar and status bar (when the window
-# next opens).
+# next opens). opacity (20 to 100, in %) lets the desktop show through the
+# whole window, on every system (from when the window next opens, if it was
+# opened at 100). image is a png or jpeg drawn behind the panes (`~/` is the
+# home folder, a relative path is beside this file), cut to each pane's
+# shape; image_opacity is how much of it shows through them (%).
 [window]
 titlebar = "tsumugi"
 material = "none"
+opacity = 100
+image = ""
+image_opacity = 25
 
 # The window's keys, moved: an action and a key, or "none" to give its key
 # back to the shell (Settings -> Keys: click a key, press the new one).

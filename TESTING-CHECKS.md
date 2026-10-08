@@ -240,6 +240,9 @@
 - [ ] **13.9** Material → acrylic, restart → A blurred desktop instead; moving the window may lag (Windows' own limit)
 - [ ] **13.10** macOS: Material → vibrancy, restart → The sidebar's frosted material behind the band and sidebar; the sidebar runs up to the window's top and the traffic lights sit on it; the band starts to its right, and its empty top drags the window
 - [ ] **13.11** Linux on Wayland: tsumugi's own title bar off → The system's frame (Adwaita) with its buttons, moving and resizing the window; no title text on it
+- [ ] **13.12** Settings → Appearance → Opacity 80, restart; then 60 without restarting → The desktop shows through the whole window -- band, sidebar, panes and the gaps between them -- evenly, no darker bands where the panes are; text stays solid (a reversed status line in vim or htop too); 60 thins it at once
+- [ ] **13.13** Opacity 80 with Material mica (Windows 11) or vibrancy (macOS), restart → The material behind the chrome as before, the panes see-through to it; nothing goes fully clear at a pane's corners
+- [ ] **13.14** Background image → a large png or jpeg (`~/…` and a name beside settings.toml); Image strength 25, then 60 → The picture fills each pane cut to its shape (not stretched), faint behind the text; 60 brings it forward; a pane split or resized refits it; a name that is not a picture toasts why; empty takes it away
 
 ## 14. Motion
 
