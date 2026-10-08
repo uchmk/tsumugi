@@ -84,6 +84,9 @@
 - [ ] **3.28** A plain shell's card beside an agent's → The shell's card is a line shorter: no empty third line
 - [ ] **3.29** Claude Code working in a tab: `F2`, type, `Esc`; right-click → Note…, type, `Esc`; and `F2` on a tab, then pick a tag filter that hides it → Each field closes as it was and Claude Code keeps working (no Esc reached it, `TSUMUGI_PTY_LOG` has no `in key` line); a hidden card's field is let go and the pane gets keys again
 - [ ] **3.30** With the Japanese IME on: right-click a card → Note…, type `にほんご`, convert with Space, Enter to commit, Enter again; the same in `F2`'s field, the menu's Rename… and the search box (`Ctrl+Shift+P`) → The reading stays underlined as it is typed and the candidates come up; the first Enter only commits the conversion, the second keeps the note (or name); `日本語` arrives whole, nothing lost or doubled
+- [ ] **3.31** Sort → Folder with three running, one waiting and one done tab in a folder → Every tab under its heading as a full card, none as one line, no "+ N more"; a click on the heading closes and opens it
+- [ ] **3.32** Open tabs until the sidebar is full (about 15), in each order; then make the window shorter → All full cards while they fit; past that the last ones turn into one-line rows from the bottom up, the tab shown always a card; no scrollbar; taller again, they are cards again
+- [ ] **3.33** Windows, a profile with no tsumugi hook: rules `c:\dev\filer` → `filer` and `c:\dev\tsumugi` → `tsumugi`; in a pwsh tab `cd c:\dev\filer`, then `cd c:\dev\tsumugi`, then back; add a tag `mine` by hand → The card wears `filer`, then `tsumugi` in its place, then `filer` again; `mine` stays throughout; a profile's own hook (mise, `tsumugi shell-hook`) still runs
 
 ## 4. States, notifications and answering
 
@@ -122,6 +125,8 @@
 - [ ] **5.6** Keep a prompt `Say {project}` in the input box's **Prompts…**; in the search box type `send`, pick **Send prompt: …**; then `Ctrl+Shift+I` in a split tab and pick it again → It is sent to the pane with the keys, the project's name in it; the second time every pane of the tab gets it
 - [ ] **5.7** A tab of three panes (Claude Code, a shell beside, one below), dividers moved; **Save this tab's layout**; close it; **Open layout: …** from another pane → `layouts.toml` beside the settings has it; a new tab opens in that pane's folder with the same splits and shares, Claude Code and the shells started as they were
 - [ ] **5.8** `Ctrl+Shift+O` with sessions waiting, running and done; arrows, `Enter`; a click on another; `Ctrl+Shift+O` again → **All sessions** with the waiting first, each row's state, folder, branch, tags, tokens and last two lines; Enter and the click go to that session; the key closes it
+- [ ] **5.9** Give the tab with the keys five tags, `[tags] shown = 3`; make the window narrower step by step; move the keys to a tab without tags → The search box and the bell stay in the middle of the band; three tags and `+2` on the right, fewer and a bigger `+N` as it narrows, never over the box; the box shrinks to its magnifier last
+- [ ] **5.10** `F1` on a 1280 × 800 window; then a narrower one; `F1` again, `Esc`, a click outside → Every key by kind in three columns (two when narrower), all on one screen with no scrolling; a key moved in the settings shows its new key; each closes it
 
 ## 6. New sessions
 
@@ -245,6 +250,7 @@
 - [ ] **16.2** Its own → The key goes back; the search box and the dialog name the key in force
 - [ ] **16.3** `zoom = "none"` → `Ctrl+Shift+Z` reaches the shell
 - [ ] **16.4** Press only Ctrl while a key is being changed → Nothing is written until a real key comes
+- [ ] **16.5** Settings → Keys, each section → Every row's key button lines up in one column at the right, also after a key is changed; the VIEW section has Keys (F1), the overview and the font sizes
 
 ## 17. What the settings' rows do
 
@@ -264,10 +270,9 @@
 - [ ] **17.14** Claude Code command: a full path to `claude` → New Claude Code sessions run that program
 - [ ] **17.15** Resume conversations off; restart with a Claude Code pane → It comes back as a plain shell, nothing typed
 - [ ] **17.16** "Probably waiting" after 3; a program that prints nothing → Its card turns to probably waiting after about 3 s
-- [ ] **17.17** Offer compact rows above 3; four tabs → The offer of one line each comes
 - [ ] **17.18** Profiles → Edit: another folder and a pane on the right; Add a new one → `profiles.toml` has them; the new-session dialog's profile opens both panes
 - [ ] **17.19** Tab menu: hide Pin, move Close the session up, add `lazygit -p {folder}` → The right-click menu follows; the item runs lazygit in the session's folder
-- [ ] **17.20** Open with → Editor command `code {folder}` → Open in the editor opens VS Code in the session's folder
+- [ ] **17.20** Open with → Editor command `code {folder}` → Open in the editor opens VS Code in the session's folder; with one command the menu item has no ▶
 - [ ] **17.21** Tags → New rule → Branch `claude/*`, tag `claude` → A session on a `claude/…` branch gets the tag
 - [ ] **17.22** Edit a tag: rename it, pick a colour, Quiet → Renamed on the sessions and in the rules; the chip recoloured everywhere; its notices go to the bell only
 - [ ] **17.23** Shell → Default shell, Arguments `-NoLogo`, Environment `FOO=1` → A new shell session runs that shell with the argument; `echo $env:FOO` prints 1
@@ -281,6 +286,10 @@
 - [ ] **17.31** Keys → set a key to `Ctrl+[` by hand in `settings.toml`, then change another key and a font size in Settings → `settings.toml` still has every table and comment it had; only the changed lines differ
 - [ ] **17.32** Put a mistake in `settings.toml` (`[broken`), then change anything in Settings → A toast says the file does not read and is left as it is; the file is unchanged
 - [ ] **17.33** `[[menu.session]] command = "\"C:\\Program Files\\Microsoft VS Code\\Code.exe\" {folder}"` (Windows), then the card menu item → VS Code opens on the tab's folder (cmd took the line whole)
+- [ ] **17.34** Open with → Editor: type `sakura {folder}` into Add another; right-click a card → `[open] editor = ["code {folder}", "sakura {folder}"]`; Open in the editor has ▶; a click on it opens VS Code, hovering opens `code` and `sakura` to its right and each opens its own; × on the second row (or emptying its field) leaves one again
+- [ ] **17.35** Open with → take out every filer command; right-click a card → Open the folder in filer is greyed, its hover says where to set it
+- [ ] **17.36** Tags → Tags shown 1, then 5 → The band and the cards show one tag and `+N`, then all five
+- [ ] **17.37** Tags → a rule's Edit: change its folder, then add a branch, Save; Edit another and take it out → `settings.toml` has the rule changed in place (one rule with both, then neither); the sessions it tagged before lose the tag, those it now matches get it
 
 ## 18. From a script
 

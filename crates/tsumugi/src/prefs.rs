@@ -123,14 +123,13 @@ pub const INDEX: &[(Page, &str)] = &[
     (Page::Sessions, "Resume conversations after a restart"),
     (Page::Sessions, "probably waiting"),
     (Page::Sessions, "Sort"),
-    (Page::Sessions, "Offer compact rows above"),
     (Page::Sessions, "New profile"),
     (Page::Sessions, "Editor command"),
     (Page::Sessions, "filer command"),
     (Page::Sessions, "TAB MENU"),
     (Page::Tags, "New rule"),
     (Page::Tags, "Colour new tags"),
-    (Page::Tags, "Tags per session"),
+    (Page::Tags, "Tags shown"),
     (Page::Tags, "Edit a tag"),
     (Page::Theme, "Mode"),
     (Page::Theme, "PREVIEW"),
@@ -174,8 +173,8 @@ pub struct Edit {
     /// The text fields' words while they are typed in, and just after.
     drafts: HashMap<String, Draft>,
     profile: Option<ProfileDraft>,
-    /// A new tag rule: by branch rather than folder, its pattern, its tag.
-    rule: (bool, String, String),
+    /// The tag rule being written: a new one, or the one at `at` from "Edit".
+    rule: RuleDraft,
     /// The variables being edited, from "Edit".
     env: Option<Vec<(String, String)>>,
     /// The tag "Edit a tag" has, and its new name.
@@ -187,6 +186,14 @@ pub struct Edit {
     import: String,
     /// The hooks' own lines are shown, to copy.
     lines: bool,
+}
+
+#[derive(Default)]
+struct RuleDraft {
+    at: Option<usize>,
+    folder: String,
+    branch: String,
+    tag: String,
 }
 
 struct Draft {
@@ -834,6 +841,16 @@ fn keys(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut Vec<
         fixed_row(ui, "Resize the pane", fixed("Alt+Shift+Arrows", "Cmd+Ctrl+Arrows"));
         sep(ui, l);
         changeable(ui, Action::Zoom);
+        sep(ui, l);
+        changeable(ui, Action::CopyMode);
+    });
+    section(ui, l, "VIEW", |ui| {
+        for (k, a) in [Action::Help, Action::Overview, Action::FontBigger, Action::FontSmaller, Action::FontReset].into_iter().enumerate() {
+            if k > 0 {
+                sep(ui, l);
+            }
+            changeable(ui, a);
+        }
     });
     ui.label(RichText::new("A key is written to [keys] in settings.toml; \"none\" there gives it back to the shell.").size(12.0).color(c.dim));
 }
@@ -1079,12 +1096,6 @@ fn sessions(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut 
         if let Some(v) = row(ui, l, "Sort", "Also the button beside SESSIONS", |ui| select(ui, "sort", seen.sort, &sorts)) {
             out.push(Change::Sort(v));
         }
-        sep(ui, l);
-        if let Some(t) = row(ui, l, "Offer compact rows above", "Sessions open at once", |ui| field(ui, &mut edit.drafts, "compact", &s.compact_after.to_string(), "12", 80.0)) {
-            if let Ok(v) = t.trim().parse::<usize>() {
-                out.push(Change::Set(Some("sessions"), "compact_after", v.to_string()));
-            }
-        }
     });
     section(ui, l, "PROFILES", |ui| {
         for p in seen.profiles {
@@ -1167,19 +1178,56 @@ fn sessions(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut 
     });
     let o = &seen.settings.open;
     section(ui, l, "OPEN WITH", |ui| {
-        if let Some(t) = row(ui, l, "Editor command", "The tab menu's \u{201c}Open in the editor\u{201d}; {folder} is the session's folder", |ui| field(ui, &mut edit.drafts, "editor", &o.editor, "code {folder}", 220.0)) {
-            out.push(Change::Set(Some("open"), "editor", cfg::quote(&t)));
-        }
+        commands(ui, l, edit, out, "editor", "Editor command", "The tab menu's \u{201c}Open in the editor\u{201d}; {folder} is the session's folder", &o.editor, "code {folder}");
         sep(ui, l);
-        if let Some(t) = row(ui, l, "filer command", "The tab menu's \u{201c}Open the folder in filer\u{201d}", |ui| field(ui, &mut edit.drafts, "filer", &o.filer, "filer {folder}", 220.0)) {
-            out.push(Change::Set(Some("open"), "filer", cfg::quote(&t)));
-        }
+        commands(ui, l, edit, out, "filer", "filer command", "The tab menu's \u{201c}Open the folder in filer\u{201d}", &o.filer, "filer {folder}");
         sep(ui, l);
         if let Some(t) = row(ui, l, "File command", "A Ctrl+click on a file's path in a pane; {file}, {line} and {column}. Empty: the system's way", |ui| field(ui, &mut edit.drafts, "file", &o.file, "code --goto {file}:{line}:{column}", 220.0)) {
             out.push(Change::Set(Some("open"), "file", cfg::quote(&t)));
         }
     });
     tab_menu(ui, l, seen, edit, out);
+}
+
+/// `[open] editor` or `filer`: a field for each command, the first the one
+/// a click runs, and an empty one under them to add another (more than one
+/// opens beside the menu's item).
+#[allow(clippy::too_many_arguments)]
+fn commands(ui: &mut egui::Ui, l: Look, edit: &mut Edit, out: &mut Vec<Change>, key: &'static str, label: &str, note: &str, now: &[String], hint: &str) {
+    let write = |list: &[String]| Change::Set(Some("open"), key, cfg::quote_list(list));
+    for (k, c) in now.iter().enumerate() {
+        let (words, about) = if k == 0 {
+            (label.to_owned(), format!("{note}. The first is the click; more open beside it"))
+        } else {
+            (format!("{label} {}", k + 1), format!("In the menu beside it as \u{201c}{}\u{201d}", tsumugi_mux::settings::program_name(c)))
+        };
+        let (typed, gone) = row(ui, l, &words, &about, |ui| {
+            let gone = ui.small_button("×").on_hover_text("Take it out").clicked();
+            (field(ui, &mut edit.drafts, &format!("{key}-{k}"), c, hint, 220.0), gone)
+        });
+        let mut next = now.to_vec();
+        if gone {
+            next.remove(k);
+            out.push(write(&next));
+        } else if let Some(t) = typed {
+            if t.trim().is_empty() {
+                next.remove(k);
+            } else {
+                next[k] = t;
+            }
+            out.push(write(&next));
+        }
+    }
+    let first = now.is_empty();
+    let words = if first { label.to_owned() } else { "Add another".to_owned() };
+    let about = if first { note.to_owned() } else { format!("Another to open with, beside \u{201c}{}\u{201d}", tsumugi_mux::settings::program_name(&now[0])) };
+    if let Some(t) = row(ui, l, &words, &about, |ui| field(ui, &mut edit.drafts, &format!("{key}-new"), "", if first { hint } else { "sakura {folder}" }, 220.0)) {
+        if !t.trim().is_empty() {
+            let mut next = now.to_vec();
+            next.push(t);
+            out.push(write(&next));
+        }
+    }
 }
 
 /// The tab's right-click menu: which items show, their order, and items of
@@ -1313,51 +1361,64 @@ fn tags(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut Vec<
             select(ui, "tag-colour-kind", "auto", &[("auto", "Automatic")]);
         });
         sep(ui, l);
-        row(ui, l, "Tags per session", "The title bar and tabs show 3, then +N", |ui| status(ui, &format!("At most {}", tsumugi_mux::proto::MAX_TAGS), c.fg));
+        row(ui, l, "Tags shown", &format!("How many of a session's tags the title bar and the cards show, then +N (a session has at most {})", tsumugi_mux::proto::MAX_TAGS), |ui| {
+            const COUNTS: [(usize, &str); 5] = [(1, "1"), (2, "2"), (3, "3"), (4, "4"), (5, "5")];
+            if let Some(n) = select(ui, "tags-shown", t.shown(), &COUNTS[..tsumugi_mux::proto::MAX_TAGS]) {
+                out.push(Change::Set(Some("tags"), "shown", n.to_string()));
+            }
+        });
     });
     section(ui, l, "AUTOMATIC TAGS", |ui| {
+        // The rule being edited went (the file changed under it).
+        if edit.rule.at.is_some_and(|k| k >= t.rule.len()) {
+            edit.rule = RuleDraft::default();
+        }
         for (k, r) in t.rule.iter().enumerate() {
             let what = match (r.folder.is_empty(), r.branch.is_empty()) {
                 (false, true) => format!("Folder {}", r.folder),
                 (true, false) => format!("Branch {}", r.branch),
                 _ => format!("Folder {} on branch {}", r.folder, r.branch),
             };
-            let gone = row(ui, l, &what, "", |ui| {
+            let (gone, change) = row(ui, l, &what, "", |ui| {
                 let gone = button(ui, l, "Remove");
+                ui.add_space(4.0);
+                let change = edit.rule.at != Some(k) && button(ui, l, "Edit");
                 ui.add_space(8.0);
                 let w = ui.fonts_mut(|f| f.layout_no_wrap(r.tag.clone(), FontId::proportional(11.0), c.fg).size().x) + 12.0;
                 let (rect, _) = ui.allocate_exact_size(egui::vec2(w, 16.0), egui::Sense::hover());
                 crate::chrome::tag_chip(ui.painter(), rect.min, &r.tag, false);
-                gone
+                (gone, change)
             });
             if gone {
                 let mut next = t.rule.clone();
                 next.remove(k);
                 out.push(Change::Rules(next));
+                edit.rule = RuleDraft::default();
+            }
+            if change {
+                edit.rule = RuleDraft { at: Some(k), folder: r.folder.clone(), branch: r.branch.clone(), tag: r.tag.clone() };
             }
             sep(ui, l);
         }
-        row(ui, l, "New rule", "A folder (ending in * for each folder in it) or a branch pattern, then a tag ({name}: the folder's name)", |ui| crate::chrome::in_order(ui, |ui| {
-            let (branch, pattern, tag) = &mut edit.rule;
-            if let Some(b) = select(ui, "rule-kind", *branch, &[(false, "Folder"), (true, "Branch")]) {
-                *branch = b;
-            }
-            let hint = if *branch { "claude/*" } else { "~/dev/*" };
-            ui.add(egui::TextEdit::singleline(pattern).hint_text(hint).desired_width(150.0).font(FontId::monospace(12.5)));
-            ui.add(egui::TextEdit::singleline(tag).hint_text("tag").desired_width(90.0));
-            let ok = !pattern.trim().is_empty() && !tag.trim().is_empty();
-            if ui.add_enabled(ok, egui::Button::new("Add")).clicked() {
+        let (title, verb) = if edit.rule.at.is_some() { ("Edit rule", "Save") } else { ("New rule", "Add") };
+        row(ui, l, title, "A folder (ending in * for each folder in it), a branch pattern, or both; then a tag ({name}: the folder's name)", |ui| crate::chrome::in_order(ui, |ui| {
+            let d = &mut edit.rule;
+            ui.add(egui::TextEdit::singleline(&mut d.folder).hint_text("folder: ~/dev/*").desired_width(130.0).font(FontId::monospace(12.5)));
+            ui.add(egui::TextEdit::singleline(&mut d.branch).hint_text("branch: claude/*").desired_width(110.0).font(FontId::monospace(12.5)));
+            ui.add(egui::TextEdit::singleline(&mut d.tag).hint_text("tag").desired_width(80.0));
+            let ok = (!d.folder.trim().is_empty() || !d.branch.trim().is_empty()) && !d.tag.trim().is_empty();
+            if ui.add_enabled(ok, egui::Button::new(verb)).clicked() {
+                let rule = TagRule { folder: d.folder.trim().to_owned(), branch: d.branch.trim().to_owned(), tag: d.tag.trim().to_owned() };
                 let mut next = t.rule.clone();
-                let mut rule = TagRule { tag: tag.trim().to_owned(), ..TagRule::default() };
-                if *branch {
-                    rule.branch = pattern.trim().to_owned();
-                } else {
-                    rule.folder = pattern.trim().to_owned();
+                match d.at {
+                    Some(k) => next[k] = rule,
+                    None => next.push(rule),
                 }
-                next.push(rule);
                 out.push(Change::Rules(next));
-                *pattern = String::new();
-                *tag = String::new();
+                *d = RuleDraft::default();
+            }
+            if d.at.is_some() && button(ui, l, "Cancel") {
+                *d = RuleDraft::default();
             }
         }));
     });
@@ -1857,11 +1918,26 @@ mod tests {
         run.frame(&mut screen, Vec::new());
         let (_, texts) = run.frame(&mut screen, Vec::new());
         let x = |w: &str| find(&texts, w).unwrap_or_else(|| panic!("{w}")).left();
-        let (kind, pattern, tag, add) = (x("Folder"), x("~/dev/*"), x("tag"), x("Add"));
-        assert!(kind < pattern && pattern < tag && tag < add, "Folder {kind}, pattern {pattern}, tag {tag}, Add {add}");
+        let (folder, branch, tag, add) = (x("folder: ~/dev/*"), x("branch: claude/*"), x("tag"), x("Add"));
+        assert!(folder < branch && branch < tag && tag < add, "folder {folder}, branch {branch}, tag {tag}, Add {add}");
         let add_right = find(&texts, "Add").unwrap().right();
-        let edge = find(&texts, "At most").unwrap().right();
+        // The card's right edge, less its padding (as in `a_switch_writes_its_key`).
+        let edge = 48.0 + 241.0 + 820.0 - 18.0;
         assert!((add_right - edge).abs() < 12.0, "Add ends at {add_right}, the other rows at {edge}");
+    }
+
+    #[test]
+    fn the_keys_line_up_at_the_right() {
+        let run = Run::new();
+        let mut screen = at_page(Page::Keys);
+        for _ in 0..3 {
+            run.frame(&mut screen, Vec::new());
+        }
+        let (_, texts) = run.frame(&mut screen, Vec::new());
+        // Each row's own width was once kept under one id for all of them,
+        // so the caps drifted right row by row.
+        let caps: Vec<f32> = ["Ctrl+Shift+T", "Ctrl+Tab", "Ctrl+Shift+Tab", "Ctrl+I", "Ctrl+Shift+B", "Alt+Shift++", "Ctrl+Shift+Z"].iter().map(|w| find(&texts, w).unwrap_or_else(|| panic!("{w}")).right()).collect();
+        assert!(caps.iter().all(|x| (x - caps[0]).abs() < 1.0), "{caps:?}");
     }
 
     fn at_page(page: Page) -> Screen {
@@ -1999,6 +2075,22 @@ mod tests {
         let remove = texts.iter().filter(|(t, _)| t == "Remove").map(|(_, r)| *r).find(|r| (r.center().y - first.top() - 16.0).abs() < 14.0).expect("its Remove");
         let changes = run.click(&mut screen, remove.center());
         assert_eq!(changes, vec![Change::Rules(vec![run.settings.tags.rule[1].clone()])]);
+
+        // Edit: the rule comes into the fields, and Save puts it back in place.
+        let edit = texts.iter().filter(|(t, _)| t == "Edit").map(|(_, r)| *r).find(|r| (r.center().y - first.top() - 16.0).abs() < 14.0).expect("its Edit");
+        assert!(run.click(&mut screen, edit.center()).is_empty());
+        let (_, texts) = run.frame(&mut screen, Vec::new());
+        assert!(find(&texts, "Edit rule").is_some() && find(&texts, "Cancel").is_some());
+        // The field is below the rule's own chip.
+        let tag = texts.iter().filter(|(t, _)| t == "{name}").map(|(_, r)| *r).max_by(|a, b| a.top().total_cmp(&b.top())).expect("the tag's field");
+        run.click(&mut screen, egui::pos2(tag.right() + 1.0, tag.center().y));
+        run.frame(&mut screen, vec![egui::Event::Text("-x".into())]);
+        let (_, texts) = run.frame(&mut screen, Vec::new());
+        let save = *find(&texts, "Save").expect("Save");
+        let changes = run.click(&mut screen, save.center());
+        let mut want = run.settings.tags.rule.clone();
+        want[0].tag = "{name}-x".into();
+        assert_eq!(changes, vec![Change::Rules(want)]);
 
         let mut screen = at_page(Page::Sessions);
         run.frame(&mut screen, Vec::new());

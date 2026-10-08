@@ -84,10 +84,11 @@
 //! cache_read = 0.2
 //!
 //! # What a tab's menu runs to open its folder; {folder} is the folder.
+//! # A list for more than one: the first on a click, all in a menu beside it.
 //! # `file`: what Ctrl+click on a path in a pane runs ({file}, {line},
 //! # {column}); empty, the system opens it.
 //! [open]
-//! editor = "code {folder}"
+//! editor = ["code {folder}", "sakura {folder}"]
 //! filer = "filer {folder}"
 //! file = "code --goto {file}:{line}:{column}"
 //!
@@ -98,6 +99,10 @@
 //! [[menu.session]]
 //! name = "Open lazygit here"
 //! command = "wt -d {folder} lazygit"
+//!
+//! # How many of a session's tags the band and the cards show, then +N.
+//! [tags]
+//! shown = 3
 //!
 //! # A session on a branch like this gets the tag (with a folder too, both
 //! # must match); a tag's own colour.
@@ -123,7 +128,6 @@
 //! claude = "claude"
 //! resume = true
 //! quiet = 10
-//! compact_after = 12
 //!
 //! # The shell sessions start, its arguments and its variables.
 //! [shell]
@@ -259,7 +263,8 @@ pub struct Sessions {
     /// Seconds of silence after which a running program reads as probably
     /// waiting; 0 turns the guess off. Unset: `TSUMUGI_QUIET_SECS`, else 10.
     pub quiet: Option<u64>,
-    /// How many tabs before asking whether to show one line each.
+    /// No longer used (0.55: the sidebar turns its last cards into lines
+    /// itself when they do not fit); read so older files still load.
     pub compact_after: usize,
 }
 
@@ -445,8 +450,12 @@ impl Default for Settings {
 #[derive(Clone, Debug, PartialEq, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Open {
-    pub editor: String,
-    pub filer: String,
+    /// The editors and filers, the first the one a click runs: a command
+    /// alone or a list of them.
+    #[serde(deserialize_with = "one_or_more")]
+    pub editor: Vec<String>,
+    #[serde(deserialize_with = "one_or_more")]
+    pub filer: Vec<String>,
     /// What a Ctrl+click on a file's path in a pane runs: `{file}` (quoted),
     /// `{line}` and `{column}` (1 when the output named none). Empty: the
     /// system's own way of opening it.
@@ -455,7 +464,7 @@ pub struct Open {
 
 impl Default for Open {
     fn default() -> Self {
-        Self { editor: "code {folder}".into(), filer: "filer {folder}".into(), file: "code --goto {file}:{line}:{column}".into() }
+        Self { editor: vec!["code {folder}".into()], filer: vec!["filer {folder}".into()], file: "code --goto {file}:{line}:{column}".into() }
     }
 }
 
@@ -535,6 +544,34 @@ pub fn fill(command: &str, folder: &Path, session: u64) -> String {
     command.replace("{folder}", &shell_word(folder)).replace("{session}", &session.to_string())
 }
 
+/// A command, or a list of them; empty ones left out.
+fn one_or_more<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Vec<String>, D::Error> {
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum Given {
+        One(String),
+        More(Vec<String>),
+    }
+    let all = match Given::deserialize(d)? {
+        Given::One(s) => vec![s],
+        Given::More(v) => v,
+    };
+    Ok(all.into_iter().filter(|c| !c.trim().is_empty()).collect())
+}
+
+/// What a command is called in a menu: its program's name, `sakura` for
+/// `"C:\Program Files\sakura\sakura.exe" {folder}`.
+pub fn program_name(command: &str) -> String {
+    let c = command.trim_start();
+    let first = match c.strip_prefix('"') {
+        Some(rest) => rest.split('"').next().unwrap_or(rest),
+        None => c.split_whitespace().next().unwrap_or(c),
+    };
+    let base = first.rsplit(['/', '\\']).next().unwrap_or(first);
+    let stem = base.strip_suffix(".exe").or_else(|| base.strip_suffix(".cmd")).or_else(|| base.strip_suffix(".bat")).unwrap_or(base);
+    if stem.is_empty() { command.trim().to_owned() } else { stem.to_owned() }
+}
+
 /// `[open] file` for a file and the line and column in it.
 pub fn fill_file(command: &str, file: &Path, line: u32, column: u32) -> String {
     command.replace("{file}", &shell_word(file)).replace("{line}", &line.to_string()).replace("{column}", &column.to_string())
@@ -546,12 +583,28 @@ fn shell_word(path: &Path) -> String {
     if cfg!(windows) { format!("\"{f}\"") } else { format!("'{}'", f.replace('\'', "'\\''")) }
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Tags {
     pub rule: Vec<TagRule>,
     /// A tag's own colour (`"#rrggbb"`), over the one picked from its name.
     pub colors: std::collections::BTreeMap<String, String>,
+    /// How many of a session's tags the band and the cards show before
+    /// `+N` (1 to `MAX_TAGS`).
+    pub shown: usize,
+}
+
+impl Default for Tags {
+    fn default() -> Self {
+        Self { rule: Vec::new(), colors: Default::default(), shown: 3 }
+    }
+}
+
+impl Tags {
+    /// `shown`, kept between 1 and `MAX_TAGS`.
+    pub fn shown(&self) -> usize {
+        self.shown.clamp(1, crate::proto::MAX_TAGS)
+    }
 }
 
 /// A session in `folder`, or anywhere under it, gets `tag`. A `folder`
@@ -1039,7 +1092,7 @@ mod tests {
         assert_eq!(s.shell.command(), Some(("pwsh".to_string(), vec!["-NoLogo".to_string()])));
         assert_eq!(s.shell.env.get("EDITOR").map(String::as_str), Some("code --wait"));
         assert_eq!(s.advanced, Advanced::default());
-        assert_eq!(s.open, Open::default());
+        assert_eq!(s.open, Open { editor: vec!["code {folder}".into(), "sakura {folder}".into()], ..Open::default() });
         assert_eq!(s.menu.hide, ["new-window"]);
         assert_eq!(s.menu.session[0].command, "wt -d {folder} lazygit");
     }
@@ -1176,5 +1229,18 @@ mod tests {
         assert_eq!(words.len(), MENU_ITEMS.len());
         assert_eq!(menu_words(&[]), MENU_ITEMS.to_vec());
         assert!(MENU_ITEMS.iter().all(|w| !menu_label(w).is_empty()));
+    }
+
+    #[test]
+    fn an_editor_is_one_command_or_more() {
+        let one = parse("[open]\nfiler = \"filer {folder}\"\n").unwrap();
+        assert_eq!(one.open.filer, ["filer {folder}"]);
+        let more = parse("[open]\neditor = [\"code {folder}\", \"\", \"sakura {folder}\"]\nfiler = []\n").unwrap();
+        assert_eq!(more.open.editor, ["code {folder}", "sakura {folder}"], "an empty one left out");
+        assert!(more.open.filer.is_empty());
+        assert_eq!(program_name("code {folder}"), "code");
+        assert_eq!(program_name(r#""C:\Program Files\sakura\sakura.exe" {folder}"#), "sakura");
+        assert_eq!(program_name("/usr/bin/subl -n {folder}"), "subl");
+        assert_eq!(program_name("code.cmd {folder}"), "code");
     }
 }

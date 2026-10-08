@@ -56,6 +56,8 @@ pub enum Action {
     /// Move over the pane's output and its scrollback with the keys, select
     /// and copy (Windows Terminal's mark mode).
     CopyMode,
+    /// Every key and what it does, by kind, on one screen (filer's help).
+    Help,
 }
 
 /// The action for a key press, if it is one of the window's: a key the
@@ -88,7 +90,7 @@ fn action_with(key: Key, m: Modifiers, mac: bool, bound: &[(Action, Option<Chord
 
 /// The actions the settings can give another key, by the name `[keys]`
 /// uses, with their own keys (elsewhere, then on macOS).
-pub const NAMED: [(Action, &str, &str, &str); 22] = [
+pub const NAMED: [(Action, &str, &str, &str); 23] = [
     (Action::NewTab, "new_tab", "Ctrl+Shift+T", "Cmd+T"),
     (Action::CloseTab, "close_tab", "Ctrl+Shift+W", "Cmd+W"),
     (Action::NextTab, "next_tab", "Ctrl+Tab", "Ctrl+Tab"),
@@ -119,6 +121,54 @@ pub const NAMED: [(Action, &str, &str, &str); 22] = [
     (Action::Overview, "overview", "Ctrl+Shift+O", "Cmd+Shift+O"),
     // Windows Terminal's mark mode.
     (Action::CopyMode, "copy_mode", "Ctrl+Shift+M", "Cmd+Shift+M"),
+    // Every program's help key, and filer's.
+    (Action::Help, "help", "F1", "F1"),
+];
+
+/// The keys the settings cannot move, the window's and its boxes': (section,
+/// key on Windows and Linux, on macOS, what it does). The help (F1) lists
+/// them, as TESTING-KEYS.md does.
+pub const FIXED: &[(&str, &str, &str, &str)] = &[
+    ("The window, fixed", "Ctrl+Alt+1 … 9", "Cmd+1 … 9", "The Nth tab"),
+    ("The window, fixed", "Alt+Left", "Cmd+Option+Left", "The keys to the pane on the left"),
+    ("The window, fixed", "Alt+Right", "Cmd+Option+Right", "The keys to the pane on the right"),
+    ("The window, fixed", "Alt+Up", "Cmd+Option+Up", "The keys to the pane above"),
+    ("The window, fixed", "Alt+Down", "Cmd+Option+Down", "The keys to the pane below"),
+    ("The window, fixed", "Alt+Shift+Left", "Cmd+Ctrl+Left", "Move the divider nearest the pane with the keys to the left"),
+    ("The window, fixed", "Alt+Shift+Right", "Cmd+Ctrl+Right", "Move the divider nearest the pane with the keys to the right"),
+    ("The window, fixed", "Alt+Shift+Up", "Cmd+Ctrl+Up", "Move the divider nearest the pane with the keys up"),
+    ("The window, fixed", "Alt+Shift+Down", "Cmd+Ctrl+Down", "Move the divider nearest the pane with the keys down"),
+    ("The new-session dialog", "Enter", "Enter", "Create in a new tab (on a button: press it)"),
+    ("The new-session dialog", "Alt+Enter", "Option+Enter", "Create split to the right of the pane with the keys"),
+    ("The new-session dialog", "Tab", "Tab", "In the folder: complete it from the list; complete, or elsewhere: the next field"),
+    ("The new-session dialog", "Shift+Tab", "Shift+Tab", "The field before"),
+    ("The new-session dialog", "Left / Right", "Left / Right", "On a way to start: the one beside it"),
+    ("The new-session dialog", "Space", "Space", "Press the button that has the keys"),
+    ("The new-session dialog", "Up / Down", "Up / Down", "Walk the folder list"),
+    ("The new-session dialog", "Esc", "Esc", "Cancel"),
+    ("The input box", "Ctrl+Enter", "Cmd+Enter", "Send the prompt"),
+    ("The input box", "Ctrl+Shift+Enter", "Cmd+Shift+Enter", "Queue the prompt for when the session is done"),
+    ("The input box", "Enter", "Enter", "A new line, not sent"),
+    ("The input box", "Up / Down", "Up / Down", "The prompts sent before (in an empty box, or one showing a sent one)"),
+    ("The input box", "Esc", "Esc", "Close the box, the keys back to the pane, the draft kept"),
+    ("The search box", "Up / Down", "Up / Down", "Walk the entries"),
+    ("The search box", "Enter", "Enter", "Do the entry picked"),
+    ("The search box", "Esc", "Esc", "Close it"),
+    ("Copy mode", "Arrows / h j k l", "Arrows / h j k l", "Move the cursor; past the top or bottom, the output moves"),
+    ("Copy mode", "PageUp / PageDown", "PageUp / PageDown", "A page through the scrollback"),
+    ("Copy mode", "g / G", "g / G", "The oldest line / the newest"),
+    ("Copy mode", "0 / $ (Home / End)", "0 / $ (Home / End)", "The start / the end of the line"),
+    ("Copy mode", "v / Space", "v / Space", "Start a selection at the cursor, or drop it"),
+    ("Copy mode", "y / Enter", "y / Enter", "Copy the selection (none: the cursor's line) and leave"),
+    ("Copy mode", "Esc / q", "Esc / q", "Leave without copying"),
+    ("The settings screen", "Esc", "Esc", "Leave the control that has the keys (a field as it was); with none, close the screen"),
+    ("The settings screen", "Ctrl+Tab / Ctrl+PageDown", "Ctrl+Tab / Cmd+PageDown", "The next page"),
+    ("The settings screen", "Ctrl+Shift+Tab / Ctrl+PageUp", "Ctrl+Shift+Tab / Cmd+PageUp", "The page before"),
+    ("The settings screen", "Ctrl+F", "Cmd+F", "To the search"),
+    ("The settings screen", "Tab / Shift+Tab", "Tab / Shift+Tab", "The search, the page's controls one by one, then Open settings.toml"),
+    ("The settings screen", "Space / Enter", "Space / Enter", "Flip the switch or press the button that has the keys"),
+    ("The settings screen", "Ctrl+,", "Cmd+,", "Open it (the changeable key above, while not moved)"),
+    ("The help", "Esc / F1", "Esc / F1", "Close it"),
 ];
 
 /// What a changeable action is called on the settings screen and in
@@ -147,6 +197,7 @@ pub fn title(a: Action) -> &'static str {
         Action::FontReset => "Letters as the settings have them",
         Action::Overview => "Every session on one screen",
         Action::CopyMode => "Copy mode: select the output with the keys",
+        Action::Help => "Every key (this help)",
         Action::Tab(_) => "The Nth tab",
         Action::Move(_) => "Move between panes",
         Action::Resize(_) => "Resize the pane",
@@ -383,6 +434,7 @@ fn action_on(key: Key, m: Modifiers, mac: bool) -> Option<Action> {
             Key::Minus if cmd && !m.shift && !m.alt && !m.ctrl => Some(Action::FontSmaller),
             Key::Num0 if cmd && !m.shift && !m.alt && !m.ctrl => Some(Action::FontReset),
             Key::F2 if !m.any() => Some(Action::Rename),
+            Key::F1 if !m.any() => Some(Action::Help),
             _ if cmd && !m.shift => digit().map(Action::Tab),
             _ => None,
         };
@@ -409,6 +461,7 @@ fn action_on(key: Key, m: Modifiers, mac: bool) -> Option<Action> {
         Key::Minus if m.ctrl && !m.shift && !m.alt => Some(Action::FontSmaller),
         Key::Num0 if m.ctrl && !m.shift && !m.alt => Some(Action::FontReset),
         Key::F2 if !m.any() => Some(Action::Rename),
+        Key::F1 if !m.any() => Some(Action::Help),
         // Alt+Shift++ / Alt+Shift+-, Windows Terminal's: `+` is Shift and
         // `=` on a US keyboard, Shift and `;` on a JIS one.
         Key::Equals | Key::Plus if m.alt && m.shift && !m.ctrl => Some(Action::SplitRight),

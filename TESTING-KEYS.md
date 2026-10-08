@@ -32,6 +32,7 @@ Windows and Linux keys first; the macOS key is after `·`.
 - [ ] `Ctrl+0` · `Cmd+0` — Letters as the settings have them · `font_reset`
 - [ ] `Ctrl+Shift+O` · `Cmd+Shift+O` — Every session on one screen · `overview`
 - [ ] `Ctrl+Shift+M` · `Cmd+Shift+M` — Copy mode: select the output with the keys · `copy_mode`
+- [ ] `F1` · `F1` — Every key (this help) · `help`
 
 ## The window, fixed
 
@@ -70,6 +71,16 @@ Windows and Linux keys first; the macOS key is after `·`.
 - [ ] `Enter` · `Enter` — Do the entry picked
 - [ ] `Esc` · `Esc` — Close it
 
+## Copy mode
+
+- [ ] `Arrows / h j k l` · `Arrows / h j k l` — Move the cursor; past the top or bottom, the output moves
+- [ ] `PageUp / PageDown` · `PageUp / PageDown` — A page through the scrollback
+- [ ] `g / G` · `g / G` — The oldest line / the newest
+- [ ] `0 / $ (Home / End)` · `0 / $ (Home / End)` — The start / the end of the line
+- [ ] `v / Space` · `v / Space` — Start a selection at the cursor, or drop it
+- [ ] `y / Enter` · `y / Enter` — Copy the selection (none: the cursor's line) and leave
+- [ ] `Esc / q` · `Esc / q` — Leave without copying
+
 ## The settings screen
 
 - [ ] `Esc` · `Esc` — Leave the control that has the keys (a field as it was); with none, close the screen
@@ -79,3 +90,7 @@ Windows and Linux keys first; the macOS key is after `·`.
 - [ ] `Tab / Shift+Tab` · `Tab / Shift+Tab` — The search, the page's controls one by one, then Open settings.toml
 - [ ] `Space / Enter` · `Space / Enter` — Flip the switch or press the button that has the keys
 - [ ] `Ctrl+,` · `Cmd+,` — Open it (the changeable key above, while not moved)
+
+## The help
+
+- [ ] `Esc / F1` · `Esc / F1` — Close it

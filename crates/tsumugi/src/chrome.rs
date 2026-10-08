@@ -656,12 +656,27 @@ pub fn more_chip(p: &egui::Painter, at: egui::Pos2, n: usize, color: Color32) ->
     rect
 }
 
+/// How many of the tags (their chips' widths) to show in `room`, at most
+/// `shown`, with `+N` for the rest; and the width they take, gaps and all.
+/// When not even `+N` fits, none.
+pub fn tags_that_fit(widths: &[f32], shown: usize, room: f32, more_w: impl Fn(usize) -> f32) -> (usize, f32) {
+    let total = widths.len();
+    for n in (0..=shown.min(total)).rev() {
+        let chips: f32 = widths[..n].iter().map(|w| w + 5.0).sum();
+        let used = if n < total { chips + more_w(total - n) } else { chips - 5.0 };
+        if used <= room {
+            return (n, used.max(0.0));
+        }
+    }
+    (0, 0.0)
+}
+
 /// The band along the top of the window (the design's 1c): the name, the
-/// search box in the middle, and the tags of the session with the keys on
-/// the right, three and `+N`. When the window is narrow the tags give way
-/// first, then the box shrinks to its magnifier (1o). Whether the box was
-/// clicked.
-pub fn top_band(ui: &mut egui::Ui, pal: &Palette, tags: &[String], muted_tags: &[String], notices: &[Notice], frame: &BandFrame) -> BandOut {
+/// search box and the bell in the middle of the window, and the tags of the
+/// session with the keys on the right, `[tags] shown` and `+N`. When the
+/// window is narrow the tags give way to `+N` first, then the box shrinks
+/// to its magnifier (1o); the box never moves for them.
+pub fn top_band(ui: &mut egui::Ui, pal: &Palette, tags: &[String], shown: usize, muted_tags: &[String], notices: &[Notice], frame: &BandFrame) -> BandOut {
     let whole = ui.max_rect();
     let p = ui.painter().clone();
     p.line_segment([whole.left_bottom(), whole.right_bottom()], egui::Stroke::new(1.0, crate::theme::colors().border));
@@ -716,31 +731,34 @@ pub fn top_band(ui: &mut egui::Ui, pal: &Palette, tags: &[String], muted_tags: &
         return out;
     }
 
-    // The tags, right to left, as many as fit with the box at its widest.
+    // The box and the bell beside it, in the middle of the window whatever
+    // the tags (the user's ask of 2026-10-09): as wide as there is room for
+    // on both sides of the middle, then only the magnifier.
+    const BELL: f32 = 34.0;
+    let middle = whole.center().x;
+    let half = (middle - name_right - 12.0).min(rect.right() - 12.0 - middle);
+    let box_w = 420.0f32.min(2.0 * half - BELL);
+    let compact = box_w < 160.0;
+    let w = if compact { 30.0 } else { box_w };
+    let group_left = (middle - (w + BELL) / 2.0).max(name_right + 12.0);
+    let r = egui::Rect::from_min_size(egui::pos2(group_left, rect.center().y - 13.0), egui::vec2(w, 26.0));
+    // The tags at the right, in what the box and the bell leave: up to
+    // `[tags] shown`, then +N; fewer, and +N, when they do not fit.
+    let room = (rect.right() - 12.0) - (r.right() + BELL + 12.0);
     let chip_w = |t: &str| p.layout_no_wrap(t.to_owned(), FontId::proportional(11.0), pal.fg).size().x + 12.0;
-    let full: f32 = tags.iter().take(3).map(|t| chip_w(t) + 5.0).sum::<f32>() + if tags.len() > 3 { 34.0 } else { 0.0 };
-    // The bell's room, beside the box.
-    const BELL: f32 = 36.0;
-    let room = rect.width() - (name_right - rect.left()) - 32.0 - BELL;
-    let box_w = 420.0f32.min(room - full - 16.0);
-    let (show_tags, box_w) = if box_w >= 200.0 { (true, box_w) } else { (false, (room - 34.0).min(420.0)) };
-    if show_tags && !tags.is_empty() {
-        let mut x = rect.right() - 12.0 - full;
-        for t in tags.iter().take(3) {
-            let r = tag_chip(&p, egui::pos2(x, rect.center().y - 8.0), t, muted_tags.contains(t));
-            x = r.right() + 5.0;
+    let more_w = |n: usize| p.layout_no_wrap(format!("+{n}"), FontId::proportional(11.0), pal.fg).size().x + 12.0;
+    let (n, used) = tags_that_fit(&tags.iter().map(|t| chip_w(t)).collect::<Vec<_>>(), shown, room, more_w);
+    if used > 0.0 {
+        let mut x = rect.right() - 12.0 - used;
+        for t in &tags[..n] {
+            x = tag_chip(&p, egui::pos2(x, rect.center().y - 8.0), t, muted_tags.contains(t)).right() + 5.0;
         }
-        if tags.len() > 3 {
-            let r = more_chip(&p, egui::pos2(x, rect.center().y - 8.0), tags.len() - 3, pal.fg_dim);
-            ui.interact(r, ui.id().with("more-tags"), egui::Sense::hover()).on_hover_text(tags[3..].join(", "));
+        if n < tags.len() {
+            let r = more_chip(&p, egui::pos2(x, rect.center().y - 8.0), tags.len() - n, pal.fg_dim);
+            ui.interact(r, ui.id().with("more-tags"), egui::Sense::hover()).on_hover_text(tags[n..].join(", "));
         }
     }
 
-    // The box, or only its magnifier when there is no room.
-    let compact = box_w < 160.0;
-    let w = if compact { 30.0 } else { box_w };
-    let center_x = (name_right + rect.right() - BELL - if show_tags { full } else { 0.0 }) / 2.0;
-    let r = egui::Rect::from_center_size(egui::pos2(center_x.max(name_right + 12.0 + w / 2.0), rect.center().y), egui::vec2(w, 26.0));
     let resp = ui.interact(r, ui.id().with("search"), egui::Sense::CLICK).on_hover_text("Search sessions, folders and commands");
     let fill = if resp.hovered() { crate::theme::colors().hover() } else { crate::theme::colors().panel };
     p.rect_filled(r, 6.0, fill);
@@ -1287,7 +1305,8 @@ fn when_words(at: chrono::NaiveDateTime, now: chrono::NaiveDateTime) -> String {
 /// to left, which would send Tab from the right). The width is the one they
 /// took last frame; the first frame they sit at the left, then settle.
 pub fn in_order<R>(ui: &mut egui::Ui, add: impl FnOnce(&mut egui::Ui) -> R) -> R {
-    let key = ui.id().with("in-order");
+    // `unique_id`: rows built alike share `id`, and would share the width.
+    let key = ui.unique_id().with("in-order");
     // At first all the room there is, so nothing is squeezed while it is
     // measured.
     let w = ui.data(|d| d.get_temp::<f32>(key)).unwrap_or(ui.available_width());
@@ -1388,5 +1407,19 @@ mod tests {
         assert_eq!(elapsed(720_000), "12m");
         assert_eq!(elapsed(3_840_000), "1h 04m");
         assert_eq!(elapsed(2 * 86_400_000 + 3_600_000), "2d 1h");
+    }
+
+    /// The band's tags: `shown` of them and +N, fewer as the room narrows,
+    /// then +N alone, then nothing (the box never moves for them).
+    #[test]
+    fn the_tags_give_way_to_plus_n() {
+        let w = [40.0, 40.0, 40.0, 40.0];
+        let more = |_| 20.0;
+        assert_eq!(super::tags_that_fit(&w, 3, 1000.0, more), (3, 3.0 * 45.0 + 20.0));
+        assert_eq!(super::tags_that_fit(&w, 5, 1000.0, more), (4, 4.0 * 45.0 - 5.0));
+        assert_eq!(super::tags_that_fit(&w, 3, 120.0, more), (2, 2.0 * 45.0 + 20.0));
+        assert_eq!(super::tags_that_fit(&w, 3, 30.0, more), (0, 20.0));
+        assert_eq!(super::tags_that_fit(&w, 3, 10.0, more), (0, 0.0));
+        assert_eq!(super::tags_that_fit(&[], 3, 10.0, more), (0, 0.0));
     }
 }

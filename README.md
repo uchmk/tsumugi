@@ -273,7 +273,13 @@ on the right, the third below it, a fourth below the first).
 top, searches the sessions (by title, folder, branch and tags), the folders
 they are in (to start a new session there) and the window's commands. Type
 a few letters in order, move with the arrows, `Enter` to go, `Esc` to close.
-The band also shows the tags of the session with the keys.
+The box and the bell beside it stay in the middle of the window; the band
+also shows the tags of the session with the keys at its right, `[tags]
+shown` of them (3) and `+N` for the rest, fewer when the window narrows.
+
+`F1` (or **Keys** in the search) shows every key and what it does on one
+screen, by kind in two or three columns, the keys as the settings have
+them now; `F1` or `Esc` closes it.
 
 Three letters or more also search every session's scrollback: the lines
 found come last, under IN THE SCROLLBACK, and picking one goes to its
@@ -300,14 +306,16 @@ how many of all are shown.
 
 ### Many sessions
 
-The order button's menu also has **One line each** (a 28px row per tab,
-the tab shown still a full card; offered once when there are more than
-twelve) and **Narrow rail** (`Ctrl+Shift+B`, `Cmd+Shift+B` on macOS, or
+Every tab is a full card while they fit; when the sidebar runs out of
+height, the last cards turn into one line each (28px), from the bottom up,
+so the list fits without a scrollbar (the tab shown stays a card). The
+order button's menu also has **One line each** (a 28px row for every tab,
+the tab shown still a full card) and **Narrow rail** (`Ctrl+Shift+B`, `Cmd+Shift+B` on macOS, or
 drag the sidebar's edge narrower than 120px): a 60px strip of squares with
 the project's first letter, ringed in the state's colour, the card on hover
 and how many wait at the foot. Sorted by **Folder**, the tabs come under
-headings that close with a click; an open one shows only what wants you
-and the tab shown, the rest as "+ N more", which opens it all. The design
+headings that close with a click; an open one shows all its tabs, as
+cards like the other orders. The design
 asks `Ctrl+B` for the rail, but Claude Code and tmux use it.
 
 ### Tags
@@ -315,10 +323,16 @@ asks `Ctrl+B` for the rail, but Claude Code and tmux use it.
 Put name tags on a session to tell them apart and pick them out: right-click
 a tab and type into **Add a tag**, or from inside it run `tsumugi tag review`
 (`--remove` takes one off, no tag lists them, `--session N` names another
-session). A session has five at most; a tab shows three and `+N`. The tags in
+session). A session has five at most; a tab shows `[tags] shown` (3) and `+N`. The tags in
 use line up under SESSIONS: click one to show only its tabs, click it again
 for all, and right-click it to mute the notifications of every session
-wearing it. Folder rules in the settings tag sessions by themselves.
+wearing it. Folder rules in the settings tag sessions by themselves, and
+the tag follows the shell: `cd` to another rule's folder and the old
+folder's tag comes off and the new one goes on (a tag put on by hand
+stays; a rule changed or taken out takes its tag off with it). On Windows
+tsumugi gives PowerShell 7 a hook that says the folder on each `cd`, so
+this works without editing the profile. In Settings → Tags each rule has
+**Edit**: its folder, branch (either or both) and tag change in place.
 
 ### Settings
 
@@ -384,7 +398,6 @@ start = "claude"           # what the new-session dialog picks: claude, resume, 
 claude = "claude"          # the command that is Claude Code
 resume = true              # claude --resume in restored sessions
 quiet = 10                 # seconds of silence before "probably waiting"; 0: never
-compact_after = 12         # tabs before one line each is offered
 
 # The shell sessions start (empty: pwsh where it is, else the system's),
 # with its arguments and variables.
@@ -459,8 +472,10 @@ nerd_icons = true          # the Nerd Font's icons where one is installed
 cursor = "block-blink"     # block, bar or underline, -blink to blink
 
 # What the tab's menu opens its folder with; the system's shell runs it.
+# A list for more than one: a click on the item runs the first, the others
+# open to its right.
 [open]
-editor = "code {folder}"
+editor = ["code {folder}", "sakura {folder}"]
 filer = "filer {folder}"
 # A file Ctrl+clicked in a pane's output, at its line and column ("" opens
 # it with the system's own program).
@@ -484,7 +499,9 @@ conversation), **Duplicate in the same folder** (`Ctrl+Shift+D`, `Cmd+Option+D`
 on macOS; Claude Code is started again in it if it ran there), **Move to a
 new window**;
 **Open the folder in filer**, **Open in the editor** (the commands in
-`[open]` above), **Copy the folder path**; your own items from
+`[open]` above, set in Settings → Sessions → Open with; with several, a
+click runs the first and ▶ opens the rest by program name, as Sakura
+Editor's menus do), **Copy the folder path**; your own items from
 `[[menu.session]]`; and **Close the session**, which asks a second click
 while something is running in it. `[menu] hide` leaves out any of rename,
 note, tags, mute, pin, restart, duplicate, new-window, filer, editor, copy-path,

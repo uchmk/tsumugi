@@ -58,6 +58,7 @@ mod diffview;
 mod lists;
 mod copymode;
 mod layouts;
+mod help;
 
 use std::time::Duration;
 
@@ -892,6 +893,8 @@ struct App {
     noting_card: Option<(WorkspaceId, String)>,
     /// The waiting list or the recently closed, over the window.
     lists: Option<lists::View>,
+    /// The help (F1), while it is open.
+    help: Option<help::View>,
     /// The sessions that ended, newest first (`history.rs`).
     ended: Vec<history::Closed>,
     /// A tab's changes not committed, over the window.
@@ -1004,13 +1007,80 @@ struct App {
     /// Bumped when the sidebar turns into the rail or back, so each starts
     /// at its own width.
     side_gen: u32,
-    /// Folders sorted by: the groups closed, and those opened all the way.
+    /// Folders sorted by: the groups closed.
     closed_groups: Vec<std::path::PathBuf>,
-    whole_groups: Vec<std::path::PathBuf>,
     /// A tab being renamed in its menu, and the name so far.
     renaming: Option<(WorkspaceId, String)>,
     /// "Close" was clicked once on a tab with something running.
     close_armed: Option<WorkspaceId>,
+}
+
+/// The tab menu's "Open in the editor" (or filer): a click runs the first
+/// of `[open]`'s commands; with more than one, ▶ opens them all beside it
+/// (as Sakura Editor's menus do), the first still a click away.
+fn open_with(ui: &mut egui::Ui, words: &str, commands: &[String], focus: &Info) {
+    let run = |c: &String| menu::run(tsumugi_mux::settings::fill(c, &focus.cwd, focus.id));
+    match commands {
+        [] => {
+            ui.add_enabled(false, egui::Button::new(words)).on_disabled_hover_text("None set: Settings → Sessions → Open with");
+        }
+        [one] => {
+            if ui.button(words).on_hover_text(one).clicked() {
+                run(one);
+                ui.close();
+            }
+        }
+        more => {
+            let sub = ui.menu_button(words, |ui| {
+                for c in more {
+                    if ui.button(tsumugi_mux::settings::program_name(c)).on_hover_text(c).clicked() {
+                        run(c);
+                        ui.close();
+                    }
+                }
+            });
+            // The item itself runs the first, as one alone would; the list
+            // opens on the pointer resting on it.
+            if sub.response.clicked() {
+                run(&more[0]);
+                ui.close();
+            }
+        }
+    }
+}
+
+/// A tab's row past its first lines (`App::card_lines`).
+struct CardLines<'t> {
+    card: bool,
+    tags: Vec<&'t String>,
+    numbers: Option<String>,
+    ports: Vec<u16>,
+    other_agent: Option<String>,
+    noting: bool,
+    note_line: bool,
+    run_line: bool,
+    /// 17 when the third line has nothing to say, and the card is the
+    /// shorter by it.
+    closed_up: f32,
+}
+
+impl CardLines<'_> {
+    /// Down to the lines under the tags.
+    fn base(&self) -> f32 {
+        if !self.card {
+            28.0
+        } else if self.tags.is_empty() {
+            62.0 - self.closed_up
+        } else {
+            82.0 - self.closed_up
+        }
+    }
+
+    /// How tall the row is: a line 28; a card 62, 82 with tags, and 18 more
+    /// for each line under them.
+    fn height(&self) -> f32 {
+        self.base() + 18.0 * (usize::from(self.note_line) + usize::from(self.run_line) + usize::from(self.numbers.is_some())) as f32
+    }
 }
 
 /// A change asked for from the sidebar, made once it is drawn.
@@ -1147,6 +1217,7 @@ impl App {
             renaming_card: None,
             noting_card: None,
             lists: None,
+            help: None,
             ended: history::load(),
             diff: None,
             typing_all: std::collections::HashSet::new(),
@@ -1208,7 +1279,6 @@ impl App {
             renaming: None,
             side_gen: 0,
             closed_groups: Vec::new(),
-            whole_groups: Vec::new(),
             close_armed: None,
         }
     }
@@ -1358,6 +1428,7 @@ impl App {
                     None => self.panes.get(&w.focus).map(|pane| (w.focus, copymode::CopyMode::new(tsumugi_pane::Pane::screen(pane).cursor))),
                 };
             }
+            keys::Action::Help => self.help = if self.help.is_some() { None } else { Some(help::View { opening: true }) },
             keys::Action::Overview => {
                 self.lists = match &self.lists {
                     Some(v) if v.page == lists::Page::All => None,
@@ -1826,6 +1897,7 @@ impl App {
                     palette::Command::Waiting => keys::Action::Waiting,
                     palette::Command::TypeAll => keys::Action::TypeAll,
                     palette::Command::Notices => keys::Action::Notices,
+                    palette::Command::Help => keys::Action::Help,
                     palette::Command::Sort(_) | palette::Command::Closed | palette::Command::Changes | palette::Command::SaveOutput | palette::Command::Parallel | palette::Command::SaveLayout => return,
                 };
                 if let Some(w) = current {
@@ -1900,6 +1972,46 @@ impl App {
         }
     }
 
+    /// What a tab's row carries under its first lines, which sets how tall
+    /// it is: worked out once to fit the list, and again to draw it. `None`
+    /// for a tab with no pane.
+    fn card_lines<'t>(&self, tab: &sort::Tab<'t>, used: &usage::Usage, now: u64, as_card: bool) -> Option<CardLines<'t>> {
+        let w = tab.workspace;
+        let infos = &tab.infos;
+        let urgent = tab.urgent()?;
+        let mut tags: Vec<&String> = Vec::new();
+        for t in infos.iter().flat_map(|i| &i.tags) {
+            if !tags.contains(&t) {
+                tags.push(t);
+            }
+        }
+        // More lines on a card: its pull request, when one is known for its
+        // branch, and on the selected card its conversation's numbers (the
+        // design's Sidebar, 4 and 5).
+        let numbers = (as_card && Some(w.id) == self.active).then(|| {
+            let c = &urgent.conversation;
+            let talk = used.talks.get(c)?;
+            let tokens = used.conversations.get(c).map_or(0, usage::Tokens::total);
+            let prompts = if talk.prompts == 1 { "1 prompt".to_owned() } else { format!("{} prompts", talk.prompts) };
+            let cost = used.costs.get(c).filter(|c| **c > 0.0).map(|c| format!(" · ≈{}", price::dollars(*c))).unwrap_or_default();
+            Some(format!("{prompts} · {} · {} tokens{cost}", chrome::elapsed(talk.ms), usage::short(tokens)))
+        }).flatten();
+        // What runs in it other than Claude Code (`codex`) and the ports its
+        // programs listen on, a click away in the browser.
+        let ports: Vec<u16> = infos.iter().flat_map(|i| i.ports.iter().copied()).take(4).collect();
+        let other_agent = infos.iter().map(|i| i.agent.as_str()).find(|a| !a.is_empty() && *a != "claude").map(str::to_owned);
+        let run_line = as_card && (other_agent.is_some() || !ports.is_empty());
+        // A note of one's own (the tab menu's Note…), and room for the field
+        // while it is written.
+        let noting = self.noting_card.as_ref().is_some_and(|(id, _)| *id == w.id);
+        let note_line = as_card && (!w.note.is_empty() || noting);
+        // A card with nothing to say on its third line (a shell) is the
+        // shorter by it.
+        let no_third = as_card && chrome::card_words(urgent, now).is_empty();
+        let closed_up = if no_third { 17.0 } else { 0.0 };
+        Some(CardLines { card: as_card, tags, numbers, ports, other_agent, noting, note_line, run_line, closed_up })
+    }
+
     /// The header (SESSIONS and the bell), one row per tab, and the jump to
     /// what waits at the bottom. A row is the design's sidebar: the state of
     /// its most urgent pane and the title of the pane with the keys; its
@@ -1910,6 +2022,7 @@ impl App {
         let mut ops = Vec::new();
         let now = chrome::now_ms();
         let muted_tags = self.client.as_ref().map(Client::muted_tags).unwrap_or_default();
+        let shown_tags = self.settings_now.tags.shown();
         let used = self.usage.get();
         let tabs: Vec<sort::Tab> = workspaces.iter().map(|w| sort::Tab::new(w, sessions)).collect();
         // Every tag in use, in the order the tabs show them.
@@ -2091,36 +2204,35 @@ impl App {
                 ui.label(egui::RichText::new("Sessions you start show here, with what each one is doing.").size(12.5).color(pal.fg_dim));
             });
         }
-        // Past twelve tabs, once: one line each? (the design's 1i)
-        if !self.view.asked && tabs.len() > self.settings_now.sessions.compact_after && self.view.density == sort::Density::Cards {
-            let margin = egui::Margin { left: 12, right: 10, top: 2, bottom: 6 };
-            egui::Frame::NONE.inner_margin(margin).show(ui, |ui| {
-                egui::Frame::NONE.fill(crate::theme::colors().panel).corner_radius(8.0).inner_margin(egui::Margin::same(8)).show(ui, |ui| {
-                    ui.label(egui::RichText::new(format!("{} sessions: show one line each?", tabs.len())).size(12.0).color(pal.fg));
-                    ui.horizontal(|ui| {
-                        if ui.button("One line each").clicked() {
-                            self.view.density = sort::Density::Lines;
-                            self.view.asked = true;
-                            self.view.save();
-                        }
-                        if ui.button("Keep the cards").clicked() {
-                            self.view.asked = true;
-                            self.view.save();
-                        }
-                    });
-                });
-            });
-        }
         // Rows can be dragged into another order in `Manual` only: in the
         // others the order is the rule's.
         let manual = self.view.sort == sort::Sort::Manual;
         let sense = if manual { egui::Sense::click_and_drag() } else { egui::Sense::click() };
         let mut rows: Vec<(WorkspaceId, egui::Rect)> = Vec::new();
-        egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
-            let listed = sort::items(&shown, self.view.sort, self.view.density, &self.closed_groups, &self.whole_groups, self.active);
+        // No scrollbar: every card at full size while they fit, and the last
+        // ones as lines when they do not (the wheel still moves a list too
+        // long even as lines).
+        egui::ScrollArea::vertical().auto_shrink([false, false]).scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysHidden).show(ui, |ui| {
+            let mut listed = sort::items(&shown, self.view.sort, self.view.density, &self.closed_groups, self.active);
             // Room between the cards for their glow (the design's Sidebar).
             if self.view.density == sort::Density::Cards {
                 ui.spacing_mut().item_spacing.y = 6.0;
+            }
+            let gap = ui.spacing().item_spacing.y;
+            let fits: Vec<sort::Row> = listed
+                .iter()
+                .map(|item| match item {
+                    sort::Item::Group { .. } => sort::Row { card: 28.0 + gap, line: 28.0 + gap, keep: true },
+                    sort::Item::Tab { tab, card } => {
+                        let tall = |as_card| self.card_lines(tab, &used, now, as_card).map_or(0.0, |l| l.height() + gap);
+                        sort::Row { card: tall(*card), line: tall(false), keep: Some(tab.workspace.id) == self.active }
+                    }
+                })
+                .collect();
+            for (item, stays) in listed.iter_mut().zip(sort::fit(&fits, ui.available_height())) {
+                if let sort::Item::Tab { card, .. } = item {
+                    *card &= stays;
+                }
             }
             for item in &listed {
                 let (tab, as_card) = match item {
@@ -2163,55 +2275,14 @@ impl App {
                         }
                         continue;
                     }
-                    // What an open group leaves out: a click shows it all.
-                    sort::Item::More { project, kinds } => {
-                        let (rect, resp) = ui.allocate_exact_size(egui::vec2(ui.available_width(), 22.0), egui::Sense::click());
-                        let text = format!("+ {} more ({})", kinds.len(), sort::count_words(kinds));
-                        let color = if resp.hovered() { pal.fg } else { pal.fg_dim };
-                        ui.painter().text(egui::pos2(rect.left() + 30.0, rect.center().y), egui::Align2::LEFT_CENTER, text, egui::FontId::proportional(12.0), color);
-                        if resp.clicked() {
-                            self.whole_groups.push(project.clone());
-                        }
-                        continue;
-                    }
                     sort::Item::Tab { tab, card } => (*tab, *card),
                 };
                 let w = tab.workspace;
                 let infos = &tab.infos;
-                let (Some(focus), Some(urgent)) = (tab.focus(), tab.urgent()) else { continue };
-                let mut tags: Vec<&String> = Vec::new();
-                for t in infos.iter().flat_map(|i| &i.tags) {
-                    if !tags.contains(&t) {
-                        tags.push(t);
-                    }
-                }
-                // More lines on a card: its pull request, when one is known
-                // for its branch, and on the selected card its conversation's
-                // numbers (the design's Sidebar, 4 and 5).
+                let (Some(focus), Some(urgent), Some(lines)) = (tab.focus(), tab.urgent(), self.card_lines(tab, &used, now, as_card)) else { continue };
+                let (height, base) = (lines.height(), lines.base());
+                let CardLines { tags, numbers, ports, other_agent, noting, note_line, run_line, closed_up, .. } = lines;
                 let pr = as_card.then(|| self.git.known(&focus.cwd, &focus.branch).and_then(|g| g.pr)).flatten();
-                let numbers = (as_card && Some(w.id) == self.active).then(|| {
-                    let c = &urgent.conversation;
-                    let talk = used.talks.get(c)?;
-                    let tokens = used.conversations.get(c).map_or(0, usage::Tokens::total);
-                    let prompts = if talk.prompts == 1 { "1 prompt".to_owned() } else { format!("{} prompts", talk.prompts) };
-                    let cost = used.costs.get(c).filter(|c| **c > 0.0).map(|c| format!(" · ≈{}", price::dollars(*c))).unwrap_or_default();
-                    Some(format!("{prompts} · {} · {} tokens{cost}", chrome::elapsed(talk.ms), usage::short(tokens)))
-                }).flatten();
-                // What runs in it other than Claude Code (`codex`) and the
-                // ports its programs listen on, a click away in the browser.
-                let ports: Vec<u16> = infos.iter().flat_map(|i| i.ports.iter().copied()).take(4).collect();
-                let other_agent = infos.iter().map(|i| i.agent.as_str()).find(|a| !a.is_empty() && *a != "claude").map(str::to_owned);
-                let run_line = as_card && (other_agent.is_some() || !ports.is_empty());
-                // A note of one's own (the tab menu's Note…), and room for
-                // the field while it is written.
-                let noting = self.noting_card.as_ref().is_some_and(|(id, _)| *id == w.id);
-                let note_line = as_card && (!w.note.is_empty() || noting);
-                // A card with nothing to say on its third line (a shell) is
-                // the shorter by it.
-                let no_third = as_card && chrome::card_words(urgent, now).is_empty();
-                let closed_up = if no_third { 17.0 } else { 0.0 };
-                let base = if !as_card { 28.0 } else if tags.is_empty() { 62.0 - closed_up } else { 82.0 - closed_up };
-                let height = base + 18.0 * (usize::from(note_line) + usize::from(run_line) + usize::from(numbers.is_some())) as f32;
                 let (rect, resp) = ui.allocate_exact_size(egui::vec2(ui.available_width(), height), sense);
                 rows.push((w.id, rect));
                 let painter = ui.painter_at(rect);
@@ -2409,13 +2480,13 @@ impl App {
                     room = (x - left - 6.0).max(20.0);
                 }
                 line(third, 42.0, egui::FontId::proportional(11.5), third_color, room);
-                // Up to three tags, the rest as +N (the design's 1o).
+                // Up to `[tags] shown` tags, the rest as +N (the design's 1o).
                 let mut x = left;
                 for (k, t) in tags.iter().enumerate() {
                     let at = egui::pos2(x, rect.top() + 61.0 - closed_up);
                     let rest = tags.len() - k;
                     let w_chip = ui.fonts_mut(|f| f.layout_no_wrap(t.to_string(), egui::FontId::proportional(11.0), pal.fg).size().x) + 12.0;
-                    if k == 3 || (rest > 1 && x + w_chip + 34.0 > left + width) || x + w_chip > left + width {
+                    if k == shown_tags || (rest > 1 && x + w_chip + 34.0 > left + width) || x + w_chip > left + width {
                         chrome::more_chip(&painter, at, rest, pal.fg_dim);
                         break;
                     }
@@ -2664,18 +2735,8 @@ impl App {
                                     ui.close();
                                 }
                             }
-                            "filer" => {
-                                if ui.button("Open the folder in filer").clicked() {
-                                    menu::run(tsumugi_mux::settings::fill(&self.open.filer, &focus.cwd, focus.id));
-                                    ui.close();
-                                }
-                            }
-                            "editor" => {
-                                if ui.button("Open in the editor").clicked() {
-                                    menu::run(tsumugi_mux::settings::fill(&self.open.editor, &focus.cwd, focus.id));
-                                    ui.close();
-                                }
-                            }
+                            "filer" => open_with(ui, "Open the folder in filer", &self.open.filer, focus),
+                            "editor" => open_with(ui, "Open in the editor", &self.open.editor, focus),
                             "copy-path" => {
                                 if ui.button("Copy the folder path").clicked() {
                                     ui.ctx().copy_text(focus.cwd.display().to_string());
@@ -4162,7 +4223,7 @@ impl App {
         // A menu open as the frame begins has the keys: an Esc closing it,
         // or what is typed in it, does not reach the shell.
         self.menu_open = egui::Popup::is_any_open(&ctx);
-        let own = self.new_session.is_some() || self.search.is_some() || self.lists.is_some() || self.diff.is_some() || self.parallel.is_some() || self.prefs.is_some() || self.menu_open || self.renaming_card.is_some() || self.noting_card.is_some();
+        let own = self.new_session.is_some() || self.search.is_some() || self.lists.is_some() || self.help.is_some() || self.diff.is_some() || self.parallel.is_some() || self.prefs.is_some() || self.menu_open || self.renaming_card.is_some() || self.noting_card.is_some();
         keep_tab_for_pane(&ctx, own);
         let Some(client) = self.client.clone() else {
             self.message(ui);
@@ -4346,7 +4407,7 @@ impl App {
             // keys while it is focused; the pane gets them otherwise.
             // A key being changed in the settings is the settings'.
             let capturing = self.prefs.as_ref().is_some_and(|p| p.edit.capturing.is_some());
-            let field = ctx.memory(|m| m.focused().is_some()) || self.new_session.is_some() || self.search.is_some() || self.lists.is_some() || self.diff.is_some() || self.parallel.is_some() || self.menu_open || self.input.had_keys(&ctx) || capturing || self.renaming_card.is_some() || self.noting_card.is_some();
+            let field = ctx.memory(|m| m.focused().is_some()) || self.new_session.is_some() || self.search.is_some() || self.lists.is_some() || self.help.is_some() || self.diff.is_some() || self.parallel.is_some() || self.menu_open || self.input.had_keys(&ctx) || capturing || self.renaming_card.is_some() || self.noting_card.is_some();
             if self.key_log {
                 // `TSUMUGI_KEYLOG=1`: every key press as the window gets it,
                 // to see on a real machine why a key does nothing.
@@ -4493,7 +4554,7 @@ impl App {
         let band = egui::Panel::top("band")
             .exact_size(40.0)
             .frame(egui::Frame::NONE.fill(self.chrome_fill(crate::theme::colors().side)))
-            .show(ui, |ui| chrome::top_band(ui, &self.palette, &focus_tags, &muted_tags_now, &client.notices(), &band_frame))
+            .show(ui, |ui| chrome::top_band(ui, &self.palette, &focus_tags, self.settings_now.tags.shown(), &muted_tags_now, &client.notices(), &band_frame))
             .inner;
         if let Some(at) = band.bell_anchor {
             self.bell_anchor = egui::pos2(at.x.max(8.0), at.y);
@@ -4595,6 +4656,11 @@ impl App {
         }
 
         self.waiting_and_closed(&ctx, &client, &workspaces, &sessions);
+        if let Some(mut view) = self.help.take() {
+            if help::show(&ctx, &mut view, &theme::colors()) {
+                self.help = Some(view);
+            }
+        }
         if let Some(view) = &mut self.diff {
             if !diffview::show(&ctx, view, &theme::colors()) {
                 self.diff = None;

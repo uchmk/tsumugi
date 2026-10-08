@@ -658,8 +658,26 @@ impl Rules {
         (self.resume && conversation_id(conversation)).then(|| format!("{} --resume {conversation}\r", self.claude).into_bytes())
     }
 
+    /// The tags the rules give a session in `cwd` on `branch`.
+    fn given(&self, cwd: &Path, branch: &str) -> Vec<String> {
+        self.tags.iter().filter_map(|r| r.tag_for_session(cwd, branch, self.home.as_deref())).collect()
+    }
+
+    /// `info`'s tags after it moved: the ones the rules gave it where it was
+    /// (`was`, the tags given there) and do not give it here are taken off,
+    /// and this folder's put on. A tag added by hand stays, unless a rule
+    /// gave the same one where it was.
+    fn follow(&self, info: &mut Info, was: &[String]) -> bool {
+        let now = self.given(&info.cwd, &info.branch);
+        let before = info.tags.len();
+        info.tags.retain(|t| !was.contains(t) || now.contains(t));
+        let taken = info.tags.len() != before;
+        self.apply(info) | taken
+    }
+
     /// Put on `info` the tags its folder's and branch's rules give it. Only
-    /// ever adds: a tag taken off by hand comes back only when the folder changes.
+    /// adds; `follow` takes the old folder's off when it moves. A tag taken
+    /// off by hand comes back only when the folder changes.
     fn apply(&self, info: &mut Info) -> bool {
         let mut added = false;
         for t in self.tags.iter().filter_map(|r| r.tag_for_session(&info.cwd, &info.branch, self.home.as_deref())) {
@@ -795,6 +813,64 @@ fn spawn_session(
     Ok(id)
 }
 
+/// What PowerShell 7 runs after its profile so that it says where it is
+/// (OSC 7) on each `cd`: on Windows the server cannot read a shell's folder
+/// from the system, and without it a folder's tag rules never saw a `cd`.
+/// It calls whatever handler was there before (a profile's own tsumugi hook,
+/// `mise activate pwsh`), and says the folder it starts in.
+#[cfg(any(windows, test))]
+const PWSH_CWD_HOOK: &str = r#"$__tsumugi_prev = $ExecutionContext.SessionState.InvokeCommand.LocationChangedAction
+function global:__tsumugi_osc7($p) { [Console]::Write("$([char]27)]7;file://$(($p -replace '\\', '/') -replace '^(?!/)', '/')$([char]27)\") }
+$ExecutionContext.SessionState.InvokeCommand.LocationChangedAction = {
+    param($sender, $e)
+    if ($__tsumugi_prev) { $__tsumugi_prev.Invoke($sender, $e) }
+    __tsumugi_osc7 $e.NewPath.ProviderPath
+}.GetNewClosure()
+__tsumugi_osc7 (Get-Location).ProviderPath
+"#;
+
+/// `pwsh`'s arguments with the hook after them, when it starts as an
+/// interactive shell; one told to run something (`-Command`, `-File`) or
+/// already given `-NoExit` is left as it is.
+#[cfg(any(windows, test))]
+fn hooked_args(program: &str, args: &[String]) -> Option<Vec<String>> {
+    // By hand: a Windows path read on another system is one name.
+    let name = program.rsplit(['/', '\\']).next()?.to_ascii_lowercase();
+    if name != "pwsh" && name != "pwsh.exe" {
+        return None;
+    }
+    let busy = ["-c", "-command", "-f", "-file", "-e", "-ec", "-encodedcommand", "-noexit", "-cwa", "-commandwithargs"];
+    if args.iter().any(|a| busy.contains(&a.to_ascii_lowercase().as_str())) {
+        return None;
+    }
+    let utf16: Vec<u8> = PWSH_CWD_HOOK.encode_utf16().flat_map(u16::to_le_bytes).collect();
+    let mut out = args.to_vec();
+    out.extend(["-NoExit".to_owned(), "-EncodedCommand".to_owned(), base64(&utf16)]);
+    Some(out)
+}
+
+#[cfg(windows)]
+fn with_cwd_hook(shell: Option<(String, Vec<String>)>) -> Option<(String, Vec<String>)> {
+    shell.map(|(p, a)| {
+        let a = hooked_args(&p, &a).unwrap_or(a);
+        (p, a)
+    })
+}
+
+/// Standard base64, padded (what `-EncodedCommand` reads).
+#[cfg(any(windows, test))]
+fn base64(bytes: &[u8]) -> String {
+    const ABC: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::with_capacity(bytes.len().div_ceil(3) * 4);
+    for c in bytes.chunks(3) {
+        let n = (u32::from(c[0]) << 16) | (u32::from(*c.get(1).unwrap_or(&0)) << 8) | u32::from(*c.get(2).unwrap_or(&0));
+        for i in 0..4 {
+            out.push(if i <= c.len() { ABC[(n >> (18 - 6 * i) & 63) as usize] as char } else { '=' });
+        }
+    }
+    out
+}
+
 /// A session's shell, told who it is (`TSUMUGI_SESSION`) and where the
 /// server is, so that `tsumugi notify` inside it finds them.
 fn start_terminal(
@@ -821,6 +897,8 @@ fn start_terminal(
     env.push(("TSUMUGI_ADDRESS".to_owned(), shared.address.to_string_lossy().into_owned()));
     // No shell asked for: the settings' `[shell]`, else the system's.
     let shell = shell.or_else(|| own.command());
+    #[cfg(windows)]
+    let shell = with_cwd_hook(shell.or_else(|| tsumugi_pane::default_shell().map(|p| (p, Vec::new()))));
     let mut term = Terminal::spawn_with_env(cwd, size, cell, shell, log.as_deref(), env, move || {
         let _ = dirty.send(id);
     })?;
@@ -1234,9 +1312,11 @@ fn run_pump(shared: Arc<Shared>, dirty: Receiver<SessionId>) {
             let mut rules = lock(&shared.rules);
             let fresh = shared.settings.as_deref().is_some_and(|p| crate::settings::stamp(p) != rules.stamp);
             if fresh {
+                // A rule changed or taken out takes its tag off with it.
+                let was: Vec<Vec<String>> = sessions.values().map(|s| rules.given(&s.info.cwd, &s.info.branch)).collect();
                 *rules = Rules::read(shared.settings.as_deref());
-                for s in sessions.values_mut() {
-                    changed |= rules.apply(&mut s.info);
+                for (s, was) in sessions.values_mut().zip(was) {
+                    changed |= rules.follow(&mut s.info, &was);
                 }
             }
             drop(rules);
@@ -1249,16 +1329,22 @@ fn run_pump(shared: Arc<Shared>, dirty: Receiver<SessionId>) {
                 // a bash that never says (no OSC 7) still has a folder.
                 if let Some(cwd) = s.term.current_dir().filter(|c| *c != s.info.cwd) {
                     ask_git(&shared, &cwd);
+                    let rules = lock(&shared.rules);
+                    let was = rules.given(&s.info.cwd, &s.info.branch);
                     s.info.cwd = cwd;
-                    lock(&shared.rules).apply(&mut s.info);
+                    rules.follow(&mut s.info, &was);
+                    drop(rules);
                     changed = true;
                     save_soon(&shared, SAVE_AFTER_CHANGE);
                 }
                 // Its folder's branch, once the git thread has read it.
                 let read = lock(&shared.git).get(&s.info.cwd).cloned();
                 if let Some((branch, project)) = read.filter(|(b, p)| *b != s.info.branch || *p != s.info.project) {
+                    let rules = lock(&shared.rules);
+                    let was = rules.given(&s.info.cwd, &s.info.branch);
                     (s.info.branch, s.info.project) = (branch, project);
-                    lock(&shared.rules).apply(&mut s.info);
+                    rules.follow(&mut s.info, &was);
+                    drop(rules);
                     changed = true;
                 }
                 // A restored session's `claude --resume`, once the shell
@@ -1296,6 +1382,7 @@ fn run_pump(shared: Arc<Shared>, dirty: Receiver<SessionId>) {
                 s.info.note = note;
             }).is_some();
             let before = (s.info.title.clone(), s.info.cwd.clone());
+            let was = lock(&shared.rules).given(&s.info.cwd, &s.info.branch);
             s.info.title = s.term.title.clone();
             // Where the shell says it is (OSC 7), when it says so.
             if let Some(cwd) = &s.term.shell_cwd {
@@ -1306,7 +1393,7 @@ fn run_pump(shared: Arc<Shared>, dirty: Receiver<SessionId>) {
             // the shell reads the process table.
             if before.1 != s.info.cwd {
                 ask_git(&shared, &s.info.cwd);
-                lock(&shared.rules).apply(&mut s.info);
+                lock(&shared.rules).follow(&mut s.info, &was);
                 save_soon(&shared, SAVE_AFTER_CHANGE);
             }
             let settled = if noticed { settle(s, quiet_of(&shared)) } else { None };
@@ -1393,5 +1480,55 @@ mod review {
         for bad in ["", "x; rm -rf ~", "a b", "a\r", "$(id)", "a`b`"] {
             assert!(!super::conversation_id(bad), "{bad:?}");
         }
+    }
+}
+
+#[cfg(test)]
+mod tags {
+    use super::*;
+    use crate::settings::TagRule;
+
+    fn rules(tags: Vec<TagRule>) -> Rules {
+        Rules { tags, home: None, ..Rules::read(None) }
+    }
+
+    fn info(cwd: &str, tags: &[&str]) -> Info {
+        Info { id: 1, cwd: PathBuf::from(cwd), title: String::new(), command: String::new(), state: State::Running, note: String::new(), since_ms: 0, branch: String::new(), project: PathBuf::new(), muted: false, tags: tags.iter().map(|t| t.to_string()).collect(), claude: false, conversation: String::new(), charset: String::new(), agent: String::new(), ports: Vec::new() }
+    }
+
+    /// Going back and forth between two folders with a rule each swaps the
+    /// tags (the bug report, 2026-10-09: c:\dev\filer and c:\dev\tsumugi).
+    #[test]
+    fn a_folder_rules_tag_follows_the_shell() {
+        let r = rules(vec![
+            TagRule { folder: "/dev/filer".into(), branch: String::new(), tag: "filer".into() },
+            TagRule { folder: "/dev/tsumugi".into(), branch: String::new(), tag: "tsumugi".into() },
+        ]);
+        let mut i = info("/dev/filer", &["mine"]);
+        assert!(r.apply(&mut i));
+        assert_eq!(i.tags, ["mine", "filer"]);
+        for (to, want) in [("/dev/tsumugi", ["mine", "tsumugi"]), ("/dev/filer", ["mine", "filer"])] {
+            let was = r.given(&i.cwd, &i.branch);
+            i.cwd = PathBuf::from(to);
+            assert!(r.follow(&mut i, &was));
+            assert_eq!(i.tags, want);
+        }
+        let was = r.given(&i.cwd, &i.branch);
+        i.cwd = PathBuf::from("/dev/filer/src");
+        assert!(!r.follow(&mut i, &was), "a folder under it keeps the tag");
+        assert_eq!(i.tags, ["mine", "filer"]);
+    }
+
+    #[test]
+    fn pwsh_gets_the_hook_and_a_command_does_not() {
+        let args = hooked_args(r"C:\Program Files\PowerShell\7\pwsh.exe", &["-NoLogo".into()]).unwrap();
+        assert_eq!(&args[..3], ["-NoLogo", "-NoExit", "-EncodedCommand"]);
+        assert!(hooked_args("pwsh", &["-Command".into(), "ls".into()]).is_none());
+        assert!(hooked_args("powershell", &[]).is_none());
+        assert!(hooked_args("bash", &[]).is_none());
+        assert_eq!(base64(b"Man"), "TWFu");
+        assert_eq!(base64(b"Ma"), "TWE=");
+        assert_eq!(base64(b"M"), "TQ==");
+        assert_eq!(base64(b""), "");
     }
 }

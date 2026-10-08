@@ -52,10 +52,12 @@ pub enum Command {
     Notices,
     /// Keep the tab's panes and splits as a layout to open again.
     SaveLayout,
+    /// Every key, by kind (F1).
+    Help,
 }
 
 impl Command {
-    pub const ALL: [Command; 21] = [
+    pub const ALL: [Command; 22] = [
         Command::NewSession,
         Command::SplitRight,
         Command::SplitDown,
@@ -77,6 +79,7 @@ impl Command {
         Command::Sort(Sort::Name),
         Command::Settings,
         Command::InputBox,
+        Command::Help,
     ];
 
     pub fn title(self) -> String {
@@ -98,6 +101,7 @@ impl Command {
             Command::Parallel => "Start in parallel: worktrees, one prompt each…".into(),
             Command::Notices => "Notifications".into(),
             Command::SaveLayout => "Save this tab's layout (open it again from here)".into(),
+            Command::Help => "Keys: every key and what it does".into(),
         }
     }
 
@@ -117,6 +121,7 @@ impl Command {
             Command::Waiting => Action::Waiting,
             Command::TypeAll => Action::TypeAll,
             Command::Notices => Action::Notices,
+            Command::Help => Action::Help,
             Command::Sort(_) | Command::Closed | Command::Changes | Command::SaveOutput | Command::Parallel | Command::SaveLayout => return String::new(),
         };
         label(action)

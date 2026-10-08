@@ -28,50 +28,13 @@ stray character, no `^[` sequence), no other window opened, the pane with the ke
 Windows and Linux keys first; the macOS key is after `·`.
 ";
 
-/// Fixed keys of the window, and the keys of its boxes: (section, key on
-/// Windows and Linux, on macOS, what it does).
-const FIXED: [(&str, &str, &str, &str); 32] = [
-    ("The window, fixed", "Ctrl+Alt+1 … 9", "Cmd+1 … 9", "The Nth tab"),
-    ("The window, fixed", "Alt+Left", "Cmd+Option+Left", "The keys to the pane on the left"),
-    ("The window, fixed", "Alt+Right", "Cmd+Option+Right", "The keys to the pane on the right"),
-    ("The window, fixed", "Alt+Up", "Cmd+Option+Up", "The keys to the pane above"),
-    ("The window, fixed", "Alt+Down", "Cmd+Option+Down", "The keys to the pane below"),
-    ("The window, fixed", "Alt+Shift+Left", "Cmd+Ctrl+Left", "Move the divider nearest the pane with the keys to the left"),
-    ("The window, fixed", "Alt+Shift+Right", "Cmd+Ctrl+Right", "Move the divider nearest the pane with the keys to the right"),
-    ("The window, fixed", "Alt+Shift+Up", "Cmd+Ctrl+Up", "Move the divider nearest the pane with the keys up"),
-    ("The window, fixed", "Alt+Shift+Down", "Cmd+Ctrl+Down", "Move the divider nearest the pane with the keys down"),
-    ("The new-session dialog", "Enter", "Enter", "Create in a new tab (on a button: press it)"),
-    ("The new-session dialog", "Alt+Enter", "Option+Enter", "Create split to the right of the pane with the keys"),
-    ("The new-session dialog", "Tab", "Tab", "In the folder: complete it from the list; complete, or elsewhere: the next field"),
-    ("The new-session dialog", "Shift+Tab", "Shift+Tab", "The field before"),
-    ("The new-session dialog", "Left / Right", "Left / Right", "On a way to start: the one beside it"),
-    ("The new-session dialog", "Space", "Space", "Press the button that has the keys"),
-    ("The new-session dialog", "Up / Down", "Up / Down", "Walk the folder list"),
-    ("The new-session dialog", "Esc", "Esc", "Cancel"),
-    ("The input box", "Ctrl+Enter", "Cmd+Enter", "Send the prompt"),
-    ("The input box", "Ctrl+Shift+Enter", "Cmd+Shift+Enter", "Queue the prompt for when the session is done"),
-    ("The input box", "Enter", "Enter", "A new line, not sent"),
-    ("The input box", "Up / Down", "Up / Down", "The prompts sent before (in an empty box, or one showing a sent one)"),
-    ("The input box", "Esc", "Esc", "Close the box, the keys back to the pane, the draft kept"),
-    ("The search box", "Up / Down", "Up / Down", "Walk the entries"),
-    ("The search box", "Enter", "Enter", "Do the entry picked"),
-    ("The search box", "Esc", "Esc", "Close it"),
-    ("The settings screen", "Esc", "Esc", "Leave the control that has the keys (a field as it was); with none, close the screen"),
-    ("The settings screen", "Ctrl+Tab / Ctrl+PageDown", "Ctrl+Tab / Cmd+PageDown", "The next page"),
-    ("The settings screen", "Ctrl+Shift+Tab / Ctrl+PageUp", "Ctrl+Shift+Tab / Cmd+PageUp", "The page before"),
-    ("The settings screen", "Ctrl+F", "Cmd+F", "To the search"),
-    ("The settings screen", "Tab / Shift+Tab", "Tab / Shift+Tab", "The search, the page's controls one by one, then Open settings.toml"),
-    ("The settings screen", "Space / Enter", "Space / Enter", "Flip the switch or press the button that has the keys"),
-    ("The settings screen", "Ctrl+,", "Cmd+,", "Open it (the changeable key above, while not moved)"),
-];
-
 fn lines() -> Vec<(String, String)> {
     let mut out = Vec::new();
     for (a, name, win, mac) in keys::NAMED {
         out.push(("The window, changeable (Settings → Keys, `[keys]`)".to_owned(), format!("`{win}` · `{mac}` — {} · `{name}`", keys::title(a))));
     }
-    for (section, win, mac, what) in FIXED {
-        out.push((section.to_owned(), format!("`{win}` · `{mac}` — {what}")));
+    for (section, win, mac, what) in keys::FIXED {
+        out.push(((*section).to_owned(), format!("`{win}` · `{mac}` — {what}")));
     }
     out
 }

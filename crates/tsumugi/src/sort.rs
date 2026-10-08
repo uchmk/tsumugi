@@ -282,24 +282,12 @@ pub enum Item<'b, 'a> {
     Group { project: PathBuf, total: usize, kinds: Vec<Kind>, open: bool },
     /// A tab, as a card or as a line.
     Tab { tab: &'b Tab<'a>, card: bool },
-    /// The tabs of an open group left out because nothing in them wants a
-    /// person, by state.
-    More { project: PathBuf, kinds: Vec<Kind> },
 }
 
 /// The sidebar's list. Sorted by folder, the tabs come under their
-/// project's heading; a closed group shows no tabs, an open one only those
-/// that want a person (waiting, error) and the one shown, unless it was
-/// opened all the way (`whole`). `Lines` makes every tab but the shown one
-/// a line.
-pub fn items<'b, 'a>(
-    shown: &[&'b Tab<'a>],
-    sort: Sort,
-    density: Density,
-    closed: &[PathBuf],
-    whole: &[PathBuf],
-    active: Option<tsumugi_mux::WorkspaceId>,
-) -> Vec<Item<'b, 'a>> {
+/// project's heading, all of them, and a closed group shows none. `Lines`
+/// makes every tab but the shown one a line.
+pub fn items<'b, 'a>(shown: &[&'b Tab<'a>], sort: Sort, density: Density, closed: &[PathBuf], active: Option<tsumugi_mux::WorkspaceId>) -> Vec<Item<'b, 'a>> {
     let card = |t: &Tab| density == Density::Cards || Some(t.workspace.id) == active;
     if sort != Sort::Folder {
         return shown.iter().map(|t| Item::Tab { tab: t, card: card(t) }).collect();
@@ -314,35 +302,39 @@ pub fn items<'b, 'a>(
         let kinds: Vec<Kind> = group.iter().filter_map(|t| t.kind()).collect();
         out.push(Item::Group { project: project.clone(), total: group.len(), kinds, open });
         if open {
-            let all = whole.contains(&project);
-            let mut left = Vec::new();
-            for t in group {
-                let wants = matches!(t.kind(), Some(Kind::Waiting | Kind::Error));
-                if all || wants || Some(t.workspace.id) == active {
-                    out.push(Item::Tab { tab: t, card: card(t) });
-                } else if let Some(k) = t.kind() {
-                    left.push(k);
-                }
-            }
-            if !left.is_empty() {
-                out.push(Item::More { project: project.clone(), kinds: left });
-            }
+            out.extend(group.iter().map(|t| Item::Tab { tab: t, card: card(t) }));
         }
         at = end;
     }
     out
 }
 
-/// "4 running, 2 done": how many of each.
-pub fn count_words(kinds: &[Kind]) -> String {
-    Kind::ALL
-        .iter()
-        .filter_map(|k| {
-            let n = kinds.iter().filter(|x| *x == k).count();
-            (n > 0).then(|| format!("{n} {}", k.label().to_lowercase()))
-        })
-        .collect::<Vec<_>>()
-        .join(", ")
+/// A row of the sidebar's list as it fits: its height as a card and as a
+/// line (the same for a heading), and whether it must stay as it is (the
+/// tab shown).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Row {
+    pub card: f32,
+    pub line: f32,
+    pub keep: bool,
+}
+
+/// Which rows stay cards in `room`: every one when they fit, else the last
+/// ones become lines, from the end up, until the rest fit (the tab shown
+/// stays a card). No scrollbar: the list is as tall as the window.
+pub fn fit(rows: &[Row], room: f32) -> Vec<bool> {
+    let mut out = vec![true; rows.len()];
+    let mut total: f32 = rows.iter().map(|r| r.card).sum();
+    for (k, r) in rows.iter().enumerate().rev() {
+        if total <= room {
+            break;
+        }
+        if !r.keep && r.card > r.line {
+            total -= r.card - r.line;
+            out[k] = false;
+        }
+    }
+    out
 }
 
 /// The projects among the tabs, each with how many tabs it has, in the
@@ -455,7 +447,7 @@ mod tests {
     }
 
     #[test]
-    fn grouped_by_folder_only_what_wants_a_person_shows() {
+    fn grouped_by_folder_every_tab_shows() {
         let sessions = vec![
             info(1, State::Running, 1, "/p/a", "a1"),
             info(2, State::Waiting, 2, "/p/a", "a2"),
@@ -471,19 +463,34 @@ mod tests {
                 .map(|i| match i {
                     Item::Group { project, total, open, .. } => format!("{}:{total}{}", project.display(), if *open { "" } else { " closed" }),
                     Item::Tab { tab, card } => format!("{}{}", tab.workspace.focus, if *card { "" } else { "-" }),
-                    Item::More { kinds, .. } => format!("+{}", count_words(kinds)),
                 })
                 .collect::<Vec<_>>()
         };
-        // Tab 1 is the one shown, so it stays.
-        let listed = items(&shown, Sort::Folder, Density::Cards, &[], &[], Some(101));
-        assert_eq!(words(&listed), ["/p/a:3", "1", "2", "+1 done", "/p/b:1", "+1 running"]);
+        // Every tab as a card, whatever its state: the folder sort makes
+        // none a line.
+        let listed = items(&shown, Sort::Folder, Density::Cards, &[], Some(101));
+        assert_eq!(words(&listed), ["/p/a:3", "1", "2", "3", "/p/b:1", "4"]);
         let closed = [PathBuf::from("/p/a")];
-        let whole = [PathBuf::from("/p/b")];
-        assert_eq!(words(&items(&shown, Sort::Folder, Density::Lines, &closed, &whole, None)), ["/p/a:3 closed", "/p/b:1", "4-"]);
+        assert_eq!(words(&items(&shown, Sort::Folder, Density::Lines, &closed, None)), ["/p/a:3 closed", "/p/b:1", "4-"]);
         // Not by folder: no headings, lines but for the one shown.
-        let flat = items(&shown, Sort::Manual, Density::Lines, &[], &[], Some(102));
+        let flat = items(&shown, Sort::Manual, Density::Lines, &[], Some(102));
         assert_eq!(words(&flat), ["1-", "2", "3-", "4-"]);
+    }
+
+    #[test]
+    fn the_last_cards_become_lines_to_fit() {
+        let card = Row { card: 70.0, line: 30.0, keep: false };
+        let head = Row { card: 30.0, line: 30.0, keep: false };
+        let shown = Row { keep: true, ..card };
+        // Room for all: all cards.
+        assert_eq!(fit(&[head, card, card, card], 300.0), [true; 4]);
+        // 240 in 200: the last one is a line (−40), then it fits.
+        assert_eq!(fit(&[head, card, card, card], 200.0), [true, true, true, false]);
+        assert_eq!(fit(&[head, card, card, card], 160.0), [true, true, false, false]);
+        // The tab shown stays a card; the one above it gives way instead.
+        assert_eq!(fit(&[head, card, card, shown], 200.0), [true, true, false, true]);
+        // Too many even as lines: all lines but the one shown.
+        assert_eq!(fit(&[head, card, shown, card], 10.0), [true, false, true, false]);
     }
 
     #[test]
