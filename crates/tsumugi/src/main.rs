@@ -753,6 +753,17 @@ const GRAB: f32 = 12.0;
 /// The heading over each pane of a split.
 const HEADER: f32 = 30.0;
 
+/// Tab and Shift+Tab are the shell's while no control of the window has
+/// the keys (lazygit's panels, a shell's completion): egui would hand the
+/// first button the focus on them, and the pane would then get no keys at
+/// all until it was clicked. `own`: a screen of the window's own is open,
+/// whose Tab moves between its controls. Before anything is drawn.
+fn keep_tab_for_pane(ctx: &egui::Context, own: bool) {
+    if !own && ctx.memory(|m| m.focused().is_none()) {
+        ctx.memory_mut(|m| m.move_focus(egui::FocusDirection::None));
+    }
+}
+
 /// Keeps the keys in a field that should hold them while it is shown.
 /// Asking again on every frame would end an IME composition each time
 /// (`request_focus` interrupts it), so Japanese could never be typed: ask
@@ -3947,6 +3958,8 @@ impl App {
         // A menu open as the frame begins has the keys: an Esc closing it,
         // or what is typed in it, does not reach the shell.
         self.menu_open = egui::Popup::is_any_open(&ctx);
+        let own = self.new_session.is_some() || self.search.is_some() || self.lists.is_some() || self.diff.is_some() || self.parallel.is_some() || self.prefs.is_some() || self.menu_open || self.renaming_card.is_some() || self.noting_card.is_some();
+        keep_tab_for_pane(&ctx, own);
         let Some(client) = self.client.clone() else {
             self.message(ui);
             return;
@@ -4663,7 +4676,7 @@ impl App {
 
 #[cfg(test)]
 mod tests {
-    use super::{escape_line, json_string, unescape_line, View};
+    use super::{escape_line, json_string, keep_tab_for_pane, unescape_line, View};
 
     #[test]
     fn codexs_notice_is_read() {
@@ -4686,6 +4699,32 @@ mod tests {
         let v = View { sort: crate::sort::Sort::Needs, density: crate::sort::Density::Lines, rail: true, asked: true, hooks_asked: true };
         assert_eq!(View::parse(&v.text()), v);
         assert_eq!(View::parse("nonsense\nsort=nope"), View::default());
+    }
+
+    /// Tab with nothing focused stays the pane's: no button of the window
+    /// takes the keys away from the shell (lazygit, 2026-10-08).
+    #[test]
+    fn tab_stays_with_the_pane() {
+        let ctx = egui::Context::default();
+        let tab = |shift: bool| {
+            let modifiers = if shift { egui::Modifiers::SHIFT } else { egui::Modifiers::NONE };
+            vec![egui::Event::Key { key: egui::Key::Tab, physical_key: None, pressed: true, repeat: false, modifiers }]
+        };
+        let run = |events: Vec<egui::Event>, own: bool| {
+            let input = egui::RawInput { screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(400.0, 300.0))), events, ..Default::default() };
+            let mut out = ctx.run_ui(input, |ui| {
+                keep_tab_for_pane(ui.ctx(), own);
+                let _ = ui.button("one");
+                let _ = ui.button("two");
+            });
+            out.textures_delta.clear();
+            ctx.memory(|m| m.focused())
+        };
+        run(Vec::new(), false);
+        assert_eq!(run(tab(false), false), None);
+        assert_eq!(run(tab(true), false), None);
+        // A screen of the window's own keeps Tab moving between its controls.
+        assert!(run(tab(false), true).is_some());
     }
 
     /// The frames of a field kept focused, and whether each ended an IME

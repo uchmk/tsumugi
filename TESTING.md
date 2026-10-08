@@ -104,6 +104,7 @@ what happened, and the steps.
 | 2.18 | A German (or other AltGr) keyboard layout: `AltGr+Q` and `AltGr+7` in bash and in pwsh | `@` and `{` typed, nothing else before them (`TSUMUGI_PTY_LOG` shows only the character); `Ctrl+Alt+X` with no character still reaches emacs as C-M-x |
 | 2.19 | A pane in Shift_JIS (the status bar's charset), type or paste `日本😀` | `日本?` reaches the program, not `&#128512;` |
 | 2.20 | Close a tab whose shell runs a deep tree (`cmd /c "cmd /c ping -t localhost"` three levels) | The window closes it within a second; every process of the tree is gone (`Get-Process ping`); nothing else is |
+| 2.21 | `lazygit` in a pane: `Tab` and `Shift+Tab` a few times, then `j`/`k`; the same in bash (`Tab` completes) | Each Tab moves lazygit to its next panel and the keys stay with it; no button of the window takes them (`TSUMUGI_KEYLOG=1` prints no `focus` line) |
 
 ## 3. The sidebar
 
