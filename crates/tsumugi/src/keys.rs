@@ -74,6 +74,9 @@ pub enum Action {
     PaneToTab,
     /// Record the pane with the keys to an asciinema `.cast` file, or stop.
     Record,
+    /// The last command's output on the clipboard (the shell's OSC 133
+    /// marks; Warp's and iTerm2's).
+    CopyOutput,
 }
 
 /// The action for a key press, if it is one of the window's: a key the
@@ -106,7 +109,7 @@ fn action_with(key: Key, m: Modifiers, mac: bool, bound: &[(Action, Option<Chord
 
 /// The actions the settings can give another key, by the name `[keys]`
 /// uses, with their own keys (elsewhere, then on macOS).
-pub const NAMED: [(Action, &str, &str, &str); 30] = [
+pub const NAMED: [(Action, &str, &str, &str); 31] = [
     (Action::NewTab, "new_tab", "Ctrl+Shift+T", "Cmd+T"),
     (Action::CloseTab, "close_tab", "Ctrl+Shift+W", "Cmd+W"),
     (Action::NextTab, "next_tab", "Ctrl+Tab", "Ctrl+Tab"),
@@ -151,6 +154,8 @@ pub const NAMED: [(Action, &str, &str, &str); 30] = [
     (Action::PaneToTab, "pane_to_tab", "Ctrl+Shift+J", "Cmd+Shift+J"),
     // R for record. Ctrl+R alone stays the shell's history search.
     (Action::Record, "record", "Ctrl+Shift+R", "Cmd+Shift+R"),
+    // L for last output.
+    (Action::CopyOutput, "copy_output", "Ctrl+Shift+L", "Cmd+Shift+L"),
 ];
 
 /// The keys the settings cannot move, the window's and its boxes': (section,
@@ -233,6 +238,7 @@ pub fn title(a: Action) -> &'static str {
         Action::Equalize => "Give every pane the same room",
         Action::PaneToTab => "The pane to a tab of its own",
         Action::Record => "Record the pane (asciinema .cast)",
+        Action::CopyOutput => "Copy the last command's output",
         Action::Tab(_) => "The Nth tab",
         Action::Move(_) => "Move between panes",
         Action::Resize(_) => "Resize the pane",
@@ -472,6 +478,7 @@ fn action_on(key: Key, m: Modifiers, mac: bool) -> Option<Action> {
             Key::E if cmd && m.shift => Some(Action::Equalize),
             Key::J if cmd && m.shift => Some(Action::PaneToTab),
             Key::R if cmd && m.shift => Some(Action::Record),
+            Key::L if cmd && m.shift => Some(Action::CopyOutput),
             Key::Equals | Key::Plus if cmd && !m.alt && !m.ctrl => Some(Action::FontBigger),
             Key::Minus if cmd && !m.shift && !m.alt && !m.ctrl => Some(Action::FontSmaller),
             Key::Num0 if cmd && !m.shift && !m.alt && !m.ctrl => Some(Action::FontReset),
@@ -504,6 +511,7 @@ fn action_on(key: Key, m: Modifiers, mac: bool) -> Option<Action> {
         Key::E if ctrl_shift => Some(Action::Equalize),
         Key::J if ctrl_shift => Some(Action::PaneToTab),
         Key::R if ctrl_shift => Some(Action::Record),
+        Key::L if ctrl_shift => Some(Action::CopyOutput),
         // `+` is Shift and `=` on a US keyboard, Shift and `;` on a JIS one:
         // Shift may be held.
         Key::Equals | Key::Plus if m.ctrl && !m.alt => Some(Action::FontBigger),
@@ -598,6 +606,8 @@ mod tests {
         assert_eq!(action_on(Key::Num3, CTRL, false), None);
         assert_eq!(action_on(Key::R, CTRL, false), None, "readline's history search");
         assert_eq!(action_on(Key::R, CTRL_SHIFT, false), Some(Action::Record));
+        assert_eq!(action_on(Key::L, CTRL, false), None, "the shell's clear screen");
+        assert_eq!(action_on(Key::L, CTRL_SHIFT, false), Some(Action::CopyOutput));
     }
 
     #[test]

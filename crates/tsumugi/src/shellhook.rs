@@ -1,6 +1,9 @@
 //! `tsumugi shell-hook`: the lines that make a shell say which folder it is
 //! in (OSC 7), as filer's `filer shell-hook` does for its pane, and mark
-//! where each prompt starts (OSC 133;A) for `Ctrl+Shift+Up` / `Down`.
+//! where each prompt starts (OSC 133;A) for `Ctrl+Shift+Up` / `Down`, with
+//! how the command before it ended (`D;<code>`) and, where the shell can
+//! say it, where its output starts (`C`): the bars beside each command and
+//! `Ctrl+Shift+L`.
 //!
 //! On Linux and macOS the server can read a shell's folder from the system,
 //! so the hook only makes it quicker. On Windows it cannot, and without the
@@ -18,7 +21,7 @@
 /// only once, though the server adds the same lines to a pane's pwsh.
 pub const PWSH: &str = r#"
 # tsumugi: say where the shell is (OSC 7), for the sidebar and for a restore,
-# and mark each prompt (OSC 133;A), for the jump between them
+# and mark each prompt and how the command before it ended (OSC 133)
 $prev = $ExecutionContext.SessionState.InvokeCommand.LocationChangedAction
 $ExecutionContext.SessionState.InvokeCommand.LocationChangedAction = {
     param($sender, $e)
@@ -29,7 +32,10 @@ $ExecutionContext.SessionState.InvokeCommand.LocationChangedAction = {
 if (-not $global:__tsumugi_marked) {
     $global:__tsumugi_marked = $true
     $global:__tsumugi_prompt = $function:prompt
-    function global:prompt { "$([char]27)]133;A$([char]27)\" + (& $global:__tsumugi_prompt) }
+    function global:prompt {
+        $c = if ($?) { 0 } elseif ($LASTEXITCODE) { $LASTEXITCODE } else { 1 }
+        "$([char]27)]133;D;$c$([char]27)\$([char]27)]133;A$([char]27)\" + (& $global:__tsumugi_prompt)
+    }
 }
 "#;
 
@@ -37,21 +43,24 @@ if (-not $global:__tsumugi_marked) {
 /// on a folder that differs from the one it has.
 pub const BASH: &str = r#"
 # tsumugi: say where the shell is (OSC 7), for the sidebar and for a restore,
-# and mark each prompt (OSC 133;A), for the jump between them
-__tsumugi_osc7() { printf '\e]7;file://%s%s\e\\\e]133;A\e\\' "$HOSTNAME" "$PWD"; }
+# and mark each prompt, each command's output and how it ended (OSC 133)
+__tsumugi_osc7() { printf '\e]133;D;%s\e\\\e]7;file://%s%s\e\\\e]133;A\e\\' "$?" "$HOSTNAME" "$PWD"; }
 PROMPT_COMMAND="__tsumugi_osc7${PROMPT_COMMAND:+;$PROMPT_COMMAND}"
+PS0="${PS0}\e]133;C\a"
 "#;
 
 /// zsh has one: `chpwd`. It does not fire for the directory the shell starts
 /// in, hence the call at the end. The prompt mark goes out from `precmd`.
 pub const ZSH: &str = r#"
 # tsumugi: say where the shell is (OSC 7), for the sidebar and for a restore,
-# and mark each prompt (OSC 133;A), for the jump between them
+# and mark each prompt, each command's output and how it ended (OSC 133)
 __tsumugi_osc7() { printf '\e]7;file://%s%s\e\\' "$HOST" "$PWD" }
-__tsumugi_mark() { printf '\e]133;A\e\\' }
+__tsumugi_mark() { printf '\e]133;D;%s\e\\\e]133;A\e\\' "$?" }
+__tsumugi_run() { printf '\e]133;C\e\\' }
 autoload -Uz add-zsh-hook
 add-zsh-hook chpwd __tsumugi_osc7
 add-zsh-hook precmd __tsumugi_mark
+add-zsh-hook preexec __tsumugi_run
 __tsumugi_osc7
 "#;
 

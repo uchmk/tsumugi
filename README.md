@@ -83,8 +83,10 @@ tsumugi shell-hook pwsh >> $PROFILE
 
 (`tsumugi shell-hook bash` and `zsh` exist too; on Linux and macOS the folder
 is read from the system anyway.) The hook also marks where each prompt starts
-(OSC 133;A), which `Ctrl+Shift+Up` / `Down` jump between; PowerShell 7 started
-by tsumugi on Windows gets both without it. In PowerShell the mark wraps the
+(OSC 133;A), which `Ctrl+Shift+Up` / `Down` jump between, and each command's
+exit code (133;D) and output (133;C; bash and zsh) for the command blocks
+below; PowerShell 7 started by tsumugi on Windows gets all of it without it.
+A hook installed before 0.64 marks prompts only: add it again for the rest. In PowerShell the mark wraps the
 `prompt` already there, so put the hook after `starship init` or the like.
 
 ### When you are not looking
@@ -180,6 +182,12 @@ own keys still work.
 pane to the prompt above or below the view's top, where the shell marks its
 prompts (OSC 133;A, which the shell hook adds; Windows Terminal's and
 WezTerm's shell integration lines do too).
+
+Where the shell also says how each command ended (133;D), every command is a
+**block**: a thin bar in the pane's left margin beside the command and its
+output, green when it succeeded and red when it failed. `Ctrl+Shift+L`
+(`Cmd+Shift+L`) copies the last command's output (the rows from its 133;C,
+or after its prompt line when the shell does not send C).
 
 `Ctrl+Shift+F` (`Cmd+F`) **finds in the pane**: a bar at its top right finds
 what is typed as plain text, from the newest line back, and selects it on
@@ -510,7 +518,7 @@ quake_height = 50
 # split_down, zoom, search, rail, settings, input, rename, duplicate,
 # waiting_list, type_into_all, notifications, font_bigger, font_smaller,
 # font_reset, overview, copy_mode, find, prev_prompt, next_prompt, help,
-# swap_pane, equalize, pane_to_tab, record.
+# swap_pane, equalize, pane_to_tab, record, copy_output.
 [keys]
 new_tab = "Ctrl+Shift+N"
 

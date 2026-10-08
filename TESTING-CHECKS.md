@@ -66,6 +66,10 @@
 - [ ] **2.39** `Ctrl+Shift+J` on one of the panes; then on a tab with a single pane → The pane leaves the split for a new tab just after this one, which is shown with the keys in it; the old tab keeps the others. With one pane, nothing happens
 - [ ] **2.40** `Ctrl+Shift+R` in a pane; run `dir` / `ls`, type some Japanese (`echo あいう`), resize the window; `Ctrl+Shift+R` again → A toast says where it records and the pane's heading says ● REC; the second press toasts "Saved …" and the mark goes. The file in `Videos\tsumugi` (Movies on macOS) plays back with `asciinema play` (or on asciinema.org's player), the Japanese whole and the resize followed
 - [ ] **2.41** Start a recording, close the window (the server keeps running), open it again, stop it → The pane still says ● REC after reopening; the file has what happened while the window was closed
+- [ ] **2.42** Windows, PowerShell 7 started by tsumugi: `dir`, then `dir nothing-here`, then `cmd /c exit 3` → A green bar in the left margin beside `dir` and its output; red bars beside the other two; none beside the prompt still waiting
+- [ ] **2.43** Linux/macOS: `tsumugi shell-hook bash >> ~/.bashrc` (zsh: `~/.zshrc`), open a new pane, `ls`, `false`, `ls /nope` → Green bar for `ls`, red for the other two; scrolling moves the bars with the lines; `vim` or `less` (the alternate screen) shows no bars
+- [ ] **2.44** After 2.42 or 2.43: `echo one; echo two`, then `Ctrl+Shift+L`, paste somewhere → The paste is `one` and `two` on two lines, without the command line or the prompt
+- [ ] **2.45** Through the mux: close the window after 2.43 and open it again → The bars come back on the same lines; `Ctrl+Shift+L` still copies the last output
 
 ## 3. The sidebar
 

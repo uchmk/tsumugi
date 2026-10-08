@@ -890,7 +890,7 @@ fn keys(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut Vec<
         changeable(ui, Action::PrevPrompt);
         sep(ui, l);
         changeable(ui, Action::NextPrompt);
-        for a in [Action::SwapPane, Action::Equalize, Action::PaneToTab, Action::Record] {
+        for a in [Action::SwapPane, Action::Equalize, Action::PaneToTab, Action::Record, Action::CopyOutput] {
             sep(ui, l);
             changeable(ui, a);
         }

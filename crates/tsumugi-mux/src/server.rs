@@ -580,6 +580,11 @@ fn handle(shared: &Arc<Shared>, client: ClientId, tx: &Sender<ToClient>, msg: To
                         let _ = tx.send(ToClient::Clipboard(text));
                     }
                 }
+                ToServer::CopyOutput { .. } => {
+                    if let Some(text) = term.command_output() {
+                        let _ = tx.send(ToClient::Clipboard(text));
+                    }
+                }
                 _ => {}
             }
             let _ = shared.dirty.send(id);
@@ -598,7 +603,8 @@ fn target(msg: &ToServer) -> Option<SessionId> {
         | ToServer::ClearSelection { id }
         | ToServer::Reveal { id, .. }
         | ToServer::Find { id, .. }
-        | ToServer::Copy { id } => *id,
+        | ToServer::Copy { id }
+        | ToServer::CopyOutput { id } => *id,
         _ => return None,
     })
 }
@@ -850,8 +856,9 @@ fn spawn_session(
 /// from the system, and without it a folder's tag rules never saw a `cd`.
 /// It calls whatever handler was there before (a profile's own tsumugi hook,
 /// `mise activate pwsh`), and says the folder it starts in. It also marks
-/// each prompt (OSC 133;A) by wrapping the `prompt` the profile left, once
-/// only: a profile's own tsumugi hook may have done it already.
+/// each prompt (OSC 133;A), with how the command before it ended (`D`), by
+/// wrapping the `prompt` the profile left, once only: a profile's own
+/// tsumugi hook may have done it already.
 #[cfg(any(windows, test))]
 const PWSH_CWD_HOOK: &str = r#"$__tsumugi_prev = $ExecutionContext.SessionState.InvokeCommand.LocationChangedAction
 function global:__tsumugi_osc7($p) { [Console]::Write("$([char]27)]7;file://$(($p -replace '\\', '/') -replace '^(?!/)', '/')$([char]27)\") }
@@ -864,7 +871,10 @@ __tsumugi_osc7 (Get-Location).ProviderPath
 if (-not $global:__tsumugi_marked) {
     $global:__tsumugi_marked = $true
     $global:__tsumugi_prompt = $function:prompt
-    function global:prompt { "$([char]27)]133;A$([char]27)\" + (& $global:__tsumugi_prompt) }
+    function global:prompt {
+        $c = if ($?) { 0 } elseif ($LASTEXITCODE) { $LASTEXITCODE } else { 1 }
+        "$([char]27)]133;D;$c$([char]27)\$([char]27)]133;A$([char]27)\" + (& $global:__tsumugi_prompt)
+    }
 }
 "#;
 
@@ -1453,6 +1463,7 @@ fn run_pump(shared: Arc<Shared>, dirty: Receiver<SessionId>) {
                 bracketed_paste: s.term.bracketed_paste(),
                 title: s.term.title.clone(),
                 links: s.term.hyperlinks(),
+                blocks: s.term.blocks(),
             };
             let change = crate::diff::diff(s.sent.as_ref().map(|(sc, ex)| (sc, ex)), &screen, &extra);
             let whole = (!s.fresh.is_empty()).then(|| crate::diff::diff(None, &screen, &extra)).flatten();

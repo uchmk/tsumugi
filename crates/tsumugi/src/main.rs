@@ -1506,6 +1506,11 @@ impl App {
                     None => self.panes.get(&w.focus).map(|pane| (w.focus, copymode::CopyMode::new(tsumugi_pane::Pane::screen(pane).cursor))),
                 };
             }
+            keys::Action::CopyOutput => {
+                if let Some(pane) = self.panes.get(&w.focus) {
+                    pane.copy_output();
+                }
+            }
             keys::Action::PrevPrompt | keys::Action::NextPrompt => {
                 if let Some(pane) = self.panes.get(&w.focus) {
                     pane.jump_prompt(action == keys::Action::PrevPrompt);

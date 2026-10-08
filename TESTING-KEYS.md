@@ -40,6 +40,7 @@ Windows and Linux keys first; the macOS key is after `·`.
 - [ ] `Ctrl+Shift+E` · `Cmd+Shift+E` — Give every pane the same room · `equalize`
 - [ ] `Ctrl+Shift+J` · `Cmd+Shift+J` — The pane to a tab of its own · `pane_to_tab`
 - [ ] `Ctrl+Shift+R` · `Cmd+Shift+R` — Record the pane (asciinema .cast) · `record`
+- [ ] `Ctrl+Shift+L` · `Cmd+Shift+L` — Copy the last command's output · `copy_output`
 
 ## The window, fixed
 

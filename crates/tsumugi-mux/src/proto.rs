@@ -7,7 +7,7 @@ use tsumugi_pane::Size;
 
 /// Bumped whenever a message changes shape: a client and a server that
 /// disagree say so at `Hello` instead of misreading each other.
-pub const VERSION: u32 = 24;
+pub const VERSION: u32 = 25;
 
 /// A `Hello` with this version asks the server to stop, writing down its
 /// tabs first so the next window can bring them back. `Hello` stays the
@@ -250,6 +250,10 @@ pub enum ToServer {
     /// the last match on, and put the match on screen, selected; answered
     /// with `Found`. An empty needle forgets where the search got to.
     Find { id: SessionId, needle: String, back: bool },
+    /// Put the last command's output (OSC 133 `C` to the next prompt) on
+    /// the clipboard: answered with `Clipboard`, or not at all when the
+    /// shell marks none.
+    CopyOutput { id: SessionId },
 }
 
 /// A line `SearchAll` found.

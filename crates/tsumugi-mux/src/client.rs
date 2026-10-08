@@ -26,6 +26,7 @@ struct Remote {
     bracketed_paste: bool,
     title: String,
     links: Vec<tsumugi_pane::Hyperlink>,
+    blocks: Vec<tsumugi_pane::Block>,
     exited: bool,
     /// The answer to `find`, not taken yet.
     found: Option<Option<bool>>,
@@ -402,7 +403,7 @@ fn receive(inner: &Inner, msg: ToClient) {
             let r = st.screens.entry(id).or_default();
             let mut extra = crate::diff::Extra::default();
             crate::diff::apply(&mut r.screen, &mut extra, update);
-            (r.scrolled_back, r.win32_input, r.bracketed_paste, r.title, r.links) = (extra.scrolled_back, extra.win32_input, extra.bracketed_paste, extra.title, extra.links);
+            (r.scrolled_back, r.win32_input, r.bracketed_paste, r.title, r.links, r.blocks) = (extra.scrolled_back, extra.win32_input, extra.bracketed_paste, extra.title, extra.links, extra.blocks);
         }
         ToClient::Exited { id } => st.screens.entry(id).or_default().exited = true,
         ToClient::Ended { info, last } => st.ended.push((*info, last)),
@@ -437,6 +438,12 @@ impl RemotePane {
 
     pub fn title(&self) -> String {
         self.inner.lock().screens.get(&self.id).map(|r| r.title.clone()).unwrap_or_default()
+    }
+
+    /// Put the last command's output on the clipboard (OSC 133); the text
+    /// comes back as clipboard text, as a copy's does.
+    pub fn copy_output(&self) {
+        self.inner.send(ToServer::CopyOutput { id: self.id });
     }
 
     /// Scroll to the prompt before the view's top, or after it (OSC 133).
@@ -538,5 +545,9 @@ impl Pane for RemotePane {
 
     fn hyperlinks(&self) -> Vec<tsumugi_pane::Hyperlink> {
         self.with(|r| r.links.clone())
+    }
+
+    fn blocks(&self) -> Vec<tsumugi_pane::Block> {
+        self.with(|r| r.blocks.clone())
     }
 }
