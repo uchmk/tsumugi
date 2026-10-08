@@ -243,6 +243,8 @@
 - [ ] **13.12** Settings → Appearance → Opacity 80, restart; then 60 without restarting → The desktop shows through the whole window -- band, sidebar, panes and the gaps between them -- evenly, no darker bands where the panes are; text stays solid (a reversed status line in vim or htop too); 60 thins it at once
 - [ ] **13.13** Opacity 80 with Material mica (Windows 11) or vibrancy (macOS), restart → The material behind the chrome as before, the panes see-through to it; nothing goes fully clear at a pane's corners
 - [ ] **13.14** Background image → a large png or jpeg (`~/…` and a name beside settings.toml); Image strength 25, then 60 → The picture fills each pane cut to its shape (not stretched), faint behind the text; 60 brings it forward; a pane split or resized refits it; a name that is not a picture toasts why; empty takes it away
+- [ ] **13.15** Settings → Appearance → Quake mode key `` Ctrl+` `` (no restart); go to another program and press it; press it again; again from another program → The window comes down at the top of the screen, the screen's width and half its height, with the keys; the second press hides it, off the taskbar (Dock stays on macOS); the third brings it back with the sessions as they were
+- [ ] **13.16** Quake mode key set to a key another program holds (or `Ctrl+Nothing`) → A toast says it could not be taken (or is not a key); the window works on
 
 ## 14. Motion
 

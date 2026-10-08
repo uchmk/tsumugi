@@ -489,13 +489,20 @@ weekday = true
 # whole window, on every system (from when the window next opens, if it was
 # opened at 100). image is a png or jpeg drawn behind the panes (`~/` is the
 # home folder, a relative path is beside this file), cut to each pane's
-# shape; image_opacity is how much of it shows through them (%).
+# shape; image_opacity is how much of it shows through them (%). quake is
+# Quake mode's key ("Ctrl+`", "Cmd+Shift+Space", "F12"), held from any
+# program: it brings the window down from the top of the screen, at the
+# screen's width and quake_height % of its height, with the keys; pressed
+# while tsumugi has the keys, it hides the window (off the taskbar too).
+# Windows, macOS and X11; Wayland lets no program hold a key.
 [window]
 titlebar = "tsumugi"
 material = "none"
 opacity = 100
 image = ""
 image_opacity = 25
+quake = ""
+quake_height = 50
 
 # The window's keys, moved: an action and a key, or "none" to give its key
 # back to the shell (Settings -> Keys: click a key, press the new one).

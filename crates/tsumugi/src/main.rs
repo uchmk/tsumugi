@@ -32,6 +32,7 @@ mod inputbox;
 mod keys;
 mod material;
 mod backdrop;
+mod quake;
 mod menu;
 mod newsession;
 mod palette;
@@ -867,6 +868,8 @@ struct App {
     transparent: bool,
     /// `[window] image`, behind the panes.
     backdrop: backdrop::Backdrop,
+    /// `[window] quake`, the key held from any program.
+    quake: quake::Quake,
     /// Each session's folder as last seen, and the folders of those that
     /// ended (the new-session dialog's "closed" ones).
     known_cwds: HashMap<SessionId, std::path::PathBuf>,
@@ -1210,6 +1213,7 @@ impl App {
             material: (cfg!(windows) || cfg!(target_os = "macos")) && first_window.material != "none" && material::apply(cc, &first_window.material, theme::colors().light),
             transparent: first_window.opacity < 100,
             backdrop: backdrop::Backdrop::default(),
+            quake: quake::Quake::default(),
             known_cwds: HashMap::new(),
             closed: closed_file().and_then(|p| std::fs::read_to_string(p).ok()).map(|t| t.lines().filter(|l| !l.is_empty()).map(std::path::PathBuf::from).collect()).unwrap_or_default(),
             shown_tab: None,
@@ -3045,6 +3049,35 @@ impl App {
         if self.material { c.gamma_multiply(a.min(0.55)) } else { c.gamma_multiply(a) }
     }
 
+    /// Quake mode's key: down from the top of the screen and given the keys,
+    /// or, when it has them, away (hidden, off the taskbar too).
+    fn quake(&mut self, ctx: &egui::Context) {
+        let word = self.settings_now.window.quake.clone();
+        if let Some(e) = self.quake.follow(ctx, &word) {
+            self.say(e, true);
+        }
+        if !self.quake.pressed() {
+            return;
+        }
+        let (focused, shown, monitor) = ctx.input(|i| {
+            let v = i.viewport();
+            (v.focused.unwrap_or(false), v.visible().unwrap_or(true) && !v.minimized.unwrap_or(false), v.monitor_size)
+        });
+        if focused && shown {
+            ctx.send_viewport_cmd(egui::ViewportCommand::Visible(false));
+            return;
+        }
+        ctx.send_viewport_cmd(egui::ViewportCommand::Visible(true));
+        ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(false));
+        if let Some(m) = monitor {
+            let r = quake::drop_rect(m, self.settings_now.window.quake_height);
+            ctx.send_viewport_cmd(egui::ViewportCommand::Maximized(false));
+            ctx.send_viewport_cmd(egui::ViewportCommand::OuterPosition(r.min));
+            ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(r.size()));
+        }
+        ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
+    }
+
     /// How much of the window covers the desktop (`[window] opacity`, once
     /// the window was opened see-through).
     fn alpha(&self) -> f32 {
@@ -4319,6 +4352,7 @@ impl eframe::App for App {
         self.peek = None;
         self.watching.clear();
         self.frame(ui, frame);
+        self.quake(ui.ctx());
         if !cfg!(target_os = "macos") {
             // The system's frame while there is no band to be one (the
             // screen saying the server cannot be reached), or when asked.

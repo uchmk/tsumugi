@@ -744,6 +744,17 @@ fn appearance(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mu
             }
         }
         sep(ui, l);
+        let note = "A key held from any program (Ctrl+`, F12) that brings the window down from the top of the screen, and sends it away when it has the keys. Empty for none. Not on Wayland";
+        if let Some(t) = row(ui, l, "Quake mode key", note, |ui| field(ui, &mut edit.drafts, "quake", &w.quake, "Ctrl+`", 140.0)) {
+            out.push(Change::Set(Some("window"), "quake", cfg::quote(t.trim())));
+        }
+        sep(ui, l);
+        if let Some(t) = row(ui, l, "Quake mode height", "How much of the screen's height it comes down to, in %", |ui| field(ui, &mut edit.drafts, "quake_height", &w.quake_height.to_string(), "50", 80.0)) {
+            if let Ok(v) = t.trim().trim_end_matches('%').trim().parse::<u8>() {
+                out.push(Change::Set(Some("window"), "quake_height", v.clamp(20, 100).to_string()));
+            }
+        }
+        sep(ui, l);
         if let Some(t) = row(ui, l, "Dim unfocused panes", "How much darker the panes without the keys get, in %", |ui| field(ui, &mut edit.drafts, "dim", &a.dim.to_string(), "35", 80.0)) {
             if let Ok(v) = t.trim().trim_end_matches('%').trim().parse::<u8>() {
                 out.push(Change::Set(Some("appearance"), "dim", v.min(90).to_string()));

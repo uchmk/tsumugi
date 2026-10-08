@@ -30,13 +30,17 @@
 //! # "vibrancy" (macOS; the other two are it there too): the desktop shows
 //! # through the band, sidebar and status bar (on restart). opacity (20 to
 //! # 100 %) lets the desktop show through all of it; image is a picture
-//! # behind the panes, image_opacity how much of it shows (%).
+//! # behind the panes, image_opacity how much of it shows (%). quake is a
+//! # key held from any program ("Ctrl+`") that brings the window down from
+//! # the top of the screen, quake_height % of it, and sends it away.
 //! [window]
 //! titlebar = "tsumugi"
 //! material = "none"
 //! opacity = 100
 //! image = ""
 //! image_opacity = 25
+//! quake = ""
+//! quake_height = 50
 //!
 //! # The window's keys, moved: an action's name and a key, or "none" to give
 //! # the key back to the shell. The names: new_tab, close_tab, next_tab,
@@ -406,6 +410,12 @@ pub struct Window {
     pub image: String,
     /// How much of the picture shows through the panes, in %.
     pub image_opacity: u8,
+    /// Quake mode: a key held from any program (`Ctrl+``, `F12`) that
+    /// brings the window down from the top of the screen and sends it
+    /// away. Empty for none.
+    pub quake: String,
+    /// How much of the screen's height it comes down to, in %, 20 to 100.
+    pub quake_height: u8,
 }
 
 impl Window {
@@ -422,7 +432,7 @@ impl Window {
 
 impl Default for Window {
     fn default() -> Self {
-        Self { titlebar: "tsumugi".into(), material: "none".into(), opacity: 100, image: String::new(), image_opacity: 25 }
+        Self { titlebar: "tsumugi".into(), material: "none".into(), opacity: 100, image: String::new(), image_opacity: 25, quake: String::new(), quake_height: 50 }
     }
 }
 
@@ -760,6 +770,9 @@ pub fn parse(text: &str) -> Result<Settings, String> {
     if !(20..=100).contains(&s.window.opacity) {
         return Err(format!("window.opacity: {} is not 20 to 100", s.window.opacity));
     }
+    if !(20..=100).contains(&s.window.quake_height) {
+        return Err(format!("window.quake_height: {} is not 20 to 100", s.window.quake_height));
+    }
     if s.window.image_opacity > 100 {
         return Err(format!("window.image_opacity: {} is more than 100", s.window.image_opacity));
     }
@@ -1092,6 +1105,8 @@ mod tests {
         assert_eq!(parse("").unwrap().window.alpha(), 1.0);
         assert!(parse("[window]\nopacity = 10\n").is_err());
         assert!(parse("[window]\nimage_opacity = 101\n").is_err());
+        assert_eq!(parse("[window]\nquake = \"Ctrl+`\"\nquake_height = 40\n").unwrap().window.quake, "Ctrl+`");
+        assert!(parse("[window]\nquake_height = 0\n").is_err());
     }
 
     #[test]
