@@ -120,6 +120,9 @@ what happened, and the steps.
 | 2.34 | Paste 10 KB of text into Claude Code; turn off both switches in Settings → General → Pasting and paste again; typing into all panes, paste three lines into `cat` panes | **Paste 10 KB?** even there; with the switches off, no dialog; with all panes, the dialog says it goes to all of them and **Paste** sends it to each |
 | 2.35 | `printf '\e]8;;https://example.com\e\\a link\e]8;;\e\\ and text\n'`; hold `Ctrl` over **a link**, click | A dotted line under **a link** only; with Ctrl, a solid line and a hand; the click opens example.com in the browser |
 | 2.36 | Linux/macOS: `ls --hyperlink=auto` in a folder with `a b.txt`; Ctrl+click it. Then scroll the output back a few lines and Ctrl+click it again | Dotted lines under the names; the file opens (the space read right); after scrolling, the line still sits under the name and the click opens the same file |
+| 2.37 | Split a tab into three: right, then right again from the new pane, then down; `Ctrl+Shift+X` twice | The pane with the keys trades places with the next one each press and keeps the keys (its ring moves with it); the shape stays |
+| 2.38 | In the same tab, `Ctrl+Shift+E` | The three columns get a third of the width each; the two stacked panes half the height each |
+| 2.39 | `Ctrl+Shift+J` on one of the panes; then on a tab with a single pane | The pane leaves the split for a new tab just after this one, which is shown with the keys in it; the old tab keeps the others. With one pane, nothing happens |
 
 ## 3. The sidebar
 

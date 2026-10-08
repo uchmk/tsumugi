@@ -860,6 +860,10 @@ fn keys(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut Vec<
         changeable(ui, Action::PrevPrompt);
         sep(ui, l);
         changeable(ui, Action::NextPrompt);
+        for a in [Action::SwapPane, Action::Equalize, Action::PaneToTab] {
+            sep(ui, l);
+            changeable(ui, a);
+        }
     });
     section(ui, l, "VIEW", |ui| {
         for (k, a) in [Action::Help, Action::Overview, Action::FontBigger, Action::FontSmaller, Action::FontReset].into_iter().enumerate() {

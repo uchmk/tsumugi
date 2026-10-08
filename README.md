@@ -267,6 +267,10 @@ and `Ctrl+Shift+Z` zooms one. Drag a pane by its header onto another: the
 middle trades their places, an edge puts it on that side. A pane narrower
 than 20 columns or lower than 4 rows folds into a strip with its name and
 state. Dropped on the sidebar, a pane leaves its split for a tab of its own.
+With the keys: `Ctrl+Shift+X` swaps the pane with the next one in the tab,
+`Ctrl+Shift+E` gives every pane the same room (three side by side a third
+each) and `Ctrl+Shift+J` takes the pane to a tab of its own and shows it
+(`Cmd+Shift+X`, `E`, `J` on macOS).
 Zoomed, the heading says ZOOM, and a pane hidden behind that waits is said
 at the bottom right with the key to go there.
 
@@ -479,7 +483,8 @@ material = "none"
 # new_tab, close_tab, next_tab, prev_tab, next_waiting, split_right,
 # split_down, zoom, search, rail, settings, input, rename, duplicate,
 # waiting_list, type_into_all, notifications, font_bigger, font_smaller,
-# font_reset, overview, copy_mode, find, prev_prompt, next_prompt.
+# font_reset, overview, copy_mode, find, prev_prompt, next_prompt, help,
+# swap_pane, equalize, pane_to_tab.
 [keys]
 new_tab = "Ctrl+Shift+N"
 

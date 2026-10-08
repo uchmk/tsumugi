@@ -798,6 +798,9 @@ struct App {
     active: Option<WorkspaceId>,
     /// A session just started, to show once the server has placed it.
     pending: Option<SessionId>,
+    /// A pane sent to a tab of its own with the keys, the tab it left and
+    /// when: its new tab is shown once the server has made it.
+    following: Option<(SessionId, WorkspaceId, std::time::Instant)>,
     /// The panes on screen, attached; the rest are not sent here.
     panes: HashMap<SessionId, RemotePane>,
     views: HashMap<SessionId, ViewState>,
@@ -1164,6 +1167,7 @@ impl App {
             // A window opened by "Move to a new window" shows that tab.
             active: std::env::var(menu::SHOW_TAB).ok().and_then(|v| v.parse().ok()),
             pending: SHOW_SESSION.get().copied(),
+            following: None,
             panes: HashMap::new(),
             views: HashMap::new(),
             zoom: false,
@@ -1303,6 +1307,14 @@ impl App {
                 self.opening = None;
             }
         }
+        if let Some((id, left, since)) = self.following {
+            if let Some(w) = workspaces.iter().find(|w| w.id != left && w.layout.contains(&id)) {
+                self.active = Some(w.id);
+                self.following = None;
+            } else if since.elapsed() > std::time::Duration::from_secs(5) {
+                self.following = None;
+            }
+        }
         if let Some(new) = self.pending {
             if let Some(w) = workspaces.iter().find(|w| w.layout.contains(&new)) {
                 self.active = Some(w.id);
@@ -1398,6 +1410,30 @@ impl App {
                     if let Some(client) = &self.client {
                         client.set_layout(w.id, layout, w.focus);
                     }
+                }
+            }
+            keys::Action::SwapPane => {
+                // With the next pane, the last with the first; the keys stay
+                // with the pane, now in the other's place.
+                let leaves = w.layout.leaves();
+                if let Some(k) = leaves.iter().position(|id| *id == w.focus).filter(|_| leaves.len() > 1) {
+                    let mut layout = w.layout.clone();
+                    layout.swap(&w.focus, &leaves[(k + 1) % leaves.len()]);
+                    client.set_layout(w.id, layout, w.focus);
+                }
+            }
+            keys::Action::Equalize => {
+                let mut layout = w.layout.clone();
+                layout.equalize();
+                if layout != w.layout {
+                    client.set_layout(w.id, layout, w.focus);
+                }
+            }
+            keys::Action::PaneToTab => {
+                // The keys go with it, so its new tab is shown.
+                if w.layout.leaves().len() > 1 {
+                    client.own_tab(w.focus);
+                    self.following = Some((w.focus, w.id, std::time::Instant::now()));
                 }
             }
             keys::Action::Zoom => self.zoom = !self.zoom,

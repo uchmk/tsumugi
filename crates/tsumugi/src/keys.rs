@@ -64,6 +64,14 @@ pub enum Action {
     Find,
     /// Every key and what it does, by kind, on one screen (filer's help).
     Help,
+    /// The pane with the keys trades places with the next one in the tab
+    /// (tmux's `swap-pane`), the keys going with it.
+    SwapPane,
+    /// Every divider of the tab where each pane gets the same room.
+    Equalize,
+    /// The pane with the keys out of its split into a tab of its own (the
+    /// drop on the sidebar, with the keys).
+    PaneToTab,
 }
 
 /// The action for a key press, if it is one of the window's: a key the
@@ -96,7 +104,7 @@ fn action_with(key: Key, m: Modifiers, mac: bool, bound: &[(Action, Option<Chord
 
 /// The actions the settings can give another key, by the name `[keys]`
 /// uses, with their own keys (elsewhere, then on macOS).
-pub const NAMED: [(Action, &str, &str, &str); 26] = [
+pub const NAMED: [(Action, &str, &str, &str); 29] = [
     (Action::NewTab, "new_tab", "Ctrl+Shift+T", "Cmd+T"),
     (Action::CloseTab, "close_tab", "Ctrl+Shift+W", "Cmd+W"),
     (Action::NextTab, "next_tab", "Ctrl+Tab", "Ctrl+Tab"),
@@ -134,6 +142,11 @@ pub const NAMED: [(Action, &str, &str, &str); 26] = [
     (Action::Find, "find", "Ctrl+Shift+F", "Cmd+F"),
     // Every program's help key, and filer's.
     (Action::Help, "help", "F1", "F1"),
+    // X for exchange, E for even, J for (a tab of its) own: no shell's or
+    // Claude Code's keys, and not Ctrl+Shift+C / V.
+    (Action::SwapPane, "swap_pane", "Ctrl+Shift+X", "Cmd+Shift+X"),
+    (Action::Equalize, "equalize", "Ctrl+Shift+E", "Cmd+Shift+E"),
+    (Action::PaneToTab, "pane_to_tab", "Ctrl+Shift+J", "Cmd+Shift+J"),
 ];
 
 /// The keys the settings cannot move, the window's and its boxes': (section,
@@ -212,6 +225,9 @@ pub fn title(a: Action) -> &'static str {
         Action::NextPrompt => "To the prompt below",
         Action::Find => "Find in the pane",
         Action::Help => "Every key (this help)",
+        Action::SwapPane => "Swap the pane with the next one",
+        Action::Equalize => "Give every pane the same room",
+        Action::PaneToTab => "The pane to a tab of its own",
         Action::Tab(_) => "The Nth tab",
         Action::Move(_) => "Move between panes",
         Action::Resize(_) => "Resize the pane",
@@ -447,6 +463,9 @@ fn action_on(key: Key, m: Modifiers, mac: bool) -> Option<Action> {
             Key::ArrowUp if cmd && m.shift && !m.alt && !m.ctrl => Some(Action::PrevPrompt),
             Key::ArrowDown if cmd && m.shift && !m.alt && !m.ctrl => Some(Action::NextPrompt),
             Key::F if cmd && !m.shift && !m.alt && !m.ctrl => Some(Action::Find),
+            Key::X if cmd && m.shift => Some(Action::SwapPane),
+            Key::E if cmd && m.shift => Some(Action::Equalize),
+            Key::J if cmd && m.shift => Some(Action::PaneToTab),
             Key::Equals | Key::Plus if cmd && !m.alt && !m.ctrl => Some(Action::FontBigger),
             Key::Minus if cmd && !m.shift && !m.alt && !m.ctrl => Some(Action::FontSmaller),
             Key::Num0 if cmd && !m.shift && !m.alt && !m.ctrl => Some(Action::FontReset),
@@ -475,6 +494,9 @@ fn action_on(key: Key, m: Modifiers, mac: bool) -> Option<Action> {
         Key::ArrowUp if ctrl_shift => Some(Action::PrevPrompt),
         Key::ArrowDown if ctrl_shift => Some(Action::NextPrompt),
         Key::F if ctrl_shift => Some(Action::Find),
+        Key::X if ctrl_shift => Some(Action::SwapPane),
+        Key::E if ctrl_shift => Some(Action::Equalize),
+        Key::J if ctrl_shift => Some(Action::PaneToTab),
         // `+` is Shift and `=` on a US keyboard, Shift and `;` on a JIS one:
         // Shift may be held.
         Key::Equals | Key::Plus if m.ctrl && !m.alt => Some(Action::FontBigger),
@@ -555,6 +577,9 @@ mod tests {
         assert_eq!(action_on(Key::ArrowUp, CTRL_SHIFT, false), Some(Action::PrevPrompt));
         assert_eq!(action_on(Key::ArrowDown, CTRL_SHIFT, false), Some(Action::NextPrompt));
         assert_eq!(action_on(Key::F, CTRL_SHIFT, false), Some(Action::Find));
+        assert_eq!(action_on(Key::X, CTRL_SHIFT, false), Some(Action::SwapPane));
+        assert_eq!(action_on(Key::E, CTRL_SHIFT, false), Some(Action::Equalize));
+        assert_eq!(action_on(Key::J, CTRL_SHIFT, false), Some(Action::PaneToTab));
     }
 
     /// The keys a shell or Claude Code needs stay theirs.
@@ -620,6 +645,7 @@ mod tests {
         assert_eq!(action_on(Key::M, cmd_shift, true), Some(Action::CopyMode));
         assert_eq!(action_on(Key::ArrowUp, cmd_shift, true), Some(Action::PrevPrompt));
         assert_eq!(action_on(Key::F, CMD, true), Some(Action::Find));
+        assert_eq!(action_on(Key::X, Modifiers { shift: true, ..CMD }, true), Some(Action::SwapPane));
     }
 
     #[test]
