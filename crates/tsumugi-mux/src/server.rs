@@ -1430,6 +1430,7 @@ fn run_pump(shared: Arc<Shared>, dirty: Receiver<SessionId>) {
             let extra = crate::diff::Extra {
                 scrolled_back: s.term.scrolled_back(),
                 win32_input: s.term.win32_input(),
+                bracketed_paste: s.term.bracketed_paste(),
                 title: s.term.title.clone(),
             };
             let change = crate::diff::diff(s.sent.as_ref().map(|(sc, ex)| (sc, ex)), &screen, &extra);

@@ -115,6 +115,9 @@ what happened, and the steps.
 | 2.29 | `seq 300`, `Ctrl+Shift+F`, type `1`, then `Enter` a few times, `Shift+Enter`, then `Err` | A bar at the pane's top right; `299` (the newest `1`) selected and on screen, then older ones, then newer; **No match** in red for `Err`; letters typed reach the bar, not the shell |
 | 2.30 | In the bar: `Enter` until it passes the oldest match; then `Esc`; then type in the pane | **From the end again** once it starts over; `Esc` closes the bar, drops the selection and is not sent to the shell (Claude Code is not interrupted); keys reach the shell again |
 | 2.31 | Open the bar, click into the pane, `Ctrl+Shift+F` again; `Alt+Arrows` to another pane | The second press puts the keys back in the bar; moving to another pane closes it |
+| 2.32 | Copy three lines (`echo a`, `echo b`, `echo c`); paste with `Ctrl+V` and with a right click into `cat` (no bracketed paste) and into pwsh 7 | **Paste 3 lines?** with the lines shown; `Esc` sends nothing (nothing reaches `cat`); `Enter` (or **Paste**) sends all three |
+| 2.33 | Paste the same three lines into Claude Code and into bash 5.1+; paste one line ending in a line break into `cat` | No dialog: they arrive as one paste (Claude Code shows "[Pasted text]" or the lines); the one line goes straight in |
+| 2.34 | Paste 10 KB of text into Claude Code; turn off both switches in Settings → General → Pasting and paste again; typing into all panes, paste three lines into `cat` panes | **Paste 10 KB?** even there; with the switches off, no dialog; with all panes, the dialog says it goes to all of them and **Paste** sends it to each |
 
 ## 3. The sidebar
 

@@ -75,6 +75,8 @@ pub const INDEX: &[(Page, &str)] = &[
     (Page::General, "Ask before closing a running session"),
     (Page::General, "Check for updates"),
     (Page::General, "Restart the server after an update without asking"),
+    (Page::General, "Ask before pasting several lines"),
+    (Page::General, "Ask before a large paste"),
     (Page::General, "Show the time in the status bar"),
     (Page::General, "Time format"),
     (Page::General, "Show the date"),
@@ -621,6 +623,15 @@ fn general(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut V
         sep(ui, l);
         if row(ui, l, "Restart the server after an update without asking", "The older version's server stops at once: running shells stop, the tabs come back. Off: the window asks", |ui| switch(ui, l, g.restart_after_update)) {
             out.push(set("restart_after_update", !g.restart_after_update));
+        }
+    });
+    section(ui, l, "PASTING", |ui| {
+        if row(ui, l, "Ask before pasting several lines", "Only where the program would run them one by one (it did not ask for bracketed paste)", |ui| switch(ui, l, g.warn_multiline_paste)) {
+            out.push(set("warn_multiline_paste", !g.warn_multiline_paste));
+        }
+        sep(ui, l);
+        if row(ui, l, "Ask before a large paste", "5 KB or more, wherever it goes", |ui| switch(ui, l, g.warn_large_paste)) {
+            out.push(set("warn_large_paste", !g.warn_large_paste));
         }
     });
     let k = &seen.settings.clock;

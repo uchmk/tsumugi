@@ -20,6 +20,7 @@ pub struct Update {
     pub mouse: MouseReport,
     pub scrolled_back: usize,
     pub win32_input: bool,
+    pub bracketed_paste: bool,
     pub title: String,
 }
 
@@ -28,6 +29,7 @@ pub struct Update {
 pub struct Extra {
     pub scrolled_back: usize,
     pub win32_input: bool,
+    pub bracketed_paste: bool,
     pub title: String,
 }
 
@@ -61,6 +63,7 @@ pub fn diff(old: Option<(&Screen, &Extra)>, new: &Screen, extra: &Extra) -> Opti
         mouse: new.mouse,
         scrolled_back: extra.scrolled_back,
         win32_input: extra.win32_input,
+        bracketed_paste: extra.bracketed_paste,
         title: extra.title.clone(),
     })
 }
@@ -80,7 +83,7 @@ pub fn apply(screen: &mut Screen, extra: &mut Extra, u: Update) {
     screen.app_cursor = u.app_cursor;
     screen.alt_screen = u.alt_screen;
     screen.mouse = u.mouse;
-    *extra = Extra { scrolled_back: u.scrolled_back, win32_input: u.win32_input, title: u.title };
+    *extra = Extra { scrolled_back: u.scrolled_back, win32_input: u.win32_input, bracketed_paste: u.bracketed_paste, title: u.title };
 }
 
 #[cfg(test)]

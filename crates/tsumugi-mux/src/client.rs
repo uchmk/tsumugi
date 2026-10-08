@@ -23,6 +23,7 @@ struct Remote {
     screen: Screen,
     scrolled_back: usize,
     win32_input: bool,
+    bracketed_paste: bool,
     title: String,
     exited: bool,
     /// The answer to `find`, not taken yet.
@@ -394,7 +395,7 @@ fn receive(inner: &Inner, msg: ToClient) {
             let r = st.screens.entry(id).or_default();
             let mut extra = crate::diff::Extra::default();
             crate::diff::apply(&mut r.screen, &mut extra, update);
-            (r.scrolled_back, r.win32_input, r.title) = (extra.scrolled_back, extra.win32_input, extra.title);
+            (r.scrolled_back, r.win32_input, r.bracketed_paste, r.title) = (extra.scrolled_back, extra.win32_input, extra.bracketed_paste, extra.title);
         }
         ToClient::Exited { id } => st.screens.entry(id).or_default().exited = true,
         ToClient::Ended { info, last } => st.ended.push((*info, last)),
@@ -522,5 +523,9 @@ impl Pane for RemotePane {
 
     fn win32_input(&self) -> bool {
         self.with(|r| r.win32_input)
+    }
+
+    fn bracketed_paste(&self) -> bool {
+        self.with(|r| r.bracketed_paste)
     }
 }

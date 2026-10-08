@@ -121,6 +121,10 @@
 //! check_updates = true
 //! restart_after_update = false
 //! cmd_on_mac = true
+//! # Ask before a paste of several lines that the program would run line
+//! # by line (it did not ask for bracketed paste), and before a large one.
+//! warn_multiline_paste = true
+//! warn_large_paste = true
 //!
 //! # What a new session runs, and how waiting is told.
 //! [sessions]
@@ -242,11 +246,20 @@ pub struct General {
     /// macOS: the window's keys with Cmd (Ctrl+Shift+T is Cmd+T); off, the
     /// same keys as elsewhere.
     pub cmd_on_mac: bool,
+    /// Ask before pasting several lines into a program that did not ask for
+    /// bracketed paste, which would run them one by one.
+    pub warn_multiline_paste: bool,
+    /// Ask before pasting more than [`LARGE_PASTE`] bytes.
+    pub warn_large_paste: bool,
 }
+
+/// A paste this long or longer is asked about (`warn_large_paste`), as
+/// Windows Terminal's 5 KiB.
+pub const LARGE_PASTE: usize = 5 * 1024;
 
 impl Default for General {
     fn default() -> Self {
-        Self { default_folder: String::new(), keep_sessions: true, ask_before_close: true, check_updates: true, restart_after_update: false, cmd_on_mac: true }
+        Self { default_folder: String::new(), keep_sessions: true, ask_before_close: true, check_updates: true, restart_after_update: false, cmd_on_mac: true, warn_multiline_paste: true, warn_large_paste: true }
     }
 }
 

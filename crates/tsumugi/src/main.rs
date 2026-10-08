@@ -60,6 +60,7 @@ mod copymode;
 mod layouts;
 mod help;
 mod find;
+mod paste;
 
 use std::time::Duration;
 
@@ -817,6 +818,8 @@ struct App {
     copy_mode: Option<(SessionId, copymode::CopyMode)>,
     /// The find bar, on the pane it finds in (`Ctrl+Shift+F`).
     find: Option<find::Bar>,
+    /// A paste waiting for its answer (`paste::why`).
+    paste_ask: Option<paste::Held>,
     /// The saved layouts (`layouts.toml`), and one being opened: its panes
     /// as they start, set in its shape once all are in one tab.
     layouts: Vec<layouts::Layout>,
@@ -1172,6 +1175,7 @@ impl App {
             font_step: 0.0,
             copy_mode: None,
             find: None,
+            paste_ask: None,
             layouts: layouts::load(),
             opening: None,
             title: String::new(),
@@ -4257,7 +4261,7 @@ impl App {
         // A menu open as the frame begins has the keys: an Esc closing it,
         // or what is typed in it, does not reach the shell.
         self.menu_open = egui::Popup::is_any_open(&ctx);
-        let own = self.new_session.is_some() || self.search.is_some() || self.lists.is_some() || self.help.is_some() || self.diff.is_some() || self.parallel.is_some() || self.prefs.is_some() || self.menu_open || self.renaming_card.is_some() || self.noting_card.is_some() || self.find.as_ref().is_some_and(find::Bar::keyed);
+        let own = self.new_session.is_some() || self.search.is_some() || self.lists.is_some() || self.help.is_some() || self.diff.is_some() || self.parallel.is_some() || self.prefs.is_some() || self.menu_open || self.renaming_card.is_some() || self.noting_card.is_some() || self.find.as_ref().is_some_and(find::Bar::keyed) || self.paste_ask.is_some();
         keep_tab_for_pane(&ctx, own);
         let Some(client) = self.client.clone() else {
             self.message(ui);
@@ -4441,7 +4445,7 @@ impl App {
             // keys while it is focused; the pane gets them otherwise.
             // A key being changed in the settings is the settings'.
             let capturing = self.prefs.as_ref().is_some_and(|p| p.edit.capturing.is_some());
-            let field = ctx.memory(|m| m.focused().is_some()) || self.new_session.is_some() || self.search.is_some() || self.lists.is_some() || self.help.is_some() || self.diff.is_some() || self.parallel.is_some() || self.menu_open || self.input.had_keys(&ctx) || capturing || self.renaming_card.is_some() || self.noting_card.is_some() || self.find.as_ref().is_some_and(find::Bar::keyed);
+            let field = ctx.memory(|m| m.focused().is_some()) || self.new_session.is_some() || self.search.is_some() || self.lists.is_some() || self.help.is_some() || self.diff.is_some() || self.parallel.is_some() || self.menu_open || self.input.had_keys(&ctx) || capturing || self.renaming_card.is_some() || self.noting_card.is_some() || self.find.as_ref().is_some_and(find::Bar::keyed) || self.paste_ask.is_some();
             if self.key_log {
                 // `TSUMUGI_KEYLOG=1`: every key press as the window gets it,
                 // to see on a real machine why a key does nothing.
@@ -4506,7 +4510,26 @@ impl App {
                     }
                 }
             } else if let Some(pane) = self.panes.get(&w.focus).filter(|_| !field && !prefs_were_open) {
-                let events = ctx.input(|i| i.events.clone());
+                let mut events = ctx.input(|i| i.events.clone());
+                // A paste that could run more than was meant waits for an
+                // answer instead (`paste`); the rest of the frame goes on.
+                let to: Vec<SessionId> = if self.typing_all.contains(&w.id) { w.layout.leaves() } else { vec![w.focus] };
+                let bracketed = to.iter().filter_map(|id| self.panes.get(id)).all(tsumugi_pane::Pane::bracketed_paste);
+                let general = &self.settings_now.general;
+                let mut held = None;
+                events.retain(|e| match e {
+                    egui::Event::Paste(text) => match paste::why(text, bracketed, general) {
+                        Some(why) => {
+                            held = Some(paste::Held { to: to.clone(), text: text.clone(), why });
+                            false
+                        }
+                        None => true,
+                    },
+                    _ => true,
+                });
+                if held.is_some() {
+                    self.paste_ask = held;
+                }
                 tsumugi_pane::input::feed(pane, &events, |key, m| match keys::action(key, m) {
                     Some(a) => {
                         actions.push(a);
@@ -4650,6 +4673,16 @@ impl App {
         }
         self.worktrees(&ctx, &client, &sessions, current.as_ref());
         self.close_window(&ctx, &client, &sessions);
+        if let Some(held) = &self.paste_ask {
+            if let Some(yes) = paste::show(&ctx, held, &theme::colors()) {
+                let held = self.paste_ask.take().expect("shown");
+                if yes {
+                    for p in held.to.iter().filter_map(|id| self.panes.get(id)) {
+                        tsumugi_pane::Pane::paste(p, &held.text);
+                    }
+                }
+            }
+        }
         self.remember_closed(&sessions);
         self.hooks_offer(&ctx);
         // Set again by the first-run screen, drawn after this.

@@ -183,6 +183,14 @@ to the older match, `Shift+Enter` or **↓** to the newer; it says when it ran
 off the end and started again, or that nothing matched. `Esc` or **×** closes
 it; no key typed in it reaches the shell.
 
+A **paste is asked about** before it goes when it could run more than was
+meant: several lines into a program that did not ask for bracketed paste
+(where each line break is an Enter), or 5 KB or more anywhere. The dialog
+shows its first lines; `Enter` pastes, `Esc` drops it. Claude Code and the
+shells that ask for bracketed paste get several lines without a word. Both
+are switches in Settings → General → Pasting (`warn_multiline_paste`,
+`warn_large_paste`).
+
 `Ctrl+Shift+O` (`Cmd+Shift+O`) shows **All sessions**: every session on one
 page, those waiting for you first, then errors, running and done, each with
 its state, folder and branch, tags, tokens and its last two lines. The arrows
@@ -407,6 +415,8 @@ keep_sessions = true       # off: closing the window stops the sessions
 ask_before_close = true    # ask when something is still running
 check_updates = true       # a note when a newer release is out
 cmd_on_mac = true          # macOS: Cmd+T rather than Ctrl+Shift+T
+warn_multiline_paste = true  # ask before lines that each run as they land
+warn_large_paste = true    # ask before a paste of 5 KB or more
 
 [sessions]
 start = "claude"           # what the new-session dialog picks: claude, resume, shell
