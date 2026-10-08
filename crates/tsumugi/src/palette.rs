@@ -18,6 +18,11 @@ pub enum Pick {
     /// A line found in a session's scrollback: go there and show it.
     Line { id: SessionId, line: i32, col: usize, len: usize },
     Command(Command),
+    /// Send the saved prompt (by its place in the list) to the pane with
+    /// the keys, or to every pane of the tab while typing into all.
+    Prompt(usize),
+    /// Open the saved layout (by its place in the list) in a folder.
+    Layout(usize),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -45,10 +50,12 @@ pub enum Command {
     Parallel,
     /// The bell's list.
     Notices,
+    /// Keep the tab's panes and splits as a layout to open again.
+    SaveLayout,
 }
 
 impl Command {
-    pub const ALL: [Command; 20] = [
+    pub const ALL: [Command; 21] = [
         Command::NewSession,
         Command::SplitRight,
         Command::SplitDown,
@@ -61,6 +68,7 @@ impl Command {
         Command::TypeAll,
         Command::SaveOutput,
         Command::Parallel,
+        Command::SaveLayout,
         Command::CloseTab,
         Command::Sort(Sort::Manual),
         Command::Sort(Sort::Needs),
@@ -89,6 +97,7 @@ impl Command {
             Command::SaveOutput => "Save the pane's output to a file".into(),
             Command::Parallel => "Start in parallel: worktrees, one prompt each…".into(),
             Command::Notices => "Notifications".into(),
+            Command::SaveLayout => "Save this tab's layout (open it again from here)".into(),
         }
     }
 
@@ -108,7 +117,7 @@ impl Command {
             Command::Waiting => Action::Waiting,
             Command::TypeAll => Action::TypeAll,
             Command::Notices => Action::Notices,
-            Command::Sort(_) | Command::Closed | Command::Changes | Command::SaveOutput | Command::Parallel => return String::new(),
+            Command::Sort(_) | Command::Closed | Command::Changes | Command::SaveOutput | Command::Parallel | Command::SaveLayout => return String::new(),
         };
         label(action)
     }

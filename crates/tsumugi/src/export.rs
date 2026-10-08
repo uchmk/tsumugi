@@ -10,7 +10,7 @@ const HEAD: &str = "# tsumugi settings export";
 
 /// The files of the settings folder that go in, by their path in it.
 fn files(dir: &Path) -> Vec<String> {
-    let mut out: Vec<String> = ["settings.toml", "profiles.toml", "prompts.toml", "theme.toml"].iter().filter(|n| dir.join(n).is_file()).map(|n| n.to_string()).collect();
+    let mut out: Vec<String> = ["settings.toml", "profiles.toml", "prompts.toml", "layouts.toml", "theme.toml"].iter().filter(|n| dir.join(n).is_file()).map(|n| n.to_string()).collect();
     if let Ok(entries) = std::fs::read_dir(dir.join("themes")) {
         let mut themes: Vec<String> = entries.flatten().filter_map(|e| e.file_name().to_str().map(str::to_owned)).filter(|n| n.ends_with(".toml")).map(|n| format!("themes/{n}")).collect();
         themes.sort();
@@ -59,7 +59,7 @@ pub fn unpack(text: &str) -> Result<Vec<(String, String)>, String> {
 
 fn allowed(name: &str) -> bool {
     let theme = name.strip_prefix("themes/").is_some_and(|n| n.ends_with(".toml") && !n.contains(['/', '\\']) && !n.starts_with('.'));
-    matches!(name, "settings.toml" | "profiles.toml" | "prompts.toml" | "theme.toml") || theme
+    matches!(name, "settings.toml" | "profiles.toml" | "prompts.toml" | "layouts.toml" | "theme.toml") || theme
 }
 
 /// Write the export into `to` (a folder): its file's path (a thread's work).

@@ -46,6 +46,11 @@
 - [ ] **2.19** A pane in Shift_JIS (the status bar's charset), type or paste `日本😀` → `日本?` reaches the program, not `&#128512;`
 - [ ] **2.20** Close a tab whose shell runs a deep tree (`cmd /c "cmd /c ping -t localhost"` three levels) → The window closes it within a second; every process of the tree is gone (`Get-Process ping`); nothing else is
 - [ ] **2.21** `lazygit` in a pane: `Tab` and `Shift+Tab` a few times, then `j`/`k`; the same in bash (`Tab` completes) → Each Tab moves lazygit to its next panel and the keys stay with it; no button of the window takes them (`TSUMUGI_KEYLOG=1` prints no `focus` line)
+- [ ] **2.22** `echo https://example.com/a?b=1 src/main.rs:3:5 ~/.bashrc`; hold `Ctrl` and move over each, click each → Each underlined only while Ctrl is held and the pointer is on it; the address opens in the browser; `src/main.rs` (from the session's folder) opens in VS Code at line 3, column 5; a missing path says **No such file**
+- [ ] **2.23** `echo 'https://x.example/?a=1&b=2'`, Ctrl+click it; `[open] file = ""`, Ctrl+click a path → The address is not opened and a toast says why; the file opens in the system's program for it
+- [ ] **2.24** `Ctrl+=` three times, `Ctrl+-` once, `Ctrl+0`; `Ctrl+Shift+-` in bash → Every pane's letters grow, shrink and come back to the settings' size, the grid re-fitting each time and a toast naming the size; `Ctrl+Shift+-` undoes in bash
+- [ ] **2.25** `seq 200`, then `Ctrl+Shift+M`; `k` past the top, `v`, `j` three times, `y`; paste in Notepad → A gold box and **COPY MODE** in the pane; the output scrolls back under the box; the selection follows it; four lines on the clipboard; the mode ends and keys reach the shell again
+- [ ] **2.26** `Ctrl+Shift+M`, `G`, `0`, `Enter`; again, `Esc`; again, then `Alt+Arrows` to another pane → The cursor's line copied; `Esc` leaves with nothing selected; moving away ends the mode
 
 ## 3. The sidebar
 
@@ -114,6 +119,9 @@
 - [ ] **5.3** Type `split` → The commands, with their keys beside them
 - [ ] **5.4** Type three letters printed long ago in another tab's scrollback → **IN THE SCROLLBACK** lines below the rest; picking one goes to that tab, scrolls back to the line, the match selected
 - [ ] **5.5** `Esc`, and a click outside → Closes without doing anything
+- [ ] **5.6** Keep a prompt `Say {project}` in the input box's **Prompts…**; in the search box type `send`, pick **Send prompt: …**; then `Ctrl+Shift+I` in a split tab and pick it again → It is sent to the pane with the keys, the project's name in it; the second time every pane of the tab gets it
+- [ ] **5.7** A tab of three panes (Claude Code, a shell beside, one below), dividers moved; **Save this tab's layout**; close it; **Open layout: …** from another pane → `layouts.toml` beside the settings has it; a new tab opens in that pane's folder with the same splits and shares, Claude Code and the shells started as they were
+- [ ] **5.8** `Ctrl+Shift+O` with sessions waiting, running and done; arrows, `Enter`; a click on another; `Ctrl+Shift+O` again → **All sessions** with the waiting first, each row's state, folder, branch, tags, tokens and last two lines; Enter and the click go to that session; the key closes it
 
 ## 6. New sessions
 
@@ -233,7 +241,7 @@
 
 ## 16. Keys
 
-- [ ] **16.1** Settings → Keys → click New session, press `Ctrl+Shift+O` → `[keys] new_tab = "Ctrl+Shift+O"` in the file; `Ctrl+Shift+O` opens the dialog; `Ctrl+Shift+T` goes to the shell
+- [ ] **16.1** Settings → Keys → click New session, press `Ctrl+Shift+K` → `[keys] new_tab = "Ctrl+Shift+K"` in the file; `Ctrl+Shift+K` opens the dialog; `Ctrl+Shift+T` goes to the shell
 - [ ] **16.2** Its own → The key goes back; the search box and the dialog name the key in force
 - [ ] **16.3** `zoom = "none"` → `Ctrl+Shift+Z` reaches the shell
 - [ ] **16.4** Press only Ctrl while a key is being changed → Nothing is written until a real key comes

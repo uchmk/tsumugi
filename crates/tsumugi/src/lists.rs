@@ -1,5 +1,8 @@
-//! Two lists over the window, on two pages of one panel:
+//! Three lists over the window, on three pages of one panel:
 //!
+//! - **All sessions**: every session on one screen, the ones waiting for a
+//!   person first, with its state, folder, tags, tokens and last words;
+//!   Up and Down pick one, Enter (or a click) goes to it.
 //! - **Waiting**: every session waiting for a person, with what it said and
 //!   its menu's choices as buttons, picked by a tick each, and "Yes" or "No"
 //!   typed into all those picked at once. Only a menu on the session's
@@ -18,6 +21,7 @@ use crate::theme::Colors;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Page {
+    All,
     Waiting,
     Closed,
 }
@@ -33,11 +37,13 @@ pub struct View {
     confirming: Option<SessionId>,
     /// Opened this frame: the click that opened it is not a click outside.
     opening: bool,
+    /// The row of All sessions the arrow keys are on.
+    picked: usize,
 }
 
 impl View {
     pub fn new(page: Page) -> Self {
-        Self { page, off: HashSet::new(), shown: None, confirming: None, opening: true }
+        Self { page, off: HashSet::new(), shown: None, confirming: None, opening: true, picked: 0 }
     }
 }
 
@@ -59,6 +65,36 @@ pub struct Row {
     pub rule: Option<String>,
     /// Where that rule would be written (its project's settings).
     pub rule_file: std::path::PathBuf,
+}
+
+/// A session as All sessions shows it.
+pub struct Card {
+    pub id: SessionId,
+    pub name: String,
+    pub state: tsumugi_mux::State,
+    /// What it is doing and for how long (`Running · 3m`).
+    pub words: String,
+    /// Its folder, and its branch when it has one.
+    pub folder: String,
+    pub tags: Vec<String>,
+    /// Tokens its conversation used, as words (`12.3k tokens`), or empty.
+    pub tokens: String,
+    /// The last lines on its screen.
+    pub last: Vec<String>,
+}
+
+/// Which comes first in All sessions: those waiting for a person, then
+/// errors, then running, then done; within one, the longest in it first.
+pub fn rank(state: tsumugi_mux::State, since_ms: u64) -> (u8, u64) {
+    use tsumugi_mux::State;
+    let k = match state {
+        State::Waiting => 0,
+        State::MaybeWaiting => 1,
+        State::Error => 2,
+        State::Running => 3,
+        State::Done => 4,
+    };
+    (k, since_ms)
 }
 
 /// What the panel asks the window to do.
@@ -92,7 +128,8 @@ pub fn bulk(rows: &[Row], off: &HashSet<SessionId>, yes: bool) -> Vec<(SessionId
         .collect()
 }
 
-pub fn show(ctx: &egui::Context, view: &mut View, rows: &[Row], closed: &[Closed], c: &Colors) -> Vec<Do> {
+/// `all` is filled only while its page shows; `count` is how many there are.
+pub fn show(ctx: &egui::Context, view: &mut View, all: &[Card], count: usize, rows: &[Row], closed: &[Closed], c: &Colors) -> Vec<Do> {
     let mut out = Vec::new();
     let screen = ctx.content_rect();
     // The rest of the window dimmed behind it; a click there closes it.
@@ -113,7 +150,7 @@ pub fn show(ctx: &egui::Context, view: &mut View, rows: &[Row], closed: &[Closed
         egui::Frame::NONE.fill(c.panel).stroke(egui::Stroke::new(1.0, c.border_strong())).corner_radius(12.0).inner_margin(egui::Margin::symmetric(18, 14)).show(ui, |ui| {
             ui.set_width(width);
             ui.horizontal(|ui| {
-                for (page, title) in [(Page::Waiting, format!("Waiting · {}", rows.len())), (Page::Closed, format!("Recently closed · {}", closed.len()))] {
+                for (page, title) in [(Page::All, format!("All sessions · {count}")), (Page::Waiting, format!("Waiting · {}", rows.len())), (Page::Closed, format!("Recently closed · {}", closed.len()))] {
                     if ui.selectable_label(view.page == page, RichText::new(title).size(14.0).strong()).clicked() {
                         view.page = page;
                     }
@@ -127,6 +164,7 @@ pub fn show(ctx: &egui::Context, view: &mut View, rows: &[Row], closed: &[Closed
             ui.separator();
             let max = (screen.height() - 220.0).max(160.0);
             match view.page {
+                Page::All => overview(ui, view, all, c, max, &mut out),
                 Page::Waiting => waiting(ui, view, rows, c, max, &mut out),
                 Page::Closed => history(ui, view, closed, c, max, &mut out),
             }
@@ -235,6 +273,51 @@ fn waiting(ui: &mut egui::Ui, view: &mut View, rows: &[Row], c: &Colors, max: f3
     });
 }
 
+fn overview(ui: &mut egui::Ui, view: &mut View, all: &[Card], c: &Colors, max: f32, out: &mut Vec<Do>) {
+    if all.is_empty() {
+        ui.add_space(12.0);
+        ui.label(RichText::new("No session is running.").size(13.0).color(c.dim));
+        ui.add_space(12.0);
+        return;
+    }
+    let (up, down, enter) = ui.input(|i| (i.key_pressed(egui::Key::ArrowUp), i.key_pressed(egui::Key::ArrowDown), i.key_pressed(egui::Key::Enter)));
+    view.picked = if up { view.picked.saturating_sub(1) } else if down { view.picked + 1 } else { view.picked }.min(all.len() - 1);
+    if enter {
+        out.push(Do::Go(all[view.picked].id));
+    }
+    egui::ScrollArea::vertical().max_height(max).auto_shrink([false, true]).show(ui, |ui| {
+        for (k, s) in all.iter().enumerate() {
+            let picked = k == view.picked;
+            let frame = egui::Frame::NONE.fill(if picked { c.hover() } else { egui::Color32::TRANSPARENT }).corner_radius(8.0).inner_margin(egui::Margin::symmetric(8, 6));
+            let shown = frame.show(ui, |ui| {
+                ui.set_width(ui.available_width());
+                ui.horizontal(|ui| {
+                    let (dot, _) = ui.allocate_exact_size(egui::vec2(10.0, 10.0), egui::Sense::hover());
+                    ui.painter().circle_filled(dot.center(), 4.5, crate::chrome::state_color(s.state));
+                    ui.label(RichText::new(&s.name).size(13.5).strong().color(c.strong()));
+                    ui.label(RichText::new(&s.words).size(11.5).color(crate::chrome::state_ink(s.state)));
+                });
+                let mut facts = vec![s.folder.clone()];
+                facts.extend(s.tags.iter().map(|t| format!("#{t}")));
+                if !s.tokens.is_empty() {
+                    facts.push(s.tokens.clone());
+                }
+                ui.label(RichText::new(facts.join(" · ")).size(11.5).color(c.dim));
+                for l in &s.last {
+                    ui.label(RichText::new(l).monospace().size(11.0).color(c.fg));
+                }
+            });
+            let resp = ui.interact(shown.response.rect, egui::Id::new(("overview", s.id)), egui::Sense::click()).on_hover_text("Go to it (Enter)");
+            if picked && (up || down) {
+                resp.scroll_to_me(None);
+            }
+            if resp.clicked() {
+                out.push(Do::Go(s.id));
+            }
+        }
+    });
+}
+
 fn history(ui: &mut egui::Ui, view: &mut View, closed: &[Closed], c: &Colors, max: f32, out: &mut Vec<Do>) {
     if closed.is_empty() {
         ui.add_space(12.0);
@@ -331,6 +414,14 @@ mod tests {
     fn row(id: SessionId, texts: &[&str]) -> Row {
         let choices = texts.iter().enumerate().map(|(k, t)| Choice { key: char::from_digit(k as u32 + 1, 10).unwrap(), text: t.to_string() }).collect();
         Row { id, name: format!("s{id}"), folder: "f".into(), note: String::new(), waited: "1m".into(), choices, asking: Vec::new(), rule: None, rule_file: Default::default() }
+    }
+
+    #[test]
+    fn those_waiting_for_a_person_come_first() {
+        use tsumugi_mux::State;
+        let mut all = [(State::Done, 1), (State::Running, 5), (State::Waiting, 9), (State::Error, 3), (State::Waiting, 2), (State::MaybeWaiting, 1)];
+        all.sort_by_key(|(s, t)| rank(*s, *t));
+        assert_eq!(all, [(State::Waiting, 2), (State::Waiting, 9), (State::MaybeWaiting, 1), (State::Error, 3), (State::Running, 5), (State::Done, 1)]);
     }
 
     #[test]

@@ -56,6 +56,8 @@ mod clip;
 mod history;
 mod diffview;
 mod lists;
+mod copymode;
+mod layouts;
 
 use std::time::Duration;
 
@@ -753,6 +755,12 @@ const GRAB: f32 = 12.0;
 /// The heading over each pane of a split.
 const HEADER: f32 = 30.0;
 
+/// The panes' letter size: the settings' with `step` points added, kept to
+/// what the settings allow.
+fn font_size(base: f32, step: f32) -> f32 {
+    (base + step).clamp(8.0, 32.0)
+}
+
 /// Tab and Shift+Tab are the shell's while no control of the window has
 /// the keys (lazygit's panels, a shell's completion): egui would hand the
 /// first button the focus on them, and the pane would then get no keys at
@@ -800,6 +808,15 @@ struct App {
     moving: Option<(WorkspaceId, SessionId)>,
     palette: Palette,
     font: egui::FontId,
+    /// Points added to the settings' size by `Ctrl+=` / `Ctrl+-`, for this
+    /// window only (`Ctrl+0` takes them away).
+    font_step: f32,
+    /// Copy mode, on the pane it was started in.
+    copy_mode: Option<(SessionId, copymode::CopyMode)>,
+    /// The saved layouts (`layouts.toml`), and one being opened: its panes
+    /// as they start, set in its shape once all are in one tab.
+    layouts: Vec<layouts::Layout>,
+    opening: Option<(Node<SessionId>, SessionId, std::time::Instant)>,
     /// What the window title was last set to, so it is set only on a change.
     title: String,
     /// The server has had a tab since this window opened: when the last one
@@ -1079,6 +1096,10 @@ impl App {
             moving: None,
             palette,
             font: egui::FontId::monospace(first_font.size),
+            font_step: 0.0,
+            copy_mode: None,
+            layouts: layouts::load(),
+            opening: None,
             title: String::new(),
             had_tabs: false,
             bell_open: None,
@@ -1194,6 +1215,16 @@ impl App {
 
     /// The tab shown, following a new session to the tab it landed in.
     fn current(&mut self, workspaces: &[Workspace]) -> Option<Workspace> {
+        if let Some((tree, first, since)) = &self.opening {
+            let ids = tree.leaves();
+            if let (Some(client), Some(w)) = (&self.client, workspaces.iter().find(|w| ids.iter().all(|id| w.layout.contains(id)))) {
+                client.set_layout(w.id, tree.clone(), *first);
+                self.opening = None;
+            } else if since.elapsed() > std::time::Duration::from_secs(10) {
+                // A pane that never came: the tab stays as the splits made it.
+                self.opening = None;
+            }
+        }
         if let Some(new) = self.pending {
             if let Some(w) = workspaces.iter().find(|w| w.layout.contains(&new)) {
                 self.active = Some(w.id);
@@ -1316,6 +1347,23 @@ impl App {
                     _ => Some(lists::View::new(lists::Page::Waiting)),
                 }
             }
+            keys::Action::CopyMode => {
+                self.copy_mode = match self.copy_mode {
+                    Some(_) => {
+                        if let Some(pane) = self.panes.get(&w.focus) {
+                            tsumugi_pane::Pane::clear_selection(pane);
+                        }
+                        None
+                    }
+                    None => self.panes.get(&w.focus).map(|pane| (w.focus, copymode::CopyMode::new(tsumugi_pane::Pane::screen(pane).cursor))),
+                };
+            }
+            keys::Action::Overview => {
+                self.lists = match &self.lists {
+                    Some(v) if v.page == lists::Page::All => None,
+                    _ => Some(lists::View::new(lists::Page::All)),
+                }
+            }
             keys::Action::Duplicate => {
                 if let Some(focus) = sessions.iter().find(|i| i.id == w.focus) {
                     let typed = focus.claude.then(|| newsession::Start::Claude.typed(&self.settings_now.sessions.claude)).flatten();
@@ -1328,12 +1376,24 @@ impl App {
                 self.view.rail = !self.view.rail;
                 self.view.save();
             }
+            keys::Action::FontBigger | keys::Action::FontSmaller | keys::Action::FontReset => {
+                let base = self.settings_now.font.size;
+                self.font_step = match action {
+                    keys::Action::FontBigger => font_size(base, self.font_step + 1.0) - base,
+                    keys::Action::FontSmaller => font_size(base, self.font_step - 1.0) - base,
+                    _ => 0.0,
+                };
+                self.font = egui::FontId::monospace(font_size(base, self.font_step));
+                let size = self.font.size;
+                let words = if self.font_step == 0.0 { format!("Letters at {size} pt, as the settings have them") } else { format!("Letters at {size} pt ({} resets)", keys::label(keys::Action::FontReset)) };
+                self.say(words, false);
+            }
         }
     }
 
     /// What the search box lists: every session, every folder the sessions
     /// are in, and the commands.
-    fn search_entries(workspaces: &[Workspace], sessions: &[Info]) -> Vec<palette::Entry> {
+    fn search_entries(workspaces: &[Workspace], sessions: &[Info], saved: &[prompts::Prompt], kept: &[layouts::Layout]) -> Vec<palette::Entry> {
         let mut out = Vec::new();
         for w in workspaces {
             for id in w.layout.leaves() {
@@ -1362,6 +1422,13 @@ impl App {
         }
         for c in palette::Command::ALL {
             out.push(palette::Entry { title: c.title(), detail: c.key(), pick: palette::Pick::Command(c) });
+        }
+        for (k, p) in saved.iter().enumerate() {
+            let first = p.text.lines().next().unwrap_or_default();
+            out.push(palette::Entry { title: format!("Send prompt: {}", p.name), detail: first.chars().take(60).collect(), pick: palette::Pick::Prompt(k) });
+        }
+        for (k, l) in kept.iter().enumerate() {
+            out.push(palette::Entry { title: format!("Open layout: {}", l.name), detail: layouts::words(&l.tree), pick: palette::Pick::Layout(k) });
         }
         out
     }
@@ -1634,6 +1701,55 @@ impl App {
         }
     }
 
+    /// Keep the tab's shape and what each pane runs (Claude Code or a
+    /// shell) under the tab's name, replacing a layout of that name.
+    fn save_layout(&mut self, client: &Client, w: &Workspace) {
+        let sessions = client.sessions();
+        let tree = w.layout.clone().map(&mut |id| match sessions.iter().find(|i| i.id == id) {
+            Some(i) if i.claude => newsession::Start::Claude,
+            _ => newsession::Start::Shell,
+        });
+        let name = if !w.name.trim().is_empty() {
+            w.name.trim().to_owned()
+        } else {
+            let project = sessions.iter().find(|i| i.id == w.focus).and_then(|i| i.project.file_name().map(|n| n.to_string_lossy().into_owned()));
+            format!("{} · {} panes", project.unwrap_or_else(|| "Tab".into()), tree.leaves().len())
+        };
+        let words = layouts::words(&tree);
+        layouts::put(&mut self.layouts, layouts::Layout { name: name.clone(), tree });
+        layouts::save(self.layouts.clone());
+        self.say(format!("Saved layout \u{201c}{name}\u{201d} ({words}); open it from the search box"), false);
+    }
+
+    /// A saved layout as a new tab in `folder`: its first pane as the tab,
+    /// the rest split from it, then the saved shape set once all are there.
+    fn open_layout(&mut self, client: &Client, l: &layouts::Layout, folder: std::path::PathBuf) {
+        let claude = self.settings_now.sessions.claude.clone();
+        let starts = l.tree.leaves();
+        let mut made: Vec<SessionId> = Vec::new();
+        for (k, s) in starts.iter().enumerate() {
+            let place = match made.first() {
+                None => Place::NewWorkspace,
+                Some(first) => Place::Split { beside: *first, dir: Dir::Right },
+            };
+            match client.spawn_typing(folder.clone(), None, Size::new(80, 24), (8, 16), place, s.typed(&claude)) {
+                Ok(pane) => made.push(pane.id()),
+                Err(e) if k == 0 => {
+                    self.failed = Some(format!("the shell did not start: {e}"));
+                    return;
+                }
+                Err(e) => self.say(format!("A pane did not start: {e}"), true),
+            }
+        }
+        let Some(&first) = made.first() else { return };
+        self.pending = Some(first);
+        if made.len() == starts.len() && made.len() > 1 {
+            let mut ids = made.into_iter();
+            let tree = l.tree.clone().map(&mut |_| ids.next().unwrap_or(first));
+            self.opening = Some((tree, first, std::time::Instant::now()));
+        }
+    }
+
     /// Do what the search box picked.
     fn picked(&mut self, pick: palette::Pick, current: Option<&Workspace>, workspaces: &[Workspace], area: Rect) {
         let Some(client) = self.client.clone() else { return };
@@ -1647,6 +1763,31 @@ impl App {
                 Ok(pane) => self.pending = Some(pane.id()),
                 Err(e) => self.failed = Some(e),
             },
+            palette::Pick::Prompt(k) => {
+                let (Some(p), Some(w)) = (self.input.prompts.get(k).cloned(), current) else { return };
+                let sessions = client.sessions();
+                let to = if self.typing_all.contains(&w.id) { w.layout.leaves() } else { vec![w.focus] };
+                for id in &to {
+                    let text = match sessions.iter().find(|i| i.id == *id) {
+                        Some(i) => prompts::fill(&p.text, &i.cwd, &i.project, &i.branch),
+                        None => p.text.clone(),
+                    };
+                    client.send_prompt(*id, text);
+                }
+                let whom = if to.len() > 1 { format!("{} panes", to.len()) } else { "this pane".to_owned() };
+                self.say(format!("Sent \u{201c}{}\u{201d} to {whom}", p.name), false);
+            }
+            palette::Pick::Layout(k) => {
+                let Some(l) = self.layouts.get(k).cloned() else { return };
+                let focus = current.and_then(|w| client.sessions().into_iter().find(|i| i.id == w.focus));
+                let folder = focus.map(|i| i.cwd).or_else(|| std::env::current_dir().ok()).unwrap_or_default();
+                self.open_layout(&client, &l, folder);
+            }
+            palette::Pick::Command(palette::Command::SaveLayout) => {
+                if let Some(w) = current {
+                    self.save_layout(&client, w);
+                }
+            }
             palette::Pick::Command(palette::Command::Closed) => self.lists = Some(lists::View::new(lists::Page::Closed)),
             palette::Pick::Command(palette::Command::Parallel) => {
                 let focus = current.and_then(|w| client.sessions().into_iter().find(|i| i.id == w.focus));
@@ -1685,7 +1826,7 @@ impl App {
                     palette::Command::Waiting => keys::Action::Waiting,
                     palette::Command::TypeAll => keys::Action::TypeAll,
                     palette::Command::Notices => keys::Action::Notices,
-                    palette::Command::Sort(_) | palette::Command::Closed | palette::Command::Changes | palette::Command::SaveOutput | palette::Command::Parallel => return,
+                    palette::Command::Sort(_) | palette::Command::Closed | palette::Command::Changes | palette::Command::SaveOutput | palette::Command::Parallel | palette::Command::SaveLayout => return,
                 };
                 if let Some(w) = current {
                     self.act(action, w, workspaces, area);
@@ -3227,6 +3368,26 @@ impl App {
     }
 
     /// Show `words` under the band for a while.
+    /// A Ctrl+click on an address or a file's path a pane printed.
+    fn open_link(&mut self, link: tsumugi_pane::Link, cwd: &std::path::Path) {
+        let (path, line, column) = match link {
+            tsumugi_pane::Link::Url(url) => match url.strip_prefix("file://") {
+                // `file:///C:/x` on Windows is `C:/x`.
+                Some(rest) => (if cfg!(windows) && rest.get(2..3) == Some(":") { rest[1..].to_owned() } else { rest.to_owned() }, None, None),
+                None => {
+                    if !menu::open_url(&url) {
+                        self.say(format!("Not opened: {url} has characters the shell would read"), true);
+                    }
+                    return;
+                }
+            },
+            tsumugi_pane::Link::Path { path, line, column } => (path, line, column),
+        };
+        let home = std::env::var_os(if cfg!(windows) { "USERPROFILE" } else { "HOME" }).map(std::path::PathBuf::from);
+        let path = menu::resolve(&path, cwd, home.as_deref());
+        menu::open_path(path, line, column, self.open.file.clone(), self.jobs.0.clone());
+    }
+
     fn say(&mut self, words: String, error: bool) {
         self.toast = Some((words, std::time::Instant::now(), error));
     }
@@ -3525,11 +3686,28 @@ impl App {
                 if shown.focus && !focused {
                     focus_to = Some(*id);
                 }
+                // Copy mode's cursor, and what its keys do.
+                if let (Some((on, mode)), Some((origin, cell))) = (self.copy_mode, shown.grid) {
+                    if on == *id {
+                        let at = origin + egui::vec2(mode.cursor.0 as f32 * cell.x, mode.cursor.1 as f32 * cell.y);
+                        let p = ui.painter_at(rect);
+                        p.rect_stroke(egui::Rect::from_min_size(at, cell), 1.0, egui::Stroke::new(2.0, chrome::gold()), egui::StrokeKind::Inside);
+                        let words = if mode.marking { "COPY · selecting · y copies · v drops it · Esc leaves" } else { "COPY · arrows or hjkl move · v selects · y copies the line · Esc leaves" };
+                        let galley = p.layout_no_wrap(words.into(), egui::FontId::proportional(11.5), crate::theme::colors().on_accent());
+                        let badge = egui::Rect::from_min_size(egui::pos2(rect.right() - galley.size().x - 22.0, rect.top() + 6.0), galley.size() + egui::vec2(14.0, 6.0));
+                        p.rect_filled(badge, 6.0, chrome::gold());
+                        p.galley(badge.min + egui::vec2(7.0, 3.0), galley, egui::Color32::WHITE);
+                    }
+                }
                 if let Some(text) = shown.copy {
                     ctx.copy_text(text);
                 }
                 if shown.paste {
                     ctx.send_viewport_cmd(egui::ViewportCommand::RequestPaste);
+                }
+                if let Some(link) = shown.open {
+                    let cwd = sessions.iter().find(|i| i.id == *id).map(|i| i.cwd.clone()).unwrap_or_default();
+                    self.open_link(link, &cwd);
                 }
             }
             if let Some(at) = box_rect {
@@ -3873,6 +4051,32 @@ const FADE: std::time::Duration = std::time::Duration::from_millis(150);
 /// How many lines a card's preview shows.
 const PEEK_LINES: usize = 12;
 
+/// Copy mode's key for a key pressed: the arrows and vi's letters.
+fn copy_key(key: egui::Key, m: egui::Modifiers) -> Option<copymode::Key> {
+    use copymode::Key as K;
+    use egui::Key;
+    if m.ctrl || m.alt || m.mac_cmd {
+        return None;
+    }
+    Some(match key {
+        Key::ArrowLeft | Key::H => K::Left,
+        Key::ArrowRight | Key::L => K::Right,
+        Key::ArrowUp | Key::K => K::Up,
+        Key::ArrowDown | Key::J => K::Down,
+        Key::PageUp => K::PageUp,
+        Key::PageDown => K::PageDown,
+        Key::G if m.shift => K::Bottom,
+        Key::G => K::Top,
+        Key::Home | Key::Num0 => K::LineStart,
+        Key::End => K::LineEnd,
+        Key::Num4 if m.shift => K::LineEnd,
+        Key::V | Key::Space => K::Mark,
+        Key::Y | Key::Enter => K::Copy,
+        Key::Escape | Key::Q => K::Exit,
+        _ => return None,
+    })
+}
+
 /// The last `n` lines of a screen with anything on them, their trailing
 /// blanks cut.
 fn last_lines(rows: &[Vec<tsumugi_pane::CellView>], n: usize) -> Vec<String> {
@@ -4024,7 +4228,7 @@ impl App {
                             self.update = Some(update::check(move || wake.request_repaint()));
                         }
                         chrome::set_tag_colors(&s.tags.colors);
-                        self.font = egui::FontId::monospace(s.font.size);
+                        self.font = egui::FontId::monospace(font_size(s.font.size, self.font_step));
                         let own = s.window.own_titlebar();
                         if !cfg!(target_os = "macos") {
                             self.own_frame = own;
@@ -4166,7 +4370,44 @@ impl App {
                     self.prefs = None;
                 }
             }
-            if let Some(pane) = self.panes.get(&w.focus).filter(|_| !field && !prefs_were_open) {
+            // Copy mode ends when the keys go to another pane.
+            if self.copy_mode.is_some_and(|(id, _)| id != w.focus) {
+                self.copy_mode = None;
+            }
+            let copying = self.copy_mode.is_some();
+            if let Some(pane) = self.panes.get(&w.focus).filter(|_| copying && !field && !prefs_were_open) {
+                let events = ctx.input(|i| i.events.clone());
+                let screen = tsumugi_pane::Pane::screen(pane);
+                let (cols, rows) = (screen.rows.first().map_or(0, Vec::len), screen.rows.len());
+                for e in &events {
+                    let egui::Event::Key { key, pressed: true, modifiers, .. } = e else { continue };
+                    if let Some(a) = keys::action(*key, *modifiers) {
+                        actions.push(a);
+                        continue;
+                    }
+                    let Some(k) = copy_key(*key, *modifiers) else { continue };
+                    let Some((_, mode)) = self.copy_mode.as_mut() else { break };
+                    for step in mode.press(k, cols, rows) {
+                        use tsumugi_pane::alacritty_terminal::grid::Scroll;
+                        match step {
+                            copymode::Step::Lines(n) => tsumugi_pane::Pane::scroll(pane, Scroll::Delta(n)),
+                            copymode::Step::PageUp => tsumugi_pane::Pane::scroll(pane, Scroll::PageUp),
+                            copymode::Step::PageDown => tsumugi_pane::Pane::scroll(pane, Scroll::PageDown),
+                            copymode::Step::Top => tsumugi_pane::Pane::scroll(pane, Scroll::Top),
+                            copymode::Step::Bottom => tsumugi_pane::Pane::scroll(pane, Scroll::Bottom),
+                            copymode::Step::Select { cell, start } => tsumugi_pane::Pane::select(pane, cell, true, start),
+                            copymode::Step::Unselect => tsumugi_pane::Pane::clear_selection(pane),
+                            // A server's pane answers through take_clipboard.
+                            copymode::Step::Copy => {
+                                if let Some(text) = tsumugi_pane::Pane::selection(pane) {
+                                    ctx.copy_text(text);
+                                }
+                            }
+                            copymode::Step::Exit => self.copy_mode = None,
+                        }
+                    }
+                }
+            } else if let Some(pane) = self.panes.get(&w.focus).filter(|_| !field && !prefs_were_open) {
                 let events = ctx.input(|i| i.events.clone());
                 tsumugi_pane::input::feed(pane, &events, |key, m| match keys::action(key, m) {
                     Some(a) => {
@@ -4222,7 +4463,9 @@ impl App {
                 self.bell_open = Some(egui::pos2(20.0, 60.0));
                 self.bell_opening = true;
             }
-            Some(chrome::StatusClick::Open(url)) => menu::open_url(&url),
+            Some(chrome::StatusClick::Open(url)) => {
+                menu::open_url(&url);
+            }
             Some(chrome::StatusClick::Charset(name)) => {
                 if let Some(i) = &focus_info {
                     client.set_charset(i.id, name);
@@ -4338,7 +4581,7 @@ impl App {
                         .collect(),
                     _ => Vec::new(),
                 };
-                chrome::search_box(&ctx, &self.palette, view, &Self::search_entries(&workspaces, &sessions), &lines)
+                chrome::search_box(&ctx, &self.palette, view, &Self::search_entries(&workspaces, &sessions, &self.input.prompts, &self.layouts), &lines)
             }
             None => None,
         };
@@ -4533,9 +4776,36 @@ impl App {
                 rule_file: permit::file(&i.project),
             });
         }
+        // Every session, only while its page shows: each is attached to read
+        // its last lines.
+        let mut all = Vec::new();
+        if view.page == lists::Page::All {
+            let used = self.usage.get();
+            let mut ordered: Vec<&Info> = sessions.iter().collect();
+            ordered.sort_by_key(|i| lists::rank(i.state, i.since_ms));
+            for i in ordered {
+                let mut lines = self.watch_lines(i.id);
+                lines.retain(|l| !l.trim().is_empty());
+                let tokens = used.conversations.get(&i.conversation).map_or(0, usage::Tokens::total);
+                let mut folder = home_short(&i.cwd);
+                if !i.branch.is_empty() {
+                    folder = format!("{folder} · {}", i.branch);
+                }
+                all.push(lists::Card {
+                    id: i.id,
+                    name: sort::display_title(&i.title, &i.command),
+                    state: i.state,
+                    words: chrome::state_words(i, now),
+                    folder,
+                    tags: i.tags.clone(),
+                    tokens: if tokens > 0 { format!("{} tokens", usage::short(tokens)) } else { String::new() },
+                    last: lines.split_off(lines.len().saturating_sub(2)),
+                });
+            }
+        }
         let colors = theme::colors();
         let mut keep = true;
-        for d in lists::show(ctx, &mut view, &rows, &self.ended, &colors) {
+        for d in lists::show(ctx, &mut view, &all, sessions.len(), &rows, &self.ended, &colors) {
             match d {
                 lists::Do::Type(id, key) => {
                     if let Some(pane) = self.panes.get(&id) {

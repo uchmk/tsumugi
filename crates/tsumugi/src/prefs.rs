@@ -1174,6 +1174,10 @@ fn sessions(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut 
         if let Some(t) = row(ui, l, "filer command", "The tab menu's \u{201c}Open the folder in filer\u{201d}", |ui| field(ui, &mut edit.drafts, "filer", &o.filer, "filer {folder}", 220.0)) {
             out.push(Change::Set(Some("open"), "filer", cfg::quote(&t)));
         }
+        sep(ui, l);
+        if let Some(t) = row(ui, l, "File command", "A Ctrl+click on a file's path in a pane; {file}, {line} and {column}. Empty: the system's way", |ui| field(ui, &mut edit.drafts, "file", &o.file, "code --goto {file}:{line}:{column}", 220.0)) {
+            out.push(Change::Set(Some("open"), "file", cfg::quote(&t)));
+        }
     });
     tab_menu(ui, l, seen, edit, out);
 }

@@ -46,6 +46,16 @@ pub enum Action {
     TypeAll,
     /// The bell's list of notifications, open or closed.
     Notices,
+    /// The panes' letters a point bigger or smaller, or as the settings
+    /// have them again (Windows Terminal's keys). For the window, not saved.
+    FontBigger,
+    FontSmaller,
+    FontReset,
+    /// Every session on one screen: its state, tokens, time and last words.
+    Overview,
+    /// Move over the pane's output and its scrollback with the keys, select
+    /// and copy (Windows Terminal's mark mode).
+    CopyMode,
 }
 
 /// The action for a key press, if it is one of the window's: a key the
@@ -78,7 +88,7 @@ fn action_with(key: Key, m: Modifiers, mac: bool, bound: &[(Action, Option<Chord
 
 /// The actions the settings can give another key, by the name `[keys]`
 /// uses, with their own keys (elsewhere, then on macOS).
-pub const NAMED: [(Action, &str, &str, &str); 17] = [
+pub const NAMED: [(Action, &str, &str, &str); 22] = [
     (Action::NewTab, "new_tab", "Ctrl+Shift+T", "Cmd+T"),
     (Action::CloseTab, "close_tab", "Ctrl+Shift+W", "Cmd+W"),
     (Action::NextTab, "next_tab", "Ctrl+Tab", "Ctrl+Tab"),
@@ -100,6 +110,15 @@ pub const NAMED: [(Action, &str, &str, &str); 17] = [
     (Action::TypeAll, "type_into_all", "Ctrl+Shift+I", "Cmd+Shift+I"),
     // N for notifications (Q13).
     (Action::Notices, "notifications", "Ctrl+Shift+N", "Cmd+Shift+N"),
+    // Windows Terminal's and every browser's. Ctrl+- is readline's undo
+    // (Ctrl+_), which Ctrl+Shift+- still sends.
+    (Action::FontBigger, "font_bigger", "Ctrl+=", "Cmd+="),
+    (Action::FontSmaller, "font_smaller", "Ctrl+-", "Cmd+-"),
+    (Action::FontReset, "font_reset", "Ctrl+0", "Cmd+0"),
+    // O for overview.
+    (Action::Overview, "overview", "Ctrl+Shift+O", "Cmd+Shift+O"),
+    // Windows Terminal's mark mode.
+    (Action::CopyMode, "copy_mode", "Ctrl+Shift+M", "Cmd+Shift+M"),
 ];
 
 /// What a changeable action is called on the settings screen and in
@@ -123,6 +142,11 @@ pub fn title(a: Action) -> &'static str {
         Action::Waiting => "The waiting sessions, answered together",
         Action::TypeAll => "Type into every pane of the tab",
         Action::Notices => "Notifications (the bell)",
+        Action::FontBigger => "Bigger letters",
+        Action::FontSmaller => "Smaller letters",
+        Action::FontReset => "Letters as the settings have them",
+        Action::Overview => "Every session on one screen",
+        Action::CopyMode => "Copy mode: select the output with the keys",
         Action::Tab(_) => "The Nth tab",
         Action::Move(_) => "Move between panes",
         Action::Resize(_) => "Resize the pane",
@@ -353,6 +377,11 @@ fn action_on(key: Key, m: Modifiers, mac: bool) -> Option<Action> {
             Key::Y if cmd && m.shift => Some(Action::Waiting),
             Key::I if cmd && m.shift => Some(Action::TypeAll),
             Key::N if cmd && m.shift => Some(Action::Notices),
+            Key::O if cmd && m.shift => Some(Action::Overview),
+            Key::M if cmd && m.shift => Some(Action::CopyMode),
+            Key::Equals | Key::Plus if cmd && !m.alt && !m.ctrl => Some(Action::FontBigger),
+            Key::Minus if cmd && !m.shift && !m.alt && !m.ctrl => Some(Action::FontSmaller),
+            Key::Num0 if cmd && !m.shift && !m.alt && !m.ctrl => Some(Action::FontReset),
             Key::F2 if !m.any() => Some(Action::Rename),
             _ if cmd && !m.shift => digit().map(Action::Tab),
             _ => None,
@@ -372,6 +401,13 @@ fn action_on(key: Key, m: Modifiers, mac: bool) -> Option<Action> {
         Key::Y if ctrl_shift => Some(Action::Waiting),
         Key::I if ctrl_shift => Some(Action::TypeAll),
         Key::N if ctrl_shift => Some(Action::Notices),
+        Key::O if ctrl_shift => Some(Action::Overview),
+        Key::M if ctrl_shift => Some(Action::CopyMode),
+        // `+` is Shift and `=` on a US keyboard, Shift and `;` on a JIS one:
+        // Shift may be held.
+        Key::Equals | Key::Plus if m.ctrl && !m.alt => Some(Action::FontBigger),
+        Key::Minus if m.ctrl && !m.shift && !m.alt => Some(Action::FontSmaller),
+        Key::Num0 if m.ctrl && !m.shift && !m.alt => Some(Action::FontReset),
         Key::F2 if !m.any() => Some(Action::Rename),
         // Alt+Shift++ / Alt+Shift+-, Windows Terminal's: `+` is Shift and
         // `=` on a US keyboard, Shift and `;` on a JIS one.
@@ -435,6 +471,14 @@ mod tests {
         assert_eq!(action_on(Key::Y, CTRL, false), None, "Ctrl+Y is the shell's yank");
         assert_eq!(action_on(Key::Tab, Modifiers::NONE, false), None, "Tab is the shell's");
         assert_eq!(action_on(Key::Minus, alt, false), None, "Alt+- is the shell's");
+        assert_eq!(action_on(Key::Equals, CTRL, false), Some(Action::FontBigger));
+        assert_eq!(action_on(Key::Plus, CTRL_SHIFT, false), Some(Action::FontBigger), "Ctrl and + on a US or JIS keyboard");
+        assert_eq!(action_on(Key::Minus, CTRL, false), Some(Action::FontSmaller));
+        assert_eq!(action_on(Key::Minus, CTRL_SHIFT, false), None, "Ctrl+_ is readline's undo");
+        assert_eq!(action_on(Key::Num0, CTRL, false), Some(Action::FontReset));
+        assert_eq!(action_on(Key::O, CTRL_SHIFT, false), Some(Action::Overview));
+        assert_eq!(action_on(Key::O, CTRL, false), None, "Ctrl+O is Claude Code's transcript");
+        assert_eq!(action_on(Key::M, CTRL_SHIFT, false), Some(Action::CopyMode));
     }
 
     /// The keys a shell or Claude Code needs stay theirs.
@@ -493,6 +537,11 @@ mod tests {
         assert_eq!(action_on(Key::ArrowUp, cmd_opt, true), Some(Action::Move(Toward::Up)));
         let ctrl_mac = Modifiers { alt: false, ctrl: true, shift: false, mac_cmd: false, command: false };
         assert_eq!(action_on(Key::T, ctrl_mac, true), None, "Ctrl+T is the shell's on a Mac too");
+        assert_eq!(action_on(Key::Equals, CMD, true), Some(Action::FontBigger));
+        assert_eq!(action_on(Key::Minus, CMD, true), Some(Action::FontSmaller));
+        assert_eq!(action_on(Key::Num0, CMD, true), Some(Action::FontReset));
+        assert_eq!(action_on(Key::O, cmd_shift, true), Some(Action::Overview));
+        assert_eq!(action_on(Key::M, cmd_shift, true), Some(Action::CopyMode));
     }
 
     #[test]

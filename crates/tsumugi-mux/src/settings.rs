@@ -84,9 +84,12 @@
 //! cache_read = 0.2
 //!
 //! # What a tab's menu runs to open its folder; {folder} is the folder.
+//! # `file`: what Ctrl+click on a path in a pane runs ({file}, {line},
+//! # {column}); empty, the system opens it.
 //! [open]
 //! editor = "code {folder}"
 //! filer = "filer {folder}"
+//! file = "code --goto {file}:{line}:{column}"
 //!
 //! # The tab's menu (the design's 1j): items left out, and more of your own.
 //! [menu]
@@ -444,11 +447,15 @@ impl Default for Settings {
 pub struct Open {
     pub editor: String,
     pub filer: String,
+    /// What a Ctrl+click on a file's path in a pane runs: `{file}` (quoted),
+    /// `{line}` and `{column}` (1 when the output named none). Empty: the
+    /// system's own way of opening it.
+    pub file: String,
 }
 
 impl Default for Open {
     fn default() -> Self {
-        Self { editor: "code {folder}".into(), filer: "filer {folder}".into() }
+        Self { editor: "code {folder}".into(), filer: "filer {folder}".into(), file: "code --goto {file}:{line}:{column}".into() }
     }
 }
 
@@ -525,9 +532,18 @@ pub fn menu_label(word: &str) -> &'static str {
 /// A command line with `{folder}` (quoted for the system's shell) and
 /// `{session}` put in.
 pub fn fill(command: &str, folder: &Path, session: u64) -> String {
-    let f = folder.display().to_string();
-    let quoted = if cfg!(windows) { format!("\"{f}\"") } else { format!("'{}'", f.replace('\'', "'\\''")) };
-    command.replace("{folder}", &quoted).replace("{session}", &session.to_string())
+    command.replace("{folder}", &shell_word(folder)).replace("{session}", &session.to_string())
+}
+
+/// `[open] file` for a file and the line and column in it.
+pub fn fill_file(command: &str, file: &Path, line: u32, column: u32) -> String {
+    command.replace("{file}", &shell_word(file)).replace("{line}", &line.to_string()).replace("{column}", &column.to_string())
+}
+
+/// A path as one word to the system's shell.
+fn shell_word(path: &Path) -> String {
+    let f = path.display().to_string();
+    if cfg!(windows) { format!("\"{f}\"") } else { format!("'{}'", f.replace('\'', "'\\''")) }
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Deserialize)]
@@ -1047,6 +1063,13 @@ mod tests {
     fn a_command_gets_the_folder_quoted() {
         assert_eq!(fill("code {folder} # {session}", Path::new("/tmp/it's here"), 7), "code '/tmp/it'\\''s here' # 7");
         assert!(parse("[menu]\nhide = [\"nope\"]").unwrap_err().starts_with("menu.hide: `nope`"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_file_gets_its_line_and_column() {
+        let line = fill_file(&Open::default().file, Path::new("/src/a b.rs"), 12, 3);
+        assert_eq!(line, "code --goto '/src/a b.rs':12:3");
     }
 
     #[test]

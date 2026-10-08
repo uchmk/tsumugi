@@ -144,6 +144,35 @@ keeps a prompt under a name and puts one back into the draft; `{folder}`,
 sent. They are kept in `prompts.toml` beside the settings (and go with an
 export). `Esc` gives the keys back to the pane.
 
+### In a pane's output
+
+Hold `Ctrl` (`Cmd` on macOS) and the web addresses and file paths on the
+screen are underlined under the pointer; a click opens them. An address
+goes to the browser; a path (`src/main.rs:120:5`, `./notes.md`,
+`~/dev/x`, `C:\work\a.txt`, read from the session's folder) opens in
+`[open] file` at that line and column, a folder in the system's file
+manager. An address with characters a shell would read (`"`, `&`, `|`,
+`;` …) is not opened.
+
+`Ctrl+=` and `Ctrl+-` (`Cmd+=`, `Cmd+-`) make the letters bigger or
+smaller, a point at a time, in every pane, for as long as the window is
+open; `Ctrl+0` puts back the size the settings have. `Ctrl+Shift+-` still
+reaches the shell as readline's undo.
+
+`Ctrl+Shift+M` (`Cmd+Shift+M`) is **copy mode**: a gold box of its own over
+the pane's output, which gets no keys meanwhile. The arrows or `hjkl` move it
+(past the top or bottom, the scrollback moves under it), `PgUp`/`PgDn` a
+page, `g` and `G` to the oldest and newest line, `0`/`Home` and `$`/`End`
+to the line's ends. `v` or `Space` starts a selection there, which follows
+the box; `y` or `Enter` copies it -- or the box's whole line when nothing is
+selected -- and leaves; `Esc` or `q` leaves without copying. The window's
+own keys still work.
+
+`Ctrl+Shift+O` (`Cmd+Shift+O`) shows **All sessions**: every session on one
+page, those waiting for you first, then errors, running and done, each with
+its state, folder and branch, tags, tokens and its last two lines. The arrows
+and `Enter`, or a click, go to one.
+
 ### The status bar
 
 Along the bottom: the server, how many sessions wait, run or failed, and the
@@ -249,6 +278,15 @@ The band also shows the tags of the session with the keys.
 Three letters or more also search every session's scrollback: the lines
 found come last, under IN THE SCROLLBACK, and picking one goes to its
 session and scrolls to it, the match selected.
+
+The input box's saved prompts are there too, as **Send prompt: name**: picked,
+the prompt goes to the pane with the keys (to every pane of the tab while
+typing into all), `{folder}`, `{project}` and `{branch}` filled in for each.
+**Save this tab's layout** keeps the tab's splits and what each pane runs
+(Claude Code or a shell) under the tab's name, in `layouts.toml` beside the
+settings (it goes with an export); **Open layout: name** opens it again as a new tab in the folder of
+the pane with the keys. In the file, a pane is `"claude"`, `"resume"` or
+`"shell"` and a split `{ right = 0.6, first = …, second = … }` (or `down`).
 
 ### Sorting and filtering
 
@@ -396,7 +434,9 @@ material = "none"
 # The window's keys, moved: an action and a key, or "none" to give its key
 # back to the shell (Settings -> Keys: click a key, press the new one).
 # new_tab, close_tab, next_tab, prev_tab, next_waiting, split_right,
-# split_down, zoom, search, rail, settings, input.
+# split_down, zoom, search, rail, settings, input, rename, duplicate,
+# waiting_list, type_into_all, notifications, font_bigger, font_smaller,
+# font_reset, overview, copy_mode.
 [keys]
 new_tab = "Ctrl+Shift+N"
 
@@ -422,6 +462,9 @@ cursor = "block-blink"     # block, bar or underline, -blink to blink
 [open]
 editor = "code {folder}"
 filer = "filer {folder}"
+# A file Ctrl+clicked in a pane's output, at its line and column ("" opens
+# it with the system's own program).
+file = "code --goto {file}:{line}:{column}"
 
 # The tab's menu: items left out, the built-in items' order (those not
 # named follow), and your own ({folder}, {session}).
