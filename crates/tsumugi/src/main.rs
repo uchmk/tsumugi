@@ -3450,9 +3450,8 @@ impl App {
     /// A Ctrl+click on an address or a file's path a pane printed.
     fn open_link(&mut self, link: tsumugi_pane::Link, cwd: &std::path::Path) {
         let (path, line, column) = match link {
-            tsumugi_pane::Link::Url(url) => match url.strip_prefix("file://") {
-                // `file:///C:/x` on Windows is `C:/x`.
-                Some(rest) => (if cfg!(windows) && rest.get(2..3) == Some(":") { rest[1..].to_owned() } else { rest.to_owned() }, None, None),
+            tsumugi_pane::Link::Url(url) => match menu::file_uri(&url) {
+                Some(path) => (path, None, None),
                 None => {
                     if !menu::open_url(&url) {
                         self.say(format!("Not opened: {url} has characters the shell would read"), true);

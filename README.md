@@ -157,6 +157,11 @@ goes to the browser; a path (`src/main.rs:120:5`, `./notes.md`,
 manager. An address with characters a shell would read (`"`, `&`, `|`,
 `;` …) is not opened.
 
+A link a program writes as one (OSC 8: `ls --hyperlink=auto`, `gcc`,
+`delta`, `cargo` in some terminals) has a dotted line under it all the time,
+since its text need not look like an address; `Ctrl`+click opens what it
+points at. A `file://` link opens the file, wherever the folder is.
+
 `Ctrl+=` and `Ctrl+-` (`Cmd+=`, `Cmd+-`) make the letters bigger or
 smaller, a point at a time, in every pane, for as long as the window is
 open; `Ctrl+0` puts back the size the settings have. `Ctrl+Shift+-` still

@@ -59,6 +59,8 @@
 - [ ] **2.32** Copy three lines (`echo a`, `echo b`, `echo c`); paste with `Ctrl+V` and with a right click into `cat` (no bracketed paste) and into pwsh 7 → **Paste 3 lines?** with the lines shown; `Esc` sends nothing (nothing reaches `cat`); `Enter` (or **Paste**) sends all three
 - [ ] **2.33** Paste the same three lines into Claude Code and into bash 5.1+; paste one line ending in a line break into `cat` → No dialog: they arrive as one paste (Claude Code shows "[Pasted text]" or the lines); the one line goes straight in
 - [ ] **2.34** Paste 10 KB of text into Claude Code; turn off both switches in Settings → General → Pasting and paste again; typing into all panes, paste three lines into `cat` panes → **Paste 10 KB?** even there; with the switches off, no dialog; with all panes, the dialog says it goes to all of them and **Paste** sends it to each
+- [ ] **2.35** `printf '\e]8;;https://example.com\e\\a link\e]8;;\e\\ and text\n'`; hold `Ctrl` over **a link**, click → A dotted line under **a link** only; with Ctrl, a solid line and a hand; the click opens example.com in the browser
+- [ ] **2.36** Linux/macOS: `ls --hyperlink=auto` in a folder with `a b.txt`; Ctrl+click it. Then scroll the output back a few lines and Ctrl+click it again → Dotted lines under the names; the file opens (the space read right); after scrolling, the line still sits under the name and the click opens the same file
 
 ## 3. The sidebar
 

@@ -1432,6 +1432,7 @@ fn run_pump(shared: Arc<Shared>, dirty: Receiver<SessionId>) {
                 win32_input: s.term.win32_input(),
                 bracketed_paste: s.term.bracketed_paste(),
                 title: s.term.title.clone(),
+                links: s.term.hyperlinks(),
             };
             let change = crate::diff::diff(s.sent.as_ref().map(|(sc, ex)| (sc, ex)), &screen, &extra);
             let whole = (!s.fresh.is_empty()).then(|| crate::diff::diff(None, &screen, &extra)).flatten();

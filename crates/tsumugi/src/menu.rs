@@ -86,6 +86,32 @@ fn url_ok(url: &str) -> bool {
     rest.is_some_and(|r| !r.is_empty()) && !url.contains(|c: char| c.is_whitespace() || c.is_control() || "\"'`$&|;<>^%!(){}".contains(c))
 }
 
+/// The path a `file://` address names: the host (`ls --hyperlink` puts the
+/// machine's name there) dropped, `%20` and the like decoded, and on Windows
+/// `/C:/x` as `C:/x`. `None` for any other address.
+pub fn file_uri(url: &str) -> Option<String> {
+    let rest = url.strip_prefix("file://")?;
+    let path = &rest[rest.find('/')?..];
+    let bytes = path.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        let hex = |k: usize| bytes.get(k).and_then(|b| (*b as char).to_digit(16));
+        match (bytes[i], hex(i + 1), hex(i + 2)) {
+            (b'%', Some(a), Some(b)) => {
+                out.push((a * 16 + b) as u8);
+                i += 3;
+            }
+            (b, _, _) => {
+                out.push(b);
+                i += 1;
+            }
+        }
+    }
+    let path = String::from_utf8_lossy(&out).into_owned();
+    Some(if cfg!(windows) && path.get(2..3) == Some(":") { path[1..].to_owned() } else { path })
+}
+
 /// Where a path a pane printed points: `~` is the home folder, and a
 /// relative path is under the session's folder.
 pub fn resolve(path: &str, cwd: &Path, home: Option<&Path>) -> PathBuf {
@@ -143,6 +169,10 @@ mod tests {
     fn only_plain_web_addresses_reach_the_shell() {
         assert!(super::url_ok("https://github.com/o/r/pull/12"));
         assert!(super::url_ok("http://localhost:5173/a?b=c"));
+        assert_eq!(super::file_uri("file:///home/u/a%20b.txt").as_deref(), Some("/home/u/a b.txt"));
+        assert_eq!(super::file_uri("file://box/home/u/%E3%81%82").as_deref(), Some("/home/u/あ"), "the host is dropped");
+        assert_eq!(super::file_uri("file://box").as_deref(), None);
+        assert_eq!(super::file_uri("https://x.example/").as_deref(), None);
         assert!(super::url_ok("http://127.0.0.1:8080"));
         for bad in ["file:///etc/passwd", "https://", "https://a.b/x&calc", "https://a.b/'$(x)'", "https://a.b/%PATH%", "javascript:alert(1)"] {
             assert!(!super::url_ok(bad), "{bad}");
