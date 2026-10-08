@@ -1442,6 +1442,21 @@ impl App {
                 }
             }
             keys::Action::Zoom => self.zoom = !self.zoom,
+            // The server writes the file; its Info says while it does.
+            keys::Action::Record => match sessions.iter().find(|i| i.id == w.focus) {
+                Some(info) if !info.recording.is_empty() => {
+                    client.record(w.focus, None);
+                    self.say(format!("Saved the recording to {}", info.recording), false);
+                }
+                Some(info) => match export::cast_path(&sort::display_title(&info.title, &info.command)) {
+                    Some(path) => {
+                        self.say(format!("Recording to {} (the same key stops)", path.display()), false);
+                        client.record(w.focus, Some(path));
+                    }
+                    None => self.say("No home folder to record in".into(), true),
+                },
+                None => {}
+            },
             keys::Action::Search => self.search = Some(palette::View::new()),
             keys::Action::Settings => self.open_settings(),
             keys::Action::Input => self.input.toggle(),
@@ -3751,6 +3766,11 @@ impl App {
                     // Typing into every pane: said on each, in gold.
                     if self.typing_all.contains(&w.id) {
                         let r = p.text(egui::pos2(right_x, head.center().y), egui::Align2::RIGHT_CENTER, "TYPING INTO ALL", egui::FontId::proportional(10.5), chrome::ink(chrome::gold()));
+                        right_x = r.left() - 10.0;
+                    }
+                    // Being recorded to a .cast file (Ctrl+Shift+R stops).
+                    if !info.recording.is_empty() {
+                        let r = p.text(egui::pos2(right_x, head.center().y), egui::Align2::RIGHT_CENTER, "● REC", egui::FontId::proportional(10.5), chrome::ink(chrome::red()));
                         right_x = r.left() - 10.0;
                     }
                     // A character set other than UTF-8, said where it applies.

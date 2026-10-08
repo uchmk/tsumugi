@@ -276,6 +276,26 @@ fn handle(shared: &Arc<Shared>, client: ClientId, tx: &Sender<ToClient>, msg: To
                 }
             }
         }
+        ToServer::Record { id, path } => {
+            if let Some(s) = sessions.get_mut(&id) {
+                match path {
+                    Some(path) => {
+                        let made = path.parent().map_or(Ok(()), std::fs::create_dir_all).and_then(|()| s.term.record(&path));
+                        match made {
+                            Ok(()) => s.info.recording = path.to_string_lossy().into_owned(),
+                            Err(e) => {
+                                let _ = tx.send(ToClient::Error(format!("the recording did not start: {}: {e}", path.display())));
+                            }
+                        }
+                    }
+                    None => {
+                        s.term.stop_recording();
+                        s.info.recording.clear();
+                    }
+                }
+                broadcast(shared, &sessions);
+            }
+        }
         ToServer::AllText { id } => {
             if let Some(s) = sessions.get(&id) {
                 let _ = tx.send(ToClient::Text { id, text: s.term.all_text() });
@@ -815,7 +835,7 @@ fn spawn_session(
     shared.ever.store(true, Ordering::Relaxed);
     let (branch, project) = git(&cwd);
     let branch = branch.unwrap_or_default();
-    let mut info = Info { id, cwd, title: String::new(), command, state: State::Running, note: String::new(), since_ms: now_ms(), branch, project, muted: false, tags: Vec::new(), claude: false, conversation: String::new(), charset: "UTF-8".into(), agent: String::new(), ports: Vec::new() };
+    let mut info = Info { id, cwd, title: String::new(), command, state: State::Running, note: String::new(), since_ms: now_ms(), branch, project, muted: false, tags: Vec::new(), claude: false, conversation: String::new(), charset: "UTF-8".into(), agent: String::new(), ports: Vec::new(), recording: String::new() };
     lock(&shared.rules).apply(&mut info);
     let watchers: BTreeSet<ClientId> = client.into_iter().collect();
     sessions.insert(
@@ -1514,7 +1534,7 @@ mod tags {
     }
 
     fn info(cwd: &str, tags: &[&str]) -> Info {
-        Info { id: 1, cwd: PathBuf::from(cwd), title: String::new(), command: String::new(), state: State::Running, note: String::new(), since_ms: 0, branch: String::new(), project: PathBuf::new(), muted: false, tags: tags.iter().map(|t| t.to_string()).collect(), claude: false, conversation: String::new(), charset: String::new(), agent: String::new(), ports: Vec::new() }
+        Info { id: 1, cwd: PathBuf::from(cwd), title: String::new(), command: String::new(), state: State::Running, note: String::new(), since_ms: 0, branch: String::new(), project: PathBuf::new(), muted: false, tags: tags.iter().map(|t| t.to_string()).collect(), claude: false, conversation: String::new(), charset: String::new(), agent: String::new(), ports: Vec::new(), recording: String::new() }
     }
 
     /// Going back and forth between two folders with a rule each swaps the

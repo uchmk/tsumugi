@@ -274,6 +274,12 @@ each) and `Ctrl+Shift+J` takes the pane to a tab of its own and shows it
 Zoomed, the heading says ZOOM, and a pane hidden behind that waits is said
 at the bottom right with the key to go there.
 
+`Ctrl+Shift+R` (`Cmd+Shift+R` on macOS) records the pane with the keys as an
+asciinema v2 file, `Videos/tsumugi/<date>-<time>-<name>.cast` in the home
+folder (`Movies` on macOS); its heading says ● REC until the same key stops
+it. `asciinema play` plays it back, and the asciinema player on a web page
+shows it. The server writes it, so it keeps recording with the window closed.
+
 In the input box, **When done** (or `Ctrl+Shift+Enter`) queues the prompt
 instead: it goes when the session has finished what it is doing -- done,
 or waiting with no question on its screen -- one at a time. The card says
@@ -490,7 +496,7 @@ material = "none"
 # split_down, zoom, search, rail, settings, input, rename, duplicate,
 # waiting_list, type_into_all, notifications, font_bigger, font_smaller,
 # font_reset, overview, copy_mode, find, prev_prompt, next_prompt, help,
-# swap_pane, equalize, pane_to_tab.
+# swap_pane, equalize, pane_to_tab, record.
 [keys]
 new_tab = "Ctrl+Shift+N"
 

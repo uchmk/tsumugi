@@ -383,6 +383,7 @@ mod tests {
             charset: String::new(),
             agent: String::new(),
             ports: Vec::new(),
+            recording: String::new(),
         }
     }
 

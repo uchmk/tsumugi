@@ -5,6 +5,14 @@
 
 ## [未リリース]
 
+## [0.61.0] - 2026-10-09
+
+### 追加
+
+- ペインの録画: `Ctrl+Shift+R`（macOS は `Cmd+Shift+R`）でキーのあるペインを asciinema v2 の `.cast` としてホームの `Videos/tsumugi/<日付>-<時刻>-<名前>.cast`（macOS は `Movies`）に記録し、もう一度押すと止めて保存する。記録中はペインの見出しに ● REC が出る。
+  書くのはサーバーなので、ウィンドウを閉じても記録は続く。`asciinema play` や Web のプレイヤーで再生でき、文字の途中で切れた読み込みも 1 文字にまとめて書き、大きさの変更も残す。`[keys]` の `record` で変えられる。
+- `tsumugi-pane` の `Terminal` に `record` / `stop_recording` / `recording`。サーバーとの約束（`proto::VERSION`）は 24 に上がった。
+
 ## [0.60.0] - 2026-10-09
 
 ### 追加

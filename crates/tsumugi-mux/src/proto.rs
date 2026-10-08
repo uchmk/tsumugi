@@ -7,7 +7,7 @@ use tsumugi_pane::Size;
 
 /// Bumped whenever a message changes shape: a client and a server that
 /// disagree say so at `Hello` instead of misreading each other.
-pub const VERSION: u32 = 23;
+pub const VERSION: u32 = 24;
 
 /// A `Hello` with this version asks the server to stop, writing down its
 /// tabs first so the next window can bring them back. `Hello` stays the
@@ -131,6 +131,8 @@ pub struct Info {
     pub agent: String,
     /// The TCP ports its programs listen on (a dev server's `3000`).
     pub ports: Vec<u16>,
+    /// The `.cast` file it is being recorded into, or empty.
+    pub recording: String,
 }
 
 /// How many tags a session can have (the design's 1o).
@@ -222,6 +224,9 @@ pub enum ToServer {
     /// Take the pane out of its split into a tab of its own, after the
     /// one it was in (a pane dropped on the sidebar).
     OwnTab { id: SessionId },
+    /// Record a session into an asciinema `.cast` file at `path` (its
+    /// folder made if need be); `None` stops.
+    Record { id: SessionId, path: Option<PathBuf> },
     /// Name a tab; an empty name gives it back its pane's.
     RenameWorkspace { id: WorkspaceId, name: String },
     /// Keep a tab at the top of the sidebar, or not.

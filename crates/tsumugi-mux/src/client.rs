@@ -249,12 +249,18 @@ impl Client {
         self.0.send(ToServer::Mute { ids, on });
     }
 
-    /// Put a tab at `to` in the sidebar's order.
     /// Take the pane out of its split into a tab of its own.
     pub fn own_tab(&self, id: SessionId) {
         self.0.send(ToServer::OwnTab { id });
     }
 
+    /// Record a session into a `.cast` file at `path`; `None` stops. What
+    /// went wrong comes back as an error.
+    pub fn record(&self, id: SessionId, path: Option<PathBuf>) {
+        self.0.send(ToServer::Record { id, path });
+    }
+
+    /// Put a tab at `to` in the sidebar's order.
     pub fn move_workspace(&self, id: WorkspaceId, to: usize) {
         self.0.send(ToServer::MoveWorkspace { id, to });
     }

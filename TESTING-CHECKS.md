@@ -64,6 +64,8 @@
 - [ ] **2.37** Split a tab into three: right, then right again from the new pane, then down; `Ctrl+Shift+X` twice → The pane with the keys trades places with the next one each press and keeps the keys (its ring moves with it); the shape stays
 - [ ] **2.38** In the same tab, `Ctrl+Shift+E` → The three columns get a third of the width each; the two stacked panes half the height each
 - [ ] **2.39** `Ctrl+Shift+J` on one of the panes; then on a tab with a single pane → The pane leaves the split for a new tab just after this one, which is shown with the keys in it; the old tab keeps the others. With one pane, nothing happens
+- [ ] **2.40** `Ctrl+Shift+R` in a pane; run `dir` / `ls`, type some Japanese (`echo あいう`), resize the window; `Ctrl+Shift+R` again → A toast says where it records and the pane's heading says ● REC; the second press toasts "Saved …" and the mark goes. The file in `Videos\tsumugi` (Movies on macOS) plays back with `asciinema play` (or on asciinema.org's player), the Japanese whole and the resize followed
+- [ ] **2.41** Start a recording, close the window (the server keeps running), open it again, stop it → The pane still says ● REC after reopening; the file has what happened while the window was closed
 
 ## 3. The sidebar
 

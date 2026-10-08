@@ -106,6 +106,13 @@ fn file_word(name: &str) -> String {
     if w.is_empty() { "session".into() } else { w }
 }
 
+/// Where a recording of `name` goes: `tsumugi` in Videos (Movies on
+/// macOS), as `<date>-<time>-<name>.cast`. The mux server makes the folder.
+pub fn cast_path(name: &str) -> Option<PathBuf> {
+    let videos = tsumugi_mux::settings::home()?.join(if cfg!(target_os = "macos") { "Movies" } else { "Videos" });
+    Some(videos.join("tsumugi").join(format!("{}-{}.cast", chrono::Local::now().format("%Y%m%d-%H%M%S"), file_word(name))))
+}
+
 /// Where an export goes: Downloads when there is one, else the home folder.
 pub fn place() -> Option<PathBuf> {
     let home = tsumugi_mux::settings::home()?;
