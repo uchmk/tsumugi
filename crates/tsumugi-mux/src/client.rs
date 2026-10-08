@@ -27,6 +27,10 @@ struct Remote {
     title: String,
     links: Vec<tsumugi_pane::Hyperlink>,
     blocks: Vec<tsumugi_pane::Block>,
+    pictures: Vec<tsumugi_pane::Placement>,
+    /// Pictures' pixels by key, as they came; `None` while asked for and
+    /// not come, or let go by the server.
+    pixels: HashMap<u64, Option<Arc<tsumugi_pane::Picture>>>,
     exited: bool,
     /// The answer to `find`, not taken yet.
     found: Option<Option<bool>>,
@@ -403,13 +407,23 @@ fn receive(inner: &Inner, msg: ToClient) {
             let r = st.screens.entry(id).or_default();
             let mut extra = crate::diff::Extra::default();
             crate::diff::apply(&mut r.screen, &mut extra, update);
-            (r.scrolled_back, r.win32_input, r.bracketed_paste, r.title, r.links, r.blocks) = (extra.scrolled_back, extra.win32_input, extra.bracketed_paste, extra.title, extra.links, extra.blocks);
+            (r.scrolled_back, r.win32_input, r.bracketed_paste, r.title, r.links, r.blocks, r.pictures) = (extra.scrolled_back, extra.win32_input, extra.bracketed_paste, extra.title, extra.links, extra.blocks, extra.pictures);
+            // Pixels of pictures no longer on the screen are let go; the
+            // view keeps its own textures a while, should one come back.
+            let on: std::collections::HashSet<u64> = r.pictures.iter().map(|p| p.key).collect();
+            r.pixels.retain(|k, _| on.contains(k));
         }
         ToClient::Exited { id } => st.screens.entry(id).or_default().exited = true,
         ToClient::Ended { info, last } => st.ended.push((*info, last)),
         ToClient::Text { id, text } => st.texts.push((id, text)),
         ToClient::Found { id, wrapped } => st.screens.entry(id).or_default().found = Some(wrapped),
         ToClient::Clipboard(text) => st.clipboard.push(text),
+        ToClient::Picture { id, key, picture } => {
+            let r = st.screens.entry(id).or_default();
+            if r.pictures.iter().any(|p| p.key == key) {
+                r.pixels.insert(key, picture.map(Arc::new));
+            }
+        }
         ToClient::Attention { looking, teller } => (st.looking, st.teller) = (looking, teller),
         ToClient::MutedTags(list) => st.muted_tags = list,
         // An error answers the request waiting on one (a spawn), if any.
@@ -549,5 +563,25 @@ impl Pane for RemotePane {
 
     fn blocks(&self) -> Vec<tsumugi_pane::Block> {
         self.with(|r| r.blocks.clone())
+    }
+
+    fn pictures(&self) -> Vec<tsumugi_pane::Placement> {
+        self.with(|r| r.pictures.clone())
+    }
+
+    /// Asked for the first time it is wanted; the answer wakes the window,
+    /// which draws it then.
+    fn picture(&self, key: u64) -> Option<Arc<tsumugi_pane::Picture>> {
+        let mut st = self.inner.lock();
+        let r = st.screens.entry(self.id).or_default();
+        match r.pixels.get(&key) {
+            Some(p) => p.clone(),
+            None => {
+                r.pixels.insert(key, None);
+                drop(st);
+                self.inner.send(ToServer::Picture { id: self.id, key });
+                None
+            }
+        }
     }
 }

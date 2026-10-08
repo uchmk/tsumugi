@@ -585,6 +585,10 @@ fn handle(shared: &Arc<Shared>, client: ClientId, tx: &Sender<ToClient>, msg: To
                         let _ = tx.send(ToClient::Clipboard(text));
                     }
                 }
+                ToServer::Picture { key, .. } => {
+                    let picture = term.picture(key).map(|p| (*p).clone());
+                    let _ = tx.send(ToClient::Picture { id, key, picture });
+                }
                 _ => {}
             }
             let _ = shared.dirty.send(id);
@@ -604,7 +608,8 @@ fn target(msg: &ToServer) -> Option<SessionId> {
         | ToServer::Reveal { id, .. }
         | ToServer::Find { id, .. }
         | ToServer::Copy { id }
-        | ToServer::CopyOutput { id } => *id,
+        | ToServer::CopyOutput { id }
+        | ToServer::Picture { id, .. } => *id,
         _ => return None,
     })
 }
@@ -1464,6 +1469,7 @@ fn run_pump(shared: Arc<Shared>, dirty: Receiver<SessionId>) {
                 title: s.term.title.clone(),
                 links: s.term.hyperlinks(),
                 blocks: s.term.blocks(),
+                pictures: s.term.pictures(),
             };
             let change = crate::diff::diff(s.sent.as_ref().map(|(sc, ex)| (sc, ex)), &screen, &extra);
             let whole = (!s.fresh.is_empty()).then(|| crate::diff::diff(None, &screen, &extra)).flatten();

@@ -7,7 +7,7 @@ use tsumugi_pane::Size;
 
 /// Bumped whenever a message changes shape: a client and a server that
 /// disagree say so at `Hello` instead of misreading each other.
-pub const VERSION: u32 = 25;
+pub const VERSION: u32 = 26;
 
 /// A `Hello` with this version asks the server to stop, writing down its
 /// tabs first so the next window can bring them back. `Hello` stays the
@@ -254,6 +254,9 @@ pub enum ToServer {
     /// the clipboard: answered with `Clipboard`, or not at all when the
     /// shell marks none.
     CopyOutput { id: SessionId },
+    /// A picture's pixels, by the key its placement has: answered with
+    /// `Picture`.
+    Picture { id: SessionId, key: u64 },
 }
 
 /// A line `SearchAll` found.
@@ -311,4 +314,7 @@ pub enum ToClient {
     /// The answer to `Find`: `None` when nothing matched, else whether the
     /// search ran off the end and started again to find it.
     Found { id: SessionId, wrapped: Option<bool> },
+    /// The answer to `ToServer::Picture`: `None` when the session has let
+    /// the picture go.
+    Picture { id: SessionId, key: u64, picture: Option<tsumugi_pane::Picture> },
 }

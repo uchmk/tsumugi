@@ -3,7 +3,7 @@
 //! nothing yet, or a grid that changed shape, gets every row.
 
 use serde::{Deserialize, Serialize};
-use tsumugi_pane::{Block, CellView, Hyperlink, MouseReport, Screen};
+use tsumugi_pane::{Block, CellView, Hyperlink, MouseReport, Placement, Screen};
 
 /// What changed on a session's screen, and the state that goes with it.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -26,6 +26,8 @@ pub struct Update {
     pub links: Vec<Hyperlink>,
     /// The commands on the screen that ended (OSC 133).
     pub blocks: Vec<Block>,
+    /// The pictures on the screen; their pixels are asked for apart.
+    pub pictures: Vec<Placement>,
 }
 
 /// What goes with the cells, and is compared whole.
@@ -37,6 +39,7 @@ pub struct Extra {
     pub title: String,
     pub links: Vec<Hyperlink>,
     pub blocks: Vec<Block>,
+    pub pictures: Vec<Placement>,
 }
 
 /// The update from `old` (what the client has) to `new`; `None` when nothing
@@ -73,6 +76,7 @@ pub fn diff(old: Option<(&Screen, &Extra)>, new: &Screen, extra: &Extra) -> Opti
         title: extra.title.clone(),
         links: extra.links.clone(),
         blocks: extra.blocks.clone(),
+        pictures: extra.pictures.clone(),
     })
 }
 
@@ -91,7 +95,7 @@ pub fn apply(screen: &mut Screen, extra: &mut Extra, u: Update) {
     screen.app_cursor = u.app_cursor;
     screen.alt_screen = u.alt_screen;
     screen.mouse = u.mouse;
-    *extra = Extra { scrolled_back: u.scrolled_back, win32_input: u.win32_input, bracketed_paste: u.bracketed_paste, title: u.title, links: u.links, blocks: u.blocks };
+    *extra = Extra { scrolled_back: u.scrolled_back, win32_input: u.win32_input, bracketed_paste: u.bracketed_paste, title: u.title, links: u.links, blocks: u.blocks, pictures: u.pictures };
 }
 
 #[cfg(test)]

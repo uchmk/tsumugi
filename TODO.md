@@ -34,7 +34,7 @@ tsumugi のやること。`【人】` は持ち主の作業、`【金】` は 20
   - [x] セッションの録画（asciinema v2 の `.cast`）。
   - [x] Quake モード（全体のホットキーで上から出し入れ）。
 - 重いもの
-  - [ ] 画像の表示（sixel・kitty・iTerm2）。
+  - [x] 画像の表示（sixel・kitty・iTerm2）。
   - [x] コマンドブロック（OSC 133 の B・C・D でコマンドと出力をまとめる）。
 - [ ] 設定のスクリプト（Lua か Rhai か）と、SSH 先のサーバーにつなぐ mux は QUESTIONS.md で範囲を決めてから。
 

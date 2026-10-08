@@ -70,6 +70,12 @@
 - [ ] **2.43** Linux/macOS: `tsumugi shell-hook bash >> ~/.bashrc` (zsh: `~/.zshrc`), open a new pane, `ls`, `false`, `ls /nope` → Green bar for `ls`, red for the other two; scrolling moves the bars with the lines; `vim` or `less` (the alternate screen) shows no bars
 - [ ] **2.44** After 2.42 or 2.43: `echo one; echo two`, then `Ctrl+Shift+L`, paste somewhere → The paste is `one` and `two` on two lines, without the command line or the prompt
 - [ ] **2.45** Through the mux: close the window after 2.43 and open it again → The bars come back on the same lines; `Ctrl+Shift+L` still copies the last output
+- [ ] **2.46** Linux/macOS (WSL on Windows): `img2sixel some.png` (or `chafa -f sixel some.png`) → The picture shows below the command, at its own size (cut to the pane's width), and the prompt comes under it
+- [ ] **2.47** `kitten icat some.png` (kitty installed), then `kitten icat --place 20x10@5x2 some.png` → The first under the command, fitted to the pane; the second at column 5, row 2 in a 20 x 10 cell box; `kitten icat --clear` takes them away
+- [ ] **2.48** `imgcat some.jpg` (iTerm2's script) or `wezterm imgcat some.jpg` → The picture under the command, its shape kept
+- [ ] **2.49** Windows, PowerShell 7 in tsumugi: `wsl img2sixel some.png`, and yazi in a pane with a picture selected → Both show the picture (ConPTY passes the sequences through); yazi's preview changes with the selection and leaves nothing behind
+- [ ] **2.50** After 2.46: scroll the pane up and down, then `clear` (`cls`) → The picture moves with its lines, half shown at the top edge, cut at the pane's edges; `clear` takes it away
+- [ ] **2.51** After 2.46: close the window (the server keeps running), open it again → The picture is back where it was; a second pane or a split shows its own
 
 ## 3. The sidebar
 

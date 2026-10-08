@@ -189,6 +189,17 @@ output, green when it succeeded and red when it failed. `Ctrl+Shift+L`
 (`Cmd+Shift+L`) copies the last command's output (the rows from its 133;C,
 or after its prompt line when the shell does not send C).
 
+**Pictures** show in the pane where a program prints them, in any of the
+three ways terminals take them: sixel (`img2sixel`, `chafa -f sixel`),
+kitty's graphics protocol (`kitten icat`, yazi, `chafa -f kitty`) and
+iTerm2's inline images (`imgcat`, `wezterm imgcat`). A picture sits over the
+cells it covers and scrolls, clears and goes with them, through the mux too
+(closing and opening the window keeps them). PNG, JPEG and GIF (its first
+frame); a picture is cut down to 4000 px a side. Kitty's shared memory and
+animation are not taken; its files and temporary files are. tsumugi answers
+the questions programs ask first (the pane's size in pixels, and that
+it does sixel), so they pick the right size by themselves.
+
 `Ctrl+Shift+F` (`Cmd+F`) **finds in the pane**: a bar at its top right finds
 what is typed as plain text, from the newest line back, and selects it on
 screen (ignoring case unless the text has a capital). `Enter` or **↑** goes on
