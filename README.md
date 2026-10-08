@@ -298,6 +298,12 @@ the tab, each started its own way (two Claude Codes and a shell: the second
 on the right, the third below it, a fourth below the first).
 **Save as a profile** keeps the choices -- the panes too -- under a name in
 `profiles.toml` beside the settings, for **Profile…** to fill in next time.
+**Runs on** appears when there is somewhere else to start it: the WSL
+distributions (`wsl -l -q`, on Windows) and the hosts `~/.ssh/config` names
+(not its patterns). A WSL session starts in the folder; an SSH one in the
+login's home folder, with Claude Code typed in there. A profile keeps the
+choice (`place = "wsl:Ubuntu"` or `"ssh:box"` in `profiles.toml`, also
+editable in Settings → Sessions & profiles).
 
 ### Searching
 

@@ -57,6 +57,7 @@ mod history;
 mod diffview;
 mod lists;
 mod copymode;
+mod remote;
 mod layouts;
 mod help;
 mod find;
@@ -801,6 +802,9 @@ struct App {
     /// A pane sent to a tab of its own with the keys, the tab it left and
     /// when: its new tab is shown once the server has made it.
     following: Option<(SessionId, WorkspaceId, std::time::Instant)>,
+    /// The WSL distributions and SSH hosts the new-session dialog offers,
+    /// looked for again each time it opens.
+    places: std::sync::Arc<std::sync::Mutex<Vec<remote::Where>>>,
     /// The panes on screen, attached; the rest are not sent here.
     panes: HashMap<SessionId, RemotePane>,
     views: HashMap<SessionId, ViewState>,
@@ -1168,6 +1172,7 @@ impl App {
             active: std::env::var(menu::SHOW_TAB).ok().and_then(|v| v.parse().ok()),
             pending: SHOW_SESSION.get().copied(),
             following: None,
+            places: Default::default(),
             panes: HashMap::new(),
             views: HashMap::new(),
             zoom: false,
@@ -1783,7 +1788,7 @@ impl App {
             Some(w) if c.split => Place::Split { beside: w.focus, dir: Dir::Right },
             _ => Place::NewWorkspace,
         };
-        let shell = None;
+        let shell = c.on.shell();
         match client.spawn_typing(c.folder.clone(), shell, Size::new(80, 24), (8, 16), place, c.start.typed(&self.settings_now.sessions.claude)) {
             Ok(pane) => {
                 let id = pane.id();
@@ -1800,7 +1805,7 @@ impl App {
                 let mut made = Vec::new();
                 for (k, s) in c.more.iter().enumerate() {
                     let (beside, dir) = newsession::more_place(k, id, &made);
-                    let shell = None;
+                    let shell = c.on.shell();
                     match client.spawn_typing(c.folder.clone(), shell, Size::new(80, 24), (8, 16), Place::Split { beside, dir }, s.typed(&self.settings_now.sessions.claude)) {
                         Ok(pane) => {
                             made.push(pane.id());
@@ -1821,6 +1826,7 @@ impl App {
                 start: c.start.word().into(),
                 tags: c.tags.clone(),
                 panes: c.more.iter().map(|s| s.word().to_owned()).collect(),
+                place: c.on.word(),
             };
             save_profile(self.profiles.clone(), profile);
         }
@@ -2920,6 +2926,7 @@ impl App {
     /// The new-session dialog in `folder`, the settings' start chosen.
     fn dialog(&self, folder: &std::path::Path) -> newsession::Dialog {
         let start = newsession::Start::from_word(&self.settings_now.sessions.start).unwrap_or(newsession::Start::Claude);
+        remote::find(self.places.clone(), self.ctx.clone());
         newsession::Dialog::starting(folder, start)
     }
 
@@ -4695,7 +4702,12 @@ impl App {
         }
 
         let made = match &mut self.new_session {
-            Some(d) => newsession::show(&ctx, &self.palette, d, &Self::recents(&sessions, current.as_ref(), &self.closed), &self.profiles, &self.tag_rules),
+            Some(d) => {
+                if let Ok(places) = self.places.lock() {
+                    d.places.clone_from(&places);
+                }
+                newsession::show(&ctx, &self.palette, d, &Self::recents(&sessions, current.as_ref(), &self.closed), &self.profiles, &self.tag_rules)
+            }
             None => None,
         };
         match made {

@@ -11,6 +11,7 @@ use tsumugi_mux::settings::{Profile, TagRule};
 use tsumugi_pane::Palette;
 
 use crate::chrome;
+use crate::remote::Where;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Start {
@@ -89,6 +90,10 @@ pub struct Dialog {
     start_ids: Vec<egui::Id>,
     profile_id: Option<egui::Id>,
     beside_id: Option<egui::Id>,
+    /// Where it runs, and the places found to offer (none: the row is not
+    /// shown).
+    on: Where,
+    pub places: Vec<Where>,
 }
 
 /// What the dialog was asked to do.
@@ -112,6 +117,8 @@ pub struct Create {
     pub worktree: Option<String>,
     /// More panes beside it, in the same folder.
     pub more: Vec<Start>,
+    /// This machine, a WSL distribution or an SSH host.
+    pub on: Where,
 }
 
 /// Where the `k`th more pane goes (0 the first of them), given the first
@@ -154,6 +161,8 @@ impl Dialog {
             start_ids: Vec::new(),
             profile_id: None,
             beside_id: None,
+            on: Where::Here,
+            places: Vec::new(),
         }
     }
 
@@ -179,6 +188,7 @@ impl Dialog {
         self.start = Start::from_word(&p.start).unwrap_or(Start::Claude);
         self.tags.clone_from(&p.tags);
         self.more = p.panes.iter().filter_map(|w| Start::from_word(w)).take(MORE_MOST).collect();
+        self.on = Where::from_word(&p.place);
         self.dropped.clear();
         self.selected = None;
     }
@@ -204,7 +214,7 @@ impl Dialog {
             let b = self.branch.trim();
             if b.is_empty() { crate::worktree::default_branch(chrono::Local::now()) } else { b.to_owned() }
         });
-        Answer::Create(Create { folder: self.folder_path(), start: self.start, tags, dropped: self.dropped.clone(), split, save_as, worktree, more: self.more.clone() })
+        Answer::Create(Create { folder: self.folder_path(), start: self.start, tags, dropped: self.dropped.clone(), split, save_as, worktree, more: self.more.clone(), on: self.on.clone() })
     }
 }
 
@@ -484,6 +494,26 @@ pub fn show(ctx: &egui::Context, pal: &Palette, d: &mut Dialog, recents: &[Recen
                         ui.label(RichText::new("one pane").size(12.0).color(chrome::grey()));
                     }
                 });
+                // Where it runs: shown once WSL or SSH has somewhere to offer
+                // (or a profile asked for one).
+                if !d.places.is_empty() || d.on != Where::Here {
+                    ui.horizontal(|ui| {
+                        ui.label(RichText::new("Runs on").size(12.0).color(pal.fg_dim));
+                        let mut places = d.places.clone();
+                        if !places.contains(&d.on) {
+                            places.push(d.on.clone());
+                        }
+                        let combo = egui::ComboBox::from_id_salt("ns-on").selected_text(d.on.label()).show_ui(ui, |ui| {
+                            for p in &places {
+                                ui.selectable_value(&mut d.on, p.clone(), p.label());
+                            }
+                        });
+                        ring(ui, combo.response);
+                        if matches!(d.on, Where::Ssh(_)) {
+                            ui.label(RichText::new("starts in the login's home folder").size(12.0).color(chrome::grey()));
+                        }
+                    });
+                }
                 ui.add_space(10.0);
 
                 ui.label(label("TAGS"));

@@ -213,16 +213,17 @@ struct ProfileDraft {
     start: String,
     tags: String,
     panes: Vec<String>,
+    place: String,
 }
 
 impl ProfileDraft {
     fn of(p: &Profile) -> Self {
-        Self { was: Some(p.name.clone()), name: p.name.clone(), folder: p.folder.clone(), start: p.start.clone(), tags: p.tags.join(", "), panes: p.panes.clone() }
+        Self { was: Some(p.name.clone()), name: p.name.clone(), folder: p.folder.clone(), start: p.start.clone(), tags: p.tags.join(", "), panes: p.panes.clone(), place: p.place.clone() }
     }
 
     fn profile(&self) -> Profile {
         let tags = self.tags.split(',').filter_map(tsumugi_mux::proto::tag_name).collect();
-        Profile { name: self.name.trim().to_owned(), folder: self.folder.trim().to_owned(), start: self.start.clone(), tags, panes: self.panes.clone() }
+        Profile { name: self.name.trim().to_owned(), folder: self.folder.trim().to_owned(), start: self.start.clone(), tags, panes: self.panes.clone(), place: self.place.trim().to_owned() }
     }
 }
 
@@ -1077,6 +1078,9 @@ fn profile_words(p: &Profile) -> String {
         s.push_str(", split");
     }
     s.push_str(&format!(" · {}", p.folder));
+    if !p.place.is_empty() {
+        s.push_str(&format!(" · on {}", p.place));
+    }
     if !p.tags.is_empty() {
         s.push_str(&format!(" · {}", p.tags.join(", ")));
     }
@@ -1131,7 +1135,7 @@ fn sessions(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut 
         }
         if row(ui, l, "New profile", "Or tick \u{201c}Save as a profile\u{201d} in the new-session dialog", |ui| button(ui, l, "Add")) {
             let home = cfg::home().map(|h| h.display().to_string()).unwrap_or_default();
-            edit.profile = Some(ProfileDraft { was: None, name: String::new(), folder: home, start: "claude".into(), tags: String::new(), panes: Vec::new() });
+            edit.profile = Some(ProfileDraft { was: None, name: String::new(), folder: home, start: "claude".into(), tags: String::new(), panes: Vec::new(), place: String::new() });
         }
         let mut done = None;
         if let Some(d) = &mut edit.profile {
@@ -1153,6 +1157,9 @@ fn sessions(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut 
                 ui.end_row();
                 ui.label(RichText::new("Tags").color(c.dim));
                 ui.add(egui::TextEdit::singleline(&mut d.tags).hint_text("comma between").desired_width(260.0));
+                ui.end_row();
+                ui.label(RichText::new("Runs on").color(c.dim));
+                ui.add(egui::TextEdit::singleline(&mut d.place).hint_text("this machine, or wsl:Ubuntu, ssh:host").font(FontId::monospace(12.5)).desired_width(260.0));
                 ui.end_row();
                 let mut gone = None;
                 for (k, pane) in d.panes.iter_mut().enumerate() {

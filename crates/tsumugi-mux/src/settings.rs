@@ -924,6 +924,10 @@ pub struct Profile {
     /// the right, a third below it, a fourth below the first.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub panes: Vec<String>,
+    /// Where it runs: empty for this machine, `wsl:<distribution>` or
+    /// `ssh:<host>`.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub place: String,
 }
 
 #[derive(Default, Serialize, Deserialize)]
@@ -1116,8 +1120,8 @@ mod tests {
         let path = dir.join("profiles.toml");
         assert_eq!(load_profiles(&path), Ok(vec![]), "no file, no profiles");
         let list = vec![
-            Profile { name: "filer".into(), folder: "~/dev/filer".into(), start: "claude".into(), tags: vec!["review".into()], panes: vec!["claude".into(), "shell".into()] },
-            Profile { name: "a \"quoted\" one".into(), folder: r"C:\dev\x".into(), start: "shell".into(), tags: vec![], panes: vec![] },
+            Profile { name: "filer".into(), folder: "~/dev/filer".into(), start: "claude".into(), tags: vec!["review".into()], panes: vec!["claude".into(), "shell".into()], place: "ssh:box".into() },
+            Profile { name: "a \"quoted\" one".into(), folder: r"C:\dev\x".into(), start: "shell".into(), tags: vec![], panes: vec![], place: String::new() },
         ];
         save_profiles(&path, &list).unwrap();
         assert_eq!(load_profiles(&path), Ok(list));

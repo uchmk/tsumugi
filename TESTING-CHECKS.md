@@ -154,6 +154,8 @@
 - [ ] **6.9** `Ctrl+Shift+T`, then only the keyboard: `Tab` through the dialog, `←`/`→` on the ways to start, `Space` on a button, `Shift+Tab` back → A cyan ring shows where the keys are; Tab completes the folder once and then moves on to the way picked in START (one stop for the whole row), then + Pane, the tag, the two ticks, Create and Cancel; `←`/`→` walk the row round, Profile… included, and Shift+Tab from + Pane comes back on the way picked; `Enter` on Cancel cancels, `Enter` in a field creates
 - [ ] **6.10** Search `parallel` → Start in parallel; two prompts; Start 2 → Two folders `<repo>-tsumugi-MMDD-HHMM-1`/`-2` beside the repository on branches `tsumugi/MMDD-HHMM-1`/`-2`, two tabs, Claude Code started in each on its own prompt (quotes in a prompt kept); Esc or Cancel starts nothing
 - [ ] **6.11** `Ctrl+Shift+T`, `Tab` to Shell (the ring on it), `Enter` → A shell starts, as Alt+Enter would split one: Enter on a way to start picks it and creates
+- [ ] **6.12** With WSL installed: `Ctrl+Shift+T`, Runs on → WSL: Ubuntu, Shell, Create → A Linux shell in the same folder (`/mnt/c/…`); Docker Desktop's distributions are not offered; no console window flashes when the dialog opens
+- [ ] **6.13** With a `Host box` in `~/.ssh/config`: Runs on → SSH: box, Claude Code, tick Save as a profile, Create → `ssh box` starts in the pane (asks for a password or key if it needs one) and `claude` is typed once logged in; `Host *` lines are not offered; Profile… → it next time picks SSH: box again
 
 ## 7. The input box
 
