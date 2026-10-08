@@ -1,5 +1,6 @@
 //! `tsumugi shell-hook`: the lines that make a shell say which folder it is
-//! in (OSC 7), as filer's `filer shell-hook` does for its pane.
+//! in (OSC 7), as filer's `filer shell-hook` does for its pane, and mark
+//! where each prompt starts (OSC 133;A) for `Ctrl+Shift+Up` / `Down`.
 //!
 //! On Linux and macOS the server can read a shell's folder from the system,
 //! so the hook only makes it quicker. On Windows it cannot, and without the
@@ -10,11 +11,14 @@
 //! Each starts with an empty line, so appending it to a file that does not
 //! end in a newline does not glue it onto that file's last line.
 
-/// PowerShell 7. Runs on each `cd` rather than replacing `prompt`, which
-/// would break Starship and the other prompt generators, and calls whatever
-/// handler was there before, which `mise activate pwsh` puts there.
+/// PowerShell 7. The folder is said on each `cd` rather than from `prompt`,
+/// calling whatever handler was there before (`mise activate pwsh` puts one
+/// there). The prompt mark wraps the `prompt` there is, as Windows Terminal's
+/// own lines do, so Starship's keeps working when it is set up first; and
+/// only once, though the server adds the same lines to a pane's pwsh.
 pub const PWSH: &str = r#"
-# tsumugi: say where the shell is (OSC 7), for the sidebar and for a restore
+# tsumugi: say where the shell is (OSC 7), for the sidebar and for a restore,
+# and mark each prompt (OSC 133;A), for the jump between them
 $prev = $ExecutionContext.SessionState.InvokeCommand.LocationChangedAction
 $ExecutionContext.SessionState.InvokeCommand.LocationChangedAction = {
     param($sender, $e)
@@ -22,23 +26,32 @@ $ExecutionContext.SessionState.InvokeCommand.LocationChangedAction = {
     $p = $e.NewPath.ProviderPath -replace '\\', '/' -replace '^(?!/)', '/'
     [Console]::Write("$([char]27)]7;file://$p$([char]27)\")
 }.GetNewClosure()
+if (-not $global:__tsumugi_marked) {
+    $global:__tsumugi_marked = $true
+    $global:__tsumugi_prompt = $function:prompt
+    function global:prompt { "$([char]27)]133;A$([char]27)\" + (& $global:__tsumugi_prompt) }
+}
 "#;
 
 /// bash has no hook on `cd`, so this says it at every prompt; tsumugi only acts
 /// on a folder that differs from the one it has.
 pub const BASH: &str = r#"
-# tsumugi: say where the shell is (OSC 7), for the sidebar and for a restore
-__tsumugi_osc7() { printf '\e]7;file://%s%s\e\\' "$HOSTNAME" "$PWD"; }
+# tsumugi: say where the shell is (OSC 7), for the sidebar and for a restore,
+# and mark each prompt (OSC 133;A), for the jump between them
+__tsumugi_osc7() { printf '\e]7;file://%s%s\e\\\e]133;A\e\\' "$HOSTNAME" "$PWD"; }
 PROMPT_COMMAND="__tsumugi_osc7${PROMPT_COMMAND:+;$PROMPT_COMMAND}"
 "#;
 
 /// zsh has one: `chpwd`. It does not fire for the directory the shell starts
-/// in, hence the call at the end.
+/// in, hence the call at the end. The prompt mark goes out from `precmd`.
 pub const ZSH: &str = r#"
-# tsumugi: say where the shell is (OSC 7), for the sidebar and for a restore
+# tsumugi: say where the shell is (OSC 7), for the sidebar and for a restore,
+# and mark each prompt (OSC 133;A), for the jump between them
 __tsumugi_osc7() { printf '\e]7;file://%s%s\e\\' "$HOST" "$PWD" }
+__tsumugi_mark() { printf '\e]133;A\e\\' }
 autoload -Uz add-zsh-hook
 add-zsh-hook chpwd __tsumugi_osc7
+add-zsh-hook precmd __tsumugi_mark
 __tsumugi_osc7
 "#;
 
@@ -155,7 +168,7 @@ mod tests {
         assert!(text(Some("powershell")).unwrap_err().contains("PowerShell 7"));
         assert!(text(Some("fish")).unwrap_err().contains(SHELLS));
         for hook in [PWSH, BASH, ZSH] {
-            assert!(hook.starts_with("\n#") && hook.ends_with('\n') && hook.contains("]7;file://"), "{hook:?}");
+            assert!(hook.starts_with("\n#") && hook.ends_with('\n') && hook.contains("]7;file://") && hook.contains("]133;A"), "{hook:?}");
             assert!(!hook.contains("filer"), "{hook:?}");
         }
     }

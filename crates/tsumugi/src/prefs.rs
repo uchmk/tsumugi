@@ -843,6 +843,12 @@ fn keys(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut Vec<
         changeable(ui, Action::Zoom);
         sep(ui, l);
         changeable(ui, Action::CopyMode);
+        sep(ui, l);
+        changeable(ui, Action::Find);
+        sep(ui, l);
+        changeable(ui, Action::PrevPrompt);
+        sep(ui, l);
+        changeable(ui, Action::NextPrompt);
     });
     section(ui, l, "VIEW", |ui| {
         for (k, a) in [Action::Help, Action::Overview, Action::FontBigger, Action::FontSmaller, Action::FontReset].into_iter().enumerate() {

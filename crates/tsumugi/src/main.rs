@@ -59,6 +59,7 @@ mod lists;
 mod copymode;
 mod layouts;
 mod help;
+mod find;
 
 use std::time::Duration;
 
@@ -814,6 +815,8 @@ struct App {
     font_step: f32,
     /// Copy mode, on the pane it was started in.
     copy_mode: Option<(SessionId, copymode::CopyMode)>,
+    /// The find bar, on the pane it finds in (`Ctrl+Shift+F`).
+    find: Option<find::Bar>,
     /// The saved layouts (`layouts.toml`), and one being opened: its panes
     /// as they start, set in its shape once all are in one tab.
     layouts: Vec<layouts::Layout>,
@@ -1168,6 +1171,7 @@ impl App {
             font: egui::FontId::monospace(first_font.size),
             font_step: 0.0,
             copy_mode: None,
+            find: None,
             layouts: layouts::load(),
             opening: None,
             title: String::new(),
@@ -1428,6 +1432,16 @@ impl App {
                     None => self.panes.get(&w.focus).map(|pane| (w.focus, copymode::CopyMode::new(tsumugi_pane::Pane::screen(pane).cursor))),
                 };
             }
+            keys::Action::PrevPrompt | keys::Action::NextPrompt => {
+                if let Some(pane) = self.panes.get(&w.focus) {
+                    pane.jump_prompt(action == keys::Action::PrevPrompt);
+                }
+            }
+            // Pressed again, the field gets the keys back.
+            keys::Action::Find => match &mut self.find {
+                Some(bar) if bar.id == w.focus => bar.focus = true,
+                _ => self.find = Some(find::Bar::new(w.focus)),
+            },
             keys::Action::Help => self.help = if self.help.is_some() { None } else { Some(help::View { opening: true }) },
             keys::Action::Overview => {
                 self.lists = match &self.lists {
@@ -3760,6 +3774,26 @@ impl App {
                         p.galley(badge.min + egui::vec2(7.0, 3.0), galley, egui::Color32::WHITE);
                     }
                 }
+                if let Some(bar) = self.find.as_mut().filter(|b| b.id == *id) {
+                    if let Some(said) = pane.take_found() {
+                        bar.said = Some(said);
+                    }
+                    for ask in find::show(&ctx, rect, bar, &theme::colors()) {
+                        match ask {
+                            find::Ask::Find { needle, back } => pane.find(&needle, back),
+                            find::Ask::Restart => {
+                                pane.find("", true);
+                                tsumugi_pane::Pane::clear_selection(pane);
+                            }
+                            find::Ask::Close => {
+                                pane.find("", true);
+                                tsumugi_pane::Pane::clear_selection(pane);
+                                self.find = None;
+                                break;
+                            }
+                        }
+                    }
+                }
                 if let Some(text) = shown.copy {
                     ctx.copy_text(text);
                 }
@@ -4223,7 +4257,7 @@ impl App {
         // A menu open as the frame begins has the keys: an Esc closing it,
         // or what is typed in it, does not reach the shell.
         self.menu_open = egui::Popup::is_any_open(&ctx);
-        let own = self.new_session.is_some() || self.search.is_some() || self.lists.is_some() || self.help.is_some() || self.diff.is_some() || self.parallel.is_some() || self.prefs.is_some() || self.menu_open || self.renaming_card.is_some() || self.noting_card.is_some();
+        let own = self.new_session.is_some() || self.search.is_some() || self.lists.is_some() || self.help.is_some() || self.diff.is_some() || self.parallel.is_some() || self.prefs.is_some() || self.menu_open || self.renaming_card.is_some() || self.noting_card.is_some() || self.find.as_ref().is_some_and(find::Bar::keyed);
         keep_tab_for_pane(&ctx, own);
         let Some(client) = self.client.clone() else {
             self.message(ui);
@@ -4407,7 +4441,7 @@ impl App {
             // keys while it is focused; the pane gets them otherwise.
             // A key being changed in the settings is the settings'.
             let capturing = self.prefs.as_ref().is_some_and(|p| p.edit.capturing.is_some());
-            let field = ctx.memory(|m| m.focused().is_some()) || self.new_session.is_some() || self.search.is_some() || self.lists.is_some() || self.help.is_some() || self.diff.is_some() || self.parallel.is_some() || self.menu_open || self.input.had_keys(&ctx) || capturing || self.renaming_card.is_some() || self.noting_card.is_some();
+            let field = ctx.memory(|m| m.focused().is_some()) || self.new_session.is_some() || self.search.is_some() || self.lists.is_some() || self.help.is_some() || self.diff.is_some() || self.parallel.is_some() || self.menu_open || self.input.had_keys(&ctx) || capturing || self.renaming_card.is_some() || self.noting_card.is_some() || self.find.as_ref().is_some_and(find::Bar::keyed);
             if self.key_log {
                 // `TSUMUGI_KEYLOG=1`: every key press as the window gets it,
                 // to see on a real machine why a key does nothing.
@@ -4431,9 +4465,12 @@ impl App {
                     self.prefs = None;
                 }
             }
-            // Copy mode ends when the keys go to another pane.
+            // Copy mode and the find bar end when the keys go to another pane.
             if self.copy_mode.is_some_and(|(id, _)| id != w.focus) {
                 self.copy_mode = None;
+            }
+            if self.find.as_ref().is_some_and(|b| b.id != w.focus) {
+                self.find = None;
             }
             let copying = self.copy_mode.is_some();
             if let Some(pane) = self.panes.get(&w.focus).filter(|_| copying && !field && !prefs_were_open) {

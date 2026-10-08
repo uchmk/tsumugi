@@ -56,6 +56,12 @@ pub enum Action {
     /// Move over the pane's output and its scrollback with the keys, select
     /// and copy (Windows Terminal's mark mode).
     CopyMode,
+    /// The pane's view to the prompt above, or below (the shell's OSC 133
+    /// marks; Windows Terminal's and iTerm2's keys).
+    PrevPrompt,
+    NextPrompt,
+    /// Find in the pane's output and scrollback: a bar over the pane.
+    Find,
     /// Every key and what it does, by kind, on one screen (filer's help).
     Help,
 }
@@ -90,7 +96,7 @@ fn action_with(key: Key, m: Modifiers, mac: bool, bound: &[(Action, Option<Chord
 
 /// The actions the settings can give another key, by the name `[keys]`
 /// uses, with their own keys (elsewhere, then on macOS).
-pub const NAMED: [(Action, &str, &str, &str); 23] = [
+pub const NAMED: [(Action, &str, &str, &str); 26] = [
     (Action::NewTab, "new_tab", "Ctrl+Shift+T", "Cmd+T"),
     (Action::CloseTab, "close_tab", "Ctrl+Shift+W", "Cmd+W"),
     (Action::NextTab, "next_tab", "Ctrl+Tab", "Ctrl+Tab"),
@@ -121,6 +127,11 @@ pub const NAMED: [(Action, &str, &str, &str); 23] = [
     (Action::Overview, "overview", "Ctrl+Shift+O", "Cmd+Shift+O"),
     // Windows Terminal's mark mode.
     (Action::CopyMode, "copy_mode", "Ctrl+Shift+M", "Cmd+Shift+M"),
+    // Windows Terminal's scrollToMark and iTerm2's.
+    (Action::PrevPrompt, "prev_prompt", "Ctrl+Shift+Up", "Cmd+Shift+Up"),
+    (Action::NextPrompt, "next_prompt", "Ctrl+Shift+Down", "Cmd+Shift+Down"),
+    // Windows Terminal's find; every Mac program's.
+    (Action::Find, "find", "Ctrl+Shift+F", "Cmd+F"),
     // Every program's help key, and filer's.
     (Action::Help, "help", "F1", "F1"),
 ];
@@ -197,6 +208,9 @@ pub fn title(a: Action) -> &'static str {
         Action::FontReset => "Letters as the settings have them",
         Action::Overview => "Every session on one screen",
         Action::CopyMode => "Copy mode: select the output with the keys",
+        Action::PrevPrompt => "To the prompt above",
+        Action::NextPrompt => "To the prompt below",
+        Action::Find => "Find in the pane",
         Action::Help => "Every key (this help)",
         Action::Tab(_) => "The Nth tab",
         Action::Move(_) => "Move between panes",
@@ -430,6 +444,9 @@ fn action_on(key: Key, m: Modifiers, mac: bool) -> Option<Action> {
             Key::N if cmd && m.shift => Some(Action::Notices),
             Key::O if cmd && m.shift => Some(Action::Overview),
             Key::M if cmd && m.shift => Some(Action::CopyMode),
+            Key::ArrowUp if cmd && m.shift && !m.alt && !m.ctrl => Some(Action::PrevPrompt),
+            Key::ArrowDown if cmd && m.shift && !m.alt && !m.ctrl => Some(Action::NextPrompt),
+            Key::F if cmd && !m.shift && !m.alt && !m.ctrl => Some(Action::Find),
             Key::Equals | Key::Plus if cmd && !m.alt && !m.ctrl => Some(Action::FontBigger),
             Key::Minus if cmd && !m.shift && !m.alt && !m.ctrl => Some(Action::FontSmaller),
             Key::Num0 if cmd && !m.shift && !m.alt && !m.ctrl => Some(Action::FontReset),
@@ -455,6 +472,9 @@ fn action_on(key: Key, m: Modifiers, mac: bool) -> Option<Action> {
         Key::N if ctrl_shift => Some(Action::Notices),
         Key::O if ctrl_shift => Some(Action::Overview),
         Key::M if ctrl_shift => Some(Action::CopyMode),
+        Key::ArrowUp if ctrl_shift => Some(Action::PrevPrompt),
+        Key::ArrowDown if ctrl_shift => Some(Action::NextPrompt),
+        Key::F if ctrl_shift => Some(Action::Find),
         // `+` is Shift and `=` on a US keyboard, Shift and `;` on a JIS one:
         // Shift may be held.
         Key::Equals | Key::Plus if m.ctrl && !m.alt => Some(Action::FontBigger),
@@ -532,6 +552,9 @@ mod tests {
         assert_eq!(action_on(Key::O, CTRL_SHIFT, false), Some(Action::Overview));
         assert_eq!(action_on(Key::O, CTRL, false), None, "Ctrl+O is Claude Code's transcript");
         assert_eq!(action_on(Key::M, CTRL_SHIFT, false), Some(Action::CopyMode));
+        assert_eq!(action_on(Key::ArrowUp, CTRL_SHIFT, false), Some(Action::PrevPrompt));
+        assert_eq!(action_on(Key::ArrowDown, CTRL_SHIFT, false), Some(Action::NextPrompt));
+        assert_eq!(action_on(Key::F, CTRL_SHIFT, false), Some(Action::Find));
     }
 
     /// The keys a shell or Claude Code needs stay theirs.
@@ -595,6 +618,8 @@ mod tests {
         assert_eq!(action_on(Key::Num0, CMD, true), Some(Action::FontReset));
         assert_eq!(action_on(Key::O, cmd_shift, true), Some(Action::Overview));
         assert_eq!(action_on(Key::M, cmd_shift, true), Some(Action::CopyMode));
+        assert_eq!(action_on(Key::ArrowUp, cmd_shift, true), Some(Action::PrevPrompt));
+        assert_eq!(action_on(Key::F, CMD, true), Some(Action::Find));
     }
 
     #[test]

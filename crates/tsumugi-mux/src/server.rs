@@ -539,11 +539,22 @@ fn handle(shared: &Arc<Shared>, client: ClientId, tx: &Sender<ToClient>, msg: To
                 }
                 ToServer::Paste { text, .. } => term.paste(&text),
                 ToServer::Resize { size, cell, .. } => Pane::resize(term, size, cell),
+                ToServer::Scroll { by: ScrollBy::Prompt { back }, .. } => {
+                    term.jump_prompt(back);
+                }
                 ToServer::Scroll { by, .. } => term.scroll(scroll(by)),
                 ToServer::Select { cell, right_half, start, .. } => term.select(cell, right_half, start),
                 ToServer::SelectWord { cell, .. } => term.select_word(cell),
                 ToServer::ClearSelection { .. } => term.clear_selection(),
                 ToServer::Reveal { line, col, len, .. } => term.reveal(line, col, len),
+                ToServer::Find { needle, back, .. } => {
+                    if needle.is_empty() {
+                        term.end_search();
+                    } else {
+                        let wrapped = term.search(&tsumugi_pane::plain_pattern(&needle), back);
+                        let _ = tx.send(ToClient::Found { id, wrapped });
+                    }
+                }
                 ToServer::Copy { .. } => {
                     if let Some(text) = term.selection() {
                         let _ = tx.send(ToClient::Clipboard(text));
@@ -566,6 +577,7 @@ fn target(msg: &ToServer) -> Option<SessionId> {
         | ToServer::SelectWord { id, .. }
         | ToServer::ClearSelection { id }
         | ToServer::Reveal { id, .. }
+        | ToServer::Find { id, .. }
         | ToServer::Copy { id } => *id,
         _ => return None,
     })
@@ -578,7 +590,7 @@ fn scroll(by: ScrollBy) -> tsumugi_pane::alacritty_terminal::grid::Scroll {
         ScrollBy::PageUp => Scroll::PageUp,
         ScrollBy::PageDown => Scroll::PageDown,
         ScrollBy::Top => Scroll::Top,
-        ScrollBy::Bottom => Scroll::Bottom,
+        ScrollBy::Bottom | ScrollBy::Prompt { .. } => Scroll::Bottom,
     }
 }
 
@@ -817,7 +829,9 @@ fn spawn_session(
 /// (OSC 7) on each `cd`: on Windows the server cannot read a shell's folder
 /// from the system, and without it a folder's tag rules never saw a `cd`.
 /// It calls whatever handler was there before (a profile's own tsumugi hook,
-/// `mise activate pwsh`), and says the folder it starts in.
+/// `mise activate pwsh`), and says the folder it starts in. It also marks
+/// each prompt (OSC 133;A) by wrapping the `prompt` the profile left, once
+/// only: a profile's own tsumugi hook may have done it already.
 #[cfg(any(windows, test))]
 const PWSH_CWD_HOOK: &str = r#"$__tsumugi_prev = $ExecutionContext.SessionState.InvokeCommand.LocationChangedAction
 function global:__tsumugi_osc7($p) { [Console]::Write("$([char]27)]7;file://$(($p -replace '\\', '/') -replace '^(?!/)', '/')$([char]27)\") }
@@ -827,6 +841,11 @@ $ExecutionContext.SessionState.InvokeCommand.LocationChangedAction = {
     __tsumugi_osc7 $e.NewPath.ProviderPath
 }.GetNewClosure()
 __tsumugi_osc7 (Get-Location).ProviderPath
+if (-not $global:__tsumugi_marked) {
+    $global:__tsumugi_marked = $true
+    $global:__tsumugi_prompt = $function:prompt
+    function global:prompt { "$([char]27)]133;A$([char]27)\" + (& $global:__tsumugi_prompt) }
+}
 "#;
 
 /// `pwsh`'s arguments with the hook after them, when it starts as an

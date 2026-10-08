@@ -82,7 +82,10 @@ tsumugi shell-hook pwsh >> $PROFILE
 ```
 
 (`tsumugi shell-hook bash` and `zsh` exist too; on Linux and macOS the folder
-is read from the system anyway.)
+is read from the system anyway.) The hook also marks where each prompt starts
+(OSC 133;A), which `Ctrl+Shift+Up` / `Down` jump between; PowerShell 7 started
+by tsumugi on Windows gets both without it. In PowerShell the mark wraps the
+`prompt` already there, so put the hook after `starship init` or the like.
 
 ### When you are not looking
 
@@ -167,6 +170,18 @@ to the line's ends. `v` or `Space` starts a selection there, which follows
 the box; `y` or `Enter` copies it -- or the box's whole line when nothing is
 selected -- and leaves; `Esc` or `q` leaves without copying. The window's
 own keys still work.
+
+`Ctrl+Shift+Up` and `Ctrl+Shift+Down` (`Cmd+Shift+Up` / `Down`) scroll the
+pane to the prompt above or below the view's top, where the shell marks its
+prompts (OSC 133;A, which the shell hook adds; Windows Terminal's and
+WezTerm's shell integration lines do too).
+
+`Ctrl+Shift+F` (`Cmd+F`) **finds in the pane**: a bar at its top right finds
+what is typed as plain text, from the newest line back, and selects it on
+screen (ignoring case unless the text has a capital). `Enter` or **↑** goes on
+to the older match, `Shift+Enter` or **↓** to the newer; it says when it ran
+off the end and started again, or that nothing matched. `Esc` or **×** closes
+it; no key typed in it reaches the shell.
 
 `Ctrl+Shift+O` (`Cmd+Shift+O`) shows **All sessions**: every session on one
 page, those waiting for you first, then errors, running and done, each with
@@ -449,7 +464,7 @@ material = "none"
 # new_tab, close_tab, next_tab, prev_tab, next_waiting, split_right,
 # split_down, zoom, search, rail, settings, input, rename, duplicate,
 # waiting_list, type_into_all, notifications, font_bigger, font_smaller,
-# font_reset, overview, copy_mode.
+# font_reset, overview, copy_mode, find, prev_prompt, next_prompt.
 [keys]
 new_tab = "Ctrl+Shift+N"
 

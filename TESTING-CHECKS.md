@@ -51,6 +51,11 @@
 - [ ] **2.24** `Ctrl+=` three times, `Ctrl+-` once, `Ctrl+0`; `Ctrl+Shift+-` in bash → Every pane's letters grow, shrink and come back to the settings' size, the grid re-fitting each time and a toast naming the size; `Ctrl+Shift+-` undoes in bash
 - [ ] **2.25** `seq 200`, then `Ctrl+Shift+M`; `k` past the top, `v`, `j` three times, `y`; paste in Notepad → A gold box and **COPY MODE** in the pane; the output scrolls back under the box; the selection follows it; four lines on the clipboard; the mode ends and keys reach the shell again
 - [ ] **2.26** `Ctrl+Shift+M`, `G`, `0`, `Enter`; again, `Esc`; again, then `Alt+Arrows` to another pane → The cursor's line copied; `Esc` leaves with nothing selected; moving away ends the mode
+- [ ] **2.27** pwsh started by tsumugi (no hook in the profile, then with `tsumugi shell-hook pwsh` and Starship): run `dir` five times; `Ctrl+Shift+Up` three times, `Ctrl+Shift+Down` twice → Each press puts the next prompt line above (below) at the top of the pane; the prompt looks as before (Starship's included), with no stray characters
+- [ ] **2.28** The same in bash and zsh with `tsumugi shell-hook bash` / `zsh` in the rc file → The same jumps; `cd` still updates the pane's folder
+- [ ] **2.29** `seq 300`, `Ctrl+Shift+F`, type `1`, then `Enter` a few times, `Shift+Enter`, then `Err` → A bar at the pane's top right; `299` (the newest `1`) selected and on screen, then older ones, then newer; **No match** in red for `Err`; letters typed reach the bar, not the shell
+- [ ] **2.30** In the bar: `Enter` until it passes the oldest match; then `Esc`; then type in the pane → **From the end again** once it starts over; `Esc` closes the bar, drops the selection and is not sent to the shell (Claude Code is not interrupted); keys reach the shell again
+- [ ] **2.31** Open the bar, click into the pane, `Ctrl+Shift+F` again; `Alt+Arrows` to another pane → The second press puts the keys back in the bar; moving to another pane closes it
 
 ## 3. The sidebar
 

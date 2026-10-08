@@ -32,6 +32,9 @@ Windows and Linux keys first; the macOS key is after `·`.
 - [ ] `Ctrl+0` · `Cmd+0` — Letters as the settings have them · `font_reset`
 - [ ] `Ctrl+Shift+O` · `Cmd+Shift+O` — Every session on one screen · `overview`
 - [ ] `Ctrl+Shift+M` · `Cmd+Shift+M` — Copy mode: select the output with the keys · `copy_mode`
+- [ ] `Ctrl+Shift+Up` · `Cmd+Shift+Up` — To the prompt above · `prev_prompt`
+- [ ] `Ctrl+Shift+Down` · `Cmd+Shift+Down` — To the prompt below · `next_prompt`
+- [ ] `Ctrl+Shift+F` · `Cmd+F` — Find in the pane · `find`
 - [ ] `F1` · `F1` — Every key (this help) · `help`
 
 ## The window, fixed

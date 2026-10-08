@@ -5,6 +5,21 @@
 
 ## [未リリース]
 
+## [0.56.0] - 2026-10-09
+
+### 追加
+
+- プロンプト間のジャンプ: `Ctrl+Shift+Up` / `Ctrl+Shift+Down`（macOS は `Cmd+Shift+Up` / `Down`）で、ペインを上（下）のプロンプトの行までスクロールする。
+  シェルが出すプロンプトの印（OSC 133;A）を使う。`tsumugi shell-hook` の pwsh・bash・zsh のフックと、Windows で tsumugi が起動する pwsh に自動で足すフックが
+  印を出すようにした（pwsh は今の `prompt` を包むので Starship もそのまま。二重には包まない）。
+- ペインの中の検索: `Ctrl+Shift+F`（macOS は `Cmd+F`）でペインの右上にバーを出し、打った文字をそのまま（大文字が無ければ大小を区別せず）新しい行から探して選ぶ。
+  `Enter` で古いほう、`Shift+Enter` で新しいほうへ。端から回り直したときと見つからないときはバーに出る。`Esc` で閉じ、その `Esc` はシェルに届かない。
+- 設定画面の Keys の PANES に Find・To the prompt above・To the prompt below、`[keys]` に `find`・`prev_prompt`・`next_prompt`。
+
+### 変更
+
+- プロトコルは版 21（`Find` / `Found`、`ScrollBy::Prompt`）。前の版のサーバーとは「止めてこの版を始める」で入れ替える。
+
 ## [0.55.0] - 2026-10-09
 
 ### 追加

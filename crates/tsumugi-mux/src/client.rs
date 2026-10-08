@@ -25,6 +25,8 @@ struct Remote {
     win32_input: bool,
     title: String,
     exited: bool,
+    /// The answer to `find`, not taken yet.
+    found: Option<Option<bool>>,
 }
 
 #[derive(Default)]
@@ -397,6 +399,7 @@ fn receive(inner: &Inner, msg: ToClient) {
         ToClient::Exited { id } => st.screens.entry(id).or_default().exited = true,
         ToClient::Ended { info, last } => st.ended.push((*info, last)),
         ToClient::Text { id, text } => st.texts.push((id, text)),
+        ToClient::Found { id, wrapped } => st.screens.entry(id).or_default().found = Some(wrapped),
         ToClient::Clipboard(text) => st.clipboard.push(text),
         ToClient::Attention { looking, teller } => (st.looking, st.teller) = (looking, teller),
         ToClient::MutedTags(list) => st.muted_tags = list,
@@ -426,6 +429,24 @@ impl RemotePane {
 
     pub fn title(&self) -> String {
         self.inner.lock().screens.get(&self.id).map(|r| r.title.clone()).unwrap_or_default()
+    }
+
+    /// Scroll to the prompt before the view's top, or after it (OSC 133).
+    pub fn jump_prompt(&self, back: bool) {
+        self.inner.send(ToServer::Scroll { id: self.id, by: ScrollBy::Prompt { back } });
+    }
+
+    /// Find `needle` in the buffer from the last match on (see
+    /// `ToServer::Find`); the answer comes to `take_found`. Empty: forget
+    /// the search.
+    pub fn find(&self, needle: &str, back: bool) {
+        self.inner.send(ToServer::Find { id: self.id, needle: needle.to_owned(), back });
+    }
+
+    /// The answer to the last `find`, once: `Some(None)` when nothing
+    /// matched, `Some(Some(wrapped))` when something did.
+    pub fn take_found(&self) -> Option<Option<bool>> {
+        self.inner.lock().screens.get_mut(&self.id).and_then(|r| r.found.take())
     }
 
     /// End the session's shell.

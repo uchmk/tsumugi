@@ -7,7 +7,7 @@ use tsumugi_pane::Size;
 
 /// Bumped whenever a message changes shape: a client and a server that
 /// disagree say so at `Hello` instead of misreading each other.
-pub const VERSION: u32 = 20;
+pub const VERSION: u32 = 21;
 
 /// A `Hello` with this version asks the server to stop, writing down its
 /// tabs first so the next window can bring them back. `Hello` stays the
@@ -166,6 +166,8 @@ pub enum ScrollBy {
     PageDown,
     Top,
     Bottom,
+    /// To the prompt before the view's top (OSC 133), or after it.
+    Prompt { back: bool },
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -239,6 +241,10 @@ pub enum ToServer {
     /// Read and write the session's bytes in this character set (one of
     /// `tsumugi_pane::CHARSETS`).
     SetCharset { id: SessionId, name: String },
+    /// Find `needle` (plain text, case aside) in the session's buffer from
+    /// the last match on, and put the match on screen, selected; answered
+    /// with `Found`. An empty needle forgets where the search got to.
+    Find { id: SessionId, needle: String, back: bool },
 }
 
 /// A line `SearchAll` found.
@@ -293,4 +299,7 @@ pub enum ToClient {
     Ended { info: Box<Info>, last: Vec<String> },
     /// The answer to `AllText`: the scrollback and the screen.
     Text { id: SessionId, text: String },
+    /// The answer to `Find`: `None` when nothing matched, else whether the
+    /// search ran off the end and started again to find it.
+    Found { id: SessionId, wrapped: Option<bool> },
 }
