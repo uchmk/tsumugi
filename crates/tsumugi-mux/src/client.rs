@@ -99,14 +99,80 @@ impl Inner {
     }
 }
 
+/// The `ssh` a [`Client::over_ssh`] runs, ended with the last clone of the
+/// client: the reader thread holds the connection, not this.
+struct Ssh(Mutex<std::process::Child>);
+
+impl Drop for Ssh {
+    fn drop(&mut self) {
+        let mut child = self.0.lock().unwrap_or_else(|e| e.into_inner());
+        let _ = child.kill();
+        let _ = child.wait();
+    }
+}
+
 #[derive(Clone)]
-pub struct Client(Arc<Inner>);
+pub struct Client(Arc<Inner>, Option<Arc<Ssh>>);
 
 impl Client {
     /// Connect to the server at `at`. `wake` is called from the reader
     /// thread whenever something arrives, to have a window redraw.
     pub fn connect(at: &Address, wake: impl Fn() + Send + Sync + 'static) -> io::Result<Self> {
-        let (mut r, mut w) = transport::connect(at)?.split()?;
+        let (r, w) = transport::connect(at)?.split()?;
+        Self::over(r, w, wake)
+    }
+
+    /// Connect to the server on another machine: `ssh HOST tsumugi proxy`,
+    /// which starts that machine's server if need be and carries the
+    /// connection over ssh's standard input and output. The OS's `ssh`, so
+    /// keys, the agent and `~/.ssh/config` work as they do in a shell; it
+    /// never asks for a password (`BatchMode`), since nobody would see the
+    /// question. The server stays when the line drops, like tmux.
+    /// `TSUMUGI_SSH` names another `ssh` (the tests), and the error is what
+    /// ssh said when it did not get through.
+    pub fn over_ssh(host: &str, wake: impl Fn() + Send + Sync + 'static) -> io::Result<Self> {
+        use std::process::{Command, Stdio};
+        let ssh = std::env::var_os("TSUMUGI_SSH").filter(|s| !s.is_empty()).unwrap_or_else(|| "ssh".into());
+        let mut cmd = Command::new(ssh);
+        cmd.args(ssh_args(host)).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            // The window has no console, and ssh would open one of its own.
+            const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+            cmd.creation_flags(CREATE_NO_WINDOW);
+        }
+        let mut child = cmd.spawn().map_err(|e| io::Error::new(e.kind(), format!("could not run ssh: {e}")))?;
+        let (Some(r), Some(w), Some(mut said)) = (child.stdout.take(), child.stdin.take(), child.stderr.take()) else {
+            return Err(io::Error::other("ssh gave no pipes"));
+        };
+        match Self::over(Box::new(r), Box::new(w), wake) {
+            Ok(mut c) => {
+                // Warnings ssh prints later must not fill its pipe and stop it.
+                std::thread::Builder::new().name("ssh-stderr".into()).spawn(move || io::copy(&mut said, &mut io::sink()))?;
+                c.1 = Some(Arc::new(Ssh(Mutex::new(child))));
+                Ok(c)
+            }
+            Err(e) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                let mut text = String::new();
+                let _ = io::Read::read_to_string(&mut said, &mut text);
+                let text = text.trim();
+                Err(match text.is_empty() {
+                    true => e,
+                    false => io::Error::new(e.kind(), format!("{host}: {text}")),
+                })
+            }
+        }
+    }
+
+    /// Speak to a server over any byte stream both ways.
+    pub fn over(
+        mut r: Box<dyn io::Read + Send>,
+        mut w: Box<dyn io::Write + Send>,
+        wake: impl Fn() + Send + Sync + 'static,
+    ) -> io::Result<Self> {
         frame::write(&mut w, &ToServer::Hello { version: VERSION })?;
         // An answer that does not read is a server of another version too
         // (one from before `Error` kept its place).
@@ -142,7 +208,7 @@ impl Client {
             reader.answered.notify_all();
             wake();
         })?;
-        Ok(Self(inner))
+        Ok(Self(inner, None))
     }
 
     /// Ask the server at `at` to stop, whatever its version, keeping its
@@ -584,4 +650,11 @@ impl Pane for RemotePane {
             }
         }
     }
+}
+
+/// What `ssh` is given to reach `host`'s server: no terminal (`-T`, the bytes
+/// are frames), no questions (`BatchMode`), a dead line noticed in about half
+/// a minute, and `--` so a host starting with `-` is not read as an option.
+pub fn ssh_args(host: &str) -> Vec<String> {
+    ["-T", "-o", "BatchMode=yes", "-o", "ServerAliveInterval=10", "-o", "ServerAliveCountMax=3", "--", host, "tsumugi", "proxy"].map(String::from).to_vec()
 }

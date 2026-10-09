@@ -690,6 +690,13 @@ tsumugi send $n "write the tests for src/parse.rs"
 tsumugi wait $n --state done && tsumugi read $n --lines 20
 ```
 
+Each of them takes `--host H` to work the sessions on another machine. It runs
+`ssh -T -o BatchMode=yes H tsumugi proxy` (your keys, agent and `~/.ssh/config`
+as they are; no password prompt), and `tsumugi proxy` there talks to that
+machine's server, starting it if none runs. The server and its sessions stay
+there when the line drops. tsumugi has to be on that machine's `PATH`;
+`TSUMUGI_SSH` names another `ssh`. The window does not show remote sessions yet.
+
 The terminal pane is the crate `tsumugi-pane` (`crates/tsumugi-pane`), shared
 with [filer](https://github.com/uchmk/filer).
 

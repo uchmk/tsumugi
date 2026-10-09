@@ -173,7 +173,23 @@ tsumugi split N|NAME [--down] [-- CMD]   a new pane beside it, in its folder; pr
 tsumugi close N|NAME                     end the session
 tsumugi wait N|NAME [--state S] [--timeout SECS]
                                          until it is waiting, done or failed (or S: waiting,
-                                         done, error, running); exit 1 on timeout, 3 if it ended";
+                                         done, error, running); exit 1 on timeout, 3 if it ended
+  each takes --host H: the sessions on another machine, over ssh (`tsumugi proxy` there)";
+
+/// `--host H` out of a command's words, wherever it stands before `--` (and,
+/// for `send`, before the session: what follows it is the text to type).
+pub fn take_host(args: &[String], text_after_who: bool) -> Result<(Option<String>, Vec<String>), String> {
+    let (mut host, mut rest) = (None, Vec::new());
+    let mut it = args.iter();
+    while let Some(a) = it.next() {
+        let free = rest.iter().any(|r: &String| r == "--") || (text_after_who && rest.iter().any(|r: &String| !r.starts_with('-')));
+        match a.as_str() {
+            "--host" if !free => host = Some(it.next().filter(|h| !h.is_empty()).ok_or("--host takes a machine (as ssh knows it)")?.clone()),
+            _ => rest.push(a.clone()),
+        }
+    }
+    Ok((host, rest))
+}
 
 /// `tsumugi read`'s choices.
 #[derive(Debug, PartialEq)]
@@ -313,6 +329,16 @@ mod remote_tests {
 
     fn words(s: &str) -> Vec<String> {
         s.split_whitespace().map(str::to_owned).collect()
+    }
+
+    #[test]
+    fn the_host_is_taken_before_the_free_words() {
+        assert_eq!(take_host(&words("--host box 3 --lines 5"), false).unwrap(), (Some("box".into()), words("3 --lines 5")));
+        assert_eq!(take_host(&words("3 --host box --down -- ssh --host x"), false).unwrap(), (Some("box".into()), words("3 --down -- ssh --host x")));
+        assert_eq!(take_host(&words("--json"), false).unwrap(), (None, words("--json")));
+        // `send`'s text is typed as it is.
+        assert_eq!(take_host(&words("--host box 3 echo --host y"), true).unwrap(), (Some("box".into()), words("3 echo --host y")));
+        assert!(take_host(&words("3 --host"), false).is_err());
     }
 
     #[test]

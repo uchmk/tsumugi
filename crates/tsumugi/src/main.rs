@@ -78,16 +78,19 @@ fn main() -> std::process::ExitCode {
     // Before anything loads a DLL: `conpty.dll` only from beside the exe.
     tsumugi_pane::restrict_dll_search();
     let args: Vec<String> = std::env::args().skip(1).collect();
-    if args.first().is_some_and(|a| a != "server") {
+    // The server and the proxy speak to no one through a console; the proxy's
+    // stdout is the line to ssh.
+    if args.first().is_some_and(|a| a != "server" && a != "proxy") {
         attach_console();
     }
     match args.first().map(String::as_str) {
         None => window(),
         Some("server") => server(),
+        Some("proxy") => proxy(),
         Some("ls") => ls(&args[1..]),
         Some("send" | "read" | "split" | "close" | "wait") => remote(&args[0], &args[1..]),
         Some("help" | "--help" | "-h") => {
-            println!("tsumugi: the window, or one of\n{}\n{}\ntsumugi attach N|NAME\ntsumugi notify [--state S] [--session N] [MESSAGE]\ntsumugi tag [--session N] [--remove] TAG...\ntsumugi shell-hook bash|zsh|pwsh", cli::NEW_USAGE, cli::REMOTE_USAGE);
+            println!("tsumugi: the window, or one of\n{}\n{}\ntsumugi attach N|NAME\ntsumugi proxy                            (what --host runs on the other machine)\ntsumugi notify [--state S] [--session N] [MESSAGE]\ntsumugi tag [--session N] [--remove] TAG...\ntsumugi shell-hook bash|zsh|pwsh", cli::NEW_USAGE, cli::REMOTE_USAGE);
             std::process::ExitCode::SUCCESS
         }
         Some("notify") => notify(&args[1..]),
@@ -109,7 +112,7 @@ fn main() -> std::process::ExitCode {
             std::process::ExitCode::SUCCESS
         }
         Some(other) => {
-            eprintln!("tsumugi: unknown command `{other}` (server, ls, new, attach, send, read, split, close, wait, notify, tag, shell-hook, help, --version)");
+            eprintln!("tsumugi: unknown command `{other}` (server, proxy, ls, new, attach, send, read, split, close, wait, notify, tag, shell-hook, help, --version)");
             std::process::ExitCode::from(2)
         }
     }
@@ -192,8 +195,70 @@ fn attach(args: &[String]) -> std::process::ExitCode {
     }
 }
 
+/// The local server, or with `--host H` the one on H over ssh.
+fn client_at(host: Option<&str>) -> std::io::Result<Client> {
+    match host {
+        Some(h) => Client::over_ssh(h, || {}),
+        None => Client::connect(&Address::for_user(), || {}),
+    }
+}
+
+/// `tsumugi proxy`: the far end of `--host`. ssh runs it on this machine; it
+/// finds this machine's server (starting one, as the window does) and passes
+/// the bytes both ways until either side hangs up. The server stays.
+fn proxy() -> std::process::ExitCode {
+    use std::io::{Read, Write};
+    let at = Address::for_user();
+    let conn = match tsumugi_mux::transport::connect(&at) {
+        Ok(c) => Ok(c),
+        Err(_) => spawn::server().and_then(|()| {
+            let deadline = std::time::Instant::now() + Duration::from_secs(10);
+            loop {
+                match tsumugi_mux::transport::connect(&at) {
+                    Err(e) if std::time::Instant::now() > deadline => break Err(e),
+                    Err(_) => std::thread::sleep(Duration::from_millis(50)),
+                    done => break done,
+                }
+            }
+        }),
+    };
+    let (mut from, mut to) = match conn.and_then(|c| c.split()) {
+        Ok(rw) => rw,
+        Err(e) => {
+            eprintln!("tsumugi proxy: no server ({e})");
+            return std::process::ExitCode::FAILURE;
+        }
+    };
+    // Up: ssh's stdin to the server. Its end (the window went) ends us too.
+    std::thread::spawn(move || {
+        let _ = std::io::copy(&mut std::io::stdin().lock(), &mut to);
+        std::process::exit(0);
+    });
+    // Down: by hand, flushed at once (stdout keeps lines, and frames are not).
+    let mut out = std::io::stdout().lock();
+    let mut buf = vec![0u8; 64 * 1024];
+    loop {
+        match from.read(&mut buf) {
+            Ok(0) | Err(_) => break,
+            Ok(n) => {
+                if out.write_all(&buf[..n]).and_then(|()| out.flush()).is_err() {
+                    break;
+                }
+            }
+        }
+    }
+    std::process::ExitCode::SUCCESS
+}
+
 fn ls(args: &[String]) -> std::process::ExitCode {
-    let listed = Client::connect(&Address::for_user(), || {}).and_then(|c| c.list());
+    let (host, args) = match cli::take_host(args, false) {
+        Ok(h) => h,
+        Err(e) => {
+            eprintln!("tsumugi ls: {e}");
+            return std::process::ExitCode::from(2);
+        }
+    };
+    let listed = client_at(host.as_deref()).and_then(|c| c.list());
     match listed {
         Ok(list) if args.iter().any(|a| a == "--json") => {
             print!("{}", cli::ls_json(&list));
@@ -220,11 +285,19 @@ fn remote(what: &str, args: &[String]) -> std::process::ExitCode {
         eprintln!("tsumugi {what}: {e}");
         ExitCode::FAILURE
     };
+    let (host, args) = match cli::take_host(args, what == "send") {
+        Ok(h) => h,
+        Err(e) => {
+            eprintln!("tsumugi {what}: {e}");
+            return ExitCode::from(2);
+        }
+    };
+    let args = &args[..];
     let Some(who) = args.iter().find(|a| !a.starts_with('-')).cloned() else {
         eprintln!("usage:\n{}", cli::REMOTE_USAGE);
         return ExitCode::from(2);
     };
-    let client = match Client::connect(&Address::for_user(), || {}) {
+    let client = match client_at(host.as_deref()) {
         Ok(c) => c,
         Err(e) => return fail(format!("no server ({e})")),
     };

@@ -5,6 +5,18 @@
 
 ## [未リリース]
 
+## [0.66.0] - 2026-10-09
+
+### 追加
+
+- SSH 先の mux の 1 段目（QUESTIONS.md の Q15、回答 1）: `tsumugi ls / send / read / split / close / wait` に `--host H` を足した。OS の `ssh` を子プロセスで走らせ（鍵・エージェント・`~/.ssh/config` がそのまま効く。パスワードは聞かない）、SSH 先の `tsumugi proxy` を通してその機械のサーバーと話す。
+- `tsumugi proxy`: この機械のサーバーにつなぎ（無ければ始め）、標準入出力とつなぐ。`--host` が SSH 先で走らせるもの。回線が切れてもサーバーとセッションは残る。
+- `tsumugi-mux` に `Client::over_ssh` と `Client::over`（任意のバイト列の上で話す）。
+
+### 変更
+
+- QUESTIONS.md の Q14（設定のスクリプト）を保留にした。それまで入れない。
+
 ## [0.65.1] - 2026-10-09
 
 ### 追加

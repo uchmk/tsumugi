@@ -331,6 +331,9 @@
 - [ ] **18.4** `tsumugi split N --down -- claude` → A pane below session N in its folder with Claude Code started; its number printed; the window shows the split
 - [ ] **18.5** `tsumugi wait N --state done --timeout 600` while Claude Code works there → Returns `done` (exit 0) when it finishes; with a short timeout, exit 1; for a closed session, exit 3
 - [ ] **18.6** `tsumugi close N` → The session ends and its pane goes
+- [ ] **18.7** With tsumugi on PATH on another machine you reach by `ssh HOST` with a key: `tsumugi ls --host HOST`, then `tsumugi split --host HOST N` and `tsumugi read --host HOST N` → That machine's sessions listed (its server started if none ran); the split and read work there; no console window flashes on Windows
+- [ ] **18.8** Pull the network while `tsumugi wait --host HOST N` waits, then `tsumugi ls --host HOST` again once it is back → The wait fails within about 30 s; the sessions on HOST are still there afterwards
+- [ ] **18.9** `tsumugi ls --host HOST` where HOST has no tsumugi, and where the key is refused → One line naming HOST and what ssh said (`command not found`, `Permission denied`); no password prompt
 
 ## 19. Keys through every screen
 
