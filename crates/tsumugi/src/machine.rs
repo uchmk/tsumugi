@@ -32,16 +32,31 @@ pub struct Machine {
     connecting: Option<Receiver<std::io::Result<Client>>>,
     pub error: Option<String>,
     pub then: Option<Then>,
+    /// How many of its sessions waited when last looked: more, while it is
+    /// not shown, is told.
+    pub waited: usize,
 }
 
 impl Machine {
     pub fn new(host: String) -> Self {
-        Self { host, client: None, connecting: None, error: None, then: None }
+        Self { host, client: None, connecting: None, error: None, then: None, waited: 0 }
     }
 
     /// Reach the machine on a thread: ssh can take seconds, or not answer.
-    pub fn connect(&mut self, ctx: &eframe::egui::Context, then: Then) {
-        self.then = Some(then);
+    /// `command` runs tsumugi there (the settings' `[remote]`); `then`
+    /// is `None` to keep the line without showing it (a window opening).
+    pub fn connect(&mut self, ctx: &eframe::egui::Context, command: String, then: Option<Then>) {
+        self.start(ctx, command, then, false);
+    }
+
+    /// Stop its server, then reach the one that starts in its place: one
+    /// of another version, after tsumugi was updated there.
+    pub fn restart(&mut self, ctx: &eframe::egui::Context, command: String, then: Option<Then>) {
+        self.start(ctx, command, then, true);
+    }
+
+    fn start(&mut self, ctx: &eframe::egui::Context, command: String, then: Option<Then>, restart: bool) {
+        self.then = then;
         self.error = None;
         if self.connecting.is_some() {
             return;
@@ -50,8 +65,26 @@ impl Machine {
         let (tx, rx) = std::sync::mpsc::channel();
         let (host, ctx) = (self.host.clone(), ctx.clone());
         let _ = std::thread::Builder::new().name("machine".into()).spawn(move || {
-            let wake = ctx.clone();
-            let got = Client::over_ssh(&host, move || wake.request_repaint());
+            let reach = || {
+                let wake = ctx.clone();
+                Client::over_ssh(&host, &command, move || wake.request_repaint())
+            };
+            let got = match restart {
+                false => reach(),
+                true => Client::stop_over_ssh(&host, &command).and_then(|()| {
+                    // The old server takes a moment to go; until then it
+                    // answers as before.
+                    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(8);
+                    loop {
+                        match reach() {
+                            Err(e) if gone_soon(e.kind()) && std::time::Instant::now() < deadline => {
+                                std::thread::sleep(std::time::Duration::from_millis(300));
+                            }
+                            done => break done,
+                        }
+                    }
+                }),
+            };
             // The sessions it has, before it is shown: the first list is
             // asked for, not waited on with the line still quiet.
             let got = got.and_then(|c| c.list().map(|_| c));
@@ -111,6 +144,13 @@ impl Machine {
             let _ = c.take_clipboard();
         }
     }
+}
+
+/// An answer from a server still on its way out after a stop: the old
+/// version, or a line it closes at once.
+fn gone_soon(kind: std::io::ErrorKind) -> bool {
+    use std::io::ErrorKind::*;
+    matches!(kind, InvalidData | UnexpectedEof | ConnectionReset | ConnectionAborted | BrokenPipe)
 }
 
 /// How many sessions, and how many of them wait on someone.

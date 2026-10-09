@@ -199,7 +199,10 @@ fn attach(args: &[String]) -> std::process::ExitCode {
 /// The local server, or with `--host H` the one on H over ssh.
 fn client_at(host: Option<&str>) -> std::io::Result<Client> {
     match host {
-        Some(h) => Client::over_ssh(h, || {}),
+        Some(h) => {
+            let remote = tsumugi_mux::settings::default_path().and_then(|p| tsumugi_mux::settings::load(&p).ok()).unwrap_or_default().remote;
+            Client::over_ssh(h, &remote.command_for(h), || {})
+        }
         None => Client::connect(&Address::for_user(), || {}),
     }
 }
@@ -1241,6 +1244,16 @@ impl App {
         fonts::scan_names();
         let first_settings = tsumugi_mux::settings::default_path().and_then(|p| tsumugi_mux::settings::load(&p).ok()).unwrap_or_default();
         let (first_font, first_window) = (first_settings.font.clone(), first_settings.window.clone());
+        // The machines reached before, reached again (not shown): the
+        // sidebar says how they are, and tells when one has someone waiting.
+        let mut machines: Vec<machine::Machine> = Vec::new();
+        for h in &first_settings.remote.hosts {
+            if !machines.iter().any(|m| &m.host == h) {
+                let mut m = machine::Machine::new(h.clone());
+                m.connect(&cc.egui_ctx, first_settings.remote.command_for(h), None);
+                machines.push(m);
+            }
+        }
         let loaded = fonts::load(&first_font.family);
         cc.egui_ctx.set_fonts(loaded.defs);
         let nerd = loaded.nerd;
@@ -1402,7 +1415,7 @@ impl App {
             side_gen: 0,
             closed_groups: Vec::new(),
             close_armed: None,
-            machines: Vec::new(),
+            machines,
             on: None,
             home: None,
             switch: None,
@@ -3741,6 +3754,7 @@ impl App {
         enum Do {
             Show(Option<String>),
             Reach(String),
+            Restart(String),
             Forget(String),
         }
         let mut did = None;
@@ -3809,6 +3823,11 @@ impl App {
                         did = Some(Do::Reach(h.clone()));
                         ui.close();
                     }
+                    let restart = ui.button("Restart its server").on_hover_text("Stop tsumugi's server there and start it again, as updated: its sessions end, its tabs come back");
+                    if restart.clicked() {
+                        did = Some(Do::Restart(h.clone()));
+                        ui.close();
+                    }
                     let forget = ui.add_enabled(!shown, egui::Button::new("Forget")).on_disabled_hover_text("Shown now: show this machine first");
                     if forget.clicked() {
                         did = Some(Do::Forget(h.clone()));
@@ -3835,7 +3854,22 @@ impl App {
                 }
                 self.reach(&h, machine::Then::Show);
             }
-            Some(Do::Forget(h)) => self.machines.retain(|m| m.host != h),
+            Some(Do::Restart(h)) => {
+                if self.on.as_deref() == Some(h.as_str()) {
+                    self.switch = Some((None, None));
+                }
+                let (ctx, command) = (self.ctx.clone(), self.settings_now.remote.command_for(&h));
+                if let Some(m) = self.machines.iter_mut().find(|m| m.host == h) {
+                    if m.link() != machine::Link::Connecting {
+                        m.client = None;
+                        m.restart(&ctx, command, Some(machine::Then::Show));
+                    }
+                }
+            }
+            Some(Do::Forget(h)) => {
+                self.machines.retain(|m| m.host != h);
+                edit_settings(self.settings_tx.clone(), move |t| remember_host(t, &h, false));
+            }
             None => {}
         }
     }
@@ -3855,7 +3889,8 @@ impl App {
             self.machine_ready(k);
         } else {
             let ctx = self.ctx.clone();
-            self.machines[k].connect(&ctx, then);
+            let command = self.settings_now.remote.command_for(host);
+            self.machines[k].connect(&ctx, command, Some(then));
         }
     }
 
@@ -3898,10 +3933,30 @@ impl App {
         self.switch_now();
         for k in 0..self.machines.len() {
             if self.machines[k].poll() {
+                // Reached: reached again when the window next opens.
+                let host = self.machines[k].host.clone();
+                if !self.settings_now.remote.hosts.contains(&host) {
+                    edit_settings(self.settings_tx.clone(), move |t| remember_host(t, &host, true));
+                }
                 self.machine_ready(k);
             }
-            if self.on.as_deref() != Some(self.machines[k].host.as_str()) {
+            let hidden = self.on.as_deref() != Some(self.machines[k].host.as_str());
+            if hidden {
                 self.machines[k].drain();
+            }
+            // More waiting on a machine not shown: said here, and by the
+            // system when the window is not looked at.
+            let waiting = self.machines[k].counts().1;
+            let more = hidden && self.machines[k].link() == machine::Link::Up && waiting > self.machines[k].waited;
+            self.machines[k].waited = waiting;
+            if more {
+                let words = format!("{}: {waiting} waiting. Show it from MACHINES in the sidebar", self.machines[k].host);
+                let looking = self.ctx.input(|i| i.viewport().focused).unwrap_or(true);
+                let hush = self.settings_now.notify.focus_mode && sound::quiet_time();
+                if !looking && !hush && self.alerts.rules.notify.waiting {
+                    self.teller.send(alert::Out::Notify { session: 0, title: "tsumugi".into(), body: words.clone() });
+                }
+                self.say(words, false);
             }
         }
         self.switch_now();
@@ -4562,6 +4617,22 @@ fn edit_settings(tx: std::sync::mpsc::Sender<Read>, change: impl FnOnce(&str) ->
         };
         let _ = tx.send(Read::Settings(Box::new(read)));
     });
+}
+
+/// The settings with `host` added to `[remote] hosts`, or taken out: the
+/// machines the window reaches again when it opens.
+fn remember_host(text: &str, host: &str, keep: bool) -> Result<String, String> {
+    let mut hosts = tsumugi_mux::settings::parse(text)?.remote.hosts;
+    let had = hosts.iter().any(|h| h == host);
+    match (keep, had) {
+        (true, false) => hosts.push(host.to_owned()),
+        (false, true) => hosts.retain(|h| h != host),
+        _ => return Ok(text.to_owned()),
+    }
+    match hosts.is_empty() {
+        true => tsumugi_mux::settings::remove_key(text, Some("remote"), "hosts"),
+        false => tsumugi_mux::settings::set_key(text, Some("remote"), "hosts", &tsumugi_mux::settings::quote_list(&hosts)),
+    }
 }
 
 /// The settings with every `[[tags.rule]]` replaced by `rules`.
@@ -5624,6 +5695,21 @@ impl App {
 #[cfg(test)]
 mod tests {
     use super::{escape_line, json_string, keep_tab_for_pane, unescape_line, View};
+
+    #[test]
+    fn a_machine_reached_is_remembered_once() {
+        let text = "[remote]\ncommand = \"tsumugi\"\n";
+        let one = super::remember_host(text, "box", true).unwrap();
+        assert_eq!(tsumugi_mux::settings::parse(&one).unwrap().remote.hosts, ["box"]);
+        assert_eq!(super::remember_host(&one, "box", true).unwrap(), one, "already there");
+        let two = super::remember_host(&one, "pi", true).unwrap();
+        assert_eq!(tsumugi_mux::settings::parse(&two).unwrap().remote.hosts, ["box", "pi"]);
+        let back = super::remember_host(&super::remember_host(&two, "box", false).unwrap(), "pi", false).unwrap();
+        let s = tsumugi_mux::settings::parse(&back).unwrap();
+        assert!(s.remote.hosts.is_empty());
+        assert_eq!(s.remote.command, "tsumugi", "the rest of the table stays");
+        assert!(!back.contains("hosts"));
+    }
 
     #[test]
     fn codexs_notice_is_read() {

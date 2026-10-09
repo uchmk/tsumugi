@@ -173,6 +173,11 @@
 - [ ] **6.16** While box is shown: `Ctrl+Shift+T`, Runs on → This machine, Create → The window goes to this machine and starts the session there
 - [ ] **6.17** While box is shown, cut the network (or stop its `sshd`) → A toast says the line dropped; box's row turns red with **Reconnect**; hovering it while ssh fails shows ssh's error; once box answers, Reconnect brings the same sessions back with what they printed meanwhile
 - [ ] **6.18** Leave the window on its first-run screen over two minutes, then go to box and back → This machine's server is still running (no "not connected" mark); if it was stopped, going back to This machine starts it again
+- [ ] **6.19** After 6.14, close the window and open it again → MACHINES lists box again (reached, not shown) with its counts; the settings file has `hosts = ["box"]` under `[remote]`; right-click box → Forget takes it off the list and out of the file
+- [ ] **6.20** With box not shown, make one of its sessions wait (a Claude Code question), then put the window behind another → A toast "box: 1 waiting. Show it from MACHINES in the sidebar", box's row says `1 waiting`, and a Windows notification says the same while the window is behind
+- [ ] **6.21** With a host where tsumugi is not installed: Runs on → SSH: it, kept there, Create; hover its red row → The tooltip says tsumugi is not there, gives the releases page and Settings → Advanced → Command there; filling that with tsumugi's full path there and Reconnect reaches it
+- [ ] **6.22** With an older tsumugi running as box's server: reach box; right-click → Restart its server → Before: the tooltip says the versions differ and to install the same one, then restart; after: box comes up on the new server with its tabs back (its sessions restarted)
+- [ ] **6.23** Over a slow line (a phone's hotspot or a far host), run `yes` and show a picture in a session on box → The window stays responsive, the pane updates in steps of about a tenth of a second, the picture comes through (shrunk if large)
 
 ## 7. The input box
 

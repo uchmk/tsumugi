@@ -47,6 +47,25 @@ struct Session {
     /// that keeps writing the same screen (a redrawn prompt, a cursor shown
     /// and hidden) is still quiet to a person.
     screen: Option<(u64, std::time::Instant)>,
+    /// What each watcher on a slow line (`ToServer::Pace`) has, which its
+    /// next update is the change from, and when it was sent.
+    slow: BTreeMap<ClientId, Slow>,
+}
+
+/// A slow watcher's copy of a session's screen.
+#[derive(Default)]
+struct Slow {
+    sent: Option<(tsumugi_pane::Screen, crate::diff::Extra)>,
+    at: Option<std::time::Instant>,
+}
+
+/// How a client on a slow line is sent to (`ToServer::Pace`).
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct Pace {
+    /// A pane's screen at most this often.
+    gap: Duration,
+    /// Pictures of at most this many bytes of RGBA; 0 for any size.
+    picture_bytes: usize,
 }
 
 struct Shared {
@@ -54,6 +73,9 @@ struct Shared {
     /// The tabs and their splits. Locked after `sessions` when both are.
     workspaces: Mutex<BTreeMap<WorkspaceId, Workspace>>,
     clients: Mutex<BTreeMap<ClientId, Sender<ToClient>>>,
+    /// The clients on slow lines, and how they are sent to. Locked on its
+    /// own, briefly.
+    paced: Mutex<BTreeMap<ClientId, Pace>>,
     /// Which windows have the keyboard, and the order they last had it in.
     /// Locked after `sessions`, before `clients`.
     attention: Mutex<Attention>,
@@ -157,6 +179,7 @@ pub fn start_with(at: &Address, options: Options) -> io::Result<ServerHandle> {
         sessions: Mutex::new(BTreeMap::new()),
         workspaces: Mutex::new(BTreeMap::new()),
         clients: Mutex::new(BTreeMap::new()),
+        paced: Mutex::new(BTreeMap::new()),
         attention: Mutex::new(Attention::default()),
         order: Mutex::new(Vec::new()),
         muted_tags: Mutex::new(BTreeSet::new()),
@@ -214,8 +237,13 @@ fn serve(shared: Arc<Shared>, client: ClientId, conn: Conn) {
             save_if_due(&shared);
             shared.stopping.store(true, Ordering::Relaxed);
             let _ = shared.done.try_send(());
+            // The line stays until the asker hangs up or this process is
+            // gone: over ssh, its end tells the asker the old server went,
+            // and the next to reach the machine starts a new one.
+            let _ = std::io::copy(&mut r, &mut std::io::sink());
             return;
         }
+        Ok(ToServer::Hello { .. }) if shared.stopping.load(Ordering::Relaxed) => return,
         Ok(ToServer::Hello { version }) => {
             let _ = frame::write(&mut w, &ToClient::Error(format!("the server speaks version {VERSION}, the client {version}")));
             return;
@@ -246,6 +274,7 @@ fn serve(shared: Arc<Shared>, client: ClientId, conn: Conn) {
     }
     // Gone: it watches nothing now, and its writer ends with the channel.
     lock(&shared.clients).remove(&client);
+    lock(&shared.paced).remove(&client);
     {
         let mut a = lock(&shared.attention);
         a.order.retain(|c| *c != client);
@@ -255,6 +284,7 @@ fn serve(shared: Arc<Shared>, client: ClientId, conn: Conn) {
     for s in lock(&shared.sessions).values_mut() {
         s.watchers.remove(&client);
         s.fresh.remove(&client);
+        s.slow.remove(&client);
     }
     drop(tx);
     let _ = writer.join();
@@ -524,7 +554,16 @@ fn handle(shared: &Arc<Shared>, client: ClientId, tx: &Sender<ToClient>, msg: To
             if let Some(s) = sessions.get_mut(&id) {
                 s.watchers.remove(&client);
                 s.fresh.remove(&client);
+                s.slow.remove(&client);
             }
+        }
+        ToServer::Pace { ms, picture_bytes } => {
+            let pace = Pace { gap: Duration::from_millis(ms.into()), picture_bytes: usize::try_from(picture_bytes).unwrap_or(usize::MAX) };
+            let mut paced = lock(&shared.paced);
+            match pace.gap.is_zero() && pace.picture_bytes == 0 {
+                true => paced.remove(&client),
+                false => paced.insert(client, pace),
+            };
         }
         ToServer::Kill { id } => end(shared, sessions, id),
         ToServer::Notify { id, state, note, claude } => {
@@ -587,7 +626,8 @@ fn handle(shared: &Arc<Shared>, client: ClientId, tx: &Sender<ToClient>, msg: To
                     }
                 }
                 ToServer::Picture { key, .. } => {
-                    let picture = term.picture(key).map(|p| (*p).clone());
+                    let most = lock(&shared.paced).get(&client).map_or(0, |p| p.picture_bytes);
+                    let picture = term.picture(key).map(|p| shrink(&p, most));
                     let _ = tx.send(ToClient::Picture { id, key, picture });
                 }
                 _ => {}
@@ -853,7 +893,7 @@ fn spawn_session(
     let watchers: BTreeSet<ClientId> = client.into_iter().collect();
     sessions.insert(
         id,
-        Session { term, info, notice: None, fresh: watchers.clone(), watchers, sent: None, shell, claude: None, pending: None, webhooked: None, screen: None },
+        Session { term, info, notice: None, fresh: watchers.clone(), watchers, sent: None, shell, claude: None, pending: None, webhooked: None, screen: None, slow: BTreeMap::new() },
     );
     Ok(id)
 }
@@ -1355,13 +1395,40 @@ fn conversation_id(id: &str) -> bool {
 
 /// How many messages a window may have waiting before its screens stop.
 const BACKLOG: usize = 2048;
+/// The same for a window on a slow line: few, so that what it gets next is
+/// the latest screen, not a queue of old ones.
+const SLOW_BACKLOG: usize = 64;
+
+/// `p`, scaled down (nearest pixel, the same shape) to at most `most`
+/// bytes of RGBA; as it is when it fits, or `most` is 0.
+fn shrink(p: &tsumugi_pane::Picture, most: usize) -> tsumugi_pane::Picture {
+    let (w, h) = (p.width as usize, p.height as usize);
+    if most == 0 || w * h * 4 <= most || w == 0 || h == 0 || p.rgba.len() != w * h * 4 {
+        return p.clone();
+    }
+    let scale = (most as f64 / (w * h * 4) as f64).sqrt();
+    let (nw, nh) = (((w as f64 * scale) as usize).max(1), ((h as f64 * scale) as usize).max(1));
+    let mut rgba = Vec::with_capacity(nw * nh * 4);
+    for y in 0..nh {
+        let sy = y * h / nh;
+        for x in 0..nw {
+            let at = (sy * w + x * w / nw) * 4;
+            rgba.extend_from_slice(&p.rgba[at..at + 4]);
+        }
+    }
+    tsumugi_pane::Picture { width: nw as u32, height: nh as u32, rgba }
+}
 
 fn run_pump(shared: Arc<Shared>, dirty: Receiver<SessionId>) {
     let mut last_settle = std::time::Instant::now();
     let mut last_look = std::time::Instant::now();
+    // Sessions with a change a slow watcher has not had yet: looked at again
+    // soon, whether or not they say anything more.
+    let mut held: BTreeSet<SessionId> = BTreeSet::new();
     loop {
         let mut ids = BTreeSet::new();
-        match dirty.recv_timeout(Duration::from_millis(500)) {
+        let wait = if held.is_empty() { Duration::from_millis(500) } else { Duration::from_millis(40) };
+        match dirty.recv_timeout(wait) {
             Ok(first) => {
                 std::thread::sleep(Duration::from_millis(8));
                 ids.insert(first);
@@ -1370,6 +1437,8 @@ fn run_pump(shared: Arc<Shared>, dirty: Receiver<SessionId>) {
             Err(crossbeam_channel::RecvTimeoutError::Timeout) => {}
             Err(crossbeam_channel::RecvTimeoutError::Disconnected) => return,
         }
+        ids.append(&mut held);
+        let paced = lock(&shared.paced).clone();
         let mut sessions = lock(&shared.sessions);
         // Once a second, every session's state again: the guesses are about
         // time passing, which no output announces.
@@ -1498,6 +1567,25 @@ fn run_pump(shared: Arc<Shared>, dirty: Receiver<SessionId>) {
                     for text in &clipboard {
                         let _ = tx.send(ToClient::Clipboard(text.clone()));
                     }
+                    // A slow line gets the latest screen at most once a gap,
+                    // as the change from what it was last sent.
+                    if let Some(pace) = paced.get(c) {
+                        let slow = s.slow.entry(*c).or_default();
+                        let early = slow.at.is_some_and(|at| at.elapsed() < pace.gap);
+                        if early || tx.len() > SLOW_BACKLOG {
+                            if s.fresh.contains(c) || !early {
+                                behind.push(*c);
+                            }
+                            held.insert(id);
+                            continue;
+                        }
+                        let had = if s.fresh.contains(c) { None } else { slow.sent.as_ref().map(|(sc, ex)| (sc, ex)) };
+                        if let Some(update) = crate::diff::diff(had, &screen, &extra) {
+                            let _ = tx.send(ToClient::Screen { id, update });
+                            *slow = Slow { sent: Some((screen.clone(), extra.clone())), at: Some(std::time::Instant::now()) };
+                        }
+                        continue;
+                    }
                     if tx.len() > BACKLOG {
                         behind.push(*c);
                         continue;
@@ -1540,6 +1628,26 @@ mod branch {
         let outside = std::env::temp_dir();
         assert_eq!(super::git(&outside), (None, outside.clone()), "no repository: the folder itself");
         let _ = std::fs::remove_dir_all(&dir);
+    }
+}
+
+#[cfg(test)]
+mod slow {
+    use tsumugi_pane::Picture;
+
+    /// A slow line gets a smaller picture of the same shape; a small one,
+    /// or no limit, as it is.
+    #[test]
+    fn a_big_picture_is_shrunk_to_fit() {
+        let rgba: Vec<u8> = (0..400 * 200).flat_map(|i: u32| [(i % 256) as u8, 0, 0, 255]).collect();
+        let p = Picture { width: 400, height: 200, rgba };
+        let s = super::shrink(&p, 40_000);
+        assert!(s.rgba.len() <= 40_000, "{}", s.rgba.len());
+        assert_eq!(s.rgba.len(), (s.width * s.height * 4) as usize);
+        assert_eq!(s.width / s.height, 2, "the same shape");
+        assert_eq!(&s.rgba[..4], &p.rgba[..4], "the top left stays");
+        assert_eq!(super::shrink(&p, 0).width, 400, "no limit");
+        assert_eq!(super::shrink(&p, 1_000_000).width, 400, "it fits");
     }
 }
 

@@ -717,3 +717,23 @@ fn a_program_redrawing_the_same_screen_is_quiet() {
     pane.kill();
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// A machine without tsumugi, or with another version, is told what to do.
+#[test]
+fn a_failed_ssh_says_what_to_do() {
+    use crate::client::{explain, ssh_args};
+    use std::io::{Error, ErrorKind};
+    let args = ssh_args("box", "/opt/t/tsumugi");
+    assert_eq!(args[args.len() - 3..], ["box", "/opt/t/tsumugi", "proxy"]);
+    let eof = Error::new(ErrorKind::UnexpectedEof, "failed to fill whole buffer");
+    let missing = explain("box", "tsumugi", &eof, Some(127), "bash: line 1: tsumugi: command not found");
+    assert!(missing.contains("tsumugi is not there") && missing.contains(crate::client::RELEASES) && missing.contains("command not found"), "{missing}");
+    let windows = explain("win", "tsumugi", &eof, Some(1), "'tsumugi' is not recognized as an internal or external command");
+    assert!(windows.contains("is not there"), "{windows}");
+    let refused = explain("box", "tsumugi", &eof, Some(255), "ssh: connect to host box port 22: Connection refused");
+    assert_eq!(refused, "box: ssh: connect to host box port 22: Connection refused", "ssh's own failure is as it said");
+    let other = Error::new(ErrorKind::InvalidData, "the server speaks version 26, the client 27");
+    let version = explain("box", "tsumugi", &other, None, "");
+    assert!(version.contains(env!("CARGO_PKG_VERSION")) && version.contains("restart its server"), "{version}");
+    assert_eq!(explain("box", "tsumugi", &eof, None, ""), "box: failed to fill whole buffer");
+}

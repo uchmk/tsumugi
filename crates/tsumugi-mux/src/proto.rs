@@ -7,7 +7,7 @@ use tsumugi_pane::Size;
 
 /// Bumped whenever a message changes shape: a client and a server that
 /// disagree say so at `Hello` instead of misreading each other.
-pub const VERSION: u32 = 26;
+pub const VERSION: u32 = 27;
 
 /// A `Hello` with this version asks the server to stop, writing down its
 /// tabs first so the next window can bring them back. `Hello` stays the
@@ -257,6 +257,10 @@ pub enum ToServer {
     /// A picture's pixels, by the key its placement has: answered with
     /// `Picture`.
     Picture { id: SessionId, key: u64 },
+    /// This client's line is slow (ssh): send it a pane's screen at most
+    /// every `ms` milliseconds, the latest then, and pictures of at most
+    /// `picture_bytes` of RGBA, scaled down. Zero for either is no limit.
+    Pace { ms: u32, picture_bytes: u64 },
 }
 
 /// A line `SearchAll` found.

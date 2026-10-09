@@ -694,8 +694,8 @@ Each of them takes `--host H` to work the sessions on another machine. It runs
 `ssh -T -o BatchMode=yes H tsumugi proxy` (your keys, agent and `~/.ssh/config`
 as they are; no password prompt), and `tsumugi proxy` there talks to that
 machine's server, starting it if none runs. The server and its sessions stay
-there when the line drops. tsumugi has to be on that machine's `PATH`;
-`TSUMUGI_SSH` names another `ssh`.
+there when the line drops. tsumugi has to be on that machine's `PATH`, or
+named in the settings' `[remote]` (below); `TSUMUGI_SSH` names another `ssh`.
 
 The window reaches them the same way. In the new-session dialog, Runs on →
 **SSH: H, kept there** starts the session on H's own server (in its home
@@ -705,9 +705,30 @@ sessions at a time, the sidebar's header says `on H` and the title starts
 reached, with how many sessions each has and how many wait on you; click one
 to show it. When the line drops its sessions go on there: the row turns red,
 a toast says so, and **Reconnect** brings them back (hover the row for ssh's
-error when it fails). The hosts reached are not remembered when the window
-restarts; worktrees, git details, the closed folders and alerts are this
+error when it fails). Worktrees, git details and the closed folders are this
 machine's or the shown one's only.
+
+The machines reached are kept in the settings' `[remote] hosts` and reached
+again (not shown) when the window opens; right-click a row for **Reconnect**,
+**Restart its server** and **Forget**. A session waiting on you on a machine
+not shown raises a toast ("box: 1 waiting. Show it from MACHINES in the
+sidebar") and, with the window in the background, a notification. Over ssh
+the server sends a pane's screen at most every 100 ms, as the change since the
+last one sent, and shrinks pictures to at most 1 MB, so a slow line keeps up.
+
+When tsumugi is not on the machine's `PATH`, the row's tooltip says where to
+get it and to give its path in Settings → Advanced → **Command there**:
+
+```toml
+[remote]
+command = "~/.local/bin/tsumugi"   # for every host
+commands = { pi = "/opt/tsumugi/tsumugi" }   # for one
+hosts = ["box", "pi"]   # kept by the window
+```
+
+When the two ends speak different versions of the protocol, it says to
+install the same version there and then use **Restart its server**: the old
+server stops (its sessions end, its tabs come back) and the new one starts.
 
 The terminal pane is the crate `tsumugi-pane` (`crates/tsumugi-pane`), shared
 with [filer](https://github.com/uchmk/filer).

@@ -5,6 +5,20 @@
 
 ## [未リリース]
 
+## [0.68.0] - 2026-10-09
+
+### 追加
+
+- SSH 先の mux の残り（Q15）: つないだ機械を設定の `[remote] hosts` に覚え、窓を開いたときにつなぎ直す（見せはしない）。MACHINES の行の右クリックに Reconnect・Restart its server・Forget を足した。
+- 見せていない機械のセッションが待ちになると、トースト（「box: 1 waiting. Show it from MACHINES in the sidebar」）と、窓が後ろにあるときは通知で知らせる。
+- SSH 先のコマンドを設定で変えられるようにした（`[remote] command`、ホストごとは `commands`。設定画面の Advanced → OTHER MACHINES → Command there）。`--host` の操作も同じものを使う。
+- SSH 先に tsumugi が無いときは、行のヒントにリリースのページと Command there を出す。版が違うときは、同じ版を入れてから Restart its server を使うように言う。
+- 遅い回線: ssh 越しのつなぎ（`ToServer::Pace`）では、サーバーがペインの画面を 100 ms に 1 回まで、前に送ったものからの差分で送り、画像は 1 MB までに縮めて送る。
+
+### 変更
+
+- プロトコルを 27 にした。更新したら、この機械と SSH 先の両方のサーバーを再起動する（SSH 先は MACHINES の行の右クリック → Restart its server）。
+
 ## [0.67.0] - 2026-10-09
 
 ### 追加

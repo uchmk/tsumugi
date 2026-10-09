@@ -143,6 +143,8 @@ pub const INDEX: &[(Page, &str)] = &[
     (Page::Advanced, "Mux server"),
     (Page::Advanced, "Restart the server"),
     (Page::Advanced, "Graphics backend"),
+    (Page::Advanced, "Command there"),
+    (Page::Advanced, "Reached again on start"),
     (Page::Advanced, "Scrollback"),
     (Page::Advanced, "Log what each pane sends and receives"),
     (Page::Advanced, "Settings folder"),
@@ -1661,6 +1663,17 @@ fn advanced(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut 
                 out.push(Change::Set(Some("advanced"), "scrollback", v.clamp(100, 1_000_000).to_string()));
             }
         }
+    });
+    let r = &seen.settings.remote;
+    section(ui, l, "OTHER MACHINES", |ui| {
+        let note = "What runs tsumugi there, over ssh: a program on the PATH or a full path. One machine's own goes in [remote.commands] in the file";
+        if let Some(t) = row(ui, l, "Command there", note, |ui| field(ui, &mut edit.drafts, "remote_command", &r.command, "tsumugi", 200.0)) {
+            let t = t.trim();
+            out.push(Change::Set(Some("remote"), "command", cfg::quote(if t.is_empty() { "tsumugi" } else { t })));
+        }
+        sep(ui, l);
+        let hosts = if r.hosts.is_empty() { "None yet".to_owned() } else { r.hosts.join(", ") };
+        row(ui, l, "Reached again on start", "The machines reached before; Forget in MACHINES takes one off", |ui| status(ui, &hosts, c.fg));
     });
     section(ui, l, "FILES", |ui| {
         if row(ui, l, "Log what each pane sends and receives", "For bug reports: pane-logs beside the saved tabs, for new sessions. Off by default", |ui| switch(ui, l, a.pane_log)) {

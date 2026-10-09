@@ -128,43 +128,64 @@ impl Client {
     /// keys, the agent and `~/.ssh/config` work as they do in a shell; it
     /// never asks for a password (`BatchMode`), since nobody would see the
     /// question. The server stays when the line drops, like tmux.
-    /// `TSUMUGI_SSH` names another `ssh` (the tests), and the error is what
-    /// ssh said when it did not get through.
-    pub fn over_ssh(host: &str, wake: impl Fn() + Send + Sync + 'static) -> io::Result<Self> {
-        use std::process::{Command, Stdio};
-        let ssh = std::env::var_os("TSUMUGI_SSH").filter(|s| !s.is_empty()).unwrap_or_else(|| "ssh".into());
-        let mut cmd = Command::new(ssh);
-        cmd.args(ssh_args(host)).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
-        #[cfg(windows)]
-        {
-            use std::os::windows::process::CommandExt;
-            // The window has no console, and ssh would open one of its own.
-            const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-            cmd.creation_flags(CREATE_NO_WINDOW);
-        }
-        let mut child = cmd.spawn().map_err(|e| io::Error::new(e.kind(), format!("could not run ssh: {e}")))?;
-        let (Some(r), Some(w), Some(mut said)) = (child.stdout.take(), child.stdin.take(), child.stderr.take()) else {
-            return Err(io::Error::other("ssh gave no pipes"));
-        };
+    /// `command` is what runs there in place of `tsumugi` (the settings'
+    /// `[remote]`). `TSUMUGI_SSH` names another `ssh` (the tests), and the
+    /// error says what to do when it did not get through ([`explain`]).
+    /// The line may be slow: the server is asked to send screens less
+    /// often and pictures smaller ([`ToServer::Pace`]).
+    pub fn over_ssh(host: &str, command: &str, wake: impl Fn() + Send + Sync + 'static) -> io::Result<Self> {
+        let (mut child, r, w, mut said) = run_ssh(host, command)?;
         match Self::over(Box::new(r), Box::new(w), wake) {
             Ok(mut c) => {
                 // Warnings ssh prints later must not fill its pipe and stop it.
                 std::thread::Builder::new().name("ssh-stderr".into()).spawn(move || io::copy(&mut said, &mut io::sink()))?;
                 c.1 = Some(Arc::new(Ssh(Mutex::new(child))));
+                c.0.send(ToServer::Pace { ms: SSH_PACE_MS, picture_bytes: SSH_PICTURE_BYTES });
                 Ok(c)
             }
             Err(e) => {
-                let _ = child.kill();
-                let _ = child.wait();
+                // ssh is going: let it, for its exit code (127, the command
+                // was not found), then whatever it said.
+                let deadline = std::time::Instant::now() + std::time::Duration::from_secs(3);
+                let code = loop {
+                    match child.try_wait() {
+                        Ok(Some(st)) => break st.code(),
+                        Ok(None) if std::time::Instant::now() < deadline => std::thread::sleep(std::time::Duration::from_millis(20)),
+                        _ => {
+                            let _ = child.kill();
+                            let _ = child.wait();
+                            break None;
+                        }
+                    }
+                };
                 let mut text = String::new();
                 let _ = io::Read::read_to_string(&mut said, &mut text);
-                let text = text.trim();
-                Err(match text.is_empty() {
-                    true => e,
-                    false => io::Error::new(e.kind(), format!("{host}: {text}")),
-                })
+                Err(io::Error::new(e.kind(), explain(host, command, &e, code, text.trim())))
             }
         }
+    }
+
+    /// Ask the server on `host` to stop ([`stop`](Self::stop) over ssh): to
+    /// replace one of another version, or one that went wrong. Its tabs
+    /// stay for the next. Returns once it has gone (the server holds the
+    /// line until then, and `tsumugi proxy` ends with it), or after 10 s.
+    pub fn stop_over_ssh(host: &str, command: &str) -> io::Result<()> {
+        let (mut child, _r, mut w, _said) = run_ssh(host, command)?;
+        // `w` stays open: proxy ends when its stdin does.
+        let sent = frame::write(&mut w, &ToServer::Hello { version: proto::STOP });
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        loop {
+            match child.try_wait() {
+                Ok(Some(_)) => break,
+                Ok(None) if std::time::Instant::now() < deadline => std::thread::sleep(std::time::Duration::from_millis(50)),
+                _ => {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    break;
+                }
+            }
+        }
+        sent
     }
 
     /// Speak to a server over any byte stream both ways.
@@ -655,6 +676,67 @@ impl Pane for RemotePane {
 /// What `ssh` is given to reach `host`'s server: no terminal (`-T`, the bytes
 /// are frames), no questions (`BatchMode`), a dead line noticed in about half
 /// a minute, and `--` so a host starting with `-` is not read as an option.
-pub fn ssh_args(host: &str) -> Vec<String> {
-    ["-T", "-o", "BatchMode=yes", "-o", "ServerAliveInterval=10", "-o", "ServerAliveCountMax=3", "--", host, "tsumugi", "proxy"].map(String::from).to_vec()
+/// `command` is read by the shell there, so a path with spaces is quoted
+/// in it.
+pub fn ssh_args(host: &str, command: &str) -> Vec<String> {
+    ["-T", "-o", "BatchMode=yes", "-o", "ServerAliveInterval=10", "-o", "ServerAliveCountMax=3", "--", host, command, "proxy"].map(String::from).to_vec()
+}
+
+/// How often a server sends a client over ssh a pane's screen, at most
+/// (milliseconds): ten a second is enough to read, and a slow line keeps up.
+const SSH_PACE_MS: u32 = 100;
+/// How big a picture a server sends a client over ssh, at most (bytes of
+/// RGBA): larger ones come scaled down.
+const SSH_PICTURE_BYTES: u64 = 1_000_000;
+
+type SshPipes = (std::process::Child, std::process::ChildStdout, std::process::ChildStdin, std::process::ChildStderr);
+
+/// `ssh HOST COMMAND proxy`, its three pipes taken.
+fn run_ssh(host: &str, command: &str) -> io::Result<SshPipes> {
+    use std::process::{Command, Stdio};
+    let ssh = std::env::var_os("TSUMUGI_SSH").filter(|s| !s.is_empty()).unwrap_or_else(|| "ssh".into());
+    let mut cmd = Command::new(ssh);
+    cmd.args(ssh_args(host, command)).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        // The window has no console, and ssh would open one of its own.
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+    let mut child = cmd.spawn().map_err(|e| io::Error::new(e.kind(), format!("could not run ssh: {e}")))?;
+    match (child.stdout.take(), child.stdin.take(), child.stderr.take()) {
+        (Some(r), Some(w), Some(said)) => Ok((child, r, w, said)),
+        _ => {
+            let _ = child.kill();
+            let _ = child.wait();
+            Err(io::Error::other("ssh gave no pipes"))
+        }
+    }
+}
+
+/// Where tsumugi is had, for a machine without it.
+pub const RELEASES: &str = "https://github.com/uchmk/tsumugi/releases";
+
+/// Why `ssh HOST COMMAND proxy` gave no server, and what to do: `e` is how
+/// the talk failed, `code` ssh's exit code (255 is ssh's own failure, 127 a
+/// shell's "not found"), `said` what it printed.
+pub fn explain(host: &str, command: &str, e: &io::Error, code: Option<i32>, said: &str) -> String {
+    let lower = said.to_lowercase();
+    let missing = code != Some(255)
+        && (code == Some(127) || ["not found", "not recognized", "no such file", "cannot find"].iter().any(|w| lower.contains(w)));
+    let here = env!("CARGO_PKG_VERSION");
+    if missing {
+        let it_said = match said.is_empty() {
+            true => String::new(),
+            false => format!(" (it said: {said})"),
+        };
+        format!("{host}: tsumugi is not there (\"{command}\" was not found){it_said}. Install it from {RELEASES} and put it on the PATH, or give its path in Settings → Advanced → Command there.")
+    } else if e.kind() == io::ErrorKind::InvalidData {
+        format!("{host}: {e}. Install tsumugi {here} there, the same as here; if it is, restart its server from the machine's menu (its tabs stay).")
+    } else if said.is_empty() {
+        format!("{host}: {e}")
+    } else {
+        format!("{host}: {said}")
+    }
 }

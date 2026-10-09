@@ -154,6 +154,16 @@
 //! backend = "auto"
 //! scrollback = 10000
 //! pane_log = false
+//!
+//! # Other machines' servers, reached over ssh: the window reaches those
+//! # in hosts again when it opens, and runs `command proxy` there (a
+//! # word of the commands table for one host).
+//! [remote]
+//! command = "tsumugi"
+//! hosts = ["box"]
+//!
+//! [remote.commands]
+//! pi = "/opt/tsumugi/tsumugi"
 //! ```
 
 use std::path::{Component, Path, PathBuf};
@@ -181,6 +191,7 @@ pub struct Settings {
     pub notify: Notify,
     pub open: Open,
     pub menu: Menu,
+    pub remote: Remote,
     /// Prices per million tokens in US dollars, by the start of a model's id
     /// (`claude-opus-5-5`): the window's own are used for the rest.
     pub prices: std::collections::BTreeMap<String, Price>,
@@ -336,6 +347,36 @@ impl Default for Advanced {
     }
 }
 
+/// Other machines' tsumugi servers, reached over ssh (TODO's Q15).
+#[derive(Clone, Debug, PartialEq, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct Remote {
+    /// What ssh runs there, before `proxy`: `tsumugi` when it is on the
+    /// PATH, or its whole path.
+    pub command: String,
+    /// The same, for one host.
+    pub commands: std::collections::BTreeMap<String, String>,
+    /// The machines the window reaches again when it opens: those reached
+    /// before and not forgotten.
+    pub hosts: Vec<String>,
+}
+
+impl Default for Remote {
+    fn default() -> Self {
+        Self { command: "tsumugi".into(), commands: std::collections::BTreeMap::new(), hosts: Vec::new() }
+    }
+}
+
+impl Remote {
+    /// The command for `host`: its own, else the one for all, else
+    /// `tsumugi`.
+    pub fn command_for(&self, host: &str) -> String {
+        let own = self.commands.get(host).map(|c| c.trim()).filter(|c| !c.is_empty());
+        let all = Some(self.command.trim()).filter(|c| !c.is_empty());
+        own.or(all).unwrap_or("tsumugi").to_owned()
+    }
+}
+
 /// The status bar's clock (the design's 1n).
 #[derive(Clone, Debug, PartialEq, Deserialize)]
 #[serde(default, deny_unknown_fields)]
@@ -481,6 +522,7 @@ impl Default for Settings {
             notify: Notify::default(),
             open: Open::default(),
             menu: Menu::default(),
+            remote: Remote::default(),
             prices: std::collections::BTreeMap::new(),
             agents: std::collections::BTreeMap::new(),
         }
@@ -1157,6 +1199,10 @@ mod tests {
         assert_eq!(s.open, Open { editor: vec!["code {folder}".into(), "sakura {folder}".into()], ..Open::default() });
         assert_eq!(s.menu.hide, ["new-window"]);
         assert_eq!(s.menu.session[0].command, "wt -d {folder} lazygit");
+        assert_eq!(s.remote.hosts, ["box"]);
+        assert_eq!((s.remote.command_for("pi"), s.remote.command_for("box")), ("/opt/tsumugi/tsumugi".into(), "tsumugi".into()));
+        let blank = Remote { command: " ".into(), ..Remote::default() };
+        assert_eq!(blank.command_for("box"), "tsumugi", "a blank command is the plain one");
     }
 
     #[test]
