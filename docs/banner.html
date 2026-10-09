@@ -1,0 +1,220 @@
+<!doctype html>
+<!--
+  tsumugi's social preview -- the banner GitHub shows when the repository is
+  linked anywhere. Rendered to docs/social-preview.png and uploaded by hand at
+  Settings > General > Social preview; GitHub has no API for that setting.
+  The same shape as filer's (its docs/banner.html), so the two read as a pair.
+
+  Kept as source rather than as a PNG alone so the wording can change without
+  anyone having to rebuild it in a drawing program. To re-render, from the
+  repository root, with any Chromium (the path below is the one Playwright
+  installs):
+
+      chromium --headless --disable-gpu --hide-scrollbars \
+        --force-device-scale-factor=2 --window-size=1280,640 \
+        --screenshot=docs/social-preview.png docs/banner.html
+
+  GitHub wants 1280x640; the scale factor renders at twice that so it stays
+  sharp on a high-DPI screen.
+
+  What to keep true when changing it:
+
+  - **The colours are tsumugi's own**, the "tsumugi Dark" palette in
+    crates/tsumugi/src/theme.rs, and the state colours mean what they mean in
+    the program: cyan works, yellow waits for you, green is done. If the
+    default theme changes, change them here too.
+  - **The headline is the README's own claim**: "a glance at which session is
+    waiting for you". Do not stretch it into something the program does not do
+    yet (the README's status line still says early).
+  - **The mark is the title bar's**: two cosine threads, cyan over gold
+    (chrome.rs, "the design's 10 A"), drawn here as SVG at a larger size.
+  - **The window is the program's layout, drawn**: the sidebar's cards with
+    their rings, marks and words (chrome.rs `state_words`), and the waiting
+    pane showing what Claude Code puts on screen when it asks to run a
+    command. Windows chrome and Windows paths, since Windows comes first.
+-->
+<html><head><meta charset="utf-8">
+<style>
+  /* tsumugi Dark, read out of crates/tsumugi/src/theme.rs. */
+  :root{
+    --bg:#16181d; --panel:#121418; --raised:#1b1e24; --border:#2c3039;
+    --fg:#c8cdd8; --fg-bright:#e8ebf2; --dim:#9aa3b5; --faint:#6b7282;
+    --yellow:#e8c87a; --cyan:#6fd0d0; --red:#f07178; --green:#8ed08e;
+    --blue:#7ab8f5; --magenta:#c99cf0;
+    /* theme.rs wait_bg: the panel with a little gold */
+    --wait-bg:#1f1f1f;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{width:1280px;height:640px;overflow:hidden}
+  body{
+    background:var(--bg);
+    font-family:"DejaVu Sans",sans-serif;
+    position:relative;
+  }
+  .mono{font-family:"DejaVu Sans Mono",monospace}
+  /* a slow gold bloom behind the wordmark -- the colour of a session waiting */
+  .glow{
+    position:absolute; left:-200px; top:110px; width:840px; height:540px;
+    background:radial-gradient(closest-side, rgba(232,200,122,.10), transparent 70%);
+  }
+  .wrap{position:absolute;inset:0;display:flex;align-items:center;padding:0 84px}
+
+  /* ---- left: the wordmark ---- */
+  .left{width:560px;flex:none;position:relative}
+  .mark{
+    font-size:92px; font-weight:700; letter-spacing:-3px; line-height:1;
+    color:var(--fg-bright); display:flex; align-items:center; gap:22px;
+  }
+  .mark svg{flex:none}
+  .tag{margin-top:32px; font-size:28px; line-height:1.42; color:var(--fg)}
+  .tag b{color:var(--yellow);font-weight:700}
+  .sub{margin-top:18px;font-size:19px;color:var(--dim)}
+  .chips{margin-top:30px;display:flex;gap:10px;flex-wrap:wrap}
+  .chip{
+    font-size:16px; color:var(--dim); border:1px solid var(--border);
+    border-radius:999px; padding:7px 16px; background:var(--raised);
+  }
+
+  /* ---- right: the program, drawn rather than screenshotted ---- */
+  .app{
+    position:absolute; right:56px; top:88px; width:540px; height:464px;
+    background:var(--bg); border:1px solid var(--border); border-radius:10px;
+    overflow:hidden; box-shadow:0 30px 70px rgba(0,0,0,.5);
+    display:flex; flex-direction:column;
+  }
+  .bar{
+    height:32px; flex:none; border-bottom:1px solid var(--border); display:flex;
+    align-items:center; padding:0 0 0 12px; gap:8px; font-size:12px; color:var(--fg-bright);
+  }
+  .bar .search{
+    margin-left:22px; width:180px; height:20px; border:1px solid var(--border);
+    border-radius:5px; background:var(--panel); color:var(--faint); font-size:10px;
+    display:flex; align-items:center; padding:0 8px; white-space:nowrap; overflow:hidden;
+  }
+  .bar .caps{margin-left:auto;display:flex;height:100%}
+  .bar .caps span{width:38px;display:flex;align-items:center;justify-content:center;color:var(--dim);font-size:11px}
+  .body{flex:1;display:flex;min-height:0}
+
+  /* sidebar */
+  .side{width:196px;flex:none;background:var(--panel);border-right:1px solid var(--border);padding:8px 7px;display:flex;flex-direction:column;gap:6px}
+  .side h{display:block;font-size:9px;letter-spacing:.8px;color:var(--faint);margin:2px 3px 3px}
+  .card{border:1px solid var(--border);border-radius:7px;padding:6px 8px 7px;background:var(--panel)}
+  .card .t{display:flex;align-items:center;gap:6px;font-size:11.5px;font-weight:700;color:var(--fg-bright)}
+  .card .f{font-size:9px;color:var(--faint);margin-top:3px;white-space:nowrap;overflow:hidden}
+  .card .w{font-size:10px;margin-top:3px;white-space:nowrap;overflow:hidden;color:var(--dim)}
+  .card.wait{border:1.5px solid var(--yellow);background:var(--wait-bg);box-shadow:0 0 14px rgba(232,200,122,.18)}
+  .card.wait .t{color:#ebdcb3}
+  .card.wait .w{color:var(--yellow)}
+  .card.run{border-color:rgba(111,208,208,.45)}
+  .card.done{border-color:rgba(142,208,142,.35)}
+  .tagc{display:inline-block;font-size:8.5px;padding:1px 5px;border-radius:3px;margin-top:5px;color:var(--bg);font-weight:700}
+  .foot{margin-top:auto;border-top:1px solid var(--border);padding:7px 3px 1px;font-size:9.5px;color:var(--dim);display:flex;align-items:center;gap:6px}
+  .kbd{border:1px solid var(--border);border-radius:3px;padding:1px 4px;color:var(--fg);font-size:8.5px}
+
+  /* the waiting pane, ringed in gold */
+  .pane{flex:1;margin:7px;border:1.5px solid var(--yellow);border-radius:7px;display:flex;flex-direction:column;min-width:0;box-shadow:0 0 18px rgba(232,200,122,.16)}
+  .ph{height:24px;flex:none;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:7px;padding:0 9px;font-size:10.5px;color:var(--fg-bright)}
+  .ph .dir{font-size:9px;color:var(--faint)}
+  .ph .st{margin-left:auto;font-size:9.5px;color:var(--yellow)}
+  .term{flex:1;padding:9px 10px;font-size:10px;line-height:1.55;color:var(--fg);white-space:pre;overflow:hidden}
+  .box{border:1px solid #5b5f6b;border-radius:5px;padding:6px 9px;margin-top:6px}
+  .y{color:var(--yellow)} .c{color:var(--cyan)} .g{color:var(--green)} .d{color:var(--faint)} .b{color:var(--blue)} .m{color:var(--magenta)}
+  .hl{color:var(--cyan);font-weight:700}
+</style></head>
+<body>
+  <div class="glow"></div>
+  <div class="wrap">
+    <div class="left">
+      <div class="mark">
+        <!-- chrome.rs: wave(4.0, cyan) and wave(2.0, gold) over 16 px, one period of cos -->
+        <svg width="74" height="56" viewBox="-1 -6 18 12">
+          <path d="M0,-4 C3,-4 5,4 8,4 C11,4 13,-4 16,-4" fill="none" stroke="#6fd0d0" stroke-width="1.6" stroke-linecap="round"/>
+          <path d="M0,-2 C3,-2 5,2 8,2 C11,2 13,-2 16,-2" fill="none" stroke="#e8c87a" stroke-width="1.6" stroke-linecap="round"/>
+        </svg>
+        <span>tsumugi</span>
+      </div>
+      <div class="tag"><b>Many AI sessions.</b><br>One glance at who is waiting.</div>
+      <div class="sub">A terminal for Claude Code and other AI CLIs.</div>
+      <div class="chips">
+        <span class="chip">Rust</span><span class="chip">egui</span>
+        <span class="chip">Windows first</span><span class="chip">MIT / Apache-2.0</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="app">
+    <div class="bar">
+      <svg width="18" height="12" viewBox="-1 -6 18 12">
+        <path d="M0,-4 C3,-4 5,4 8,4 C11,4 13,-4 16,-4" fill="none" stroke="#6fd0d0" stroke-width="1.6"/>
+        <path d="M0,-2 C3,-2 5,2 8,2 C11,2 13,-2 16,-2" fill="none" stroke="#e8c87a" stroke-width="1.6"/>
+      </svg>
+      <span>tsumugi</span>
+      <span class="search">Search sessions and commands</span>
+      <span class="caps"><span>&#9472;</span><span>&#9633;</span><span>&#10005;</span></span>
+    </div>
+    <div class="body">
+      <div class="side">
+        <h>SESSIONS&nbsp;&nbsp;4</h>
+        <div class="card wait">
+          <div class="t">
+            <!-- the clock: waiting for you -->
+            <svg width="11" height="11" viewBox="0 0 12 12"><circle cx="6" cy="6" r="4.6" fill="none" stroke="#e8c87a" stroke-width="1.4"/><path d="M6,3.4 V6 L7.8,7.2" fill="none" stroke="#e8c87a" stroke-width="1.3" stroke-linecap="round"/></svg>
+            Approve the edit
+          </div>
+          <div class="f mono">C:\dev\filer · main</div>
+          <div class="w">Waiting for you · 2m</div>
+        </div>
+        <div class="card run">
+          <div class="t">
+            <!-- the turning arc: an agent at work -->
+            <svg width="11" height="11" viewBox="0 0 12 12"><circle cx="6" cy="6" r="4.6" fill="none" stroke="#2c3039" stroke-width="1.4"/><path d="M6,1.4 A4.6,4.6 0 0 1 10.6,6" fill="none" stroke="#6fd0d0" stroke-width="1.6" stroke-linecap="round"/></svg>
+            Split the pane
+          </div>
+          <div class="f mono">C:\dev\tsumugi · layout</div>
+          <div class="w">Running · 4m 12s</div>
+        </div>
+        <div class="card run">
+          <div class="t">
+            <svg width="11" height="11" viewBox="0 0 12 12"><circle cx="6" cy="6" r="4.6" fill="none" stroke="#2c3039" stroke-width="1.4"/><path d="M1.4,6 A4.6,4.6 0 0 1 6,1.4" fill="none" stroke="#6fd0d0" stroke-width="1.6" stroke-linecap="round"/></svg>
+            Review the PR
+          </div>
+          <div class="f mono">C:\dev\filer · fix-toast</div>
+          <div class="w">Running · 38s</div>
+        </div>
+        <div class="card done">
+          <div class="t">
+            <!-- the tick: done -->
+            <svg width="11" height="11" viewBox="0 0 12 12"><circle cx="6" cy="6" r="4.6" fill="none" stroke="#8ed08e" stroke-width="1.4"/><path d="M3.8,6.1 L5.4,7.6 L8.3,4.6" fill="none" stroke="#8ed08e" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            Write the scope
+          </div>
+          <div class="f mono">C:\notes</div>
+          <div class="w">Done · 20m</div>
+        </div>
+        <div class="foot"><span class="kbd mono">Ctrl+Shift+U</span>Jump to waiting · 1</div>
+      </div>
+
+      <div class="pane">
+        <div class="ph">
+          <svg width="10" height="10" viewBox="0 0 12 12"><circle cx="6" cy="6" r="4.6" fill="none" stroke="#e8c87a" stroke-width="1.4"/><path d="M6,3.4 V6 L7.8,7.2" fill="none" stroke="#e8c87a" stroke-width="1.3" stroke-linecap="round"/></svg>
+          <span>claude</span><span class="dir mono">C:\dev\filer</span>
+          <span class="st">Waiting · 2m</span>
+        </div>
+<div class="term mono"><span class="g">●</span> Update(src/app.rs)
+  <span class="d">⎿  Updated with 4 additions</span>
+
+<span class="g">●</span> Now the tests.
+<div class="box"><span class="y">Bash command</span>
+
+  cargo test --locked
+  <span class="d">Run the test suite</span>
+
+Do you want to proceed?
+<span class="hl">❯ 1. Yes</span>
+  2. Yes, and don't ask again for
+     <span class="b">cargo test</span> commands
+  3. No, and tell Claude what to do
+     differently <span class="d">(esc)</span></div></div>
+      </div>
+    </div>
+  </div>
+</body></html>

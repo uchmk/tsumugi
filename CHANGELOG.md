@@ -16,6 +16,29 @@
 
 - mux の取り決めの版を 28 に上げた（ペインのセルが下線の色を運ぶ）。前の版のサーバーが動いていれば、窓がそう言うので、Restart its server で入れ替える。
 
+## [0.68.5] - 2026-10-09
+
+### 修正
+
+- README の Status の文が「シェルが 1 つの窓だけ」のままだったので、今の姿に直した（v1 の範囲は出そろい、最初のリリースは v0.52.0、Windows 実機のテストは始まったばかり）。
+
+## [0.68.4] - 2026-10-09
+
+### 追加
+
+- README の冒頭に「What it looks like」の節を足し、持ち主が Windows で撮った画像を載せた。4 分割のペインと Done のカード（`split.png`）、ペインを分けてヘッダーで引いて並べ替える動き（`tsumugi.gif`）、Claude Code を 2 本並べて Running の輪（`claude.png`）。
+
+### 修正
+
+- `docs/images/` の `split.png` と `claude.png` は中身が WebP だったので PNG に変換した。
+
+## [0.68.3] - 2026-10-09
+
+### 追加
+
+- 紹介画像（GitHub の Social preview）: `docs/banner.html` を元に `docs/social-preview.png`（1280×640 の 2 倍）を作った。filer のものと同じ形で、色は tsumugi Dark、見出しは README の「どのセッションが待っているかがひと目でわかる」。
+- README の画像の置き場 `docs/images/`。持ち主が Windows で撮る `split.png`・`claude.png`・`demo.gif` の名前と写すものを `docs/images/README.md` に書いた。
+
 ## [0.68.2] - 2026-10-09
 
 ### 変更

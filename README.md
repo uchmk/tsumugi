@@ -4,8 +4,27 @@ A terminal built for running many Claude Code and other AI CLI sessions side
 by side: vertical tabs, split panes, and a glance at which session is waiting
 for you. Rust + egui, Windows first, with macOS and Linux on x86_64 and ARM64.
 
-**Status: early.** A window with one shell in it, nothing more yet. The first
-version's scope is in [docs/v1-scope.md](docs/v1-scope.md).
+**Status: early.** Everything in the first version's scope
+([docs/v1-scope.md](docs/v1-scope.md)) is in: sessions that outlive the
+window, vertical tabs, splits, a state ring on every session and the list of
+those waiting for you. The first release, v0.52.0, is on the Releases page.
+Testing on real Windows machines has only just begun
+([TESTING-CHECKS.md](TESTING-CHECKS.md)), so expect rough edges.
+
+## What it looks like
+
+![tsumugi on Windows: three sessions in the sidebar, each a card with its folder, branch and tags, and the open tab split into four pwsh panes; the first pane's heading and card carry a green tick and "Done · 10s"](docs/images/split.png)
+
+Split a pane with the keys, then drag it by its header to put it somewhere
+else: onto the middle of another pane to trade places, onto an edge to sit on
+that side.
+
+![Splitting the one pane of a tab into several from the keyboard, then dragging panes by their headers to rearrange them](docs/images/tsumugi.gif)
+
+Each session's state shows on its card and in its pane's heading, so two
+Claude Code sessions side by side say which one is still working:
+
+![Two Claude Code sessions side by side in one tab, both ringed in cyan with a turning arc and "Running" in their headings, and the sidebar card of the focused one saying "Running · 33s"](docs/images/claude.png)
 
 ```sh
 cargo run -p tsumugi
