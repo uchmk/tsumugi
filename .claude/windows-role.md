@@ -76,7 +76,7 @@ no others, and do not read TESTING.md's list of rows (its rules, up to
 
 | Chunk | Up to | Notes |
 | --- | --- | --- |
-| **Re-tests of changed behaviour** | 15 rows | The rows named in the second cell, still `[ ]`: 2.58, 2.55, 2.54, 2.48, 2.53, 2.52, 2.3, 2.15, 2.24, 2.25, 2.26, 2.27, 2.28, 2.31, 2.37, 2.42, 2.44, 9.5, 2.29, 2.30, 2.40 |
+| **Re-tests of changed behaviour** | 15 rows | The rows named in the second cell, still `[ ]`: 2.58, 2.54, 2.48, 2.53, 2.3, 2.15, 2.24, 2.25, 2.26, 2.27, 2.31, 2.37, 2.42, 2.44, 9.5 |
 | **Unticked keys in TESTING-KEYS.md** | 20 keys | x64 only |
 | **The sections, in this order** | 15 rows of one section | 1, 18, 12, 19, 4, 2, 16, 17, 8, 13, 15, then the rest. ARM64: 2, 4, 12, 1 only. Never given: rows starting `Linux/macOS:` or `A person:`, and 2.46–2.49 on ARM64 (no tools there) |
 
