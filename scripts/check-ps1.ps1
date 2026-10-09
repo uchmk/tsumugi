@@ -74,6 +74,12 @@ try {
 }
 $c = Select-Chunk -Lane arm -Checks '- [x] **2.1** all done' -Keys $keys -Role $none
 Expect 'nothing left' ($null -eq $c) $true
+# Rows for Linux/macOS, for a person, or skipped by the lane are never given.
+$other = "## 2. Panes`n`n- [ ] **2.1** Linux/macOS: ls`n- [ ] **2.2** A person: the IME`n- [ ] **2.46** img2sixel`n- [ ] **2.5** a split"
+$c = Select-Chunk -Lane arm -Checks $other -Keys $keys -Role $none
+Expect 'the rows a lane cannot do' "$($c.Rows.Id -join ',')" '2.5'
+$c = Select-Chunk -Lane win -Checks $other -Keys '' -Role $none
+Expect 'the x64 lane takes 2.46' "$($c.Rows.Id -join ',')" '2.46,2.5'
 
 if ($failed) { "check-ps1: $failed problem(s)"; exit 1 }
 'check-ps1: OK'

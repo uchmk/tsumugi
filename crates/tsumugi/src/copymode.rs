@@ -38,7 +38,10 @@ pub enum Step {
     Top,
     Bottom,
     /// Begin a selection at the cell (`start`), or carry it on to it.
-    Select { cell: (usize, usize), start: bool },
+    /// `right` is the half of the cell taken: the pane drops the first cell
+    /// of a range whose side is the right and the last whose side is the
+    /// left, so the cell faces away from the selection to stay in it.
+    Select { cell: (usize, usize), start: bool, right: bool },
     Unselect,
     /// Put the selection on the clipboard.
     Copy,
@@ -52,12 +55,15 @@ pub struct CopyMode {
     pub cursor: (usize, usize),
     /// A selection runs from where `Mark` was pressed to the cursor.
     pub marking: bool,
+    /// Where `Mark` was pressed, kept on the screen as lines scroll by.
+    /// Its line goes off the screen, below it or (negative) above.
+    anchor: (usize, isize),
 }
 
 impl CopyMode {
     /// Starting at the pane's own cursor.
     pub fn new(cursor: (usize, usize)) -> Self {
-        Self { cursor, marking: false }
+        Self { cursor, marking: false, anchor: (cursor.0, cursor.1 as isize) }
     }
 
     /// The steps for `key`, on a screen of `cols` × `rows` cells.
@@ -70,11 +76,13 @@ impl CopyMode {
             Key::Right => ((x + 1).min(cols - 1), y),
             Key::Up if y == 0 => {
                 out.push(Step::Lines(1));
+                self.anchor.1 += 1;
                 (x, 0)
             }
             Key::Up => (x, y - 1),
             Key::Down if y + 1 >= rows => {
                 out.push(Step::Lines(-1));
+                self.anchor.1 -= 1;
                 (x, rows - 1)
             }
             Key::Down => (x, y + 1),
@@ -98,14 +106,15 @@ impl CopyMode {
             Key::LineEnd => (cols - 1, y),
             Key::Mark => {
                 self.marking = !self.marking;
-                out.push(if self.marking { Step::Select { cell: (x, y), start: true } } else { Step::Unselect });
+                self.anchor = (x, y as isize);
+                out.push(if self.marking { Step::Select { cell: (x, y), start: true, right: false } } else { Step::Unselect });
                 return out;
             }
             Key::Copy => {
                 // No selection: the cursor's whole line.
                 if !self.marking {
-                    out.push(Step::Select { cell: (0, y), start: true });
-                    out.push(Step::Select { cell: (cols - 1, y), start: false });
+                    out.push(Step::Select { cell: (0, y), start: true, right: false });
+                    out.push(Step::Select { cell: (cols - 1, y), start: false, right: true });
                 }
                 out.extend([Step::Copy, Step::Exit]);
                 return out;
@@ -117,7 +126,10 @@ impl CopyMode {
         };
         self.cursor = moved;
         if self.marking {
-            out.push(Step::Select { cell: moved, start: false });
+            // Ahead of the mark the cursor's cell ends the range on its
+            // right half; behind it, it begins the range on its left.
+            let ahead = (moved.1 as isize, moved.0) >= (self.anchor.1, self.anchor.0);
+            out.push(Step::Select { cell: moved, start: false, right: ahead });
         }
         out
     }
@@ -145,20 +157,33 @@ mod tests {
     #[test]
     fn a_mark_carries_the_selection_to_the_cursor_and_copy_ends_it() {
         let mut m = CopyMode::new((1, 1));
-        assert_eq!(m.press(Key::Mark, 10, 5), vec![Step::Select { cell: (1, 1), start: true }]);
-        assert_eq!(m.press(Key::Down, 10, 5), vec![Step::Select { cell: (1, 2), start: false }]);
-        assert_eq!(m.press(Key::PageUp, 10, 5), vec![Step::PageUp, Step::Select { cell: (1, 2), start: false }]);
+        assert_eq!(m.press(Key::Mark, 10, 5), vec![Step::Select { cell: (1, 1), start: true, right: false }]);
+        assert_eq!(m.press(Key::Down, 10, 5), vec![Step::Select { cell: (1, 2), start: false, right: true }]);
+        assert_eq!(m.press(Key::PageUp, 10, 5), vec![Step::PageUp, Step::Select { cell: (1, 2), start: false, right: true }]);
         assert_eq!(m.press(Key::Copy, 10, 5), vec![Step::Copy, Step::Exit]);
     }
 
     #[test]
     fn copy_with_no_mark_takes_the_line_and_a_second_mark_drops_it() {
         let mut m = CopyMode::new((3, 2));
-        assert_eq!(m.press(Key::Copy, 10, 5), vec![Step::Select { cell: (0, 2), start: true }, Step::Select { cell: (9, 2), start: false }, Step::Copy, Step::Exit]);
+        assert_eq!(m.press(Key::Copy, 10, 5), vec![Step::Select { cell: (0, 2), start: true, right: false }, Step::Select { cell: (9, 2), start: false, right: true }, Step::Copy, Step::Exit]);
         let mut m = CopyMode::new((3, 2));
         m.press(Key::Mark, 10, 5);
         assert_eq!(m.press(Key::Mark, 10, 5), vec![Step::Unselect]);
         assert_eq!(m.press(Key::Left, 10, 5), vec![]);
         assert_eq!(m.press(Key::Exit, 10, 5), vec![Step::Unselect, Step::Exit]);
+    }
+
+    /// Behind the mark the cursor's cell begins the range, and the mark
+    /// scrolls down the screen with the lines when the cursor goes past the
+    /// top.
+    #[test]
+    fn a_selection_back_from_the_mark_keeps_the_cursor_cell() {
+        let mut m = CopyMode::new((4, 0));
+        m.press(Key::Mark, 10, 5);
+        assert_eq!(m.press(Key::Left, 10, 5), vec![Step::Select { cell: (3, 0), start: false, right: false }]);
+        assert_eq!(m.press(Key::Right, 10, 5), vec![Step::Select { cell: (4, 0), start: false, right: true }]);
+        assert_eq!(m.press(Key::Up, 10, 5), vec![Step::Lines(1), Step::Select { cell: (4, 0), start: false, right: false }]);
+        assert_eq!(m.anchor, (4, 1));
     }
 }

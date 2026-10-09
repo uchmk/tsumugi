@@ -76,9 +76,9 @@ no others, and do not read TESTING.md's list of rows (its rules, up to
 
 | Chunk | Up to | Notes |
 | --- | --- | --- |
-| **Re-tests of changed behaviour** | 15 rows | The rows named in the second cell, still `[ ]`: none yet |
+| **Re-tests of changed behaviour** | 15 rows | The rows named in the second cell, still `[ ]`: 2.58, 2.55, 2.54, 2.48, 2.53, 2.52, 2.3, 2.15, 2.24, 2.25, 2.26, 2.27, 2.28, 2.31, 2.37, 2.42, 2.44, 9.5, 2.29, 2.30, 2.40 |
 | **Unticked keys in TESTING-KEYS.md** | 20 keys | x64 only |
-| **The sections, in this order** | 15 rows of one section | 1, 18, 12, 19, 4, 2, 16, 17, 8, 13, 15, then the rest. ARM64: 2, 4, 12, 1 only |
+| **The sections, in this order** | 15 rows of one section | 1, 18, 12, 19, 4, 2, 16, 17, 8, 13, 15, then the rest. ARM64: 2, 4, 12, 1 only. Never given: rows starting `Linux/macOS:` or `A person:`, and 2.46–2.49 on ARM64 (no tools there) |
 
 What suits each section:
 
@@ -123,9 +123,13 @@ at the same time. **Nobody will answer a question**, so:
   again: that is what made a run expensive. The isolation is already in the
   environment: a bare `tsumugi` reaches the run's own server.
 - **The screen can lock or a screen saver can take it**: the kit's
-  `Send-Keys`, `Send-Text` and `Send-Click` check that the input desktop is
-  `Default` and the window in front is tsumugi's, and throw when not. Nothing
-  measured after input stopped reaching the window counts.
+  `Send-Keys`, `Send-Text`, `Send-Click`, `Send-Drag` and `Send-Wheel` wait up
+  to 10 s for the input desktop to be `Default` and the window in front to be
+  tsumugi's, and throw when it does not come. Nothing measured after input
+  stopped reaching the window counts.
+- **Before writing a helper of your own**, look at the kit's list again: held
+  chords (`Send-Keys -Hold`), raw virtual keys (`'Ctrl+vk:0xBB'`), drags, the
+  wheel and the middle button are there.
 - **A person's files are not scratch.** Before touching `~/.claude/settings.json`,
   a profile or anything outside the scratch: `Backup-UserFile`; append, never
   overwrite; `Restore-UserFile` and show it says MATCH.

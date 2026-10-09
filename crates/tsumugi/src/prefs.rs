@@ -82,6 +82,7 @@ pub const INDEX: &[(Page, &str)] = &[
     (Page::General, "Show the date"),
     (Page::General, "Date format"),
     (Page::General, "Show the weekday"),
+    (Page::General, "Copy a selection when the mouse lets go"),
     (Page::Appearance, "Font"),
     (Page::Appearance, "Size"),
     (Page::Appearance, "Line height"),
@@ -91,6 +92,12 @@ pub const INDEX: &[(Page, &str)] = &[
     (Page::Appearance, "Dim unfocused panes"),
     (Page::Appearance, "Cursor"),
     (Page::Appearance, "Animations"),
+    (Page::Appearance, "Window material"),
+    (Page::Appearance, "Opacity"),
+    (Page::Appearance, "Background image"),
+    (Page::Appearance, "Image strength"),
+    (Page::Appearance, "Quake mode key"),
+    (Page::Appearance, "Quake mode height"),
     (Page::Keys, "Preset"),
     (Page::Keys, "Use Cmd on macOS"),
     (Page::Keys, "New session"),
@@ -120,6 +127,8 @@ pub const INDEX: &[(Page, &str)] = &[
     (Page::Notifications, "Sound for fails"),
     (Page::Notifications, "focus mode"),
     (Page::Notifications, "QUIET TAGS"),
+    (Page::Notifications, "Tell when the day costs"),
+    (Page::Notifications, "Tell when a 5-hour block costs"),
     (Page::Sessions, "Default program"),
     (Page::Sessions, "Claude Code command"),
     (Page::Sessions, "Resume conversations after a restart"),
@@ -129,10 +138,12 @@ pub const INDEX: &[(Page, &str)] = &[
     (Page::Sessions, "Editor command"),
     (Page::Sessions, "filer command"),
     (Page::Sessions, "TAB MENU"),
+    (Page::Sessions, "File command"),
     (Page::Tags, "New rule"),
     (Page::Tags, "Colour new tags"),
     (Page::Tags, "Tags shown"),
     (Page::Tags, "Edit a tag"),
+    (Page::Tags, "Quiet"),
     (Page::Theme, "Mode"),
     (Page::Theme, "PREVIEW"),
     (Page::Shell, "Default shell"),
@@ -140,6 +151,8 @@ pub const INDEX: &[(Page, &str)] = &[
     (Page::Shell, "Environment"),
     (Page::Shell, "Claude Code hooks"),
     (Page::Shell, "Shell integration"),
+    (Page::Shell, "The lines themselves"),
+    (Page::Shell, "ConPTY"),
     (Page::Advanced, "Mux server"),
     (Page::Advanced, "Restart the server"),
     (Page::Advanced, "Graphics backend"),
@@ -150,6 +163,7 @@ pub const INDEX: &[(Page, &str)] = &[
     (Page::Advanced, "Settings folder"),
     (Page::Advanced, "Export or import settings"),
     (Page::Advanced, "Usage data"),
+    (Page::Advanced, "Saved tabs"),
 ];
 
 /// The screen while it is open.
@@ -2027,6 +2041,25 @@ mod tests {
         texts.iter().find(|(t, _)| t == words).or_else(|| texts.iter().find(|(t, _)| t.contains(words))).map(|(_, r)| r)
     }
 
+    /// The other way round: each row the pages draw is in the index, or the
+    /// search said nothing for it ("copy" found no page, the real machine).
+    #[test]
+    fn every_row_is_in_the_search_index() {
+        let source = include_str!("prefs.rs");
+        let needle = ["row(ui", ", l, \""].concat();
+        let missing: Vec<&str> = source
+            .split(needle.as_str())
+            .skip(1)
+            .filter_map(|rest| rest.split('"').next())
+            .filter(|label| !INDEX.iter().any(|(_, words)| *label == *words || (words.len() >= 8 && label.contains(words))))
+            .collect();
+        assert!(missing.is_empty(), "rows the search cannot find: {missing:?}");
+    }
+
+    /// Rows drawn only on some systems or once something is open: the window
+    /// material (Windows and macOS), ConPTY (Windows), a tag's own rows.
+    const SOMETIMES: &[&str] = &["Window material", "ConPTY", "Quiet"];
+
     #[test]
     fn every_page_draws_the_rows_its_search_finds() {
         let run = Run::new();
@@ -2035,7 +2068,7 @@ mod tests {
             run.frame(&mut screen, Vec::new());
             let (_, texts) = run.frame(&mut screen, Vec::new());
             assert!(find(&texts, page.title()).is_some(), "{page:?}: its title");
-            for (_, words) in INDEX.iter().filter(|(p, _)| *p == page) {
+            for (_, words) in INDEX.iter().filter(|(p, words)| *p == page && !SOMETIMES.contains(words)) {
                 assert!(find(&texts, words).is_some(), "{page:?} has no `{words}`: {:?}", texts.iter().map(|t| &t.0).collect::<Vec<_>>());
             }
         }

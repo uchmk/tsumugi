@@ -5,10 +5,10 @@ tsumugi のやること。`【人】` は持ち主の作業、`【金】` は 20
 
 ## 金曜日から（2026-10-09 以降）
 
-- [ ] 【人】【金】Windows 実機のテストを始める。`C:\dev\tsumugi` から worktree（`C:\dev\tsumugi-wintest`）を作り、`-DryRun` で塊を見てから 1 回手で回し、
+- [x] （2026-10-09 に x64、2026-10-10 に ARM64 のレーンが回り始めた）【人】【金】Windows 実機のテストを始める。`C:\dev\tsumugi` から worktree（`C:\dev\tsumugi-wintest`）を作り、`-DryRun` で塊を見てから 1 回手で回し、
       スクリプトの冒頭のとおりタスク スケジューラに毎時 :50 で登録する。役割は `.claude/windows-role.md`、チェック表は TESTING-CHECKS.md（303 行）と
       TESTING-KEYS.md（77 個）。CLI とサーバの行は `tests/cli.rs` で CI に移した（TESTING.md の「Covered by tests」）。
-  - [ ] 【人】ARM64 のノート PC も使うなら `-Lane arm`（`C:\dev\tsumugi-armtest`、タスク名 `tsumugi-auto-wintest-arm`）。
+  - [x] （2026-10-10、持ち主が用意し、ARM64 のレーンも回っている）【人】ARM64 のノート PC も使うなら `-Lane arm`（`C:\dev\tsumugi-armtest`、タスク名 `tsumugi-auto-wintest-arm`）。
   - [x] （v0.74.4、クラウドのマージの Routine が毎時 :40 にマージする。手順は v0.74.5 の `.claude/merge-routine.md`）実機の PR（`test/win-*`・`test/arm-*`）をマージする側を決める。
   - [ ] 【実機】最初の 3 回の実行時間（`auto-wintest.log` の開始と終了）と使用量の増え方を見て、1 回 1 塊の目安をここに書く。
 - [x] （filer v0.79.0 で `rev` を `fc88385`（v0.65.1）に上げた。それ以後 v0.68.0 まで `crates/tsumugi-pane` は変わっていない）【金】filer の `tsumugi-pane` の `rev` を上げる。filer の `Cargo.toml` の `rev` は `d2405616` のままで、それ以後のペインの直し
@@ -25,27 +25,15 @@ tsumugi のやること。`【人】` は持ち主の作業、`【金】` は 20
 
 マージの Routine（`.claude/merge-routine.md`）が、実機の PR の `### Proposals`・見つけた不具合・`## Queue` の頼みをここに積む。対話のセッションが拾う。
 
-- （実機 #1）仕切りをドラッグして離すと元の比率に戻る。`crates/tsumugi/src/main.rs` の ~:4190 が離したフレームで `self.dragging` を消し、~:4521 の `Moved::Released` で `set_layout` が呼ばれない。直すまで 2.3・2.15 は再テストの列に置く（`qa-reports/2026-10-09-arm-2-1.md`）。
-- （実機 #1）2.10（IME）は無人の実機では確かめられない。本物の IME を使える人に回す（`qa-reports/2026-10-09-arm-2-1.md`）。
-- （実機 #1）提案: `scripts/wintest-kit.ps1` に `Send-Drag`（押す・動かす・離す）を足す。`Invoke-Tsumugi ls --json` が `-Arguments` でないと落ちるので、位置引数を受けるか文書にする（`qa-reports/2026-10-09-arm-2-1.md`）。
-- （実機 #2）`Ctrl+=`（`font_bigger`）は JIS 配列では押せない。US 配列のレーンか、キットが生の仮想キーを押せるようになってから確かめる（`qa-reports/2026-10-09-win-keys-1.md`）。
-- （実機 #2）提案: キットの `Send-Keys` に生の仮想キー（`vk:0xBB`）を渡せるようにする。持ち主のアプリが前面を奪うので、キー実行の前にデスクトップが静かになるのを待つ。`--check` の例は CRLF を無視し、成功時に `in sync` と出す（`qa-reports/2026-10-09-win-keys-1.md`）。
-- （実機 #3）不具合: `Ctrl+Shift+-` がシェルに何も送らない（`tsumugi-pane/src/input.rs` の `key_bytes` → `printable('-')`。readline の undo `0x1f` が届かない）。2.24 は未確認（`qa-reports/2026-10-09-arm-2-16.md`）。
-- （実機 #3）不具合: コピーモードの行コピーが 1 文字目を落とし、文字単位の選択はカーソルの桁から始まる（2.25・2.26）。バッジの文言は「COPY · …」で、行の **COPY MODE** と合わない（`qa-reports/2026-10-09-arm-2-16.md`）。
-- （実機 #3）不具合: pwsh でプロンプトジャンプ（`Ctrl+Shift+Up/Down`）が動かない。bash では動く。`PromptLinks` が、プロンプトの先頭が空行（Starship）のときに `A` の印をどこに置くか（2.27、`qa-reports/2026-10-09-arm-2-16.md`）。
-- （実機 #3）不具合: bash の OSC 7 のパスが `/c/...` のままで、ペインのフォルダが `\c\dev\...` になる。Windows では変換するか、フックで `cygpath -w` を使う（2.28、`qa-reports/2026-10-09-arm-2-16.md`）。
-- （実機 #3）提案: 2.29 の `299` は `291`、2.30 のバーの「From the end again」は長すぎて切れる。2.18（キーボード配列の切り替えで窓が固まる）と 2.19（文字コードを UI から変えられない）は無人のキューから外す（`qa-reports/2026-10-09-arm-2-16.md`）。
-- （実機 #3）キューへの頼み: ARM64 のマシンに zsh（か WSL）を入れるか、2.28 から「and zsh」を外す。
-- （実機 #4）不具合: `Ctrl+Shift+X` は egui が `Event::Cut` に書き換えて `Key::X` が届かず、`SwapPane` が働かない（`tsumugi-pane/src/input.rs:116-118`）。パレットにも swap が無い。直したら 2.37 を再テストの列へ（`qa-reports/2026-10-09-arm-2-31.md`）。
-- （実機 #4）不具合: 検索バーにキーがあるとき `Alt+矢印` が届いても何も起きない（2.31）。直したら再テストへ（`qa-reports/2026-10-09-arm-2-31.md`）。
-- （実機 #4）不具合: pwsh で `133;D` は届くのにコマンドのバーが描かれず、`Ctrl+Shift+L` も何もコピーしない（2.42・2.44）。プロンプトジャンプと同じ系統（`PromptLinks`）。直したら再テストへ（`qa-reports/2026-10-09-arm-2-31.md`）。
-- （実機 #4）提案: 2.40 の「asciinema で再生」は無人のレーンでは確かめられない（`r` イベントの文字確認に変える）。2.45 は「Windows: 2.42 のあと」と書くか、Windows のキューから外す（`qa-reports/2026-10-09-arm-2-31.md`）。
-- （実機 #4）キューへの頼み: 2.36・2.43・2.45（Linux/macOS の行）を Windows のキューから外す。
-- （実機 #5）不具合: Windows のペインで `Ctrl+C` が走っているコマンドを止めない（`Start-Sleep 300` が最後まで走る。キーのバイトは送られている）。キーアップ（`...;0;8;1_`）が送られていないかを先に見る。直したら 2.58 を再テストへ（`qa-reports/2026-10-09-arm-2-46.md`）。
-- （実機 #5）不具合: SGR の単線の下線・打ち消し線が描かれず、隠し文字（`SGR 8`）が見え、拡張下線のあと `SGR 0` で消えない（2.52）。直したら再テストへ（`qa-reports/2026-10-09-arm-2-46.md`）。
-- （実機 #5）不具合: Windows のローカルペインで Shift+Enter に CSI-u が出ない（ConPTY が `\r` にする。2.55）。`CSI 16 t`（セルの大きさ）に返事が無く `wezterm imgcat` が 0 除算で落ちる（2.48）。窓がフォーカスを失っても nvim に `\e[O` が行かない。設定の検索で "copy" が何も見つけない（`qa-reports/2026-10-09-arm-2-46.md`）。
-- （実機 #5）提案: ペインの環境に `TERM_PROGRAM=tsumugi` と `TERM_PROGRAM_VERSION` を入れる（nvim の `:checkhealth` が名前を出せる。2.54）。キットに押しっぱなしのキー（`Send-Keys -Hold`）とマウスのホイール・中クリック・ドラッグの補助を足す（`qa-reports/2026-10-09-arm-2-46.md`）。
-- （実機 #5）キューへの頼み: 2.46〜2.49 は ARM64 のマシンに道具（`img2sixel`・`chafa`・`kitten`・`imgcat`・WSL）が無い。このレーンでは飛ばすか x64 に回す。
+- [x] （v0.76.0）実機 #1〜#5 の不具合と提案を入れた。仕切りのドラッグ（2.3・2.15）、`Ctrl+Shift+-`（2.24）、コピーモードの選択とバッジ（2.25・2.26）、
+      `PromptLinks`（pwsh・Starship のプロンプトジャンプとコマンドのバー、2.27・2.42・2.44）、MSYS の `/c/...`（2.28）、`Ctrl+Shift+X` と
+      パレットの入れ替え・均等割り（2.37）、検索バーの `Alt+矢印`（2.31）、ConPTY の `Ctrl+C`（2.58）と `Shift+Enter`（2.55）、`CSI 16 t`（2.48）、
+      フォーカスの `\e[O`（2.53）、設定の検索の索引、`TERM_PROGRAM`（2.54）。キットに `Send-Keys -Hold`・`vk:0x..`・`Send-Drag`・`Send-Wheel`・
+      `Send-Click -Middle`・入力待ち、`Invoke-Tsumugi` は位置引数を受ける。キューは `Linux/macOS:`・`A person:` の行と ARM64 の 2.46〜2.49 を渡さない。
+      2.10・2.18・2.19 は人の行にし、2.28 の zsh は「入っていれば」、2.29 は `291`、2.30 は「Wrapped」、2.40 は `"r"` イベント、2.45 は「2.42 のあと」。
+      直した行は `.claude/windows-role.md` の再テストの列に積んだ。
+- [ ] 【実機】2.52（SGR の下線・打ち消し線・隠し文字）は Linux では再現しなかった。再テストで落ちたら PTY ログの `out` 行を報告に貼ってもらい、それから直す。
+- [ ] 【実機】`Ctrl+=`（`font_bigger`）を `'Ctrl+vk:0xBB'` で確かめる（JIS 配列のレーン）。
 
 ## ほかのターミナルにあるもの（2026-10-08、持ち主の依頼で全部取り込む）
 

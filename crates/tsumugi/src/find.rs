@@ -96,7 +96,9 @@ pub fn show(ctx: &egui::Context, pane: egui::Rect, bar: &mut Bar, c: &Colors) ->
             ui.horizontal(|ui| {
                 let words = match bar.said {
                     Some(None) => RichText::new("No match").color(c.err),
-                    Some(Some(true)) => RichText::new("From the end again").color(c.dim),
+                    // "From the end again" was cut short in the 96 points (the
+                    // real machine, 2.30).
+                    Some(Some(true)) => RichText::new("Wrapped").color(c.dim),
                     _ => RichText::new(""),
                 };
                 let room = ui.available_width() - 3.0 * 24.0 - 96.0;

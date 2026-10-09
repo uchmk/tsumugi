@@ -2152,6 +2152,8 @@ impl App {
                     palette::Command::TypeAll => keys::Action::TypeAll,
                     palette::Command::Notices => keys::Action::Notices,
                     palette::Command::Help => keys::Action::Help,
+                    palette::Command::SwapPane => keys::Action::SwapPane,
+                    palette::Command::Equalize => keys::Action::Equalize,
                     palette::Command::Sort(_) | palette::Command::Closed | palette::Command::Changes | palette::Command::SaveOutput | palette::Command::Parallel | palette::Command::SaveLayout => return,
                 };
                 if let Some(w) = current {
@@ -4188,9 +4190,11 @@ impl App {
         // A drag whose release was never seen here (the zoom or the tab
         // changed under it, or the panes changed) is let go, so the tab
         // does not keep showing the split as it was (the source review,
-        // 2026-10-07).
+        // 2026-10-07). The button let go is checked after the dividers
+        // instead: on the frame it comes up, the drag is still held here so
+        // that `Released` can keep it (the real machine, 2026-10-09).
         let held = ui.input(|i| i.pointer.primary_down());
-        if self.dragging.as_ref().is_some_and(|(id, l)| !held || *id != w.id || self.zoom || l.leaves() != w.layout.leaves()) {
+        if self.dragging.as_ref().is_some_and(|(id, l)| *id != w.id || self.zoom || l.leaves() != w.layout.leaves()) {
             self.dragging = None;
         }
         let layout = match &self.dragging {
@@ -4362,7 +4366,7 @@ impl App {
                         let at = origin + egui::vec2(mode.cursor.0 as f32 * cell.x, mode.cursor.1 as f32 * cell.y);
                         let p = ui.painter_at(rect);
                         p.rect_stroke(egui::Rect::from_min_size(at, cell), 1.0, egui::Stroke::new(2.0, chrome::gold()), egui::StrokeKind::Inside);
-                        let words = if mode.marking { "COPY · selecting · y copies · v drops it · Esc leaves" } else { "COPY · arrows or hjkl move · v selects · y copies the line · Esc leaves" };
+                        let words = if mode.marking { "COPY MODE · selecting · y copies · v drops it · Esc leaves" } else { "COPY MODE · arrows or hjkl move · v selects · y copies the line · Esc leaves" };
                         let galley = p.layout_no_wrap(words.into(), egui::FontId::proportional(11.5), crate::theme::colors().on_accent());
                         let badge = egui::Rect::from_min_size(egui::pos2(rect.right() - galley.size().x - 22.0, rect.top() + 6.0), galley.size() + egui::vec2(14.0, 6.0));
                         p.rect_filled(badge, 6.0, chrome::gold());
@@ -4533,6 +4537,9 @@ impl App {
                 }
             }
             None => {}
+        }
+        if !held {
+            self.dragging = None;
         }
     }
 }
@@ -5064,7 +5071,11 @@ impl App {
                 });
             });
         }
-        let here = ctx.input(|i| i.viewport().focused).unwrap_or(true);
+        // Away when either says so: winit's event (`i.focused`, from the
+        // window losing the keys) and the window's own answer, read each
+        // frame. With the second alone, nvim heard no `\e[O` on Alt+Tab (the
+        // real machine).
+        let here = ctx.input(|i| i.focused && i.viewport().focused.unwrap_or(true));
         if self.focus_sent != Some(here) {
             client.focus(here);
             self.focus_sent = Some(here);
@@ -5191,6 +5202,24 @@ impl App {
             if self.quick.as_ref().is_some_and(|(id, _)| *id != w.focus) {
                 self.quick = None;
             }
+            // The find bar's field keeps the keys, but Alt+arrows still move
+            // to another pane (which closes the bar): they did nothing with
+            // the field focused (the real machine, 2.31).
+            let only_find = self.find.as_ref().is_some_and(find::Bar::keyed) && !prefs_were_open && self.new_session.is_none() && self.search.is_none() && self.lists.is_none() && self.help.is_none() && self.diff.is_none() && self.parallel.is_none() && !self.menu_open && self.paste_ask.is_none();
+            if only_find {
+                ctx.input_mut(|i| {
+                    i.events.retain(|e| match e {
+                        egui::Event::Key { key, pressed: true, modifiers, .. } => match keys::action(*key, *modifiers) {
+                            Some(a @ keys::Action::Move(_)) => {
+                                actions.push(a);
+                                false
+                            }
+                            _ => true,
+                        },
+                        _ => true,
+                    })
+                });
+            }
             let copying = self.copy_mode.is_some();
             let mut quick_open = None;
             let mut fed: Vec<SessionId> = Vec::new();
@@ -5241,7 +5270,7 @@ impl App {
                             copymode::Step::PageDown => tsumugi_pane::Pane::scroll(pane, Scroll::PageDown),
                             copymode::Step::Top => tsumugi_pane::Pane::scroll(pane, Scroll::Top),
                             copymode::Step::Bottom => tsumugi_pane::Pane::scroll(pane, Scroll::Bottom),
-                            copymode::Step::Select { cell, start } => tsumugi_pane::Pane::select(pane, cell, true, start),
+                            copymode::Step::Select { cell, start, right } => tsumugi_pane::Pane::select(pane, cell, right, start),
                             copymode::Step::Unselect => tsumugi_pane::Pane::clear_selection(pane),
                             // A server's pane answers through take_clipboard.
                             copymode::Step::Copy => {
@@ -5272,6 +5301,7 @@ impl App {
                         ctx.copy_text(text);
                     }
                 }
+                tsumugi_pane::input::chords_back(&mut events, ctx.input(|i| i.modifiers));
                 let mut held = None;
                 events.retain(|e| match e {
                     egui::Event::Paste(text) => match paste::why(text, bracketed, general) {

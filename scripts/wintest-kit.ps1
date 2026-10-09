@@ -8,11 +8,16 @@
 #
 #   Start-Tsumugi [-ArgumentList ...]   the window, isolated (below); returns its process
 #   Invoke-Tsumugi ls --json            the CLI against the same server: {Code, Out, Err}
+#                                       (every word goes to tsumugi; $env:WINTEST_CLI_TIMEOUT, default 60 s)
 #   Test-InputReady                     input reaches our window: the Default desktop, ours in front
 #   Set-Foreground                      brings our window to the front
 #   Send-Keys 'Ctrl+Shift+Z'            one chord through SendInput ('Alt+Shift++' is the + key)
+#   Send-Keys -Hold 'Ctrl+Shift+C'      the same with 120 ms between steps (a chord egui missed when quick)
+#   Send-Keys 'Ctrl+vk:0xBB'            a raw virtual key, whatever the keyboard layout types with it
 #   Send-Text '日本語'                  characters through SendInput (KEYEVENTF_UNICODE)
-#   Send-Click -X 120 -Y 40 [-Right]    a click at egui points from the window's client corner
+#   Send-Click -X 120 -Y 40 [-Right|-Middle]  a click at egui points from the window's client corner
+#   Send-Drag -X 10 -Y 40 -ToX 200 -ToY 40     the left button down, moved in steps, up (a selection, a divider)
+#   Send-Wheel -X 120 -Y 200 -Notches -3       the wheel there; negative is towards you (down)
 #   Get-KeyLog / Get-FocusLog           TSUMUGI_KEYLOG's `key …` lines, its `focus x,y wxh` lines as objects
 #   Get-PtyLog                          the bytes the panes were sent (TSUMUGI_PTY_LOG)
 #   Save-Shot -Name before              PrintWindow of our window to <kit dir>\shots\before.png
@@ -98,13 +103,39 @@ public static class Native {
         return Send(all);
     }
 
-    // Down and up where the cursor is (SetCursorPos first).
-    public static uint Click(bool right) {
-        INPUT[] all = new INPUT[2];
-        all[0].type = 0; all[0].u.mi.dwFlags = right ? 0x0008u : 0x0002u;
-        all[1].type = 0; all[1].u.mi.dwFlags = right ? 0x0010u : 0x0004u;
-        return Send(all);
+    // As Chord, but each step a SendInput of its own with `ms` between: an
+    // app that reads the modifiers' state when the key comes (egui's copy)
+    // can miss them when the chord is one burst (the real machine, 2.57).
+    public static uint ChordHeld(ushort[] mods, ushort vk, int ms) {
+        uint sent = 0;
+        foreach (ushort m in mods) { sent += Send(new INPUT[] { Key(m, 0, Extended(m) ? 1u : 0u) }); System.Threading.Thread.Sleep(ms); }
+        uint ext = Extended(vk) ? 1u : 0u;
+        sent += Send(new INPUT[] { Key(vk, 0, ext) });
+        System.Threading.Thread.Sleep(ms);
+        sent += Send(new INPUT[] { Key(vk, 0, ext | 2u) });
+        System.Threading.Thread.Sleep(ms);
+        for (int k = mods.Length - 1; k >= 0; k--) sent += Send(new INPUT[] { Key(mods[k], 0, (Extended(mods[k]) ? 1u : 0u) | 2u) });
+        return sent;
     }
+
+    static INPUT Mouse(uint flags, uint data) {
+        INPUT i = new INPUT();
+        i.type = 0;   // INPUT_MOUSE
+        i.u.mi.dwFlags = flags; i.u.mi.mouseData = data;
+        return i;
+    }
+
+    // Down and up where the cursor is (SetCursorPos first): 0 left, 1 right, 2 middle.
+    public static uint Click(int button) {
+        uint down = button == 1 ? 0x0008u : button == 2 ? 0x0020u : 0x0002u;
+        return Send(new INPUT[] { Mouse(down, 0), Mouse(down << 1, 0) });
+    }
+
+    // The left button alone, down or up.
+    public static uint Button(bool down) { return Send(new INPUT[] { Mouse(down ? 0x0002u : 0x0004u, 0) }); }
+
+    // One wheel turn of `notches` (120 each; negative towards the user).
+    public static uint Wheel(int notches) { return Send(new INPUT[] { Mouse(0x0800u, unchecked((uint)(notches * 120))) }); }
 
     public static string InputDesktop() {
         IntPtr h = OpenInputDesktop(0, false, 0x0001);   // DESKTOP_READOBJECTS
@@ -174,8 +205,11 @@ function Get-KitWindow {
 
 # The CLI with its output caught (a release build is a GUI program, so only a
 # redirected stdout is reliable). -Timeout in seconds.
+# No parameters of its own, so every word reaches tsumugi: with a `-Timeout`
+# beside them `Invoke-Tsumugi ls --json` bound `ls` to it (the real machine).
 function Invoke-Tsumugi {
-    param([Parameter(ValueFromRemainingArguments)] [string[]]$Arguments, [int]$Timeout = 60)
+    $Arguments = [string[]]$args
+    $Timeout = if ($env:WINTEST_CLI_TIMEOUT) { [int]$env:WINTEST_CLI_TIMEOUT } else { 60 }
     $psi = [Diagnostics.ProcessStartInfo]::new($env:WINTEST_EXE)
     foreach ($a in $Arguments) { $psi.ArgumentList.Add($a) }
     $psi.UseShellExecute = $false
@@ -233,6 +267,8 @@ $script:KitVk = @{
 
 # 'Ctrl+Shift+Z', 'Alt+Shift++', 'F2', 'Ctrl+,'. A punctuation key is the key
 # that types it on this keyboard; if that needs Shift (or AltGr), it is added.
+# 'Ctrl+vk:0xBB' is that virtual key as it is, nothing added: under a JIS
+# layout `=` is Shift+-, and `Ctrl+=` went as Ctrl+Shift+- (the real machine).
 function ConvertTo-Chord([string]$Chord) {
     $parts = if ($Chord.Length -gt 1 -and $Chord.EndsWith('++')) { @($Chord.Substring(0, $Chord.Length - 2) -split '\+') + '+' } else { $Chord -split '\+' }
     $parts = @($parts | Where-Object { $_ -ne '' })
@@ -247,7 +283,8 @@ function ConvertTo-Chord([string]$Chord) {
         }
     }
     $lower = $key.ToLower()
-    if ($script:KitVk.ContainsKey($lower)) { $vk = [uint16]$script:KitVk[$lower] }
+    if ($lower -match '^vk:(0x[0-9a-f]{1,2}|\d{1,3})$') { $vk = [uint16]$Matches[1] }
+    elseif ($script:KitVk.ContainsKey($lower)) { $vk = [uint16]$script:KitVk[$lower] }
     elseif ($lower -match '^f([1-9]|1\d|2[0-4])$') { $vk = [uint16](0x6F + [int]$Matches[1]) }
     elseif ($key -match '^[A-Za-z0-9]$') { $vk = [uint16][char]$key.ToUpper() }
     elseif ($key.Length -eq 1) {
@@ -264,26 +301,36 @@ function ConvertTo-Chord([string]$Chord) {
 
 # Each chord in turn: Send-Keys 'Ctrl+Shift+T' 'Esc'. Throws when input would
 # not reach the window, so a key never goes to whatever else is in front.
-function Send-Keys([Parameter(ValueFromRemainingArguments)] [string[]]$Chords) {
+# -Hold sends each step on its own, 120 ms apart.
+function Send-Keys([switch]$Hold, [Parameter(ValueFromRemainingArguments)] [string[]]$Chords) {
     foreach ($c in $Chords) {
-        if (-not (Test-InputReady)) { throw "input does not reach tsumugi; '$c' not sent" }
+        if (-not (Wait-InputReady)) { throw "input does not reach tsumugi; '$c' not sent" }
         $k = ConvertTo-Chord $c
-        $sent = [TsumugiKit.Native]::Chord($k.Mods, $k.Vk)
+        $sent = if ($Hold) { [TsumugiKit.Native]::ChordHeld($k.Mods, $k.Vk, 120) } else { [TsumugiKit.Native]::Chord($k.Mods, $k.Vk) }
         if ($sent -eq 0) { throw "SendInput sent nothing for '$c' (blocked by UIPI or the desktop)" }
         Start-Sleep -Milliseconds 150
     }
 }
 
 function Send-Text([string]$Text) {
-    if (-not (Test-InputReady)) { throw 'input does not reach tsumugi; text not sent' }
+    if (-not (Wait-InputReady)) { throw 'input does not reach tsumugi; text not sent' }
     if ([TsumugiKit.Native]::Text($Text) -eq 0) { throw 'SendInput sent nothing' }
     Start-Sleep -Milliseconds 150
 }
 
-# X, Y in egui points from the client area's top-left, as the focus log
-# gives them; -Scale when tsumugi's zoom is not 100%.
-function Send-Click([double]$X, [double]$Y, [switch]$Right, [double]$Scale = 1.0) {
-    if (-not (Test-InputReady)) { throw 'input does not reach tsumugi; click not sent' }
+# Test-InputReady, waiting up to -Seconds for it: a toast, the lock screen
+# going or another window in front for a moment no longer fails the step.
+function Wait-InputReady([int]$Seconds = 10) {
+    $until = (Get-Date).AddSeconds($Seconds)
+    while ($true) {
+        if (Test-InputReady) { return $true }
+        if ((Get-Date) -ge $until) { return $false }
+        Start-Sleep -Milliseconds 500
+    }
+}
+
+# The cursor to X, Y in egui points from the client area's top-left.
+function Move-KitCursor([double]$X, [double]$Y, [double]$Scale = 1.0) {
     $h = Get-KitHandle
     $px = [TsumugiKit.Native]::GetDpiForWindow($h) / 96.0 * $Scale
     $pt = [TsumugiKit.Native+POINT]::new()
@@ -291,8 +338,41 @@ function Send-Click([double]$X, [double]$Y, [switch]$Right, [double]$Scale = 1.0
     $pt.Y = [int][Math]::Round($Y * $px)
     [void][TsumugiKit.Native]::ClientToScreen($h, [ref]$pt)
     [void][TsumugiKit.Native]::SetCursorPos($pt.X, $pt.Y)
+}
+
+# X, Y in egui points from the client area's top-left, as the focus log
+# gives them; -Scale when tsumugi's zoom is not 100%.
+function Send-Click([double]$X, [double]$Y, [switch]$Right, [switch]$Middle, [double]$Scale = 1.0) {
+    if (-not (Wait-InputReady)) { throw 'input does not reach tsumugi; click not sent' }
+    Move-KitCursor $X $Y $Scale
     Start-Sleep -Milliseconds 50
-    if ([TsumugiKit.Native]::Click($Right.IsPresent) -eq 0) { throw 'SendInput sent nothing for the click' }
+    $button = if ($Right) { 1 } elseif ($Middle) { 2 } else { 0 }
+    if ([TsumugiKit.Native]::Click($button) -eq 0) { throw 'SendInput sent nothing for the click' }
+    Start-Sleep -Milliseconds 150
+}
+
+# The left button down at X, Y, moved to ToX, ToY in -Steps steps, and up.
+function Send-Drag([double]$X, [double]$Y, [double]$ToX, [double]$ToY, [int]$Steps = 12, [double]$Scale = 1.0) {
+    if (-not (Wait-InputReady)) { throw 'input does not reach tsumugi; drag not sent' }
+    Move-KitCursor $X $Y $Scale
+    Start-Sleep -Milliseconds 50
+    if ([TsumugiKit.Native]::Button($true) -eq 0) { throw 'SendInput sent nothing for the drag' }
+    try {
+        for ($k = 1; $k -le $Steps; $k++) {
+            Start-Sleep -Milliseconds 30
+            Move-KitCursor ($X + ($ToX - $X) * $k / $Steps) ($Y + ($ToY - $Y) * $k / $Steps) $Scale
+        }
+        Start-Sleep -Milliseconds 50
+    } finally { [void][TsumugiKit.Native]::Button($false) }
+    Start-Sleep -Milliseconds 150
+}
+
+# The wheel turned -Notches at X, Y; negative is towards the user (down).
+function Send-Wheel([double]$X, [double]$Y, [int]$Notches = -1, [double]$Scale = 1.0) {
+    if (-not (Wait-InputReady)) { throw 'input does not reach tsumugi; wheel not sent' }
+    Move-KitCursor $X $Y $Scale
+    Start-Sleep -Milliseconds 50
+    if ([TsumugiKit.Native]::Wheel($Notches) -eq 0) { throw 'SendInput sent nothing for the wheel' }
     Start-Sleep -Milliseconds 150
 }
 

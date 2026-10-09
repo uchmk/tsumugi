@@ -120,6 +120,21 @@ mod tests {
         Screen { rows: tsumugi_pane::snapshot(&t), cursor: tsumugi_pane::cursor_cell(&t), ..Default::default() }
     }
 
+    /// The styles go over the wire as they are: the flags and the
+    /// underline's colour, and none left over after `SGR 0`.
+    #[test]
+    fn the_styles_come_back_from_the_wire() {
+        let row = "a \x1b[4mu\x1b[0m \x1b[4:2mdd\x1b[0m \x1b[4:3;58;2;255;0;0mcurl\x1b[0m \x1b[4:4mdots\x1b[0m \x1b[4:5mdash\x1b[0m \x1b[9mstrike\x1b[0m [\x1b[8mhid\x1b[0m]";
+        let mut t = tsumugi_pane::testing::term(60, 2);
+        tsumugi_pane::testing::feed(&mut t, row);
+        let sent = Screen { rows: tsumugi_pane::snapshot(&t), ..Default::default() };
+        let u = diff(None, &sent, &Extra::default()).unwrap();
+        let mut buf = Vec::new();
+        crate::frame::write(&mut buf, &u).unwrap();
+        let back: Update = crate::frame::read(&mut &buf[..]).unwrap();
+        assert_eq!(back, u);
+    }
+
     #[test]
     fn only_the_changed_row_goes() {
         let a = screen(&["one", "two", "three"]);

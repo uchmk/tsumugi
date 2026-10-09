@@ -19,6 +19,21 @@ $WintestOrder = @{
     arm = @(2, 4, 12, 1)
 }
 
+# Rows a lane never takes: the tools they need are not on that machine
+# (2.46-2.49 on the ARM64 one: img2sixel, chafa, kitten, imgcat, WSL).
+$WintestSkip = @{
+    win = @()
+    arm = @('2.46', '2.47', '2.48', '2.49')
+}
+
+# A row an unattended Windows run can do: not one for Linux or macOS only
+# (`Linux/macOS: …`), not one that needs a person (`A person: …`, an IME, a
+# layout switch), not one the lane skips.
+function Test-Unattended([string]$Lane, $Row) {
+    if ($Row.Text -match '^(Linux/macOS|Linux|macOS|A person):') { return $false }
+    $Row.Id -notin $WintestSkip[$Lane]
+}
+
 # Every `- [ ] **N.M** text` of TESTING-CHECKS.md, in file order, with its
 # section's number and title.
 function Get-OpenRows([string]$Checks) {
@@ -95,7 +110,7 @@ function Select-Chunk {
     $retest = Get-RetestIds $Role
     if ($retest) {
         $roleRow = (($Role -split "`r?`n") | Where-Object { $_ -like '|*Re-tests of changed behaviour*' } | Select-Object -First 1)
-        $picked = @($open | Where-Object { $_.Id -in $retest } | ForEach-Object {
+        $picked = @($open | Where-Object { $_.Id -in $retest -and (Test-Unattended $Lane $_) } | ForEach-Object {
                 $r = $_.PSObject.Copy()
                 $r | Add-Member Hash (Get-TextHash ($r.Text + "`n" + $roleRow))
                 $r
@@ -120,7 +135,7 @@ function Select-Chunk {
         $order = @($order) + @($open | ForEach-Object Section | Select-Object -Unique | Sort-Object | Where-Object { $_ -notin $order })
     }
     foreach ($sec in $order) {
-        $picked = @($open | Where-Object Section -eq $sec | ForEach-Object { $_ | Add-Member Hash (Get-TextHash $_.Text) -PassThru -Force } |
+        $picked = @($open | Where-Object { $_.Section -eq $sec -and (Test-Unattended $Lane $_) } | ForEach-Object { $_ | Add-Member Hash (Get-TextHash $_.Text) -PassThru -Force } |
             Where-Object { $Attempted[$_.Id] -ne $_.Hash } | Select-Object -First $Rows)
         if ($picked) {
             return [pscustomobject]@{ Kind = 'rows'; Title = "$sec. $($picked[0].Title)"; Rows = $picked; Branch = "test/$Lane-$($picked[0].Id -replace '\.', '-')" }

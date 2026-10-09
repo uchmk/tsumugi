@@ -54,14 +54,21 @@ pub enum Command {
     SaveLayout,
     /// Every key, by kind (F1).
     Help,
+    /// Trade places with the next pane (the real machine found it only
+    /// on a key, 2.37).
+    SwapPane,
+    /// Give every pane of the tab the same room.
+    Equalize,
 }
 
 impl Command {
-    pub const ALL: [Command; 22] = [
+    pub const ALL: [Command; 24] = [
         Command::NewSession,
         Command::SplitRight,
         Command::SplitDown,
         Command::Zoom,
+        Command::SwapPane,
+        Command::Equalize,
         Command::NextWaiting,
         Command::Waiting,
         Command::Notices,
@@ -102,6 +109,8 @@ impl Command {
             Command::Notices => "Notifications".into(),
             Command::SaveLayout => "Save this tab's layout (open it again from here)".into(),
             Command::Help => "Keys: every key and what it does".into(),
+            Command::SwapPane => "Swap the pane with the next one".into(),
+            Command::Equalize => "Give the panes the same size".into(),
         }
     }
 
@@ -122,6 +131,8 @@ impl Command {
             Command::TypeAll => Action::TypeAll,
             Command::Notices => Action::Notices,
             Command::Help => Action::Help,
+            Command::SwapPane => Action::SwapPane,
+            Command::Equalize => Action::Equalize,
             Command::Sort(_) | Command::Closed | Command::Changes | Command::SaveOutput | Command::Parallel | Command::SaveLayout => return String::new(),
         };
         label(action)

@@ -990,6 +990,14 @@ fn here(cwd: PathBuf, home: Option<PathBuf>) -> PathBuf {
     if cwd.is_dir() { cwd } else { home }
 }
 
+/// The terminal's name and version as a program looks them up: nvim 0.12's
+/// `:checkhealth` reads them from here and not from XTVERSION, and said
+/// "Terminal: unknown" without (2.54). Before the settings' variables, which
+/// can still say otherwise.
+fn terminal_names() -> [(String, String); 2] {
+    [("TERM_PROGRAM".to_owned(), "tsumugi".to_owned()), ("TERM_PROGRAM_VERSION".to_owned(), env!("CARGO_PKG_VERSION").to_owned())]
+}
+
 /// A session's shell, told who it is (`TSUMUGI_SESSION`) and where the
 /// server is, so that `tsumugi notify` inside it finds them.
 fn start_terminal(
@@ -1010,8 +1018,9 @@ fn start_terminal(
         let dir = shared.state.as_deref()?.parent()?.join("pane-logs");
         (pane_log && std::fs::create_dir_all(&dir).is_ok()).then(|| dir.join(format!("session-{id}.log")))
     });
-    // The settings' variables first: tsumugi's own win.
-    let mut env: Vec<(String, String)> = own.env.clone().into_iter().collect();
+    // The terminal's names, the settings' variables over them, and
+    // tsumugi's own over both.
+    let mut env: Vec<(String, String)> = terminal_names().into_iter().chain(own.env.clone()).collect();
     env.push(("TSUMUGI_SESSION".to_owned(), id.to_string()));
     env.push(("TSUMUGI_ADDRESS".to_owned(), shared.address.to_string_lossy().into_owned()));
     // No shell asked for: the settings' `[shell]`, else the system's.
@@ -1689,6 +1698,18 @@ mod branch {
         let outside = std::env::temp_dir();
         assert_eq!(super::git(&outside), (None, outside.clone()), "no repository: the folder itself");
         let _ = std::fs::remove_dir_all(&dir);
+    }
+}
+
+#[cfg(test)]
+mod names {
+    /// nvim's `:checkhealth` names the terminal from these (2.54).
+    #[test]
+    fn a_shell_learns_the_terminal_name_and_version() {
+        let names = super::terminal_names();
+        assert_eq!(names[0], ("TERM_PROGRAM".to_owned(), "tsumugi".to_owned()));
+        assert_eq!(names[1].0, "TERM_PROGRAM_VERSION");
+        assert_eq!(names[1].1, env!("CARGO_PKG_VERSION"));
     }
 }
 
