@@ -166,6 +166,19 @@
 //!
 //! [remote.commands]
 //! pi = "/opt/tsumugi/tsumugi"
+//!
+//! # Triggers (iTerm2's): a regular expression matched against what the
+//! # panes show. color and background draw the match in them (#rrggbb);
+//! # notify puts a line the program writes that matches on the bell's list
+//! # and tells of it as a waiting session is told of.
+//! [[triggers]]
+//! regex = "(?i)\\berror\\b"
+//! color = "#ff6b6b"
+//!
+//! [[triggers]]
+//! regex = "Build succeeded"
+//! background = "#2d4a2d"
+//! notify = true
 //! ```
 
 use std::path::{Component, Path, PathBuf};
@@ -202,6 +215,48 @@ pub struct Settings {
     /// types to take up its conversation again. Those in [`AGENTS`] are
     /// known without being named here.
     pub agents: std::collections::BTreeMap<String, Agent>,
+    /// Regular expressions matched against the output: drawn in a colour,
+    /// told of, or both.
+    pub triggers: Vec<Trigger>,
+}
+
+/// A trigger (iTerm2's): what in the output `regex` matches is drawn in
+/// `color` and on `background` (`#rrggbb`, empty: as it was), and with
+/// `notify`, a line written that it matches goes on the bell's list.
+#[derive(Clone, Debug, Default, PartialEq, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct Trigger {
+    pub regex: String,
+    pub color: String,
+    pub background: String,
+    pub notify: bool,
+}
+
+impl Settings {
+    /// The triggers that colour, made ready to draw; the settings are
+    /// checked, so a bad one is not there to leave out.
+    pub fn highlights(&self) -> Vec<tsumugi_pane::Highlight> {
+        self.triggers
+            .iter()
+            .filter_map(|t| {
+                let (fg, bg) = (tsumugi_pane::rgb(&t.color), tsumugi_pane::rgb(&t.background));
+                if fg.is_none() && bg.is_none() {
+                    return None;
+                }
+                Some(tsumugi_pane::Highlight { regex: tsumugi_pane::regex::Regex::new(&t.regex).ok()?, fg, bg })
+            })
+            .collect()
+    }
+
+    /// The triggers that tell, as one set for the panes to match lines
+    /// against; `None` when there are none.
+    pub fn notify_triggers(&self) -> Option<tsumugi_pane::regex::RegexSet> {
+        let told: Vec<&str> = self.triggers.iter().filter(|t| t.notify).map(|t| t.regex.as_str()).collect();
+        if told.is_empty() {
+            return None;
+        }
+        tsumugi_pane::regex::RegexSet::new(told).ok()
+    }
 }
 
 /// The AI programs a session is told to be running by the name of a
@@ -530,6 +585,7 @@ impl Default for Settings {
             remote: Remote::default(),
             prices: std::collections::BTreeMap::new(),
             agents: std::collections::BTreeMap::new(),
+            triggers: Vec::new(),
         }
     }
 }
@@ -874,6 +930,21 @@ pub fn parse(text: &str) -> Result<Settings, String> {
             return Err(format!("notify.{key}: `{w}` is not waiting, error or done"));
         }
     }
+    for (i, t) in s.triggers.iter().enumerate() {
+        let at = format!("triggers[{}]", i + 1);
+        let r = tsumugi_pane::regex::Regex::new(&t.regex).map_err(|e| format!("{at}: regex `{}` does not read: {}", t.regex, e.to_string().lines().last().unwrap_or("")))?;
+        if r.is_match("") {
+            return Err(format!("{at}: regex `{}` matches an empty line, so it would match every line", t.regex));
+        }
+        for (key, v) in [("color", &t.color), ("background", &t.background)] {
+            if !v.trim().is_empty() && tsumugi_pane::rgb(v).is_none() {
+                return Err(format!("{at}.{key}: `{v}` is not #rrggbb"));
+            }
+        }
+        if t.color.trim().is_empty() && t.background.trim().is_empty() && !t.notify {
+            return Err(format!("{at}: does nothing; give it color, background or notify = true"));
+        }
+    }
     Ok(s)
 }
 
@@ -1154,6 +1225,25 @@ mod tests {
         assert!(parse("[window]\nimage_opacity = 101\n").is_err());
         assert_eq!(parse("[window]\nquake = \"Ctrl+`\"\nquake_height = 40\n").unwrap().window.quake, "Ctrl+`");
         assert!(parse("[window]\nquake_height = 0\n").is_err());
+    }
+
+    #[test]
+    fn triggers_are_checked_and_made_ready() {
+        let s = parse("[[triggers]]\nregex = \"(?i)error\"\ncolor = \"#ff0000\"\n\n[[triggers]]\nregex = \"done\"\nnotify = true\n\n[[triggers]]\nregex = \"warn\"\nbackground = \"#003300\"\nnotify = true\n").expect("good triggers read");
+        let h = s.highlights();
+        assert_eq!(h.len(), 2);
+        assert_eq!((h[0].fg, h[0].bg), (Some([255, 0, 0]), None));
+        assert_eq!((h[1].fg, h[1].bg), (None, Some([0, 0x33, 0])));
+        let set = s.notify_triggers().expect("two tell");
+        assert_eq!(set.patterns(), ["done", "warn"]);
+        assert!(parse("").unwrap().notify_triggers().is_none());
+        assert!(parse("").unwrap().highlights().is_empty());
+        let err = |text: &str| parse(text).unwrap_err();
+        assert!(err("[[triggers]]\nregex = \"(\"\nnotify = true\n").starts_with("triggers[1]: regex"));
+        assert!(err("[[triggers]]\nregex = \"a*\"\nnotify = true\n").contains("empty line"));
+        assert!(err("[[triggers]]\nregex = \"a\"\ncolor = \"red\"\n").starts_with("triggers[1].color"));
+        assert!(err("[[triggers]]\nregex = \"a\"\nnotify = true\n[[triggers]]\nregex = \"b\"\n").starts_with("triggers[2]: does nothing"));
+        assert!(err("[[triggers]]\nregex = \"a\"\nsound = true\n").contains("sound"));
     }
 
     #[test]

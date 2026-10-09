@@ -5,6 +5,17 @@
 
 ## [未リリース]
 
+## [0.74.0] - 2026-10-09
+
+### 追加
+
+- トリガー（iTerm2）。`settings.toml` の `[[triggers]]` に正規表現を書くと、当たったところを `color`・`background`（`#rrggbb`）で描き、`notify = true` なら当たった行をベルの一覧に **trigger** として載せ、窓を見ていないときにシステムの通知を出す（点滅・音・タスクバーの数は増やさない）。1 つのトリガーが同じセッションを知らせるのは 10 秒に 1 回まで、全画面のプログラム（vim・less）の描くものは数えない。読めない正規表現・空の行に当たる正規表現・何もしないトリガーは設定を読むときにエラーにする。
+
+### 変更
+
+- mux の取り決めの版を 32 に上げた（知らせにトリガーの印）。前の版のサーバーが動いていれば、Restart its server で入れ替える。
+- `tsumugi-pane` の `ViewOptions` に `highlights` が増え、`Terminal::set_triggers`・`take_triggered`、`Highlight`・`highlight_row`・`rgb` と `regex` の再輸出を足した（filer は `rev` を上げるときに `highlights: &[]` を足す）。
+
 ## [0.73.0] - 2026-10-09
 
 ### 追加

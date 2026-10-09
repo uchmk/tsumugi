@@ -115,10 +115,12 @@ impl Alerts {
         };
         self.next = Some(next.max(self.next.unwrap_or(0)));
         if !looking && teller {
-            for n in fresh.iter().filter(|n| self.rules.notify.has(n.state)) {
+            // A trigger with `notify` asked to be told; the rest by its state.
+            for n in fresh.iter().filter(|n| n.trigger || self.rules.notify.has(n.state)) {
                 let (title, body) = wording(n, places.get(&n.session).map(String::as_str));
                 out.push(Out::Notify { session: n.session, title, body });
             }
+            let fresh: Vec<&Notice> = fresh.into_iter().filter(|n| !n.trigger).collect();
             if fresh.iter().any(|n| self.rules.flash.has(n.state)) {
                 out.push(Out::Flash);
             }
@@ -127,7 +129,7 @@ impl Alerts {
                 out.push(Out::Sound(sounding.iter().any(|n| n.state == State::Error)));
             }
         }
-        let counted: Vec<&Notice> = if looking { Vec::new() } else { notices.iter().filter(heard).filter(|n| !n.read && self.rules.badge.has(n.state)).collect() };
+        let counted: Vec<&Notice> = if looking { Vec::new() } else { notices.iter().filter(heard).filter(|n| !n.read && !n.trigger && self.rules.badge.has(n.state)).collect() };
         let badge = (counted.len(), counted.iter().any(|n| n.state == State::Error));
         if badge != self.badge {
             self.badge = badge;
@@ -149,6 +151,7 @@ fn wording(n: &Notice, place: Option<&str>) -> (String, String) {
     let work = crate::sort::without_spinner(&n.title);
     let who = place.filter(|p| !p.is_empty()).unwrap_or(work);
     let title = match n.state {
+        _ if n.trigger => format!("{who}: a trigger matched"),
         State::Waiting | State::MaybeWaiting => format!("{who} is waiting for you"),
         State::Error => format!("{who} failed"),
         State::Done => format!("{who} is done"),
@@ -542,7 +545,7 @@ mod tests {
     }
 
     fn notice(id: u64, state: State, read: bool) -> Notice {
-        Notice { id, session: 1, state, title: "claude".into(), note: String::new(), at_ms: 0, read }
+        Notice { id, session: 1, state, title: "claude".into(), note: String::new(), at_ms: 0, read, trigger: false }
     }
 
     #[test]
@@ -570,6 +573,24 @@ mod tests {
         assert_eq!(a.decide(&[notice(0, State::Waiting, false)], seen(false, true, &none)), vec![Out::Badge(1, false)]);
         // Looking back clears the number.
         assert_eq!(a.decide(&[notice(0, State::Waiting, false)], seen(true, true, &none)), vec![Out::Badge(0, false)]);
+    }
+
+    #[test]
+    fn a_trigger_is_told_but_neither_flashed_nor_counted() {
+        let mut a = Alerts::default();
+        let none = HashSet::new();
+        a.decide(&[], seen(false, true, &none));
+        a.rules.flash.waiting = true;
+        a.rules.sound.waiting = true;
+        a.rules.notify.waiting = false;
+        let mut n = notice(0, State::Waiting, false);
+        n.trigger = true;
+        n.note = "BUILD FAILED".into();
+        let out = a.decide(&[n.clone()], seen(false, true, &none));
+        assert_eq!(out, vec![Out::Notify { session: 1, title: "claude: a trigger matched".into(), body: "BUILD FAILED".into() }]);
+        // Not while looking at it.
+        n.id = 1;
+        assert_eq!(a.decide(&[n], seen(true, true, &none)), vec![]);
     }
 
     #[test]

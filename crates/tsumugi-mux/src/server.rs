@@ -50,6 +50,9 @@ struct Session {
     /// What each watcher on a slow line (`ToServer::Pace`) has, which its
     /// next update is the change from, and when it was sent.
     slow: BTreeMap<ClientId, Slow>,
+    /// When each trigger last told of a line here, by its place among the
+    /// triggers that tell: a line said again and again is told once a while.
+    told: BTreeMap<usize, std::time::Instant>,
 }
 
 /// A slow watcher's copy of a session's screen.
@@ -700,6 +703,8 @@ struct Rules {
     /// (the rest left default) to take one up again after a restart.
     agent_names: Vec<String>,
     settings: crate::settings::Settings,
+    /// `[[triggers]]` with `notify`, for every session's output.
+    triggers: Option<tsumugi_pane::regex::RegexSet>,
 }
 
 impl Rules {
@@ -709,6 +714,7 @@ impl Rules {
         let stamp = path.and_then(crate::settings::stamp);
         let s = path.and_then(|p| crate::settings::load(p).ok()).unwrap_or_default();
         let agent_names = s.agent_names();
+        let triggers = s.notify_triggers();
         let agents = crate::settings::Settings { agents: s.agents.clone(), ..Default::default() };
         Self {
             stamp,
@@ -726,6 +732,7 @@ impl Rules {
             webhook_after: s.notify.webhook_after.saturating_mul(1000),
             agent_names,
             settings: agents,
+            triggers,
         }
     }
 
@@ -894,7 +901,7 @@ fn spawn_session(
     let watchers: BTreeSet<ClientId> = client.into_iter().collect();
     sessions.insert(
         id,
-        Session { term, info, notice: None, fresh: watchers.clone(), watchers, sent: None, shell, claude: None, pending: None, webhooked: None, screen: None, slow: BTreeMap::new() },
+        Session { term, info, notice: None, fresh: watchers.clone(), watchers, sent: None, shell, claude: None, pending: None, webhooked: None, screen: None, slow: BTreeMap::new(), told: BTreeMap::new() },
     );
     Ok(id)
 }
@@ -991,9 +998,9 @@ fn start_terminal(
     shell: Option<(String, Vec<String>)>,
 ) -> io::Result<Terminal> {
     let dirty = shared.dirty.clone();
-    let (own, scrollback, pane_log) = {
+    let (own, scrollback, pane_log, triggers) = {
         let r = lock(&shared.rules);
-        (r.shell.clone(), r.scrollback, r.pane_log)
+        (r.shell.clone(), r.scrollback, r.pane_log, r.triggers.clone())
     };
     // `[advanced] pane_log`: a file a session beside the state, for bug reports.
     let log = std::env::var_os("TSUMUGI_PTY_LOG").map(PathBuf::from).or_else(|| {
@@ -1012,6 +1019,7 @@ fn start_terminal(
         let _ = dirty.send(id);
     })?;
     term.set_scrollback(scrollback);
+    term.set_triggers(triggers);
     // What a program asking for the colours (OSC 10 / 11) is told: the
     // window's default palette, filer's colours.
     term.set_colors([0xc8, 0xcd, 0xd8], [0x1b, 0x1e, 0x24]);
@@ -1229,7 +1237,47 @@ fn record_notice(shared: &Shared, s: &Session, (was, since): (State, u64)) {
     let id = notices.0;
     notices.0 += 1;
     let title = if s.info.title.is_empty() { s.info.command.clone() } else { s.info.title.clone() };
-    notices.1.push_back(Notice { id, session: s.info.id, state: s.info.state, title, note: s.info.note.clone(), at_ms: now_ms(), read: false });
+    notices.1.push_back(Notice { id, session: s.info.id, state: s.info.state, title, note: s.info.note.clone(), at_ms: now_ms(), read: false, trigger: false });
+    while notices.1.len() > 200 {
+        notices.1.pop_front();
+    }
+    broadcast_notices(shared, &notices.1);
+}
+
+/// How often one trigger tells of a session's lines at most.
+const TRIGGER_GAP: Duration = Duration::from_secs(10);
+
+/// The lines a session's triggers matched, on the bell's list. Not while a
+/// full-screen program runs: it draws the same lines again and again, and
+/// what it shows is not output going past. A trigger that told of this
+/// session in the last `TRIGGER_GAP` waits, so a build printing a
+/// thousand matching lines is one notification.
+fn record_triggered(shared: &Shared, s: &mut Session) {
+    let hits = s.term.take_triggered();
+    if hits.is_empty() || s.term.with_grid(|t| t.mode().contains(tsumugi_pane::alacritty_terminal::term::TermMode::ALT_SCREEN)) {
+        return;
+    }
+    let now = std::time::Instant::now();
+    let mut notices = lock(&shared.notices);
+    let mut any = false;
+    for hit in hits {
+        let fresh: Vec<usize> = hit.rules.iter().copied().filter(|r| s.told.get(r).is_none_or(|at| now.duration_since(*at) >= TRIGGER_GAP)).collect();
+        if fresh.is_empty() {
+            continue;
+        }
+        for r in fresh {
+            s.told.insert(r, now);
+        }
+        let id = notices.0;
+        notices.0 += 1;
+        let title = if s.info.title.is_empty() { s.info.command.clone() } else { s.info.title.clone() };
+        let note: String = hit.line.chars().take(200).collect();
+        notices.1.push_back(Notice { id, session: s.info.id, state: s.info.state, title, note, at_ms: now_ms(), read: false, trigger: true });
+        any = true;
+    }
+    if !any {
+        return;
+    }
     while notices.1.len() > 200 {
         notices.1.pop_front();
     }
@@ -1455,6 +1503,8 @@ fn run_pump(shared: Arc<Shared>, dirty: Receiver<SessionId>) {
                 *rules = Rules::read(shared.settings.as_deref());
                 for (s, was) in sessions.values_mut().zip(was) {
                     changed |= rules.follow(&mut s.info, &was);
+                    s.term.set_triggers(rules.triggers.clone());
+                    s.told.clear();
                 }
             }
             drop(rules);
@@ -1538,6 +1588,7 @@ fn run_pump(shared: Arc<Shared>, dirty: Receiver<SessionId>) {
             if let Some(b) = settled {
                 record_notice(&shared, s, b);
             }
+            record_triggered(&shared, s);
             let changed = (before != (s.info.title.clone(), s.info.cwd.clone())) | settled.is_some();
             if s.term.exited {
                 ended.push(id);

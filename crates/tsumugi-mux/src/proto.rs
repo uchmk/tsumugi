@@ -7,7 +7,7 @@ use tsumugi_pane::Size;
 
 /// Bumped whenever a message changes shape: a client and a server that
 /// disagree say so at `Hello` instead of misreading each other.
-pub const VERSION: u32 = 31;
+pub const VERSION: u32 = 32;
 
 /// A `Hello` with this version asks the server to stop, writing down its
 /// tabs first so the next window can bring them back. `Hello` stays the
@@ -157,6 +157,9 @@ pub struct Notice {
     pub note: String,
     pub at_ms: u64,
     pub read: bool,
+    /// A trigger's (`[[triggers]]` with `notify`): `note` is the line it
+    /// matched, and `state` only what the session was doing then.
+    pub trigger: bool,
 }
 
 /// The scrollback moves `Scroll` can ask for; alacritty's own type is not a

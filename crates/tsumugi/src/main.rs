@@ -1096,6 +1096,8 @@ struct App {
     settings_tx: std::sync::mpsc::Sender<Read>,
     /// The settings as last read, for the settings screen and the clock.
     settings_now: tsumugi_mux::settings::Settings,
+    /// Its triggers that colour, made once when they are read.
+    highlights: Vec<tsumugi_pane::Highlight>,
     /// The settings screen, while it is open (the design's 1m).
     prefs: Option<prefs::Screen>,
     /// The input box below the panes (the design's 12, 1l).
@@ -1405,6 +1407,7 @@ impl App {
             settings: settings_rx,
             settings_tx: settings_tx.clone(),
             settings_now: tsumugi_mux::settings::Settings::default(),
+            highlights: Vec::new(),
             prefs: None,
             input: inputbox::InputBox::with_history(load_history(), prompts::load()),
             key_log: std::env::var_os("TSUMUGI_KEYLOG").is_some(),
@@ -4329,7 +4332,7 @@ impl App {
             });
             if !narrow {
                 let (Some(pane), view) = (self.panes.get_mut(id), self.views.entry(*id).or_default()) else { continue };
-                let opts = ViewOptions { focused, wheel: true, copy_on_select: self.settings_now.general.copy_on_select };
+                let opts = ViewOptions { focused, wheel: true, copy_on_select: self.settings_now.general.copy_on_select, highlights: &self.highlights };
                 if self.transparent && rect.bottom() < card.bottom() {
                     // Round the input box: the window's colour, as when solid.
                     let below = egui::Rect::from_min_max(egui::pos2(card.left(), rect.bottom()), card.max);
@@ -5021,6 +5024,7 @@ impl App {
                         }
                         let shell_changed = s.shell.program != self.settings_now.shell.program;
                         self.settings_now = s.clone();
+                        self.highlights = s.highlights();
                         price::set(&s.prices);
                         facts_again |= shell_changed && self.prefs.is_some();
                         self.alerts.rules = alert::Rules::from(&s.notify);

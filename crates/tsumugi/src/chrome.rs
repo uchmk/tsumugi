@@ -1165,6 +1165,7 @@ pub fn bell_list(ctx: &egui::Context, pal: &Palette, at: egui::Pos2, notices: &[
                             p.circle_filled(dot, 4.0, state_color(n.state));
                         }
                         let word = match n.state {
+                            _ if n.trigger => "trigger",
                             State::Waiting => "waiting",
                             State::Error => "error",
                             _ => "finished",
