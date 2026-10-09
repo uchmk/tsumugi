@@ -75,9 +75,11 @@ confirmed, writes it and says yes: Claude Code runs that exact command without
 asking from then on. The same
 panel's other page, **Recently closed** (also in the search box), keeps the
 last 30 sessions that ended -- when, how, the tokens its conversation used,
-and the last 12 lines on its screen -- with **Resume** (Claude Code's
-conversation again, in a new tab in its folder) or **Start again**. The list
-is `closed-sessions.json` beside the state file.
+and the last lines on its screen, all 12 for the one picked and two for the
+rest. `Up` / `Down` pick one, `Enter` (or a double click) resumes it (Claude
+Code's conversation again, in a new tab in its folder) or starts it again,
+and `Delete` takes it off the list. The list is `closed-sessions.json` beside
+the state file.
 
 A tab's right-click menu has **Note…**: a line of your own (what the tab is
 for), shown in quotation marks on its card and kept across restarts.

@@ -5,6 +5,15 @@
 
 ## [未リリース]
 
+## [0.76.8] - 2026-10-10
+
+### 変更
+
+- All sessions の Recently closed をキーボードで使えるようにした。`↑` / `↓` で選び、`Enter`（またはダブルクリック）で再開
+  （Claude Code は会話の続き）、`Delete` で一覧から外す。最後の出力はボタンを押さずに常に出す（選んだものは全部の行、ほかは最後の 2 行）。
+  **Last output** / **Resume** / **Start again** / `×` のボタンはなくし、選んだものの下に Copy・Save・Take off the list を出す。
+- `scripts/merge-lanes.py` を filer v0.86.11 と同じ中身にした（tsumugi での動きは同じ。報告の `### Votes` も TODO.md に写すようになった）。
+
 ## [0.76.7] - 2026-10-10
 
 ### 変更

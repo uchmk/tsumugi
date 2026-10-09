@@ -31,12 +31,13 @@ Anything else is left alone. A rule that fails, a red check or a conflict
 gets one comment per head (a hidden marker keeps it from repeating), which
 the merge routine reads (.claude/merge-routine.md).
 
-Where RULES says `share` (tsumugi), it also does the merger's share for lane
-pull requests merged in the last 7 days whose `#N` is not in CHANGELOG.md:
-a PATCH bump (Cargo.toml and Cargo.lock), a CHANGELOG line per pull request,
-the ticked rows out of the role's re-test list, and the reports' proposals
-and queue notes into TODO.md. Where it does not (filer, whose lane queue is
-prose), the merge routine does the share.
+It also does the merger's share for lane pull requests merged in the last 7
+days whose `#N` is not in CHANGELOG.md: a PATCH bump (Cargo.toml and
+Cargo.lock), a CHANGELOG line per pull request, and the reports' proposals,
+queue notes and votes into TODO.md. In tsumugi it also takes the ticked rows
+out of the role's re-test list. In filer, whose lane queue is prose, the
+TODO.md lines carry `【後】` and one more line per pull request asks for its
+report to be read: the merge routine sorts them once a day.
 
 It reads the pull request through the API and git, never runs its code, and
 runs only main's copy of this script.
@@ -88,9 +89,15 @@ RULES = {
         "evidence_in_report": False,
         "required_checks": ["checklists"],
         "hold_heading": "マージで止めている実機の PR",
-        # the lane's queue is prose in .claude/windows-role.md: the routine
-        # updates it, so the share stays with the routine
-        "share": None,
+        # the lane's queue is prose in .claude/windows-role.md, so the role is
+        # left alone; the lines wait for the merge routine to sort them
+        "share": {
+            "role": None,
+            "todo_heading": "実機のレーンから",
+            "todo_mark": "【後】",
+            "review_line": True,
+            "dispatch": ["ci.yml"],
+        },
     },
     "uchmk/tsumugi": {
         "lanes": {"test/win-": TSUMUGI_WINDOWS_MARKS, "test/arm-": TSUMUGI_WINDOWS_MARKS},
@@ -101,6 +108,8 @@ RULES = {
         "share": {
             "role": ".claude/windows-role.md",
             "todo_heading": "実機のレーンから",
+            "todo_mark": "",
+            "review_line": False,
             # a push with the workflow's token starts no workflows, except these
             "dispatch": ["ci.yml", "checklists.yml"],
         },
@@ -666,14 +675,18 @@ def share_once(rules, share, base, since):
             (done if f"- [{mark}] {rest}" in read(path).split("\n") else dropped).append((path, mark, rid))
         lines.append(changelog_line(n, MACHINES[lane], done, dropped))
         retested.update(rid for path, _, rid in done if path == "TESTING-CHECKS.md")
+        mark = share["todo_mark"]
+        if share["review_line"]:
+            where = "、".join(name for name, _ in reports) or "PR 本文"
+            todo_lines.append(f"- [ ] （実機 #{n}）報告の所見と印の証拠を読み、振り分ける（{where}）{mark}")
         seen = set()
         for where, text in reports + \
                 [("PR 本文", pr.get("body") or "")]:
-            for kind, name in [("", "Proposals"), ("・キュー", "Queue")]:
+            for kind, name in [("", "Proposals"), ("・キュー", "Queue"), ("・票", "Votes")]:
                 for item in section_items(text, name):
                     if item not in seen:
                         seen.add(item)
-                        todo_lines.append(f"- [ ] （実機 #{n}{kind}）{item}（{where}）")
+                        todo_lines.append(f"- [ ] （実機 #{n}{kind}）{item}（{where}）{mark}")
     cargo = read("Cargo.toml")
     m = re.search(r'^version = "(\d+\.\d+\.\d+)"', cargo, re.M)
     old = m.group(1)
@@ -685,7 +698,7 @@ def share_once(rules, share, base, since):
     write("Cargo.lock", lock)
     today = datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=9))).strftime("%Y-%m-%d")
     write("CHANGELOG.md", add_changelog(changelog, new, today, lines))
-    if retested:
+    if retested and share["role"]:
         write(share["role"], drop_retests(read(share["role"]), retested))
     if todo_lines:
         write("TODO.md", todo_add(read("TODO.md"), share["todo_heading"], todo_lines))
@@ -693,13 +706,15 @@ def share_once(rules, share, base, since):
     which = ", ".join(f"#{pr['number']} ({MACHINES[lane]})" for pr, lane in prs)
     msg = (f"v{new}: Merge real-machine checks from {numbers}\n\n"
            f"Record the real-machine lane runs merged from {which}: the rows they checked are listed"
-           " in the changelog, the re-test list drops them, and their reports' proposals and queue"
-           " notes are listed in TODO.md for an interactive session.")
+           " in the changelog" + (", the re-test list drops them," if share["role"] else "") +
+           " and their reports' proposals, queue notes and votes are listed in TODO.md"
+           + (" for the merge routine to sort." if share["review_line"] else " for an interactive session."))
     if DRY:
         print(f"(dry run) would commit:\n{msg}\n" + "\n".join(lines + todo_lines))
         git("checkout", "-q", "--force", "--detach", f"origin/{base}")
         return [pr for pr, _ in prs], None
-    git("add", "-A", "--", "Cargo.toml", "Cargo.lock", "CHANGELOG.md", share["role"], "TODO.md")
+    git("add", "-A", "--", "Cargo.toml", "Cargo.lock", "CHANGELOG.md", "TODO.md",
+        *([share["role"]] if share["role"] else []))
     git(*BOT, "commit", "-q", "-m", msg)
     p = git("push", "-q", "origin", f"HEAD:refs/heads/{base}", check=False)
     if p.returncode != 0:
