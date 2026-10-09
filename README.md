@@ -295,10 +295,11 @@ notify = true
 
 `Ctrl+Shift+F` (`Cmd+F`) **finds in the pane**: a bar at its top right finds
 what is typed as plain text, from the newest line back, and selects it on
-screen (ignoring case unless the text has a capital). `Enter` or **↑** goes on
-to the older match, `Shift+Enter` or **↓** to the newer; it says when it ran
-off the end and started again, or that nothing matched. `Esc` or **×** closes
-it; no key typed in it reaches the shell.
+screen (ignoring case unless the text has a capital). `Enter` or **↓** goes
+down to the newer match, `Shift+Enter` or **↑** up to the older; it says when
+it ran off the end and started again, or that nothing matched. The match stays
+selected: `Ctrl+Shift+C` copies it. `Esc` or **×** closes it; no key typed in
+it reaches the shell.
 
 A **paste is asked about** before it goes when it could run more than was
 meant: several lines into a program that did not ask for bracketed paste
@@ -311,7 +312,9 @@ are switches in Settings → General → Copy and paste (`warn_multiline_paste`,
 `Ctrl+Shift+O` (`Cmd+Shift+O`) shows **All sessions**: every session on one
 page, those waiting for you first, then errors, running and done, each with
 its state, folder and branch, tags, tokens and its last two lines. The arrows
-and `Enter`, or a click, go to one.
+and `Enter`, or a click, go to one. It takes most of the window. `Ctrl+Tab` /
+`Ctrl+Shift+Tab` (or `Ctrl+PageDown` / `Ctrl+PageUp`, or `Right` / `Left`) turn
+to **Waiting** and **Recently closed** and back.
 
 ### The status bar
 
@@ -433,9 +436,11 @@ The box and the bell beside it stay in the middle of the window; the band
 also shows the tags of the session with the keys at its right, `[tags]
 shown` of them (3) and `+N` for the rest, fewer when the window narrows.
 
-`F1` (or **Keys** in the search) shows every key and what it does on one
-screen, by kind in two or three columns, the keys as the settings have
-them now; `F1` or `Esc` closes it.
+`F1` (or **Keys** in the search) shows every key and what it does in the
+middle of the window, by kind in columns, the keys as the settings have
+them now. It fits without scrolling: when it would run over, it takes another
+column, then smaller letters, and only scrolls on a very small window. `F1` or
+`Esc` closes it.
 
 Three letters or more also search every session's scrollback: the lines
 found come last, under IN THE SCROLLBACK, and picking one goes to its

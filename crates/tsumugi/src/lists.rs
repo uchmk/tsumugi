@@ -9,6 +9,9 @@
 //!   screen is answered; one with no "Yes" (or "No") choice is left alone.
 //! - **Recently closed**: the sessions that ended (`history.rs`), with the
 //!   tokens they used and their last lines, to start again where they were.
+//!
+//! Ctrl+Tab and Ctrl+PageDown go to the next page, with Shift or PageUp to
+//! the one before, as on the settings screen; Left and Right as well.
 
 use std::collections::HashSet;
 
@@ -145,13 +148,20 @@ pub fn show(ctx: &egui::Context, view: &mut View, all: &[Card], count: usize, ro
     if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
         out.push(Do::Close);
     }
-    let width = (screen.width() - 32.0).clamp(280.0, 640.0);
-    egui::Area::new(egui::Id::new("lists")).order(egui::Order::Foreground).anchor(egui::Align2::CENTER_TOP, egui::vec2(0.0, 60.0)).show(ctx, |ui| {
+    let (next, back) = ctx.input_mut(turn);
+    if next || back {
+        view.page = step(view.page, next);
+    }
+    // Most of the window: at 640 wide, and held to the area's first frame of
+    // 400 tall, the list showed one session at a time (the owner,
+    // 2026-10-10). The scroll areas' `min_scrolled_height` lets it grow.
+    let width = (screen.width() - 32.0).clamp(280.0, 960.0);
+    egui::Area::new(egui::Id::new("lists")).order(egui::Order::Foreground).anchor(egui::Align2::CENTER_TOP, egui::vec2(0.0, 24.0)).show(ctx, |ui| {
         egui::Frame::NONE.fill(c.panel).stroke(egui::Stroke::new(1.0, c.border_strong())).corner_radius(12.0).inner_margin(egui::Margin::symmetric(18, 14)).show(ui, |ui| {
             ui.set_width(width);
             ui.horizontal(|ui| {
                 for (page, title) in [(Page::All, format!("All sessions · {count}")), (Page::Waiting, format!("Waiting · {}", rows.len())), (Page::Closed, format!("Recently closed · {}", closed.len()))] {
-                    if ui.selectable_label(view.page == page, RichText::new(title).size(14.0).strong()).clicked() {
+                    if ui.selectable_label(view.page == page, RichText::new(title).size(14.0).strong()).on_hover_text("Ctrl+Tab / Ctrl+Shift+Tab, or Left / Right: the page beside it").clicked() {
                         view.page = page;
                     }
                 }
@@ -159,10 +169,13 @@ pub fn show(ctx: &egui::Context, view: &mut View, all: &[Card], count: usize, ro
                     if ui.button("×").on_hover_text("Close (Esc)").clicked() {
                         out.push(Do::Close);
                     }
+                    ui.label(RichText::new("Ctrl+Tab: next page").size(11.5).color(c.dim));
                 });
             });
             ui.separator();
-            let max = (screen.height() - 220.0).max(160.0);
+            // The window less the panel's own top, title and margins, and
+            // Waiting's row of buttons.
+            let max = (screen.height() - if view.page == Page::Waiting { 170.0 } else { 120.0 }).max(160.0);
             match view.page {
                 Page::All => overview(ui, view, all, c, max, &mut out),
                 Page::Waiting => waiting(ui, view, rows, c, max, &mut out),
@@ -173,6 +186,21 @@ pub fn show(ctx: &egui::Context, view: &mut View, all: &[Card], count: usize, ro
     out
 }
 
+/// The keys that turn the page: (next, before).
+fn turn(i: &mut egui::InputState) -> (bool, bool) {
+    let ctrl = egui::Modifiers::CTRL;
+    let back = i.consume_key(ctrl | egui::Modifiers::SHIFT, egui::Key::Tab) || i.consume_key(ctrl, egui::Key::PageUp) || i.consume_key(egui::Modifiers::NONE, egui::Key::ArrowLeft);
+    let next = i.consume_key(ctrl, egui::Key::Tab) || i.consume_key(ctrl, egui::Key::PageDown) || i.consume_key(egui::Modifiers::NONE, egui::Key::ArrowRight);
+    (next, back)
+}
+
+/// The page after `page` (or before it), round the three.
+pub fn step(page: Page, next: bool) -> Page {
+    const ALL: [Page; 3] = [Page::All, Page::Waiting, Page::Closed];
+    let k = ALL.iter().position(|p| *p == page).unwrap_or(0);
+    ALL[if next { (k + 1) % 3 } else { (k + 2) % 3 }]
+}
+
 fn waiting(ui: &mut egui::Ui, view: &mut View, rows: &[Row], c: &Colors, max: f32, out: &mut Vec<Do>) {
     view.off.retain(|id| rows.iter().any(|r| r.id == *id));
     if rows.is_empty() {
@@ -181,7 +209,7 @@ fn waiting(ui: &mut egui::Ui, view: &mut View, rows: &[Row], c: &Colors, max: f3
         ui.add_space(12.0);
         return;
     }
-    egui::ScrollArea::vertical().max_height(max).auto_shrink([false, true]).show(ui, |ui| {
+    egui::ScrollArea::vertical().max_height(max).min_scrolled_height(max).auto_shrink([false, true]).show(ui, |ui| {
         for r in rows {
             ui.horizontal(|ui| {
                 let mut on = !view.off.contains(&r.id);
@@ -285,7 +313,7 @@ fn overview(ui: &mut egui::Ui, view: &mut View, all: &[Card], c: &Colors, max: f
     if enter {
         out.push(Do::Go(all[view.picked].id));
     }
-    egui::ScrollArea::vertical().max_height(max).auto_shrink([false, true]).show(ui, |ui| {
+    egui::ScrollArea::vertical().max_height(max).min_scrolled_height(max).auto_shrink([false, true]).show(ui, |ui| {
         for (k, s) in all.iter().enumerate() {
             let picked = k == view.picked;
             let frame = egui::Frame::NONE.fill(if picked { c.hover() } else { egui::Color32::TRANSPARENT }).corner_radius(8.0).inner_margin(egui::Margin::symmetric(8, 6));
@@ -325,7 +353,7 @@ fn history(ui: &mut egui::Ui, view: &mut View, closed: &[Closed], c: &Colors, ma
         ui.add_space(12.0);
         return;
     }
-    egui::ScrollArea::vertical().max_height(max).auto_shrink([false, true]).show(ui, |ui| {
+    egui::ScrollArea::vertical().max_height(max).min_scrolled_height(max).auto_shrink([false, true]).show(ui, |ui| {
         for (k, s) in closed.iter().enumerate() {
             let name = crate::sort::display_title(&s.title, &s.command);
             let folder = s.cwd.file_name().map_or_else(|| s.cwd.display().to_string(), |f| f.to_string_lossy().into_owned());
@@ -410,6 +438,15 @@ fn ended_words(ms: u64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_keys_turn_the_pages_round() {
+        assert_eq!(step(Page::All, true), Page::Waiting);
+        assert_eq!(step(Page::Waiting, true), Page::Closed);
+        assert_eq!(step(Page::Closed, true), Page::All);
+        assert_eq!(step(Page::All, false), Page::Closed);
+        assert_eq!(step(Page::Waiting, false), Page::All);
+    }
 
     fn row(id: SessionId, texts: &[&str]) -> Row {
         let choices = texts.iter().enumerate().map(|(k, t)| Choice { key: char::from_digit(k as u32 + 1, 10).unwrap(), text: t.to_string() }).collect();

@@ -1657,7 +1657,7 @@ impl App {
                 Some(bar) if bar.id == w.focus => bar.focus = true,
                 _ => self.find = Some(find::Bar::new(w.focus)),
             },
-            keys::Action::Help => self.help = if self.help.is_some() { None } else { Some(help::View { opening: true }) },
+            keys::Action::Help => self.help = if self.help.is_some() { None } else { Some(help::View::new()) },
             keys::Action::Overview => {
                 self.lists = match &self.lists {
                     Some(v) if v.page == lists::Page::All => None,

@@ -1,6 +1,7 @@
 //! Find in the pane (`Ctrl+Shift+F`, Windows Terminal's): a bar at the top
 //! right of the pane with the keys. Typing finds from the newest line back;
-//! Enter goes on to the older match, Shift+Enter to the newer, Esc closes.
+//! Enter goes down to the newer match, Shift+Enter up to the older (as in an
+//! editor or a browser, the owner 2026-10-10), Esc closes.
 //! The server finds and selects; this only asks and shows its answer.
 
 use egui::RichText;
@@ -48,8 +49,9 @@ pub enum Ask {
     Close,
 }
 
-/// The asks for a frame's keys and text: `step` is Enter (`Some(false)`
-/// with Shift), the buttons the same; `close` Esc or ×.
+/// The asks for a frame's keys and text: `step` is `Some(true)` for the
+/// older match (Shift+Enter, ↑), `Some(false)` the newer (Enter, ↓); `close`
+/// Esc or ×.
 pub fn asks(bar: &mut Bar, step: Option<bool>, close: bool) -> Vec<Ask> {
     if close {
         return vec![Ask::Close];
@@ -81,9 +83,9 @@ pub fn show(ctx: &egui::Context, pane: egui::Rect, bar: &mut Bar, c: &Colors) ->
     if bar.keyed {
         ctx.input_mut(|i| {
             if i.consume_key(egui::Modifiers::SHIFT, egui::Key::Enter) {
-                step = Some(false);
-            } else if i.consume_key(egui::Modifiers::NONE, egui::Key::Enter) {
                 step = Some(true);
+            } else if i.consume_key(egui::Modifiers::NONE, egui::Key::Enter) {
+                step = Some(false);
             }
             close = i.consume_key(egui::Modifiers::NONE, egui::Key::Escape);
         });
@@ -108,10 +110,10 @@ pub fn show(ctx: &egui::Context, pane: egui::Rect, bar: &mut Bar, c: &Colors) ->
                 }
                 bar.keyed = field.has_focus() || ctx.memory(|m| m.has_focus(field_id));
                 ui.add_sized(egui::vec2(96.0, 18.0), egui::Label::new(words.size(11.5)).truncate());
-                if ui.small_button("↑").on_hover_text("Older match (Enter)").clicked() {
+                if ui.small_button("↑").on_hover_text("Older match (Shift+Enter)").clicked() {
                     step = Some(true);
                 }
-                if ui.small_button("↓").on_hover_text("Newer match (Shift+Enter)").clicked() {
+                if ui.small_button("↓").on_hover_text("Newer match (Enter)").clicked() {
                     step = Some(false);
                 }
                 if ui.small_button("×").on_hover_text("Close (Esc)").clicked() {
@@ -162,8 +164,8 @@ mod tests {
         };
         assert_eq!(frame(&ctx, &mut bar, vec![]).len(), 2, "the typed text is asked for");
         let key = |key, shift| egui::Event::Key { key, physical_key: None, pressed: true, repeat: false, modifiers: if shift { egui::Modifiers::SHIFT } else { egui::Modifiers::NONE } };
-        assert_eq!(frame(&ctx, &mut bar, vec![key(egui::Key::Enter, false)]), [Ask::Find { needle: "x".into(), back: true }]);
-        assert_eq!(frame(&ctx, &mut bar, vec![key(egui::Key::Enter, true)]), [Ask::Find { needle: "x".into(), back: false }]);
+        assert_eq!(frame(&ctx, &mut bar, vec![key(egui::Key::Enter, false)]), [Ask::Find { needle: "x".into(), back: false }], "Enter: down, newer");
+        assert_eq!(frame(&ctx, &mut bar, vec![key(egui::Key::Enter, true)]), [Ask::Find { needle: "x".into(), back: true }], "Shift+Enter: up, older");
         assert!(ctx.memory(|m| m.has_focus(egui::Id::new(("find-field", 7_u64)))), "the field keeps the keys");
         assert_eq!(frame(&ctx, &mut bar, vec![key(egui::Key::Escape, false)]), [Ask::Close]);
     }
