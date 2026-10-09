@@ -230,6 +230,12 @@ do) is told `ESC[I` when its pane gets the keys and `ESC[O` when it loses
 them: another pane or tab chosen, or the window sent to the back. vim uses it
 to reread files changed meanwhile.
 
+Asked **what terminal** it is, a pane says so: `ESC[>q` (XTVERSION) is
+answered `tsumugi X.Y.Z`, the device attributes (`ESC[c`) name a VT220 that
+draws sixel pictures, and `ESC[?…$p` (DECRQM) says whether a mode is on, off
+or unknown. A **synchronized update** (`ESC[?2026h` … `ESC[?2026l`, as
+Claude Code, nvim and helix send) is drawn whole, never half way.
+
 `Ctrl+Shift+F` (`Cmd+F`) **finds in the pane**: a bar at its top right finds
 what is typed as plain text, from the newest line back, and selects it on
 screen (ignoring case unless the text has a capital). `Enter` or **↑** goes on
