@@ -44,9 +44,9 @@ $keys = @'
 - [ ] `F2` rename
 '@
 $role = @'
-| Section | Why |
-| --- | --- |
-| **Re-tests of changed behaviour** | 2.4, 1.3 |
+| Chunk | Up to | Notes |
+| --- | --- | --- |
+| **Re-tests of changed behaviour** | 15 rows | The rows named here, still `[ ]`: 2.4, 1.3 |
 '@
 $none = '| **Re-tests of changed behaviour** | none yet |'
 

@@ -9,6 +9,8 @@ on:
     paths: ['TESTING*.md', 'crates/tsumugi/src/keys.rs', 'crates/tsumugi/examples/**', '.github/workflows/checklists.yml']
   pull_request:
     paths: ['TESTING*.md', 'crates/tsumugi/src/keys.rs', 'crates/tsumugi/examples/**', '.github/workflows/checklists.yml']
+  # Merge lanes starts it after its share (see ci.yml)
+  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}

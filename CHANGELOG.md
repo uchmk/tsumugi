@@ -5,6 +5,24 @@
 
 ## [未リリース]
 
+## [0.76.6] - 2026-10-10
+
+### 変更
+
+- ワークフロー `Merge lanes` が、チェック表（TESTING-CHECKS.md・TESTING-KEYS.md）だけでぶつかった実機の PR を自分でマージするようにした。
+  main の表に PR の印を入れ直し（main が文言を変えた行の印は入れず、PR にコメントで名前を出す）、印と新しい報告だけの差分であることを
+  確かめてから main に push する。ぶつかった PR ではチェックが走らないので、赤でなければ緑を待たない。
+- 同じワークフローが、マージ済みで CHANGELOG に `#N` の無い実機の PR の分け前もするようにした。PATCH を上げ（Cargo.toml と Cargo.lock）、
+  CHANGELOG に PR ごとの 1 行（印から作る）、`.claude/windows-role.md` の再テストの列から印の付いた行を抜き、報告の `### Proposals` と
+  `## Queue` を TODO.md の「実機のレーンから」に積んで main に push し、CI と Checklists を `workflow_dispatch` で起こす
+  （ワークフローのトークンの push では他のワークフローが動かないため。両方に `workflow_dispatch` を足した）。
+  マージの Routine（`.claude/merge-routine.md`）はマージも分け前もせず、ワークフローが止めた PR だけを扱う。
+
+### 修正
+
+- `scripts/wintest-queue.ps1` が再テストの行の id を表の 2 列目（「15 rows」）から読んでいて、再テストを 1 度も選んでいなかった。
+  名前の列より後ろのすべての列から読むようにし、`scripts/check-ps1.ps1` の例を実際の 3 列の表にした。
+
 ## [0.76.5] - 2026-10-10
 
 ### 変更
