@@ -9,7 +9,7 @@ tsumugi のやること。`【人】` は持ち主の作業、`【金】` は 20
       スクリプトの冒頭のとおりタスク スケジューラに毎時 :50 で登録する。役割は `.claude/windows-role.md`、チェック表は TESTING-CHECKS.md（303 行）と
       TESTING-KEYS.md（77 個）。CLI とサーバの行は `tests/cli.rs` で CI に移した（TESTING.md の「Covered by tests」）。
   - [ ] 【人】ARM64 のノート PC も使うなら `-Lane arm`（`C:\dev\tsumugi-armtest`、タスク名 `tsumugi-auto-wintest-arm`）。
-  - [x] （v0.74.4、クラウドのマージの Routine が毎時 :40 にマージする）実機の PR（`test/win-*`・`test/arm-*`）をマージする側を決める。
+  - [x] （v0.74.4、クラウドのマージの Routine が毎時 :40 にマージする。手順は v0.74.5 の `.claude/merge-routine.md`）実機の PR（`test/win-*`・`test/arm-*`）をマージする側を決める。
   - [ ] 【実機】最初の 3 回の実行時間（`auto-wintest.log` の開始と終了）と使用量の増え方を見て、1 回 1 塊の目安をここに書く。
 - [x] （filer v0.79.0 で `rev` を `fc88385`（v0.65.1）に上げた。それ以後 v0.68.0 まで `crates/tsumugi-pane` は変わっていない）【金】filer の `tsumugi-pane` の `rev` を上げる。filer の `Cargo.toml` の `rev` は `d2405616` のままで、それ以後のペインの直し
       （ペインごとの文字コード `Charset` と `encoding_rs`、`all_text`、`sys` のプロセスとポートの検出、`Terminal::shell_pid()` など）が filer に届いていない。
@@ -20,6 +20,12 @@ tsumugi のやること。`【人】` は持ち主の作業、`【金】` は 20
 - [x] （v0.68.4 で README に載せた。紹介画像も持ち主が上げた）【人】README の画像を撮る。`docs/images/` に `split.png`・`claude.png`・`tsumugi.gif` を置く（何を写すかと大きさは `docs/images/README.md`）。
       置いたら対話のセッションが README の冒頭に載せる。紹介画像 `docs/social-preview.png` は Settings → General → Social preview から上げる（API が無い）。
 - [x] 最初のリリースを切る。v0.52.0 を 2026-10-07 に出した（6 つの成果物と SHA-256 の表が揃った。run 37577264990）。
+
+## 実機のレーンから
+
+マージの Routine（`.claude/merge-routine.md`）が、実機の PR の `### Proposals`・見つけた不具合・`## Queue` の頼みをここに積む。対話のセッションが拾う。
+
+- いまは無い。
 
 ## ほかのターミナルにあるもの（2026-10-08、持ち主の依頼で全部取り込む）
 
