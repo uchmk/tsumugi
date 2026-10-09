@@ -1143,18 +1143,19 @@ impl TagRule {
             Some(rest) => home?.join(rest.trim_start_matches(['/', '\\'])),
             None => PathBuf::from(&self.folder),
         };
-        let mut want: Vec<String> = parts(&folder);
-        let any_child = want.last().is_some_and(|p| p == "*");
-        if any_child {
-            want.pop();
-        }
+        let any_child = folder.file_name().is_some_and(|n| n == "*");
+        // Both in their long form: Windows can spell one folder two ways
+        // (`C:\Users\RUNNER~1` from `TEMP`, `runneradmin` from the shell).
+        let base = long_name(if any_child { folder.parent().unwrap_or(&folder) } else { &folder });
+        let want = parts(&base);
+        let cwd = &long_name(cwd);
         let have = parts(cwd);
         if have.len() < want.len() + usize::from(any_child) || have[..want.len()] != want[..] {
             return None;
         }
         let tag = if any_child {
             // The name as the folder spells it, not as compared.
-            let name = cwd.components().filter(|c| matches!(c, Component::Normal(_))).nth(normal_count(&folder) - 1)?;
+            let name = cwd.components().filter(|c| matches!(c, Component::Normal(_))).nth(normal_count(&base))?;
             self.tag.replace("{name}", &name.as_os_str().to_string_lossy())
         } else {
             self.tag.clone()
@@ -1195,7 +1196,38 @@ fn parts(p: &Path) -> Vec<String> {
         .collect()
 }
 
-/// How many plain names `p` has (the `*` among them).
+/// `p` with any 8.3 short name in it (`RUNNER~1`) spelt out in full, so
+/// that two spellings of one folder compare equal. As it was when it is
+/// not there or has none.
+#[cfg(windows)]
+fn long_name(p: &Path) -> PathBuf {
+    use std::os::windows::ffi::{OsStrExt, OsStringExt};
+    use windows::Win32::Storage::FileSystem::GetLongPathNameW;
+    if !p.as_os_str().to_string_lossy().contains('~') {
+        return p.to_path_buf();
+    }
+    let wide: Vec<u16> = p.as_os_str().encode_wide().chain([0]).collect();
+    let at = windows::core::PCWSTR(wide.as_ptr());
+    // SAFETY: `wide` is NUL-terminated and outlives both calls; the second
+    // writes at most `buf.len()` units.
+    let need = unsafe { GetLongPathNameW(at, None) } as usize;
+    if need == 0 {
+        return p.to_path_buf();
+    }
+    let mut buf = vec![0u16; need];
+    let len = unsafe { GetLongPathNameW(at, Some(&mut buf)) } as usize;
+    if len == 0 || len >= buf.len() {
+        return p.to_path_buf();
+    }
+    PathBuf::from(std::ffi::OsString::from_wide(&buf[..len]))
+}
+
+#[cfg(not(windows))]
+fn long_name(p: &Path) -> PathBuf {
+    p.to_path_buf()
+}
+
+/// How many plain names `p` has.
 fn normal_count(p: &Path) -> usize {
     p.components().filter(|c| matches!(c, Component::Normal(_))).count()
 }

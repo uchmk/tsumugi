@@ -1,33 +1,32 @@
-# 引き継ぎ（2026-10-09 時点）
+# 引き継ぎ（2026-10-10 時点）
 
 会話を `/clear` する前に書いた、進み具合と次の手順。細かいやることは [TODO.md](../TODO.md)、変わったことは [CHANGELOG.md](../CHANGELOG.md)。
 
 ## 今どこか
 
-- 版は **v0.75.2**（`main`）。最後のリリースは **v0.52.0**（2026-10-07）のままで、それ以後の v0.53〜v0.75 はまだ出していない。
-- v1 の範囲（[v1-scope.md](v1-scope.md)）の機能は出そろい、TODO.md の「ほかのターミナルにあるもの」その 1・その 2 も「後で」の 3 行を除いて済み
-  （v0.69.0〜v0.74.3: 下線と取り消し線、DECSET 1004、DA・XTVERSION、kitty のキーボードの取り決め、quick-select、選んだらコピー・矩形選択・PRIMARY、トリガー）。
-- **LLM との連携**（filer の QUESTIONS.md Q95・Q96、持ち主の回答はどちらも 1、計画は filer の `docs/llm-integration.md`）:
-  - v0.75.0 で `tsumugi mcp`（道具 `tsumugi_sessions` / `tsumugi_screen`、読むだけ）と共有のクレート `tsumugi-ipc`（口: Unix のソケット /
-    Windows の名前付きパイプと枠）・`tsumugi-mcp`（JSON-RPC を `serde_json` だけで手書き、`tokio` 無し）を入れた。サーバーの口は `tsumugi-mux` から `tsumugi-ipc` に移しただけで動きは同じ。
-  - filer v0.85.0 が同じクレートで `filer mcp`（`filer_state` / `filer_reveal`）を足した。filer は `tsumugi-ipc` と `tsumugi-mcp` を `rev = 8139010…`（v0.75.0）で読む。
-  - 文字で確かめられる半分は `tests/cli.rs` の `mcp_lists_sessions_and_reads_a_screen`。実機の行は TESTING.md 18.10（filer は 50 節）。
-- **Windows 実機のテストは 2026-10-09 に始まった。** TESTING-CHECKS.md は 304 行中 7 行、TESTING-KEYS.md は 77 個中 19 個が `[x]`。
-  実機の PR（`test/win-*`・`test/arm-*`）はクラウドのマージの Routine（毎時 :40、[.claude/merge-routine.md](../.claude/merge-routine.md)）がマージし、PATCH と CHANGELOG を上げる。
+- 版は **v0.76.1**（`main`）。最後に出たリリースは **v0.52.0**（2026-10-07）。v0.76.0 の `release.yml` は Windows の Test で落ちた
+  （下の CI の赤）。v0.76.1 で直したので、CI が緑になったら `tag` に `v0.76.1` を渡して投げ直す。
+- **Windows の CI は v0.55.0（run #97）から赤だった。**`tsumugi-mux` の `a_restart_brings_the_tabs_back` と `folder_rules_tag_sessions` の 2 件だけ。
+  ランナーの `TEMP` が 8.3 の短い名前（`C:\Users\RUNNER~1`）で、シェルが報告するフォルダは長い名前（`runneradmin`）なので、タグのルールのフォルダが合わなかった。
+  v0.76.1 で `TagRule::tag_for` が両方を `GetLongPathNameW` で長い名前にしてから比べる（利用者の `TEMP` も同じ形になりうるので、テストだけの話ではない）。
+  もう 1 件は `claude --resume …` の行がプロンプトの長さで折り返していただけ（テストを直した）。
+- v1 の範囲（[v1-scope.md](v1-scope.md)）の機能は出そろい、TODO.md の「ほかのターミナルにあるもの」も「後で」の 3 行を除いて済み。
+- **実機のレーンは x64（2026-10-09）と ARM64（2026-10-10）の両方が回っている。**v0.76.0 で最初の実行の不具合を直した
+  （仕切りのドラッグが戻る、ConPTY で Ctrl+C が止めない、Shift+Enter の CSI-u、CSI 16 t、pwsh / Starship のプロンプトの印、MSYS のパス、Ctrl+Shift+- など）。
+  直した行は `.claude/windows-role.md` の「Re-tests of changed behaviour」に積んである。残りは TODO.md の `【実機】` 2 行（2.52 の PTY ログ、JIS の `Ctrl+=`）。
+- **filer は v0.86.0 で `tsumugi-pane` / `tsumugi-layout` / `tsumugi-ipc` / `tsumugi-mcp` を全部 `085c421`（v0.76.0）に揃えた。**
+  filer 側は `chords_back`（Ctrl+Shift+C / X）・素の `\x03`・Shift+Enter の CSI-u を合わせ、ペインの節（1・19・29・40・49）を両方のレーンの再テストに積んだ。
+- **LLM との連携**（計画は filer の `docs/llm-integration.md`）: 段 1〜4 は済み（filer の 50 節は x64 #303・ARM64 #302 で通った）。
+  tsumugi の TESTING.md 18.10（`tsumugi mcp` を Claude Code に登録して呼ぶ）はまだ `[ ]` で、x64 のレーンの節の順（1 → 18）で回ってくる。
+  段 5（書く道具。窓の確認の箱つき）は filer の QUESTIONS.md **Q97** で持ち主に聞いている（推奨は 1: filer のファイル操作とセッションへの入力、1 回ごとの確認の箱）。
 
 ## 次の手順
 
-1. **実機が見つけた不具合を直す**（TODO.md の「実機のレーンから」）。一番大きいのは、仕切りをドラッグして離すと元の比率に戻るもの
-   （`crates/tsumugi/src/main.rs` の ~:4190 が離したフレームで `self.dragging` を消し、~:4521 の `Moved::Released` で `set_layout` が呼ばれない）。
-   直したら 2.3・2.15 を再テストに積む。キットの提案（`Send-Drag`、生の仮想キー、`--check` の CRLF）もそこにある。
-2. **filer の `tsumugi-pane` / `tsumugi-layout` の `rev` を上げる。**filer はまだ `fc88385`（v0.65.1）で、v0.69.0〜v0.74.3 のペインの直し
-   （`crates/tsumugi-pane` に 13 ファイル・約 1,400 行）が filer に届いていない。上げたら filer で `cargo build` して `Cargo.lock` を合わせ、
-   `src/terminal.rs`・`src/ui/term.rs` を新しい API に合わせ、filer の `scripts/verify.sh`。filer の TESTING.md のペインの節（1・19・29・40・49）を再テストに積み、
-   新しい機能の行を足す。`tsumugi-ipc` / `tsumugi-mcp` の `rev` も同じ値に揃える。
-3. **次のリリース。**v0.52.0 から間が空いた。実機の直しが一段落したら `release.yml` を `workflow_dispatch`（`tag` に `vX.Y.Z`）。
-   GitHub の MCP の `actions_run_trigger` から投げられる（このコンテナの `gh` はトークンが通らない）。
-4. LLM の段 4（実機で Claude Code に登録して呼ぶ: TESTING.md 18.10、filer は 50 節）は実機のレーン待ち。段 5（書く道具。窓の確認の箱つき）は使ってみてから範囲を聞く。
-5. 【人】ARM64 のレーン（`-Lane arm`）と、最初の 3 回の実行時間の目安（TODO.md の「金曜日から」）。
+1. v0.76.1 の CI（`ci.yml`）が Windows でも緑か見る。緑なら `release.yml` を `tag=v0.76.1` で投げる（GitHub の MCP の `actions_run_trigger`）。
+   まだ赤なら、落ちたテストの画面の出力から直す。
+2. 実機のレーンの報告（`test/win-*`・`test/arm-*` の PR、マージの Routine が入れる）が出す所見を TODO.md から直す。
+3. Q97 の回答が来たら段 5 を作る（`tsumugi-mcp` に「確認の箱が要る道具」の印を足し、窓の側で箱を出す）。
+4. 18.10 が通ったら TODO.md の LLM の段 4 を tsumugi 側でも閉じる。
 
 ## 覚えておくこと
 

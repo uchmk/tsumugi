@@ -587,7 +587,9 @@ fn a_restart_brings_the_tabs_back() {
     assert_eq!(tags, vec![vec!["review".to_owned()], vec!["review".to_owned(), "ci-run".to_owned()]], "tags come back");
     eventually("the muted tag comes back", || c2.muted_tags() == vec!["ci-run".to_owned()]);
     let resumed = c2.attach(leaves[1]);
-    until(&resumed, "claude --resume typed", |t| t.contains("claude --resume conv-1234"));
+    // The line can wrap (on Windows the prompt alone is half the width), and
+    // a row's trailing space is trimmed: compare without the white space.
+    until(&resumed, "claude --resume typed", |t| t.split_whitespace().collect::<String>().contains("claude--resumeconv-1234"));
     assert_eq!(c2.restore().unwrap(), 0, "a server with sessions restores nothing");
     for id in leaves {
         c2.attach(id).kill();
