@@ -5,6 +5,16 @@
 
 ## [未リリース]
 
+## [0.68.4] - 2026-10-09
+
+### 追加
+
+- README の冒頭に「What it looks like」の節を足し、持ち主が Windows で撮った画像を載せた。4 分割のペインと Done のカード（`split.png`）、ペインを分けてヘッダーで引いて並べ替える動き（`tsumugi.gif`）、Claude Code を 2 本並べて Running の輪（`claude.png`）。
+
+### 修正
+
+- `docs/images/` の `split.png` と `claude.png` は中身が WebP だったので PNG に変換した。
+
 ## [0.68.3] - 2026-10-09
 
 ### 追加
