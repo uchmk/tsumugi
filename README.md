@@ -377,10 +377,13 @@ box) writes the pane's whole scrollback as text to Downloads.
 `Ctrl+Shift+S` (`Cmd+Shift+S` on macOS), or **Write a work log** in the
 tab's menu, keeps writing the pane's text as it goes to
 `Downloads/tsumugi-<name>-<date>-<time>.txt` (`-2` and on when that file is
-there): each line once it has scrolled off the screen, and the screen itself
-when the same key finishes the log or the session ends. The heading says LOG
-meanwhile. A full-screen program's screen (vim, less) is left out. The server
-writes it, so it goes on with the window closed.
+there), like a terminal's log (Tera Term's): open it at any time and it has
+everything up to now -- the lines that have scrolled off, then the screen as
+it is, refreshed twice a second -- until the same key finishes the log or the
+session ends. Running a command twice or resizing the pane leaves nothing out
+and writes nothing twice. The heading says LOG meanwhile. A full-screen
+program's screen (vim, less) is left out. The server writes it, so it goes on
+with the window closed.
 
 When a waiting session has a menu of numbered choices on its screen --
 Claude Code's "Do you want to proceed? 1. Yes 2. … 3. No" -- its card shows
