@@ -628,7 +628,12 @@ fn general(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut V
             out.push(set("restart_after_update", !g.restart_after_update));
         }
     });
-    section(ui, l, "PASTING", |ui| {
+    section(ui, l, "COPY AND PASTE", |ui| {
+        let copy_key = if cfg!(target_os = "macos") { "Off: Cmd+C copies it" } else { "Off: Ctrl+Shift+C copies it" };
+        if row(ui, l, "Copy a selection when the mouse lets go", copy_key, |ui| switch(ui, l, g.copy_on_select)) {
+            out.push(set("copy_on_select", !g.copy_on_select));
+        }
+        sep(ui, l);
         if row(ui, l, "Ask before pasting several lines", "Only where the program would run them one by one (it did not ask for bracketed paste)", |ui| switch(ui, l, g.warn_multiline_paste)) {
             out.push(set("warn_multiline_paste", !g.warn_multiline_paste));
         }

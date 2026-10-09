@@ -83,7 +83,7 @@ pub fn show(ctx: &egui::Context, held: &Held, c: &Colors) -> Option<bool> {
                 ui.label(RichText::new(preview(&held.text)).monospace().size(12.0).color(c.fg));
             });
             ui.add_space(4.0);
-            ui.label(RichText::new("Turn this off in Settings, General, Pasting.").size(11.5).color(c.dim));
+            ui.label(RichText::new("Turn this off in Settings, General, Copy and paste.").size(11.5).color(c.dim));
             ui.add_space(10.0);
             ui.horizontal(|ui| {
                 let paste = egui::Button::new(RichText::new("Paste").color(c.on_accent()).strong()).fill(chrome::gold());

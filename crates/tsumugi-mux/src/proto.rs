@@ -7,7 +7,7 @@ use tsumugi_pane::Size;
 
 /// Bumped whenever a message changes shape: a client and a server that
 /// disagree say so at `Hello` instead of misreading each other.
-pub const VERSION: u32 = 30;
+pub const VERSION: u32 = 31;
 
 /// A `Hello` with this version asks the server to stop, writing down its
 /// tabs first so the next window can bring them back. `Hello` stays the
@@ -188,11 +188,13 @@ pub enum ToServer {
     Paste { id: SessionId, text: String },
     Resize { id: SessionId, size: Size, cell: (u16, u16) },
     Scroll { id: SessionId, by: ScrollBy },
-    Select { id: SessionId, cell: (usize, usize), right_half: bool, start: bool },
+    /// `block`: the press begins a rectangle (Alt+drag), not lines.
+    Select { id: SessionId, cell: (usize, usize), right_half: bool, start: bool, block: bool },
     SelectWord { id: SessionId, cell: (usize, usize) },
     ClearSelection { id: SessionId },
-    /// Put the selection on the clipboard: answered with `Clipboard`.
-    Copy { id: SessionId },
+    /// Put the selection on the clipboard: answered with `Clipboard`, or
+    /// with `Primary` when it is for Linux's primary selection.
+    Copy { id: SessionId, primary: bool },
     /// End the session's shell.
     Kill { id: SessionId },
     /// A workspace's new shape or focus, after a drag, a click or a key.
@@ -321,4 +323,6 @@ pub enum ToClient {
     /// The answer to `ToServer::Picture`: `None` when the session has let
     /// the picture go.
     Picture { id: SessionId, key: u64, picture: Option<tsumugi_pane::Picture> },
+    /// The selection, for Linux's primary selection (`Copy` with `primary`).
+    Primary(String),
 }

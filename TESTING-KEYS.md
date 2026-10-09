@@ -55,6 +55,10 @@ Windows and Linux keys first; the macOS key is after `·`.
 - [ ] `Alt+Shift+Up` · `Cmd+Ctrl+Up` — Move the divider nearest the pane with the keys up
 - [ ] `Alt+Shift+Down` · `Cmd+Ctrl+Down` — Move the divider nearest the pane with the keys down
 
+## Panes
+
+- [ ] `Ctrl+Shift+C` · `Cmd+C` — Copy the selection (none: Ctrl+C goes to the program)
+
 ## The new-session dialog
 
 - [ ] `Enter` · `Enter` — Create in a new tab (on a button: press it)

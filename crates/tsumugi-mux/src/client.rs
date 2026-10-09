@@ -52,6 +52,8 @@ struct State {
     notices: Vec<Notice>,
     started_ms: u64,
     clipboard: Vec<String>,
+    /// The latest selection for Linux's primary selection.
+    primary: Option<String>,
     /// Sessions that ended since the last `take_ended`, with their last lines.
     ended: Vec<(Info, Vec<String>)>,
     /// Whole buffers `all_text` asked for, not taken yet.
@@ -468,6 +470,12 @@ impl Client {
         std::mem::take(&mut self.0.lock().clipboard)
     }
 
+    /// The selection that arrived for the primary selection since the last
+    /// call ([`RemotePane::ask_primary`]); only the latest counts.
+    pub fn take_primary(&self) -> Option<String> {
+        self.0.lock().primary.take()
+    }
+
     /// Whether the server has gone away.
     pub fn lost(&self) -> bool {
         self.0.lock().lost
@@ -505,6 +513,7 @@ fn receive(inner: &Inner, msg: ToClient) {
         ToClient::Text { id, text } => st.texts.push((id, text)),
         ToClient::Found { id, wrapped } => st.screens.entry(id).or_default().found = Some(wrapped),
         ToClient::Clipboard(text) => st.clipboard.push(text),
+        ToClient::Primary(text) => st.primary = Some(text),
         ToClient::Picture { id, key, picture } => {
             let r = st.screens.entry(id).or_default();
             if r.pictures.iter().any(|p| p.key == key) {
@@ -545,6 +554,12 @@ impl RemotePane {
     /// comes back as clipboard text, as a copy's does.
     pub fn copy_output(&self) {
         self.inner.send(ToServer::CopyOutput { id: self.id });
+    }
+
+    /// Ask for the selection as Linux's primary selection; it comes back
+    /// through [`Client::take_primary`].
+    pub fn ask_primary(&self) {
+        self.inner.send(ToServer::Copy { id: self.id, primary: true });
     }
 
     /// Scroll to the prompt before the view's top, or after it (OSC 133).
@@ -610,7 +625,11 @@ impl Pane for RemotePane {
     }
 
     fn select(&self, cell: (usize, usize), right_half: bool, start: bool) {
-        self.inner.send(ToServer::Select { id: self.id, cell, right_half, start });
+        self.inner.send(ToServer::Select { id: self.id, cell, right_half, start, block: false });
+    }
+
+    fn select_block(&self, cell: (usize, usize), right_half: bool) {
+        self.inner.send(ToServer::Select { id: self.id, cell, right_half, start: true, block: true });
     }
 
     fn select_word(&self, cell: (usize, usize)) {
@@ -624,7 +643,7 @@ impl Pane for RemotePane {
     /// Asks the server, whose answer arrives as clipboard text
     /// ([`Client::take_clipboard`]); nothing to hand here and now.
     fn selection(&self) -> Option<String> {
-        self.inner.send(ToServer::Copy { id: self.id });
+        self.inner.send(ToServer::Copy { id: self.id, primary: false });
         None
     }
 

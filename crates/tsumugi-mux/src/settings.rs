@@ -134,6 +134,8 @@
 //! # by line (it did not ask for bracketed paste), and before a large one.
 //! warn_multiline_paste = true
 //! warn_large_paste = true
+//! # Letting go of a selection copies it; off, Ctrl+Shift+C (Cmd+C) does.
+//! copy_on_select = true
 //!
 //! # What a new session runs, and how waiting is told.
 //! [sessions]
@@ -271,6 +273,9 @@ pub struct General {
     pub warn_multiline_paste: bool,
     /// Ask before pasting more than [`LARGE_PASTE`] bytes.
     pub warn_large_paste: bool,
+    /// Letting go of a selection in a pane puts it on the clipboard; off,
+    /// Ctrl+Shift+C (Cmd+C on a Mac) does.
+    pub copy_on_select: bool,
 }
 
 /// A paste this long or longer is asked about (`warn_large_paste`), as
@@ -279,7 +284,7 @@ pub const LARGE_PASTE: usize = 5 * 1024;
 
 impl Default for General {
     fn default() -> Self {
-        Self { default_folder: String::new(), keep_sessions: true, ask_before_close: true, check_updates: true, restart_after_update: false, cmd_on_mac: true, warn_multiline_paste: true, warn_large_paste: true }
+        Self { default_folder: String::new(), keep_sessions: true, ask_before_close: true, check_updates: true, restart_after_update: false, cmd_on_mac: true, warn_multiline_paste: true, warn_large_paste: true, copy_on_select: true }
     }
 }
 

@@ -176,6 +176,7 @@ pub const FIXED: &[(&str, &str, &str, &str)] = &[
     ("The window, fixed", "Alt+Shift+Right", "Cmd+Ctrl+Right", "Move the divider nearest the pane with the keys to the right"),
     ("The window, fixed", "Alt+Shift+Up", "Cmd+Ctrl+Up", "Move the divider nearest the pane with the keys up"),
     ("The window, fixed", "Alt+Shift+Down", "Cmd+Ctrl+Down", "Move the divider nearest the pane with the keys down"),
+    ("Panes", "Ctrl+Shift+C", "Cmd+C", "Copy the selection (none: Ctrl+C goes to the program)"),
     ("The new-session dialog", "Enter", "Enter", "Create in a new tab (on a button: press it)"),
     ("The new-session dialog", "Alt+Enter", "Option+Enter", "Create split to the right of the pane with the keys"),
     ("The new-session dialog", "Tab", "Tab", "In the folder: complete it from the list; complete, or elsewhere: the next field"),

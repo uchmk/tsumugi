@@ -603,6 +603,7 @@ fn handle(shared: &Arc<Shared>, client: ClientId, tx: &Sender<ToClient>, msg: To
                     term.jump_prompt(back);
                 }
                 ToServer::Scroll { by, .. } => term.scroll(scroll(by)),
+                ToServer::Select { cell, right_half, start: true, block: true, .. } => term.select_block(cell, right_half),
                 ToServer::Select { cell, right_half, start, .. } => term.select(cell, right_half, start),
                 ToServer::SelectWord { cell, .. } => term.select_word(cell),
                 ToServer::ClearSelection { .. } => term.clear_selection(),
@@ -615,9 +616,9 @@ fn handle(shared: &Arc<Shared>, client: ClientId, tx: &Sender<ToClient>, msg: To
                         let _ = tx.send(ToClient::Found { id, wrapped });
                     }
                 }
-                ToServer::Copy { .. } => {
+                ToServer::Copy { primary, .. } => {
                     if let Some(text) = term.selection() {
-                        let _ = tx.send(ToClient::Clipboard(text));
+                        let _ = tx.send(if primary { ToClient::Primary(text) } else { ToClient::Clipboard(text) });
                     }
                 }
                 ToServer::CopyOutput { .. } => {
@@ -648,7 +649,7 @@ fn target(msg: &ToServer) -> Option<SessionId> {
         | ToServer::ClearSelection { id }
         | ToServer::Reveal { id, .. }
         | ToServer::Find { id, .. }
-        | ToServer::Copy { id }
+        | ToServer::Copy { id, .. }
         | ToServer::CopyOutput { id }
         | ToServer::Picture { id, .. } => *id,
         _ => return None,

@@ -188,6 +188,15 @@ smaller, a point at a time, in every pane, for as long as the window is
 open; `Ctrl+0` puts back the size the settings have. `Ctrl+Shift+-` still
 reaches the shell as readline's undo.
 
+**Selecting with the mouse** copies when the button lets go (a double-click
+copies the word). Settings → General → Copy and paste turns that off
+(`copy_on_select`); then `Ctrl+Shift+C` (`Cmd+C`) copies the selection, and
+with nothing selected `Ctrl+C` still reaches the program. `Alt`+drag selects
+a **block**, the rectangle between the two corners, copied a row a line. On
+Linux the selection is also the **primary selection**, and a middle-click
+pastes it (X11, and XWayland on a Wayland desktop); elsewhere a
+middle-click pastes the clipboard. Either is asked about as any paste is.
+
 `Ctrl+Shift+M` (`Cmd+Shift+M`) is **copy mode**: a gold box of its own over
 the pane's output, which gets no keys meanwhile. The arrows or `hjkl` move it
 (past the top or bottom, the scrollback moves under it), `PgUp`/`PgDn` a
@@ -265,7 +274,7 @@ meant: several lines into a program that did not ask for bracketed paste
 (where each line break is an Enter), or 5 KB or more anywhere. The dialog
 shows its first lines; `Enter` pastes, `Esc` drops it. Claude Code and the
 shells that ask for bracketed paste get several lines without a word. Both
-are switches in Settings → General → Pasting (`warn_multiline_paste`,
+are switches in Settings → General → Copy and paste (`warn_multiline_paste`,
 `warn_large_paste`).
 
 `Ctrl+Shift+O` (`Cmd+Shift+O`) shows **All sessions**: every session on one
@@ -510,6 +519,7 @@ check_updates = true       # a note when a newer release is out
 cmd_on_mac = true          # macOS: Cmd+T rather than Ctrl+Shift+T
 warn_multiline_paste = true  # ask before lines that each run as they land
 warn_large_paste = true    # ask before a paste of 5 KB or more
+copy_on_select = true      # off: Ctrl+Shift+C (Cmd+C) copies a selection
 
 [sessions]
 start = "claude"           # what the new-session dialog picks: claude, resume, shell

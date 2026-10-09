@@ -59,6 +59,7 @@ mod history;
 mod diffview;
 mod lists;
 mod copymode;
+mod primary;
 mod quickselect;
 mod remote;
 mod layouts;
@@ -924,6 +925,8 @@ struct App {
     copy_mode: Option<(SessionId, copymode::CopyMode)>,
     /// Quick select's labels over the pane with the keys.
     quick: Option<(SessionId, quickselect::QuickSelect)>,
+    /// Linux's primary selection: a selection's text, a middle-click's paste.
+    primary: primary::Primary,
     /// The find bar, on the pane it finds in (`Ctrl+Shift+F`).
     find: Option<find::Bar>,
     /// A paste waiting for its answer (`paste::why`).
@@ -1305,6 +1308,7 @@ impl App {
             font_step: 0.0,
             copy_mode: None,
             quick: None,
+            primary: primary::Primary::default(),
             find: None,
             paste_ask: None,
             layouts: layouts::load(),
@@ -4325,7 +4329,7 @@ impl App {
             });
             if !narrow {
                 let (Some(pane), view) = (self.panes.get_mut(id), self.views.entry(*id).or_default()) else { continue };
-                let opts = ViewOptions { focused, wheel: true };
+                let opts = ViewOptions { focused, wheel: true, copy_on_select: self.settings_now.general.copy_on_select };
                 if self.transparent && rect.bottom() < card.bottom() {
                     // Round the input box: the window's colour, as when solid.
                     let below = egui::Rect::from_min_max(egui::pos2(card.left(), rect.bottom()), card.max);
@@ -4413,6 +4417,17 @@ impl App {
                 }
                 if shown.paste {
                     ctx.send_viewport_cmd(egui::ViewportCommand::RequestPaste);
+                }
+                // Linux: what is selected is the primary selection, and the
+                // middle button pastes it. Elsewhere it pastes the clipboard.
+                if shown.selected && cfg!(target_os = "linux") {
+                    pane.ask_primary();
+                }
+                if shown.middle {
+                    match cfg!(target_os = "linux") {
+                        true => self.primary.get(&ctx),
+                        false => ctx.send_viewport_cmd(egui::ViewportCommand::RequestPaste),
+                    }
                 }
                 if let Some(link) = shown.open {
                     let cwd = sessions.iter().find(|i| i.id == *id).map(|i| i.cwd.clone()).unwrap_or_default();
@@ -4917,6 +4932,14 @@ impl App {
         for text in client.take_clipboard() {
             ctx.copy_text(text);
         }
+        // A selection's text for the primary selection, and what a
+        // middle-click read from it: pasted as a paste is, warnings and all.
+        if let Some(text) = client.take_primary() {
+            self.primary.set(&ctx, text);
+        }
+        if let Some(text) = self.primary.take() {
+            ctx.input_mut(|i| i.events.push(egui::Event::Paste(text)));
+        }
         if client.lost() && self.failed.is_none() {
             self.failed = Some("The tsumugi server went away.".into());
             self.panes.clear();
@@ -5226,6 +5249,17 @@ impl App {
                 let to: Vec<SessionId> = if self.typing_all.contains(&w.id) { w.layout.leaves() } else { vec![w.focus] };
                 let bracketed = to.iter().filter_map(|id| self.panes.get(id)).all(tsumugi_pane::Pane::bracketed_paste);
                 let general = &self.settings_now.general;
+                // Ctrl+Shift+C (Cmd+C on a Mac) copies what is selected; with
+                // nothing selected it goes on as Ctrl+C. egui turns both into
+                // `Copy`, so the modifiers held tell them apart.
+                let copy_chord = ctx.input(|i| if cfg!(target_os = "macos") { i.modifiers.mac_cmd } else { i.modifiers.shift });
+                if copy_chord && events.iter().any(|e| matches!(e, egui::Event::Copy)) && tsumugi_pane::Pane::screen(pane).rows.iter().flatten().any(|c| c.selected) {
+                    events.retain(|e| !matches!(e, egui::Event::Copy));
+                    // A server's pane answers through take_clipboard.
+                    if let Some(text) = tsumugi_pane::Pane::selection(pane) {
+                        ctx.copy_text(text);
+                    }
+                }
                 let mut held = None;
                 events.retain(|e| match e {
                     egui::Event::Paste(text) => match paste::why(text, bracketed, general) {

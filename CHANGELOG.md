@@ -5,6 +5,20 @@
 
 ## [未リリース]
 
+## [0.73.0] - 2026-10-09
+
+### 追加
+
+- 矩形選択（`Alt`+ドラッグ）。2 つの角の間の四角を選び、1 行ずつコピーする。
+- `Ctrl+Shift+C`（macOS は `Cmd+C`）で選んだところをコピーする。何も選んでいなければ今までどおり `Ctrl+C` としてプログラムに届く。
+- Linux の PRIMARY。選んだところを PRIMARY にも置き、ペインの中クリックで PRIMARY を貼る（X11 と、Wayland のデスクトップの XWayland。XWayland の無い Wayland では何もしない）。Windows と macOS では中クリックでクリップボードを貼る。どちらも貼り付けの警告を通る。
+
+### 変更
+
+- 選んだらコピーするのを設定にした（設定画面の General → Copy and paste、`[general]` の `copy_on_select`。既定は今までどおりオン）。設定画面の節の名前を Pasting から Copy and paste に変えた。
+- mux の取り決めの版を 31 に上げた（矩形選択と PRIMARY）。前の版のサーバーが動いていれば、Restart its server で入れ替える。
+- `tsumugi-pane` の `ViewOptions` に `copy_on_select` が増えた（filer は `rev` を上げるときに足す）。
+
 ## [0.72.0] - 2026-10-09
 
 ### 追加
