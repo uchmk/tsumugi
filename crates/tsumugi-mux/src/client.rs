@@ -648,6 +648,10 @@ impl Pane for RemotePane {
         self.with(|r| r.screen.focus_report)
     }
 
+    fn kitty_flags(&self) -> u8 {
+        self.with(|r| r.screen.kitty)
+    }
+
     fn hyperlinks(&self) -> Vec<tsumugi_pane::Hyperlink> {
         self.with(|r| r.links.clone())
     }

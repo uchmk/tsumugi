@@ -236,6 +236,14 @@ draws sixel pictures, and `ESC[?…$p` (DECRQM) says whether a mode is on, off
 or unknown. A **synchronized update** (`ESC[?2026h` … `ESC[?2026l`, as
 Claude Code, nvim and helix send) is drawn whole, never half way.
 
+A program that asks for **kitty's keyboard protocol** (`ESC[>1u` and up:
+nvim, helix, kakoune, fish 4) gets keys as `CSI … u`, only to the levels it
+asked for: `Shift+Enter`, `Ctrl+Enter`, `Ctrl+I` and `Tab`, `Esc` and
+`Alt+[` are then told apart, and with the higher levels releases, repeats and
+every key with its text too. A shell that asked for nothing sees keys as
+before. On Windows, ConPTY may not pass the request on from a program it
+runs; a pane on a tsumugi server over SSH gets it either way.
+
 `Ctrl+Shift+F` (`Cmd+F`) **finds in the pane**: a bar at its top right finds
 what is typed as plain text, from the newest line back, and selects it on
 screen (ignoring case unless the text has a capital). `Enter` or **↑** goes on

@@ -19,6 +19,8 @@ pub struct Update {
     pub alt_screen: bool,
     pub mouse: MouseReport,
     pub focus_report: bool,
+    /// The kitty keyboard enhancements the program asked for.
+    pub kitty: u8,
     pub scrolled_back: usize,
     pub win32_input: bool,
     pub bracketed_paste: bool,
@@ -57,7 +59,7 @@ pub fn diff(old: Option<(&Screen, &Extra)>, new: &Screen, extra: &Extra) -> Opti
     };
     if let (false, Some((o, e))) = (full, old) {
         let same = rows.is_empty()
-            && (o.cursor, o.app_cursor, o.alt_screen, o.mouse, o.focus_report) == (new.cursor, new.app_cursor, new.alt_screen, new.mouse, new.focus_report)
+            && (o.cursor, o.app_cursor, o.alt_screen, o.mouse, o.focus_report, o.kitty) == (new.cursor, new.app_cursor, new.alt_screen, new.mouse, new.focus_report, new.kitty)
             && e == extra;
         if same {
             return None;
@@ -72,6 +74,7 @@ pub fn diff(old: Option<(&Screen, &Extra)>, new: &Screen, extra: &Extra) -> Opti
         alt_screen: new.alt_screen,
         mouse: new.mouse,
         focus_report: new.focus_report,
+        kitty: new.kitty,
         scrolled_back: extra.scrolled_back,
         win32_input: extra.win32_input,
         bracketed_paste: extra.bracketed_paste,
@@ -98,6 +101,7 @@ pub fn apply(screen: &mut Screen, extra: &mut Extra, u: Update) {
     screen.alt_screen = u.alt_screen;
     screen.mouse = u.mouse;
     screen.focus_report = u.focus_report;
+    screen.kitty = u.kitty;
     *extra = Extra { scrolled_back: u.scrolled_back, win32_input: u.win32_input, bracketed_paste: u.bracketed_paste, title: u.title, links: u.links, blocks: u.blocks, pictures: u.pictures };
 }
 
@@ -146,6 +150,19 @@ mod tests {
         let (mut have, mut extra) = (a.clone(), Extra::default());
         apply(&mut have, &mut extra, u);
         assert!(have.focus_report);
+    }
+
+    /// A program pushing kitty's keyboard flags changes no cell, and the
+    /// client still has to hear of it to send Shift+Enter its new way.
+    #[test]
+    fn kitty_keyboard_flags_go_on_their_own() {
+        let a = screen(&["one"]);
+        let b = Screen { kitty: 0b11, ..a.clone() };
+        let e = Extra::default();
+        let u = diff(Some((&a, &e)), &b, &e).expect("the flags changed");
+        let (mut have, mut extra) = (a.clone(), Extra::default());
+        apply(&mut have, &mut extra, u);
+        assert_eq!(have.kitty, 0b11);
     }
 
     #[test]
