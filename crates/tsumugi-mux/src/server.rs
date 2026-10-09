@@ -1610,6 +1610,7 @@ fn run_pump(shared: Arc<Shared>, dirty: Receiver<SessionId>) {
                 links: s.term.hyperlinks(),
                 blocks: s.term.blocks(),
                 pictures: s.term.pictures(),
+                selected: s.term.has_selection(),
             };
             let change = crate::diff::diff(s.sent.as_ref().map(|(sc, ex)| (sc, ex)), &screen, &extra);
             let whole = (!s.fresh.is_empty()).then(|| crate::diff::diff(None, &screen, &extra)).flatten();

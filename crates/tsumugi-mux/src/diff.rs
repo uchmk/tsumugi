@@ -31,6 +31,8 @@ pub struct Update {
     pub blocks: Vec<Block>,
     /// The pictures on the screen; their pixels are asked for apart.
     pub pictures: Vec<Placement>,
+    /// Something is selected, on the screen or scrolled off it.
+    pub selected: bool,
 }
 
 /// What goes with the cells, and is compared whole.
@@ -43,6 +45,7 @@ pub struct Extra {
     pub links: Vec<Hyperlink>,
     pub blocks: Vec<Block>,
     pub pictures: Vec<Placement>,
+    pub selected: bool,
 }
 
 /// The update from `old` (what the client has) to `new`; `None` when nothing
@@ -82,6 +85,7 @@ pub fn diff(old: Option<(&Screen, &Extra)>, new: &Screen, extra: &Extra) -> Opti
         links: extra.links.clone(),
         blocks: extra.blocks.clone(),
         pictures: extra.pictures.clone(),
+        selected: extra.selected,
     })
 }
 
@@ -102,7 +106,7 @@ pub fn apply(screen: &mut Screen, extra: &mut Extra, u: Update) {
     screen.mouse = u.mouse;
     screen.focus_report = u.focus_report;
     screen.kitty = u.kitty;
-    *extra = Extra { scrolled_back: u.scrolled_back, win32_input: u.win32_input, bracketed_paste: u.bracketed_paste, title: u.title, links: u.links, blocks: u.blocks, pictures: u.pictures };
+    *extra = Extra { scrolled_back: u.scrolled_back, win32_input: u.win32_input, bracketed_paste: u.bracketed_paste, title: u.title, links: u.links, blocks: u.blocks, pictures: u.pictures, selected: u.selected };
 }
 
 #[cfg(test)]
@@ -137,6 +141,20 @@ mod tests {
         let moved = Extra { scrolled_back: 3, ..Default::default() };
         let u = diff(Some((&a, &e)), &a, &moved).expect("the view moved");
         assert!(u.rows.is_empty() && u.scrolled_back == 3);
+    }
+
+    /// A selection scrolled off the screen shows in no cell, so the window
+    /// hears of it on its own (Ctrl+Shift+C copies it, not Ctrl+C).
+    #[test]
+    fn a_selection_off_the_screen_still_goes() {
+        let a = screen(&["one", "two"]);
+        let e = Extra::default();
+        let selected = Extra { selected: true, ..Default::default() };
+        let u = diff(Some((&a, &e)), &a, &selected).expect("the selection changed");
+        assert!(u.rows.is_empty());
+        let (mut have, mut extra) = (a.clone(), Extra::default());
+        apply(&mut have, &mut extra, u);
+        assert!(extra.selected);
     }
 
     /// DECSET 1004 alone, with no cell changed, still reaches the client:

@@ -32,6 +32,8 @@ struct Remote {
     /// not come, or let go by the server.
     pixels: HashMap<u64, Option<Arc<tsumugi_pane::Picture>>>,
     exited: bool,
+    /// Something is selected in the server's pane, on the screen or not.
+    selected: bool,
     /// The answer to `find`, not taken yet.
     found: Option<Option<bool>>,
 }
@@ -502,7 +504,7 @@ fn receive(inner: &Inner, msg: ToClient) {
             let r = st.screens.entry(id).or_default();
             let mut extra = crate::diff::Extra::default();
             crate::diff::apply(&mut r.screen, &mut extra, update);
-            (r.scrolled_back, r.win32_input, r.bracketed_paste, r.title, r.links, r.blocks, r.pictures) = (extra.scrolled_back, extra.win32_input, extra.bracketed_paste, extra.title, extra.links, extra.blocks, extra.pictures);
+            (r.scrolled_back, r.win32_input, r.bracketed_paste, r.title, r.links, r.blocks, r.pictures, r.selected) = (extra.scrolled_back, extra.win32_input, extra.bracketed_paste, extra.title, extra.links, extra.blocks, extra.pictures, extra.selected);
             // Pixels of pictures no longer on the screen are let go; the
             // view keeps its own textures a while, should one come back.
             let on: std::collections::HashSet<u64> = r.pictures.iter().map(|p| p.key).collect();
@@ -645,6 +647,10 @@ impl Pane for RemotePane {
     fn selection(&self) -> Option<String> {
         self.inner.send(ToServer::Copy { id: self.id, primary: false });
         None
+    }
+
+    fn has_selection(&self) -> bool {
+        self.with(|r| r.selected)
     }
 
     fn send(&self, bytes: Vec<u8>) {

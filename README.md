@@ -195,7 +195,8 @@ reaches the shell as readline's undo.
 
 **Selecting with the mouse** copies when the button lets go (a double-click
 copies the word). Settings → General → Copy and paste turns that off
-(`copy_on_select`); then `Ctrl+Shift+C` (`Cmd+C`) copies the selection, and
+(`copy_on_select`); then `Ctrl+Shift+C` (`Cmd+C`) copies the selection (even
+one scrolled off the screen), and
 with nothing selected `Ctrl+C` still reaches the program. `Alt`+drag selects
 a **block**, the rectangle between the two corners, copied a row a line. On
 Linux the selection is also the **primary selection**, and a middle-click

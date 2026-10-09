@@ -93,6 +93,7 @@
 - [ ] **2.66** A trigger `regex = "^done$"` with a colour; in a pane, `echo '  done'` and `echo done.` → The first `done` is coloured (the blanks either side are not part of the line), `done.` is not
 - [ ] **2.67** `kitten show-key -m kitty` (kitty installed) in one pane of a split; hold `a`, and while holding it `Ctrl+Tab` (or click) to the other pane, let go of `a`, then come back. Again, holding `a` and switching to another app → `show-key` shows `a` released when the keys left it (no `a` held for ever, no repeat) in both cases
 - [ ] **2.68** Quick select with more than 26 addresses on the screen (`for i in $(seq 30); do echo https://example.com/$i; done`): type `Shift`+the first letter of a two-letter label, `Backspace`, then the label without `Shift` → The address is copied (the clipboard), no browser opens
+- [ ] **2.69** Settings → General → Copy and paste: **Copy a selection when the mouse lets go** off. `seq 200`, drag over `1` to `3` near the top of the scrollback, wheel down to the bottom so none of it shows, `Ctrl+Shift+C` (`Cmd+C`); paste in Notepad. Then click to clear it, `sleep 30`, `Ctrl+Shift+C` → `1` to `3` on the clipboard and the shell gets no `^C`; with nothing selected `Ctrl+Shift+C` stops `sleep`
 
 ## 3. The sidebar
 

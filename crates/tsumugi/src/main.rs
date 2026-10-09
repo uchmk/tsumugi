@@ -5258,11 +5258,12 @@ impl App {
                 let to: Vec<SessionId> = if self.typing_all.contains(&w.id) { w.layout.leaves() } else { vec![w.focus] };
                 let bracketed = to.iter().filter_map(|id| self.panes.get(id)).all(tsumugi_pane::Pane::bracketed_paste);
                 let general = &self.settings_now.general;
-                // Ctrl+Shift+C (Cmd+C on a Mac) copies what is selected; with
-                // nothing selected it goes on as Ctrl+C. egui turns both into
+                // Ctrl+Shift+C (Cmd+C on a Mac) copies what is selected (on
+                // the screen or scrolled off it); with nothing selected it
+                // goes on as Ctrl+C. egui turns both into
                 // `Copy`, so the modifiers held tell them apart.
                 let copy_chord = ctx.input(|i| if cfg!(target_os = "macos") { i.modifiers.mac_cmd } else { i.modifiers.shift });
-                if copy_chord && events.iter().any(|e| matches!(e, egui::Event::Copy)) && tsumugi_pane::Pane::screen(pane).rows.iter().flatten().any(|c| c.selected) {
+                if copy_chord && events.iter().any(|e| matches!(e, egui::Event::Copy)) && tsumugi_pane::Pane::has_selection(pane) {
                     events.retain(|e| !matches!(e, egui::Event::Copy));
                     // A server's pane answers through take_clipboard.
                     if let Some(text) = tsumugi_pane::Pane::selection(pane) {
