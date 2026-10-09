@@ -36,8 +36,9 @@ row a look, find something that can be **read**:
 Start a test with its own state and settings so nothing of the owner's is
 touched: `TSUMUGI_STATE=<scratch>\state`, `TSUMUGI_SETTINGS=<scratch>\settings.toml`,
 and `TSUMUGI_ADDRESS=<a pipe name of its own>` so the run's server is not the
-owner's. **Never stop or restart the owner's own server**: their Claude Code
-sessions live in it.
+owner's. An unattended run has them set already, and `scripts\wintest-kit.ps1`
+sets them when dot-sourced by hand. **Never stop or restart the owner's own
+server**: their Claude Code sessions live in it.
 
 What stays a look after that -- a colour reading as gold, a glow being soft,
 a line moving smoothly -- is the owner's. Say which proxy you tried and why it
@@ -63,83 +64,109 @@ TESTING-KEYS.md the same way: press the key, read before and after everything
 it must **not** change (the window title, `tsumugi ls --json`, the clipboard
 with a sentinel, the PTY log of the pane with the keys), one line per key with
 both halves. Only flip `[ ]` to `[x]`; then
-`cargo run -p tsumugi --example make-testcheck -- --check` and
+`cargo run --release -q -p tsumugi --example make-testcheck -- --check` and
 `make-keycheck -- --check` must say `in sync`.
 
 ## Where the work is
 
-**A queue, not a menu.** Take the first row that is not done.
+**The script picks it.** `scripts/auto-wintest.ps1` gives each run one chunk
+(`scripts/wintest-queue.ps1`), and the prompt lists its rows: do those rows and
+no others, and do not read TESTING.md's list of rows (its rules, up to
+"Covered by tests", you do read). In order:
+
+| Chunk | Up to | Notes |
+| --- | --- | --- |
+| **Re-tests of changed behaviour** | 15 rows | The rows named in the second cell, still `[ ]`: none yet |
+| **Unticked keys in TESTING-KEYS.md** | 20 keys | x64 only |
+| **The sections, in this order** | 15 rows of one section | 1, 18, 12, 19, 4, 2, 16, 17, 8, 13, 15, then the rest. ARM64: 2, 4, 12, 1 only |
+
+What suits each section:
 
 | Section | Why it suits you |
 | --- | --- |
-| **Re-tests of changed behaviour** | First, every run, all of them. Nothing listed yet: every row is `[ ]` until the first runs |
-| **Unticked keys in TESTING-KEYS.md** | Second, every run: `cargo run -p tsumugi --example make-keycheck -- --stats` |
-| **1. The window and the server** | The server outliving the window, `tsumugi new` / `attach` / `ls`, the update screen: all text |
-| **18. From a script** | The CLI: `send`, `read`, `split`, `close`, `wait`, `ls --json` -- all text |
-| **12. Claude Code's hooks** | `~/.claude/settings.json` before and after (a copy first, hash afterwards) |
+| **1. The window and the server** | The server outliving the window, `tsumugi attach`, the update screen |
+| **18. From a script** | The CLI with a window open: `split`, `focus`, the rest of `ls --json`, `send` into a pane you can see |
+| **12. Claude Code's hooks** | `~/.claude/settings.json` before and after (`Backup-UserFile` / `Restore-UserFile`) |
 | **19. Keys through every screen** | The focus log turns the Tab order into text; only the ring (`[~]`) and 19.6's looks are pictures. Also, on any screen you touch for another row: if Tab goes right to left, skips a control, or leaves a ring behind, write it down as a finding |
 | **4. States, notifications and answering** | Toasts and the taskbar number: Windows only |
 | **2. Panes and splits** | ConPTY: lazygit, Japanese, the PTY log |
 | **16. Keys**, **17. What the settings' rows do**, **8. Restoring after a restart** | `settings.toml` and `tsumugi ls --json` before and after |
 | **13. The window's frame**, **15. The status bar** | Partly text (the window title, the status words), partly the owner's |
-| **The rest** | `--stats` names what is short; take a section whose rows read as text |
 
-**Up to three sections per run, one session at a time.** Do not start one by
-hand while `auto-wintest.ps1` may fire.
+Rows CI checks on every push are not here: TESTING.md's "Covered by tests"
+names them and their tests (`crates/tsumugi/tests/cli.rs`). A row of the chunk
+you could not reach stays `[ ]` with the reason in the report; the script
+does not offer it again until its words change or it is named in the
+re-tests, so say in `## Queue` if it should be.
+
+**One run, one chunk, one session at a time.** Do not start one by hand while
+`auto-wintest.ps1` may fire.
 
 ## Unattended runs
 
-`scripts/auto-wintest.ps1` starts you with no one watching, when `main` has
-changed this file, TESTING.md or TESTING-CHECKS.md and no `test/win-*` pull
-request of tsumugi is open. **Nobody will answer a question**, so:
+`scripts/auto-wintest.ps1` starts you with no one watching, when there is a
+chunk left for its lane and no `test/<lane>-*` pull request of tsumugi is
+open. Before you start it has built `target\release\tsumugi.exe` (and the
+examples), run the tests, fetched the ConPTY and set the isolation, and it
+holds the desktop (`Local\wintest-desktop`) so filer's lane does not send keys
+at the same time. **Nobody will answer a question**, so:
 
-- Take the first section in the queue. Never wait for input: a choice that is
-  the owner's goes in the report.
+- Do the chunk's rows. Never wait for input: a choice that is the owner's
+  goes in the report.
 - **Your checkout is the worktree the prompt names**, not `C:\dev\tsumugi`;
-  read every path here with that swap. Branch with
-  `git checkout -B test/win-<section> origin/main`.
-- **The screen can lock or a screen saver can take it**: check that
-  `OpenInputDesktop` names `Default` before `SendInput`, and that the
-  foreground window is tsumugi's before a key goes in. Nothing measured after
-  input stopped reaching the window counts.
+  read every path here with that swap. Branch with the command the prompt
+  gives (`git checkout -B <branch> origin/main`).
+- **Use the kit.** Each PowerShell call starts with `. .\scripts\wintest-kit.ps1`;
+  its functions (listed at its top) start the window, send keys and clicks,
+  read the key and focus logs, take pictures, back up a person's files and
+  stop what you started. Do not write SendInput, PrintWindow or the backups
+  again: that is what made a run expensive. The isolation is already in the
+  environment: a bare `tsumugi` reaches the run's own server.
+- **The screen can lock or a screen saver can take it**: the kit's
+  `Send-Keys`, `Send-Text` and `Send-Click` check that the input desktop is
+  `Default` and the window in front is tsumugi's, and throw when not. Nothing
+  measured after input stopped reaching the window counts.
 - **A person's files are not scratch.** Before touching `~/.claude/settings.json`,
-  a profile or anything outside the scratch: its hash and a copy; append, never
-  overwrite; restore it and show the hash matches.
+  a profile or anything outside the scratch: `Backup-UserFile`; append, never
+  overwrite; `Restore-UserFile` and show it says MATCH.
 - **Do not edit this file**; say in a `## Queue` section of the pull request
   how the queue should change. Whoever merges applies it.
-- **Close every `tsumugi.exe` you started**, and the server you started with
-  your own `TSUMUGI_ADDRESS` (`tsumugi close` each session, or stop that
-  process by its id). Never the owner's.
+- **`Stop-Mine` before you finish**: every window and the server the kit
+  started. Never the owner's.
 - **Finish the run yourself**: commit, `git push -u origin <branch>`,
   `gh pr create --base main`. Never merge, never push to `main`, never `--force`.
 - **The last line you print**, alone: `WINTEST_DONE <pull request URL>`,
-  `WINTEST_NOTHING`, or `WINTEST_FAILED <why>` (and commit nothing then).
+  `WINTEST_NOTHING` (no row of the chunk could be done; nothing committed),
+  or `WINTEST_FAILED <why>` (and commit nothing then).
 
 ## The ARM64 lane
 
 A Windows laptop on ARM64 runs the same role with `auto-wintest.ps1 -Lane arm`:
 
-- Its branches are `test/arm-<section>`; it waits only on its own pull requests.
-- Same queue. Check the binary first: `(Get-Process tsumugi).Path` is your
-  build, and its PE machine is `0xAA64` -- a run that tested the x64 build by
-  accident proved nothing about ARM64.
-- A row already `[x]` from the x64 machine stays as it is; record the ARM64
-  result in the report under an ARM64 heading. A row that **fails** on ARM64 is
-  the most valuable finding this lane can make. Tick only rows still `[ ]`.
+- Its branches are `test/arm-…`; it waits only on its own pull requests.
+- Its chunks are the re-tests and sections 2, 4, 12 and 1, where the CPU can
+  make a difference (ConPTY, the toasts, the hooks, the server). The script
+  checks that tsumugi.exe's PE machine is `0xAA64` before it starts you.
+- It never re-checks a row already `[x]` from the x64 machine: that doubles
+  the tokens and proves little. A row that **fails** on ARM64 is the most
+  valuable finding this lane can make; say so under an ARM64 heading.
 - There is no RAM disk: the script names the scratch folder in the prompt.
 
 ## How to work
 
+The script has built and tested before the run starts; do not run
+`cargo build` or `cargo test` (they are denied). By hand, the same steps:
+
 ```powershell
 $env:PATH = "$env:USERPROFILE\.cargo\bin;$env:PATH"
-cargo build --release -p tsumugi
-cargo test --workspace --all-features
+cargo build --release --locked -p tsumugi --bins --examples
+cargo test --release --locked --workspace
 # The newer ConPTY the release ships beside tsumugi.exe; without it you test
 # something nobody downloads.
 pwsh -NoProfile -File scripts\fetch-conpty.ps1 -Dest target\release
 ```
 
-- Work on `test/win-<section>` from the latest `origin/main`.
+- The checklists' check uses the release build: `cargo run --release -q -p tsumugi --example make-testcheck -- --check`.
 - **Do not bump the version or write CHANGELOG.md.** Put the changelog line in
   the pull request body, in English; whoever merges bumps the PATCH.
 - **Never run `cargo fmt`.**

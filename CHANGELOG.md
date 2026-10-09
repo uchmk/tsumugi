@@ -5,6 +5,22 @@
 
 ## [未リリース]
 
+## [0.74.4] - 2026-10-09
+
+### 追加
+
+- `crates/tsumugi/tests/cli.rs`: 窓を開かずに自分だけのサーバーを立て、`new`・`ls`（`--json`）・`send`・`read`・`notify`・`wait`・`close` を確かめる結合テスト。CI が Windows（ConPTY）と Linux で毎回回す。
+- `scripts/wintest-kit.ps1`: 実機のテストの道具（自分だけのサーバーでの起動、`SendInput` のキー・文字・クリック、キーとフォーカスのログ、画面の画像、持ち主のファイルの退避と戻し、自分が起動したものだけを止める `Stop-Mine`）。毎回 PowerShell を書き直さずに済む。
+- `scripts/wintest-queue.ps1`: 1 回の実行で渡す塊（再テスト → キー（x64 だけ）→ 節の順、最大 15 行）を選ぶ。試して `[ ]` のままの行は次の回に回し、文面が変われば再び渡す。
+- `scripts/check-ps1.ps1` と CI の `powershell` ジョブ: `scripts/*.ps1` の構文と塊の選び方を Linux で確かめる。`scripts/verify.sh` も pwsh があれば回す。
+
+### 変更
+
+- `scripts/auto-wintest.ps1`: Claude を起動する前に、スクリプトがビルド・テスト・ConPTY の取得を済ませる（出力はログだけ）。塊を選んでその行だけをプロンプトに入れ、塊が無い・ビルドが落ちたときは Claude を起動しない。既定のモデルを Sonnet 5.5 にした（`-Model` で変えられる）。filer のレーンと同じ机でぶつからないよう `Local\wintest-desktop` のロックを取る（最大 20 分待って次回へ）。`-DryRun` で塊とプロンプトだけを見られる。
+- TESTING.md: CLI とサーバーの出力で確かめられる行（1.2・1.10・18.1・18.2・18.3・18.5）を「Covered by tests」の表に移した。1.4 と 18.6 は窓の要る半分だけを残した。
+- `.claude/windows-role.md`: プロンプトが渡す塊だけを進める形にし、道具は `wintest-kit.ps1` を使うと書いた。ARM64 は再テストと CPU の差が出うる節（2・4・12・1）だけ。
+- 実機の PR（`test/win-*`・`test/arm-*`）は、クラウドのマージの Routine が毎時 :40 にマージする。
+
 ## [0.74.3] - 2026-10-09
 
 ### 修正

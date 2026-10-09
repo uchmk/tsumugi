@@ -1,54 +1,65 @@
-# Start tsumugi's Windows test session by itself when there is new work for it.
+# Start tsumugi's Windows test session by itself when there is work for it.
 #
 # tsumugi's copy of filer's scripts/auto-wintest.ps1 (the two lanes, the RAM
 # disk, the screen saver and the model work the same way; filer's header tells
-# the history behind each). The session's role is .claude/windows-role.md. This
-# looks once, and starts one unattended run if:
+# the history behind each). The session's role is .claude/windows-role.md.
 #
-#   - origin/main has changed TESTING.md, TESTING-CHECKS.md or
-#     .claude/windows-role.md since the last run it started -- a merged run
-#     changes the last two, so merging one pull request starts the next;
-#   - no pull request from this lane (test/win-* or test/arm-*) is open;
-#   - the screen is not locked (SendInput does nothing on a locked desktop);
-#   - the worktree is clean (a dirty one is a run that was cut off).
+# Kept small, because a run's tokens are the cost: everything that needs no
+# judgement is done here, before claude starts, and claude is given one chunk.
 #
-# Register it with Task Scheduler every hour at :50 (filer's runs at :20, after
-# its merge at :59), as you, "only when the user is logged on" (the run drives
-# a real window). Run the worktree's copy,
-# which is moved to origin/main at every firing; the first time, run this copy
-# once by hand to make the worktree (C:\dev\tsumugi-wintest):
+#   1. The chunk. scripts/wintest-queue.ps1 picks it from origin/main's
+#      TESTING-CHECKS.md, TESTING-KEYS.md and the role's re-test row: up to
+#      15 rows of one section (or 20 keys, or the re-tests). Rows a run was
+#      given and left `[ ]` go to %LOCALAPPDATA%\tsumugi-wintest\attempted*.txt
+#      so the next run moves on; no chunk left, no run (0 tokens).
+#   2. No pull request of this lane (test/win-* or test/arm-*) is open: the
+#      merge Routine merges it at :40, and the next firing takes the next chunk.
+#   3. The build, the tests and the ConPTY: done here, their output to
+#      build*.log. A failed build starts no run.
+#   4. The desktop. filer's lane drives the same screen; both take
+#      Local\wintest-desktop for the time they drive it, and wait up to
+#      -DesktopWaitMin minutes for the other.
+#   5. The isolation: TSUMUGI_ADDRESS (a pipe of the run's own), TSUMUGI_STATE,
+#      TSUMUGI_SETTINGS, TSUMUGI_PTY_LOG and TSUMUGI_KEYLOG are set for the
+#      whole run, so even a bare `tsumugi ls` reaches the run's server, never
+#      the owner's; scripts/wintest-kit.ps1 has the tools the run uses.
 #
-#   pwsh -File C:\dev\tsumugi\scripts\auto-wintest.ps1      # makes the worktree
-#   $a = New-ScheduledTaskAction -Execute pwsh -Argument '-NoProfile -WindowStyle Hidden -File C:\dev\tsumugi-wintest\scripts\auto-wintest.ps1'
+# Register it with Task Scheduler every hour at :50 (filer's runs at :20), as
+# you, "only when the user is logged on" (the run drives a real window). The
+# task moves the worktree to origin/main and then runs the worktree's copy, so
+# a change to this script reaches the very next firing. The first time, make
+# the worktree (C:\dev\tsumugi-wintest):
+#
+#   git -C C:\dev\tsumugi fetch origin
+#   git -C C:\dev\tsumugi worktree add --detach C:\dev\tsumugi-wintest origin/main
+#   $w = 'C:\dev\tsumugi-wintest'
+#   $a = New-ScheduledTaskAction -Execute pwsh -Argument "-NoProfile -WindowStyle Hidden -Command `"git -C $w fetch -q origin main; if (-not (git -C $w status --porcelain)) { git -C $w checkout -q --detach origin/main }; & $w\scripts\auto-wintest.ps1`""
 #   $t = New-ScheduledTaskTrigger -Once -At ((Get-Date).Date.AddHours((Get-Date).Hour).AddMinutes(50)) -RepetitionInterval (New-TimeSpan -Hours 1)
-#   $s = New-ScheduledTaskSettingsSet -MultipleInstances IgnoreNew -ExecutionTimeLimit (New-TimeSpan -Hours 4)
+#   $s = New-ScheduledTaskSettingsSet -MultipleInstances IgnoreNew -ExecutionTimeLimit (New-TimeSpan -Hours 4) -StartWhenAvailable
 #   Register-ScheduledTask -TaskName tsumugi-auto-wintest -Action $a -Trigger $t -Settings $s
 #
 #   Unregister-ScheduledTask -TaskName tsumugi-auto-wintest   # to stop it
 #
-# filer's task runs on the same machine and drives the same screen. A firing
-# that finds filer's run going (its lock, Local\filer-auto-wintest) skips to the
-# next hour; filer's script does not look for this one's yet, so a filer run
-# can still start in the middle of a tsumugi run -- the start times half an
-# hour apart make that rare, and pausing filer's task during tsumugi's first
-# runs avoids it.
+# The ARM64 laptop: C:\dev\tsumugi-armtest, `& $w\scripts\auto-wintest.ps1 -Lane arm`,
+# and the task name tsumugi-auto-wintest-arm.
 #
 # By hand:
 #
-#   pwsh -File scripts\auto-wintest.ps1          # look once, run if there is work
-#   pwsh -File scripts\auto-wintest.ps1 -Force   # run even if nothing changed
-#   ... -Lane arm                                 # the ARM64 machine's lane (C:\dev\tsumugi-armtest)
-#   ... -LogDir R:\Temp -TargetOnDisk -KeepScreenSaver -Model <id>
+#   pwsh -File scripts\auto-wintest.ps1 -DryRun   # the chunk and the prompt it would give; builds nothing
+#   pwsh -File scripts\auto-wintest.ps1           # look once, run if there is work
+#   pwsh -File scripts\auto-wintest.ps1 -Force    # forget the attempted rows first
+#   ... -Lane arm                                  # the ARM64 machine's lane (C:\dev\tsumugi-armtest)
+#   ... -LogDir R:\Temp -TargetOnDisk -KeepScreenSaver -Model <id> -Rows 15 -KeyCount 20
 #
 # Scratch: R:\Temp when there is an R: drive, else %TEMP%\tsumugi-scratch; each
 # run gets run-<time> under it, TEMP and TMP point there, the newest three are
 # kept. Build output: the worktree's `target` is a junction to
 # R:\cargo-target\<worktree> when R: has 8 GB free. The screen saver is held
 # off for the run and put back in `finally` (or by the next firing). The log
-# is %LOCALAPPDATA%\tsumugi-wintest\auto-wintest.log; the state file stays
-# there whatever -LogDir says. The run gets --model $Model (Opus by default:
-# a wrong [x] is the one mistake nothing downstream catches). Needs `claude`
-# and an authenticated `gh` on PATH.
+# is %LOCALAPPDATA%\tsumugi-wintest\auto-wintest.log; the state files stay
+# there whatever -LogDir says. The run gets --model $Model (Sonnet by default,
+# as filer's lanes since v0.80.15; -Model claude-opus-5-5 goes back). Needs
+# cargo, `claude` and an authenticated `gh` on PATH.
 
 param(
     [ValidateSet('win', 'arm')] [string]$Lane = 'win',
@@ -56,23 +67,31 @@ param(
     [string]$LogDir,
     [string]$Scratch,
     [switch]$Force,
+    [switch]$DryRun,
     [switch]$KeepScreenSaver,
     [string]$TargetDir,
     [switch]$TargetOnDisk,
-    [string]$Model = 'claude-opus-5-5'
+    [string]$Model = 'claude-sonnet-5-5',
+    [int]$Rows = 15,
+    [int]$KeyCount = 20,
+    [int]$DesktopWaitMin = 20
 )
 
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'wintest-queue.ps1')
 
 $repo = 'uchmk/tsumugi'
-$watched = @('TESTING.md', 'TESTING-CHECKS.md', '.claude/windows-role.md')
 $Tools = 'Bash,PowerShell,Read,Edit,Write,Glob,Grep,TodoWrite'
 $Denied = @(
     'Bash(git push origin main:*)', 'PowerShell(git push origin main:*)',
     'Bash(git push -f:*)', 'PowerShell(git push -f:*)',
     'Bash(git push --force:*)', 'PowerShell(git push --force:*)',
     'Bash(gh pr merge:*)', 'PowerShell(gh pr merge:*)',
-    'Bash(cargo fmt:*)', 'PowerShell(cargo fmt:*)'
+    'Bash(cargo fmt:*)', 'PowerShell(cargo fmt:*)',
+    # Built and tested before the run starts (see the top).
+    'Bash(cargo build:*)', 'PowerShell(cargo build:*)',
+    'Bash(cargo test:*)', 'PowerShell(cargo test:*)',
+    'Bash(cargo clean:*)', 'PowerShell(cargo clean:*)'
 ) -join ','
 
 # The `win` lane keeps the names it had before lanes existed, so a machine
@@ -82,15 +101,15 @@ if (-not $Work) { $Work = if ($Lane -eq 'win') { 'C:\dev\tsumugi-wintest' } else
 if (-not $Scratch) {
     $Scratch = if (Test-Path 'R:\') { 'R:\Temp' } else { Join-Path ([IO.Path]::GetTempPath()) 'tsumugi-scratch' }
 }
-$queue = if ($Lane -eq 'win') { 'the queue in "Where the work is"' } else { 'the queue in "Where the work is", read with "The ARM64 lane",' }
-
 $state = Join-Path $env:LOCALAPPDATA 'tsumugi-wintest'
 New-Item -ItemType Directory -Force -Path $state | Out-Null
 if (-not $LogDir) { $LogDir = $state }
 New-Item -ItemType Directory -Force -Path $LogDir | Out-Null
 New-Item -ItemType Directory -Force -Path $Scratch | Out-Null
 $log = Join-Path $LogDir "auto-wintest$suffix.log"
-$last = Join-Path $state "last-trigger$suffix"
+$attemptedFile = Join-Path $state "attempted$suffix.txt"
+$failFile = Join-Path $state "failures$suffix.json"
+$buildLog = Join-Path $LogDir "build$suffix.log"
 
 # Points $Work\target at the RAM disk (see the top). Returns where the build
 # output goes, for the log.
@@ -227,15 +246,77 @@ function Resume-ScreenSaver {
     }
 }
 
+# The machine an exe is built for, from its PE header: 0x8664 is x64, 0xAA64
+# ARM64. An ARM64 run that tested an x64 build proved nothing about ARM64.
+function Get-PeMachine([string]$Path) {
+    $fs = [IO.File]::OpenRead($Path)
+    try {
+        $br = [IO.BinaryReader]::new($fs)
+        $fs.Position = 0x3C
+        $fs.Position = $br.ReadInt32() + 4
+        '0x{0:X4}' -f $br.ReadUInt16()
+    } finally { $fs.Dispose() }
+}
+
+# One step of the build, its output to $buildLog only: claude never reads it.
+function Invoke-BuildStep([string]$Name, [scriptblock]$Do) {
+    Add-Content -Path $buildLog -Value "===== $Name"
+    $t = Get-Date
+    $global:LASTEXITCODE = 0
+    & $Do 2>&1 | ForEach-Object { "$_" } | Add-Content -Path $buildLog
+    $code = $LASTEXITCODE
+    $took = ((Get-Date) - $t).TotalSeconds
+    if ($code -eq 0) { Say ("{0}: OK ({1:N0} s)" -f $Name, $took) | Out-Host; return $true }
+    Say ("{0}: FAILED (exit {1}, {2:N0} s). See {3}." -f $Name, $code, $took, $buildLog) | Out-Host
+    $false
+}
+
+# Every tsumugi this run started: the window from the worktree's build (by
+# its path through the junction and the path it points at), and
+# the server, which runs from a copy under the run's kit folder. The owner's
+# runs from %LOCALAPPDATA%\tsumugi\server\ and matches neither.
+function Stop-RunTsumugi([string[]]$Exe, [string]$Under) {
+    $mine = @(Get-Process tsumugi* -ErrorAction SilentlyContinue | Where-Object {
+            $_.Path -and ($_.Path -in $Exe -or $_.Path.StartsWith($Under, [StringComparison]::OrdinalIgnoreCase)) })
+    foreach ($p in $mine) {
+        Get-CimInstance Win32_Process -Filter "ParentProcessId = $($p.Id)" -ErrorAction SilentlyContinue |
+            ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+        Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
+    }
+    if ($mine) { Say "Stopped $($mine.Count) tsumugi process(es) the run left running." }
+}
+
+# Failures in a row: of the lane (a lane that fails every firing makes no pull
+# request and says nothing anywhere else) and of the chunk (one that fails
+# twice is set aside, so one bad row does not stop the lane).
+function Add-Failure([string]$Branch, [string]$Why) {
+    $f = if (Test-Path $failFile) { Get-Content -Raw $failFile | ConvertFrom-Json } else { [pscustomobject]@{ Branch = ''; Count = 0; Total = 0 } }
+    $count = if ($f.Branch -eq $Branch) { $f.Count + 1 } else { 1 }
+    $total = $f.Total + 1
+    @{ Branch = $Branch; Count = $count; Total = $total } | ConvertTo-Json | Set-Content -Path $failFile
+    Say "The run failed ($Why). See the log."
+    if ($Branch -ne 'build' -and $count -ge 2 -and $chunk) {
+        Add-Attempted $attemptedFile $chunk
+        Say "$Branch failed $count times: set aside; the next firing takes the next chunk."
+    }
+    if ($total -ge 3) {
+        Say "!!!!! [$Lane] $total runs in a row have failed. Nothing reaches GitHub until this is fixed. Last: $Why !!!!!"
+    }
+}
+
+# claude writes UTF-8 and so does git, and PowerShell decodes a native
+# command's output with the console's code page (CP932 on a Japanese
+# Windows): decoded as UTF-8 here, Japanese stays as it was.
+$utf8 = [Text.UTF8Encoding]::new($false)
+[Console]::OutputEncoding = $utf8
+$OutputEncoding = $utf8
+
 # Task Scheduler's IgnoreNew already keeps its own firings apart; this also
 # covers one started by hand while a scheduled one is running.
 $mutex = [Threading.Mutex]::new($false, "Local\tsumugi-auto-wintest$suffix")
 if (-not $mutex.WaitOne(0)) { Say 'A run is already going. Nothing to do.'; exit 0 }
-# filer's lane drives the same screen: while one of its runs holds its own
-# lock, this one waits for the next firing rather than fight it for the keys.
-$filerLock = [Threading.Mutex]::new($false, "Local\filer-auto-wintest$suffix")
-try { $filerFree = $filerLock.WaitOne(0) } catch [Threading.AbandonedMutexException] { $filerFree = $true }
-if ($filerFree) { $filerLock.ReleaseMutex() } else { $mutex.ReleaseMutex(); Say "filer's run is going on this machine. Trying again next time."; exit 0 }
+$desktop = $null
+$chunk = $null
 
 try {
     Restore-LeftOverSaver
@@ -255,32 +336,75 @@ try {
 
     git -C $Work fetch -q origin main
     if ($LASTEXITCODE -ne 0) { Say 'git fetch failed. Trying again next time.'; exit 0 }
-    # Kept on origin/main at every firing, not only when a run starts, so the
-    # copy of this script inside it is the newest by the next firing (see the
-    # top: the task runs that copy). A worktree with changes in it is left to
-    # the check further down.
     if (-not (git -C $Work status --porcelain)) { git -C $Work checkout -q --detach origin/main }
 
-    $trigger = (git -C $Work log -1 --format=%H origin/main -- $watched).Trim()
-    $seen = if (Test-Path $last) { (Get-Content -Raw $last).Trim() } else { '' }
-    if (-not $Force -and $trigger -eq $seen) { exit 0 }   # quiet: this is most runs
+    # 1. The chunk, from origin/main's checklists.
+    if ($Force) { Remove-Item -LiteralPath $attemptedFile -ErrorAction SilentlyContinue }
+    $show = { param($f) (git -C $Work show "origin/main:$f") -join "`n" }
+    $chunk = Select-Chunk -Lane $Lane -Checks (& $show 'TESTING-CHECKS.md') -Keys (& $show 'TESTING-KEYS.md') `
+        -Role (& $show '.claude/windows-role.md') -Attempted (Read-Attempted $attemptedFile) -Rows $Rows -KeyCount $KeyCount
+    if (-not $chunk) {
+        if ($DryRun) { 'Nothing left for this lane: every open row has been tried.' }
+        exit 0   # quiet: nothing left until a row changes or a re-test is named
+    }
+    $chunkText = Format-Chunk $chunk
+    $branch = $chunk.Branch
 
+    # 2. This lane's pull request, if one is open, waits for the merge.
     $open = gh pr list --repo $repo --state open --json headRefName --jq '.[].headRefName' |
         Where-Object { $_ -like "test/$Lane-*" }
     if ($LASTEXITCODE -ne 0) { Say 'gh pr list failed (is gh logged in?). Trying again next time.'; exit 0 }
-    if ($open) {
+    if ($open -and -not $DryRun) {
         Say "Waiting: $($open -join ', ') is still open."
         exit 0
     }
 
-    if (git -C $Work status --porcelain) {
+    if ((git -C $Work status --porcelain) -and -not $DryRun) {
         Say "$Work has uncommitted changes, left by a run that was cut off. Look at them, then clean it (git -C $Work stash -u, or git restore/clean) and run again."
         exit 1
     }
+    if (-not $DryRun) { git -C $Work checkout -q --detach origin/main }
 
-    git -C $Work checkout -q --detach origin/main
     $head = (git -C $Work rev-parse --short HEAD).Trim()
-    Say "[$Lane] Starting a run on $head (trigger $($trigger.Substring(0, 7)))."
+    $exe = Join-Path $Work 'target\release\tsumugi.exe'
+    $kit = $null
+
+    # This run's own scratch folder, and the oldest ones beyond three gone.
+    $scratchRoot = $Scratch
+    if (-not $DryRun) {
+        Get-ChildItem -Directory -Path $Scratch -Filter 'run-*' -ErrorAction SilentlyContinue |
+            Sort-Object Name -Descending | Select-Object -Skip 2 |
+            ForEach-Object { Remove-Item -Recurse -Force -LiteralPath $_.FullName -ErrorAction SilentlyContinue }
+    }
+    $stamp = '{0:yyyyMMdd-HHmmss}' -f (Get-Date)
+    $Scratch = Join-Path $Scratch "run-$stamp"
+    $kit = Join-Path $Scratch 'kit'
+
+    $what = if ($chunk.Kind -eq 'keys') { "TESTING-KEYS.md の次の $(@($chunk.Rows).Count) キー" } else { "TESTING-CHECKS.md の次の $(@($chunk.Rows).Count) 行" }
+    $prompt = @"
+無人実行です。人は見ていません。.claude/windows-role.md を読み、その「Unattended runs」の節に従ってください。TESTING.md は先頭から「## Covered by tests」の手前まで（規則の部分）だけを読み、行の一覧は読まないでください。
+
+この実行で確かめるのは、このスクリプトが選んだ ${what}だけです。ほかの行には触れません。TESTING-CHECKS.md / TESTING-KEYS.md でも、この行の印だけを変えます。
+
+$chunkText
+
+- レーンは $Lane です。ブランチは ``git checkout -B $branch origin/main`` で作ります。
+- チェックアウトは $Work です（役割定義の C:\dev\tsumugi は、すべてここに読み替えてください）。
+- ビルド（--release）、``cargo test``、ConPTY の取得は、このスクリプトが済ませました。exe は $exe で、テストは緑です。cargo build / cargo test はしないでください。表の確かめは ``cargo run --release -q -p tsumugi --example make-testcheck -- --check``（make-keycheck も同じ）で、ビルド済みのものを使います。
+- 道具は scripts\wintest-kit.ps1 にあります。PowerShell を呼ぶたびに、先頭で ``. .\scripts\wintest-kit.ps1`` を読み込んでください（関数の一覧はファイルの先頭）。SendInput・PrintWindow・バックアップを自分で書き直さないでください。
+- 環境変数は分離済みです（TSUMUGI_ADDRESS・TSUMUGI_STATE・TSUMUGI_SETTINGS・TSUMUGI_PTY_LOG・TSUMUGI_KEYLOG・WINTEST_KIT=$kit）。素の ``tsumugi ls`` もこの実行のサーバに届き、持ち主のサーバには届きません。終わる前に ``Stop-Mine`` を呼びます。
+- 作業用の一時ディレクトリは $Scratch で、TEMP / TMP も既にそこを指しています（役割定義に出てくる R:\Temp は、すべてここに読み替えてください）。
+"@
+
+    if ($DryRun) {
+        "Lane $Lane on $head; branch $branch; open pull requests of the lane: $(if ($open) { $open -join ', ' } else { 'none' })"
+        "Attempted list: $attemptedFile"
+        ''
+        $prompt
+        exit 0
+    }
+
+    Say "[$Lane] $branch on ${head}: $($chunk.Kind), $(@($chunk.Rows).Count) rows ($((@($chunk.Rows) | ForEach-Object Id) -join ', '))."
     # Which copy of this script is running, and how old it is (filer's ARM64
     # laptop once ran a stale one for days).
     $self = (git -C $PSScriptRoot log -1 --format='%h %s' -- auto-wintest.ps1 2>$null) -join ''
@@ -291,22 +415,56 @@ try {
         Say "This script is not the worktree's copy, so it does not follow origin/main. Point the task at $Work\scripts\auto-wintest.ps1 (see the top of the script)."
     }
 
-    # This run's own scratch folder, and the oldest ones beyond three gone.
-    Get-ChildItem -Directory -Path $Scratch -Filter 'run-*' -ErrorAction SilentlyContinue |
-        Sort-Object Name -Descending | Select-Object -Skip 2 |
-        ForEach-Object { Remove-Item -Recurse -Force -LiteralPath $_.FullName -ErrorAction SilentlyContinue }
-    $Scratch = Join-Path $Scratch ('run-{0:yyyyMMdd-HHmmss}' -f (Get-Date))
-    New-Item -ItemType Directory -Force -Path $Scratch | Out-Null
-
-    $prompt = "無人実行です。人は見ていません。.claude/windows-role.md を読み、その「Unattended runs」の節に従って、$queue の先頭から、節を 3 つまで進めてください。レーンは $Lane で、ブランチは test/$Lane-<節> です。チェックアウトは $Work です（役割定義に出てくる C:\dev\tsumugi は、すべてここに読み替えてください）。作業用の一時ディレクトリは $Scratch で、TEMP / TMP も既にそこを指しています（役割定義に出てくる R:\Temp は、すべてここに読み替えてください）。"
+    New-Item -ItemType Directory -Force -Path $kit | Out-Null
     $env:TEMP = $Scratch
     $env:TMP = $Scratch
     $env:CARGO_INCREMENTAL = '0'
-    Say "Build output: $(Set-BuildTarget)"
+    $env:PATH = "$env:USERPROFILE\.cargo\bin;$env:PATH"
+    $buildDir = Set-BuildTarget
+    Say "Build output: $buildDir"
+
+    # 3. The build, the tests and the ConPTY, before claude starts.
+    Set-Content -Path $buildLog -Value "[$Lane] $branch on $head, $(Get-Date -Format s)"
+    Push-Location $Work
+    try {
+        $built = (Invoke-BuildStep 'Build' { cargo build --release --locked -p tsumugi --bins --examples }) -and
+            (Invoke-BuildStep 'Tests' { cargo test --release --locked --workspace }) -and
+            (Invoke-BuildStep 'ConPTY' { pwsh -NoProfile -File scripts\fetch-conpty.ps1 -Dest target\release })
+    } finally { Pop-Location }
+    if (-not $built) { Add-Failure 'build' "the build or the tests failed on $head"; exit 1 }
+    $machine = Get-PeMachine $exe
+    Say "tsumugi.exe is $machine ($(if ($machine -eq '0xAA64') { 'ARM64' } elseif ($machine -eq '0x8664') { 'x64' } else { 'unknown' }))."
+    if ($Lane -eq 'arm' -and $machine -ne '0xAA64') { Add-Failure 'build' "the ARM64 lane built $machine, not 0xAA64"; exit 1 }
+
+    # 5. The isolation, inherited by claude and every shell it starts.
+    $env:TSUMUGI_ADDRESS = "\\.\pipe\tsumugi-wintest$suffix-$stamp"
+    $env:WINTEST_KIT = $kit
+    $env:WINTEST_EXE = $exe
+    $env:TSUMUGI_STATE = Join-Path $kit 'state'
+    $env:TSUMUGI_SETTINGS = Join-Path $kit 'settings.toml'
+    $env:TSUMUGI_PTY_LOG = Join-Path $kit 'pty.log'
+    $env:TSUMUGI_KEYLOG = '1'
+    Remove-Item Env:TSUMUGI_SESSION -ErrorAction SilentlyContinue
+
+    # 4. The desktop, shared with filer's lane.
+    $desktop = [Threading.Mutex]::new($false, 'Local\wintest-desktop')
+    $t = Get-Date
+    try { $got = $desktop.WaitOne([TimeSpan]::FromMinutes($DesktopWaitMin)) } catch [Threading.AbandonedMutexException] { $got = $true }
+    $waited = ((Get-Date) - $t).TotalMinutes
+    if (-not $got) {
+        $desktop = $null
+        Say ("desktop lock: still held after {0:N0} min (filer's run?). Trying again next time." -f $waited)
+        exit 0
+    }
+    if ($waited -ge 0.5) { Say ("desktop lock: waited {0:N0} min" -f $waited) }
+    if (Get-Process LogonUI -ErrorAction SilentlyContinue) {
+        Say 'The screen locked while waiting. Trying again next time.'
+        exit 0
+    }
 
     if (-not $KeepScreenSaver) {
         Suspend-ScreenSaver
-        $prompt += " スクリーンセーバーはこのスクリプトが実行の間だけ止めています（起動していれば 5 秒以内に止めます）。"
+        $prompt += "- スクリーンセーバーはこのスクリプトが実行の間だけ止めています（起動していれば 5 秒以内に止めます）。`n"
     }
     # Not a reason to stop: PostMessage and --keys still reach the window. The
     # run is told, so it does not record SendInput rows as having done nothing.
@@ -314,14 +472,9 @@ try {
     $desk = Get-InputDesktop
     Say "Input desktop at the start: $desk"
     if ($desk -ne 'Default') {
-        $prompt += " 起動時の入力デスクトップは `"$desk`" で、Default ではありません。SendInput のキーとマウスは届かないので、そういう行は測らずに理由を書いて残し、--keys と PostMessage で進められる行だけを進めてください。"
+        $prompt += "- 起動時の入力デスクトップは `"$desk`" で、Default ではありません。SendInput のキーとマウスは届かないので、そういう行は測らずに理由を書いて残し、文字で確かめられる行だけを進めてください。`n"
     }
-    # claude writes UTF-8, and PowerShell decodes a native command's output
-    # with the console's code page (CP932 on a Japanese Windows): decoded as
-    # UTF-8 here, the log keeps Japanese as it was.
-    $utf8 = [Text.UTF8Encoding]::new($false)
-    [Console]::OutputEncoding = $utf8
-    $OutputEncoding = $utf8
+
     Push-Location $Work
     try {
         $out = claude -p $prompt --model $Model --permission-mode acceptEdits --allowedTools $Tools --disallowedTools $Denied 2>&1 | Out-String
@@ -340,30 +493,24 @@ try {
     } finally {
         Pop-Location
         if (-not $KeepScreenSaver) { Resume-ScreenSaver }
+        Stop-RunTsumugi @($exe, (Join-Path $buildDir 'release\tsumugi.exe')) "$kit\"
     }
     Add-Content -Path $log -Value "===== exit=$code`n$out"
 
     $tail = ($out.TrimEnd() -split "`r?`n")[-1].Trim()
-    # Failures in a row: a lane that fails every firing makes no pull request
-    # and says nothing anywhere else.
-    $failFile = Join-Path $state "failures$suffix"
-    if ($code -eq 0) {
-        # Only a finished run uses the trigger up. A failed one is tried
-        # again on the next firing, from the same commit.
-        Set-Content -NoNewline -Path $last -Value $trigger
+    if ($code -eq 0 -and $tail -match '^WINTEST_(DONE|NOTHING)\b') {
+        # The chunk is used up: what it left `[ ]` is not offered again
+        # until its words change or it is named in the re-tests.
+        Add-Attempted $attemptedFile $chunk
         Remove-Item -LiteralPath $failFile -ErrorAction SilentlyContinue
         Say "Done: $tail"
-    } elseif ($out -match 'limit') {
+    } elseif ($code -ne 0 -and $out -match 'limit') {
         Say 'Hit a usage limit. Trying again next time.'
     } else {
-        $fails = 1 + $(if (Test-Path $failFile) { [int](Get-Content -Raw $failFile) } else { 0 })
-        Set-Content -NoNewline -Path $failFile -Value $fails
-        Say "The run failed (exit $code). See the log. Last line: $tail"
-        if ($fails -ge 3) {
-            Say "!!!!! [$Lane] $fails runs in a row have failed. Nothing reaches GitHub until this is fixed. Last line: $tail !!!!!"
-        }
+        Add-Failure $branch "exit $code; last line: $tail"
         exit 1
     }
 } finally {
+    if ($desktop) { $desktop.ReleaseMutex() }
     $mutex.ReleaseMutex()
 }

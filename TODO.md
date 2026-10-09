@@ -5,11 +5,12 @@ tsumugi のやること。`【人】` は持ち主の作業、`【金】` は 20
 
 ## 金曜日から（2026-10-09 以降）
 
-- [ ] 【人】【金】Windows 実機のテストを始める。`C:\dev\tsumugi` を clone（または pull）し、`pwsh -File C:\dev\tsumugi\scripts\auto-wintest.ps1` を 1 回手で回して
-      worktree（`C:\dev\tsumugi-wintest`）を作ってから、スクリプトの冒頭のとおりタスク スケジューラに毎時 :50 で登録する。
-      filer の実行（:20）が走っている間は待つ。役割は `.claude/windows-role.md`、チェック表は TESTING-CHECKS.md（197 行）と TESTING-KEYS.md（50 個）。
-  - [ ] ARM64 のノート PC も使うなら `-Lane arm`（`C:\dev\tsumugi-armtest`）。
-  - [ ] 実機の PR（`test/win-*`）をマージする側を決める（filer の `merge-role.md` に当たるもの。今はまだ無い。最初は対話のセッションでマージする）。
+- [ ] 【人】【金】Windows 実機のテストを始める。`C:\dev\tsumugi` から worktree（`C:\dev\tsumugi-wintest`）を作り、`-DryRun` で塊を見てから 1 回手で回し、
+      スクリプトの冒頭のとおりタスク スケジューラに毎時 :50 で登録する。役割は `.claude/windows-role.md`、チェック表は TESTING-CHECKS.md（303 行）と
+      TESTING-KEYS.md（77 個）。CLI とサーバの行は `tests/cli.rs` で CI に移した（TESTING.md の「Covered by tests」）。
+  - [ ] 【人】ARM64 のノート PC も使うなら `-Lane arm`（`C:\dev\tsumugi-armtest`、タスク名 `tsumugi-auto-wintest-arm`）。
+  - [x] （v0.74.4、クラウドのマージの Routine が毎時 :40 にマージする）実機の PR（`test/win-*`・`test/arm-*`）をマージする側を決める。
+  - [ ] 【実機】最初の 3 回の実行時間（`auto-wintest.log` の開始と終了）と使用量の増え方を見て、1 回 1 塊の目安をここに書く。
 - [x] （filer v0.79.0 で `rev` を `fc88385`（v0.65.1）に上げた。それ以後 v0.68.0 まで `crates/tsumugi-pane` は変わっていない）【金】filer の `tsumugi-pane` の `rev` を上げる。filer の `Cargo.toml` の `rev` は `d2405616` のままで、それ以後のペインの直し
       （ペインごとの文字コード `Charset` と `encoding_rs`、`all_text`、`sys` のプロセスとポートの検出、`Terminal::shell_pid()` など）が filer に届いていない。
       上げたら filer で `cargo build` して `Cargo.lock` を合わせ、filer の `scripts/verify.sh` を回す。`Palette` などの形が変わっていれば filer の

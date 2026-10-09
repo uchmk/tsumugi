@@ -64,20 +64,38 @@ with what was seen (a value read, a file's contents, a screenshot's path),
 and anything that surprised. A row that failed gets what was expected,
 what happened, and the steps.
 
+## Covered by tests
+
+These rows needed no window, so `crates/tsumugi/tests/cli.rs` runs them
+against a server of its own on every push, Windows (ConPTY) and Linux, and
+they are not ticked by hand any more. A change that breaks one turns CI red.
+
+| Was | What | Test |
+| --- | --- | --- |
+| 1.2 | `tsumugi ls`: one line per session, its seven columns | `new_starts_a_server_and_ls_lists_the_session` |
+| 1.4 (half) | `tsumugi new . -- echo hi` with no server: starts one, prints a number, `hi` runs | `new_starts_a_server_and_ls_lists_the_session` |
+| 1.10 | `tsumugi new . --tag a --tag b --tag c`: all three tags | `new_starts_a_server_and_ls_lists_the_session` |
+| 18.1 | `tsumugi ls --json`: one array, every key | `ls_json_is_one_array_of_sessions` |
+| 18.2 | `tsumugi send N "…"`: typed and run | `send_runs_a_line_and_read_gives_it_back` |
+| 18.3 | `tsumugi read N --lines 5` and `--all`, Japanese whole | `send_runs_a_line_and_read_gives_it_back` |
+| 18.5 | `tsumugi wait`: exit 0 on the state, 1 on the timeout, 3 for a session gone (`notify` standing in for Claude Code) | `wait_and_close` |
+| 18.6 (half) | `tsumugi close N`: the session ends | `wait_and_close` |
+
+A row that only needs text belongs here, not in a section below: add a test
+to `cli.rs` and a line to this table instead of a row.
+
 ## 1. The window and the server
 
 | # | Do | Expect |
 | --- | --- | --- |
 | 1.1 | Start `tsumugi` with no session and nothing to restore | **Start your first session**: the folder it was started from first, the default folder, the last ones closed, **Choose another folder…**; Enter (or a click) starts the settings' program there. The window opens in under a second |
-| 1.2 | `tsumugi ls` from another terminal | One line per session: number, state, program, folder, title, what it said, its tags |
 | 1.3 | Close the window, then start `tsumugi` again | The same tab and the same shell, its output still there: the server kept it |
-| 1.4 | With the window closed, `tsumugi new . -- echo hi` | Prints a number; the next window has a tab with `hi` in it |
+| 1.4 | With the window closed, `tsumugi new . -- echo hi`, then start `tsumugi` | The window has a tab with `hi` in it (the number printed and the session itself: `cli.rs`) |
 | 1.5 | `tsumugi attach <that number>`, and `tsumugi attach <folder name>` | The window opens on that session. A name two sessions share says so and names their numbers |
 | 1.6 | With tsumugi running, `cargo build` (Windows) | The build replaces `tsumugi.exe` -- no `アクセスが拒否されました` -- because the server runs from its copy in `%LOCALAPPDATA%\tsumugi\server\` |
 | 1.7 | Start the newly built window while the older server runs (a build of 0.45.0 or 0.46.0 too) | **tsumugi was updated**, what that means in a sentence, **Restart the server** lit; Enter (no Tab or click) restarts it and every tab comes back at once, with no Welcome back; Esc closes the window and the old sessions go on |
 | 1.8 | Task Manager after 1.3 | One `tsumugi-<version>-<hash>.exe` server, and no console window anywhere |
 | 1.9 | The taskbar, Alt+Tab, and the window's corner | The logo (two threads, cyan and gold, on a dark tile) as the window's icon |
-| 1.10 | `tsumugi new . --tag a --tag b --tag c -- bash` | All three tags on the new session (`tsumugi ls`'s last column) |
 | 1.11 | Settings → General → Restart the server after an update without asking on; then 1.7 | No question: the older server is restarted at once and every tab comes back |
 
 ## 2. Panes and splits
@@ -446,12 +464,8 @@ what happened, and the steps.
 
 | # | Do | Expect |
 | --- | --- | --- |
-| 18.1 | `tsumugi ls --json` (PowerShell: `tsumugi ls --json \| ConvertFrom-Json`) | One array, a session an object: id, state, command, agent, cwd, project, branch, title, note, tags, ports |
-| 18.2 | `tsumugi send N "echo hi"` | `echo hi` typed into session N and run |
-| 18.3 | `tsumugi read N --lines 5`; `tsumugi read N --all > out.txt` | Its last five lines; the whole scrollback in the file, Japanese whole |
 | 18.4 | `tsumugi split N --down -- claude` | A pane below session N in its folder with Claude Code started; its number printed; the window shows the split |
-| 18.5 | `tsumugi wait N --state done --timeout 600` while Claude Code works there | Returns `done` (exit 0) when it finishes; with a short timeout, exit 1; for a closed session, exit 3 |
-| 18.6 | `tsumugi close N` | The session ends and its pane goes |
+| 18.6 | `tsumugi close N` with the window open on N | Its pane goes from the window (the session ending: `cli.rs`) |
 | 18.7 | With tsumugi on PATH on another machine you reach by `ssh HOST` with a key: `tsumugi ls --host HOST`, then `tsumugi split --host HOST N` and `tsumugi read --host HOST N` | That machine's sessions listed (its server started if none ran); the split and read work there; no console window flashes on Windows |
 | 18.8 | Pull the network while `tsumugi wait --host HOST N` waits, then `tsumugi ls --host HOST` again once it is back | The wait fails within about 30 s; the sessions on HOST are still there afterwards |
 | 18.9 | `tsumugi ls --host HOST` where HOST has no tsumugi, and where the key is refused | One line naming HOST and what ssh said (`command not found`, `Permission denied`); no password prompt |

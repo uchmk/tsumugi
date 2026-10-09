@@ -26,6 +26,8 @@ Claude Code などの AI CLI のセッションを何本も並べて動かすた
 - **動きを変えた行は、印を外して（`[ ]` に戻して）から作り直す。**前の動きを確かめた印なので、残すと嘘になる。
 - `scripts/verify.sh` と CI（`checklists.yml`）が `--check` で、表が TESTING.md と keys.rs に追いついているかを見る。
 - `[x]` は実機で確かめた印で、付けてよいのは実機のセッション（Agent）か持ち主だけ。見た目の行は `[~]`（画面の画像で判断した）まで。
+- **文字で確かめられる行（CLI・サーバの出力）は CI に回す。**`crates/tsumugi/tests/cli.rs` にテストを書き、行は TESTING.md の
+  「Covered by tests」の表（元の番号・内容・テスト名）に移す。実機の Claude に残すのは窓・キー・トーストなど画面の要る行だけ。
 
 ## 版と変更ログ（コードが入ったら）
 
@@ -41,11 +43,14 @@ filer と同じ。`Cargo.toml` の `version` が正、版の繰り上げと CHAN
 
 ## Windows 実機のセッション
 
-- 役割は [.claude/windows-role.md](.claude/windows-role.md)。`scripts/auto-wintest.ps1` をタスク スケジューラで毎時 :50 に回すと、
-  TESTING.md / TESTING-CHECKS.md / 役割の定義が `main` で変わっていて `test/win-*` の PR が開いていないときに 1 本起動する（filer のものの写し。
-  filer の実行が走っている間は待つ）。報告は `qa-reports/<日付>-<ブランチ>.md`。
-- `[x]` を付けてよいのはこのセッションと持ち主だけ。版と CHANGELOG は触らず、PR 本文に 1 行書く。マージは merge コミット。
-- 始めるのは 2026-10-09（金）から（TODO.md）。
+- 役割は [.claude/windows-role.md](.claude/windows-role.md)。`scripts/auto-wintest.ps1` をタスク スケジューラで毎時 :50 に回す
+  （x64 と ARM64 の `-Lane arm`）。スクリプトが先に `cargo build` / `cargo test` / ConPTY の取得を済ませ、TESTING-CHECKS.md と TESTING-KEYS.md から
+  1 回分の塊（再テスト → キー（x64 だけ）→ 節の順、最大 15 行）を選び、その行だけをプロンプトに入れて Claude（既定は Sonnet 5.5）を起動する。
+  塊が無い・自分の PR が開いている・ビルドが落ちたときは Claude を起動しない。道具は `scripts/wintest-kit.ps1`、塊の選び方は `scripts/wintest-queue.ps1`
+  （`scripts/check-ps1.ps1` が CI で確かめる）。報告は `qa-reports/<日付>-<ブランチ>.md`。
+- 同じ机で filer のレーンとキーがぶつからないよう、両方のスクリプトが `Local\wintest-desktop` のロックを取る（最大 20 分待って次回へ）。
+- 実機の PR（`test/win-*`・`test/arm-*`）は、クラウドのマージの Routine（毎時 :40）が CI 緑を待って merge コミットでマージし、PATCH と CHANGELOG を上げる。
+- `[x]` を付けてよいのはこのセッションと持ち主だけ。版と CHANGELOG は触らず、PR 本文に 1 行書く。
 
 ## 設計の約束事
 
