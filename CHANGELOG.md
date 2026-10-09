@@ -5,6 +5,13 @@
 
 ## [未リリース]
 
+## [0.68.3] - 2026-10-09
+
+### 追加
+
+- 紹介画像（GitHub の Social preview）: `docs/banner.html` を元に `docs/social-preview.png`（1280×640 の 2 倍）を作った。filer のものと同じ形で、色は tsumugi Dark、見出しは README の「どのセッションが待っているかがひと目でわかる」。
+- README の画像の置き場 `docs/images/`。持ち主が Windows で撮る `split.png`・`claude.png`・`demo.gif` の名前と写すものを `docs/images/README.md` に書いた。
+
 ## [0.68.2] - 2026-10-09
 
 ### 変更
