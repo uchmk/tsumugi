@@ -1,6 +1,7 @@
 //! Where a new session runs: this machine, a WSL distribution, or a host
 //! from `~/.ssh/config`. The new-session dialog offers the ones found; a
-//! profile keeps the choice as a word (`wsl:Ubuntu`, `ssh:box`).
+//! profile keeps the choice as a word (`wsl:Ubuntu`, `ssh:box`,
+//! `mux:box`).
 
 use std::sync::{Arc, Mutex};
 
@@ -10,8 +11,11 @@ pub enum Where {
     Here,
     /// A WSL distribution, by its name.
     Wsl(String),
-    /// A host as `~/.ssh/config` names it.
+    /// A host as `~/.ssh/config` names it: `ssh` in a pane here.
     Ssh(String),
+    /// The same host's own tsumugi server, over ssh (`machine.rs`): the
+    /// session lives there and stays when the line drops.
+    Mux(String),
 }
 
 impl Where {
@@ -21,14 +25,17 @@ impl Where {
             Where::Here => String::new(),
             Where::Wsl(d) => format!("wsl:{d}"),
             Where::Ssh(h) => format!("ssh:{h}"),
+            Where::Mux(h) => format!("mux:{h}"),
         }
     }
 
     pub fn from_word(w: &str) -> Self {
         let w = w.trim();
-        match (w.strip_prefix("wsl:"), w.strip_prefix("ssh:")) {
-            (Some(d), _) if !d.trim().is_empty() => Where::Wsl(d.trim().to_owned()),
-            (_, Some(h)) if !h.trim().is_empty() => Where::Ssh(h.trim().to_owned()),
+        let after = |p: &str| w.strip_prefix(p).map(str::trim).filter(|r| !r.is_empty()).map(str::to_owned);
+        match (after("wsl:"), after("ssh:"), after("mux:")) {
+            (Some(d), _, _) => Where::Wsl(d),
+            (_, Some(h), _) => Where::Ssh(h),
+            (_, _, Some(h)) => Where::Mux(h),
             _ => Where::Here,
         }
     }
@@ -38,7 +45,20 @@ impl Where {
             Where::Here => "This machine".into(),
             Where::Wsl(d) => format!("WSL: {d}"),
             Where::Ssh(h) => format!("SSH: {h}"),
+            Where::Mux(h) => format!("SSH: {h}, kept there"),
         }
+    }
+
+    /// Each SSH host twice: in a pane here, and kept on its own server.
+    pub fn with_kept(places: &[Where]) -> Vec<Where> {
+        let mut out = Vec::new();
+        for p in places {
+            out.push(p.clone());
+            if let Where::Ssh(h) = p {
+                out.push(Where::Mux(h.clone()));
+            }
+        }
+        out
     }
 
     /// The program the session runs in place of the shell; `None` for the
@@ -46,7 +66,7 @@ impl Where {
     /// Windows folder it is started in); SSH in the login's home folder.
     pub fn shell(&self) -> Option<(String, Vec<String>)> {
         match self {
-            Where::Here => None,
+            Where::Here | Where::Mux(_) => None,
             Where::Wsl(d) => Some(("wsl.exe".into(), vec!["-d".into(), d.clone()])),
             Where::Ssh(h) => Some(("ssh".into(), vec![h.clone()])),
         }
@@ -132,9 +152,11 @@ mod tests {
 
     #[test]
     fn a_place_keeps_as_a_word() {
-        for w in [Where::Here, Where::Wsl("Ubuntu-24.04".into()), Where::Ssh("box".into())] {
+        for w in [Where::Here, Where::Wsl("Ubuntu-24.04".into()), Where::Ssh("box".into()), Where::Mux("box".into())] {
             assert_eq!(Where::from_word(&w.word()), w);
         }
+        assert_eq!(Where::Mux("box".into()).shell(), None, "the server there runs its own shell");
+        assert_eq!(Where::with_kept(&[Where::Wsl("D".into()), Where::Ssh("box".into())]), vec![Where::Wsl("D".into()), Where::Ssh("box".into()), Where::Mux("box".into())]);
         assert_eq!(Where::from_word("ssh:"), Where::Here);
         assert_eq!(Where::from_word("nonsense"), Where::Here);
         assert_eq!(Where::Ssh("box".into()).shell(), Some(("ssh".into(), vec!["box".into()])));

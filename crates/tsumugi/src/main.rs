@@ -64,6 +64,7 @@ mod layouts;
 mod help;
 mod find;
 mod paste;
+mod machine;
 
 use std::time::Duration;
 
@@ -696,6 +697,15 @@ fn replace_server(wake: impl Fn() + Send + Sync + Clone + 'static) -> std::sync:
     rx
 }
 
+/// [`connect`] on a thread, answered as [`replace_server`] is.
+fn spawn_connect(wake: impl Fn() + Send + Sync + Clone + 'static) -> std::sync::mpsc::Receiver<Result<Client, String>> {
+    let (tx, rx) = std::sync::mpsc::channel();
+    let _ = std::thread::Builder::new().name("connect".into()).spawn(move || {
+        let _ = tx.send(connect(wake));
+    });
+    rx
+}
+
 /// `[general] restart_after_update`, read from the file: with no server to
 /// talk to, the window has not read the settings yet.
 fn restart_after_update() -> bool {
@@ -869,7 +879,15 @@ fn keep_focus(field: &egui::Response) {
 type HooksFound = (bool, Result<Option<std::path::PathBuf>, String>);
 
 struct App {
+    /// The server whose sessions are shown: this machine's, or one of
+    /// `machines` (`on`), with this machine's kept in `home` meanwhile.
     client: Option<Client>,
+    machines: Vec<machine::Machine>,
+    on: Option<String>,
+    home: Option<Client>,
+    /// A machine to show at the top of the next frame (`None` this one's),
+    /// and what then.
+    switch: Option<(Option<String>, Option<machine::Then>)>,
     /// Why there is nothing to show, shown in its place.
     failed: Option<String>,
     /// The tab shown.
@@ -1384,6 +1402,10 @@ impl App {
             side_gen: 0,
             closed_groups: Vec::new(),
             close_armed: None,
+            machines: Vec::new(),
+            on: None,
+            home: None,
+            switch: None,
         }
     }
 
@@ -1861,7 +1883,8 @@ impl App {
         for i in sessions {
             self.known_cwds.insert(i.id, i.cwd.clone());
         }
-        if ended.is_empty() {
+        // Another machine's folders are not this one's to start in again.
+        if ended.is_empty() || self.on.is_some() {
             return;
         }
         for f in ended {
@@ -1879,6 +1902,24 @@ impl App {
 
     /// Start what the new-session dialog asked for.
     fn create(&mut self, client: &Client, mut c: newsession::Create, current: Option<&Workspace>) {
+        // Kept on another machine's server: started there, once it is
+        // shown. A worktree is this machine's git, and a folder here means
+        // nothing there: its home folder, unless the folder came from it.
+        if let remote::Where::Mux(host) = &c.on {
+            c.worktree = None;
+            if self.on.as_deref() != Some(host.as_str()) {
+                let host = host.clone();
+                self.keep_profile(&mut c);
+                c.folder = "~".into();
+                self.reach(&host, machine::Then::Create(c));
+                return;
+            }
+        } else if self.on.is_some() {
+            // This machine's (in a pane here, WSL, ssh in a pane): shown
+            // again, and started there.
+            self.switch = Some((None, Some(machine::Then::Create(c))));
+            return;
+        }
         // The worktree first, on a thread (git can take a moment); the
         // session starts in it when it is made.
         if let Some(branch) = c.worktree.take() {
@@ -1926,7 +1967,12 @@ impl App {
             }
             Err(e) => self.failed = Some(format!("the shell did not start: {e}")),
         }
-        if let Some(name) = c.save_as {
+        self.keep_profile(&mut c);
+    }
+
+    /// Keep the new-session dialog's choices as the profile it named, once.
+    fn keep_profile(&self, c: &mut newsession::Create) {
+        if let Some(name) = c.save_as.take() {
             let profile = tsumugi_mux::settings::Profile {
                 name,
                 folder: home_short(&c.folder),
@@ -2214,6 +2260,10 @@ impl App {
             ui.add_space(14.0);
             let count = format!("{} of {}", shown.len(), tabs.len());
             ui.label(egui::RichText::new("SESSIONS").size(11.0).strong().color(pal.fg_dim));
+            // Another machine's, shown: whose.
+            if let Some(host) = &self.on {
+                ui.label(egui::RichText::new(format!("on {host}")).size(11.0).strong().color(chrome::ink(chrome::cyan()))).on_hover_text("Kept on that machine's tsumugi; this machine's are under MACHINES below");
+            }
             ui.label(egui::RichText::new(count).size(11.0).color(crate::theme::colors().faint()));
             // Right to left: `+` at the end, the order before it.
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -2291,6 +2341,7 @@ impl App {
             let (line, _) = ui.allocate_exact_size(egui::vec2(ui.available_width(), 1.0), egui::Sense::hover());
             ui.painter().rect_filled(line, 0.0, crate::theme::colors().border);
             ui.add_space(8.0);
+            self.machine_rows(ui, sessions);
             let margin = egui::Margin { left: 12, right: 8, top: 0, bottom: 0 };
             egui::Frame::NONE.inner_margin(margin).show(ui, |ui| {
                 ui.spacing_mut().item_spacing = egui::vec2(5.0, 5.0);
@@ -3034,7 +3085,12 @@ impl App {
     fn dialog(&self, folder: &std::path::Path) -> newsession::Dialog {
         let start = newsession::Start::from_word(&self.settings_now.sessions.start).unwrap_or(newsession::Start::Claude);
         remote::find(self.places.clone(), self.ctx.clone());
-        newsession::Dialog::starting(folder, start)
+        let mut d = newsession::Dialog::starting(folder, start);
+        // Another machine's shown: the new one goes there too.
+        if let Some(host) = &self.on {
+            d.on = remote::Where::Mux(host.clone());
+        }
+        d
     }
 
     fn rail(&mut self, ui: &mut egui::Ui, workspaces: &[Workspace], sessions: &[Info]) -> Option<WorkspaceId> {
@@ -3613,12 +3669,250 @@ impl App {
     /// Stop the server and start it again: the sessions are written down and
     /// come back, as after an update.
     fn restart_server(&mut self, ctx: &egui::Context) {
+        // It is this machine's server that restarts.
+        self.show_machine(None);
         self.prefs = None;
         self.panes.clear();
         self.client = None;
         self.failed = Some("Restarting the server…".into());
         let ctx = ctx.clone();
         self.replacing = Some(replace_server(move || ctx.request_repaint()));
+    }
+
+    /// Show another machine's sessions (`Some(host)`, reached already), or
+    /// this machine's again. Session ids are each server's own, so what the
+    /// window kept for the sessions shown is let go.
+    fn show_machine(&mut self, host: Option<String>) {
+        if host == self.on {
+            return;
+        }
+        let next = match &host {
+            None => self.home.take().filter(|c| !c.lost()),
+            Some(h) => match self.machines.iter().find(|m| &m.host == h).and_then(|m| m.client.clone()) {
+                Some(c) if !c.lost() => Some(c),
+                _ => return,
+            },
+        };
+        if let Some(old) = std::mem::replace(&mut self.client, next) {
+            old.focus(false);
+            if self.on.is_none() {
+                self.home = Some(old);
+            }
+        }
+        self.on = host;
+        self.panes.clear();
+        self.views.clear();
+        (self.active, self.pending, self.following) = (None, None, None);
+        (self.dragging, self.moving, self.copy_mode, self.find) = (None, None, None, None);
+        (self.peek, self.renaming_card, self.noting_card, self.renaming) = (None, None, None, None);
+        (self.opening, self.lists, self.diff, self.restore, self.paste_ask) = (None, None, None, None, None);
+        (self.shown_tab, self.dragging_tab, self.close_armed) = (None, None, None);
+        self.shown_panes.clear();
+        self.pane_at.clear();
+        self.queue.clear();
+        self.queue_hold.clear();
+        self.known_cwds.clear();
+        self.watching.clear();
+        self.saving.clear();
+        self.typing_all.clear();
+        self.zoom = false;
+        self.focus_sent = None;
+        self.failed = None;
+        self.had_tabs = false;
+        if self.on.is_none() && self.client.is_none() {
+            // This machine's server stopped while another was shown (one
+            // no session was ever started on stops by itself): started
+            // again, its saved tabs offered back.
+            self.failed = Some("Starting this machine's server…".into());
+            let ctx = self.ctx.clone();
+            self.replacing = Some(spawn_connect(move || ctx.request_repaint()));
+        }
+    }
+
+    /// The sidebar's machines (Q15): this one and each other reached, with
+    /// how its line is and how many sessions wait there. A click shows its
+    /// sessions; a line dropped offers to reconnect.
+    fn machine_rows(&mut self, ui: &mut egui::Ui, sessions: &[Info]) {
+        if self.machines.is_empty() {
+            return;
+        }
+        let pal = self.palette;
+        let t = crate::theme::colors();
+        enum Do {
+            Show(Option<String>),
+            Reach(String),
+            Forget(String),
+        }
+        let mut did = None;
+        ui.horizontal(|ui| {
+            ui.add_space(14.0);
+            ui.label(egui::RichText::new("MACHINES").size(11.0).strong().color(pal.fg_dim));
+        });
+        // This machine's numbers: from the window's own when shown.
+        let here = match (&self.on, &self.home) {
+            (None, _) => Some(machine::counts(sessions)),
+            (Some(_), Some(c)) if !c.lost() => Some(machine::counts(&c.sessions())),
+            _ => None,
+        };
+        // The host (`None` this machine), its line, its counts, why it is down.
+        type Row = (Option<String>, machine::Link, (usize, usize), Option<String>);
+        let mut rows: Vec<Row> = vec![(None, if here.is_some() { machine::Link::Up } else { machine::Link::Lost }, here.unwrap_or((0, 0)), here.is_none().then(|| "Its server stopped; click to start it again".into()))];
+        for m in &self.machines {
+            let counts = if self.on.as_deref() == Some(m.host.as_str()) { machine::counts(sessions) } else { m.counts() };
+            rows.push((Some(m.host.clone()), m.link(), counts, m.error.clone()));
+        }
+        for (host, link, (n, waiting), error) in rows {
+            let shown = host == self.on;
+            let name = host.clone().unwrap_or_else(|| "This machine".into());
+            let resp = ui.horizontal(|ui| {
+                ui.add_space(14.0);
+                let (dot, _) = ui.allocate_exact_size(egui::vec2(8.0, 14.0), egui::Sense::hover());
+                let colour = match link {
+                    machine::Link::Up => chrome::green(),
+                    machine::Link::Connecting => chrome::gold(),
+                    machine::Link::Lost => chrome::red(),
+                };
+                ui.painter().circle_filled(dot.center(), 3.5, colour);
+                let words = egui::RichText::new(&name).size(12.0).color(if shown { pal.fg } else { pal.fg_dim });
+                let words = if shown { words.strong() } else { words };
+                let label = ui.add(egui::Label::new(words).sense(egui::Sense::click()));
+                let (hint, more) = match link {
+                    machine::Link::Up if waiting > 0 => (format!("{n} sessions, {waiting} waiting"), format!("{n} · {waiting} waiting")),
+                    machine::Link::Up => (format!("{n} sessions"), n.to_string()),
+                    machine::Link::Connecting => ("Connecting over ssh…".into(), "connecting…".into()),
+                    machine::Link::Lost => (error.clone().unwrap_or_else(|| "Not connected".into()), "not connected".into()),
+                };
+                let colour = if waiting > 0 && link == machine::Link::Up { chrome::ink(chrome::gold()) } else { t.faint() };
+                ui.label(egui::RichText::new(more).size(11.0).color(colour));
+                let mut again = false;
+                if let (machine::Link::Lost, Some(_)) = (link, &host) {
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        ui.add_space(10.0);
+                        again = ui.add(egui::Label::new(egui::RichText::new("Reconnect").size(11.5).color(chrome::ink(chrome::cyan()))).sense(egui::Sense::click())).clicked();
+                    });
+                }
+                (label.on_hover_text(hint), again)
+            });
+            let (label, again) = resp.inner;
+            if again {
+                did = host.clone().map(Do::Reach);
+            } else if label.clicked() && !shown {
+                did = Some(match (&host, link) {
+                    (None, _) => Do::Show(None),
+                    (Some(h), machine::Link::Up) => Do::Show(Some(h.clone())),
+                    (Some(h), _) => Do::Reach(h.clone()),
+                });
+            }
+            if let Some(h) = &host {
+                label.context_menu(|ui| {
+                    if ui.button("Reconnect").clicked() {
+                        did = Some(Do::Reach(h.clone()));
+                        ui.close();
+                    }
+                    let forget = ui.add_enabled(!shown, egui::Button::new("Forget")).on_disabled_hover_text("Shown now: show this machine first");
+                    if forget.clicked() {
+                        did = Some(Do::Forget(h.clone()));
+                        ui.close();
+                    }
+                });
+            }
+        }
+        ui.add_space(4.0);
+        let (line, _) = ui.allocate_exact_size(egui::vec2(ui.available_width(), 9.0), egui::Sense::hover());
+        ui.painter().hline(line.x_range().shrink(12.0), line.center().y, egui::Stroke::new(1.0, t.border));
+        match did {
+            Some(Do::Show(None)) => self.switch = Some((None, None)),
+            Some(Do::Show(Some(h))) => self.reach(&h, machine::Then::Show),
+            Some(Do::Reach(h)) => {
+                if self.on.as_deref() == Some(h.as_str()) {
+                    self.switch = Some((None, None));
+                }
+                if let Some(m) = self.machines.iter_mut().find(|m| m.host == h) {
+                    // A line still up is dropped first, to make it again.
+                    if m.link() != machine::Link::Connecting {
+                        m.client = None;
+                    }
+                }
+                self.reach(&h, machine::Then::Show);
+            }
+            Some(Do::Forget(h)) => self.machines.retain(|m| m.host != h),
+            None => {}
+        }
+    }
+
+    /// Reach `host`'s server (again), then do `then`; at once when the line
+    /// is up.
+    fn reach(&mut self, host: &str, then: machine::Then) {
+        let k = match self.machines.iter().position(|m| m.host == host) {
+            Some(k) => k,
+            None => {
+                self.machines.push(machine::Machine::new(host.to_owned()));
+                self.machines.len() - 1
+            }
+        };
+        if self.machines[k].link() == machine::Link::Up {
+            self.machines[k].then = Some(then);
+            self.machine_ready(k);
+        } else {
+            let ctx = self.ctx.clone();
+            self.machines[k].connect(&ctx, then);
+        }
+    }
+
+    /// The machine at `k` is up: do what was waiting on it.
+    fn machine_ready(&mut self, k: usize) {
+        let Some(then) = self.machines[k].then.take() else { return };
+        self.switch = Some((Some(self.machines[k].host.clone()), Some(then)));
+    }
+
+    /// The machine asked for shown, and what waited on it done. At the top
+    /// of a frame: the rest of the one it was asked in still works on the
+    /// sessions it began with, which would be taken for ended here.
+    fn switch_now(&mut self) {
+        let Some((host, then)) = self.switch.take() else { return };
+        self.show_machine(host.clone());
+        if self.on != host {
+            return;
+        }
+        let Some(client) = self.client.clone() else {
+            if let Some(machine::Then::Create(_)) = then {
+                self.say("This machine's server is starting; start the session again once it is up".into(), true);
+            }
+            return;
+        };
+        match then {
+            Some(machine::Then::Create(c)) => self.create(&client, c, None),
+            // A machine with nothing running gets a shell in its home
+            // folder, rather than an empty window.
+            Some(machine::Then::Show) if host.is_some() && client.workspaces().is_empty() => match new_session(&client, "~".into(), Place::NewWorkspace) {
+                Ok(pane) => self.pending = Some(pane.id()),
+                Err(e) => self.say(e, true),
+            },
+            _ => {}
+        }
+    }
+
+    /// Look at the lines to other machines: answers to connect, lines
+    /// dropped (the one shown, then this machine's are shown again).
+    fn poll_machines(&mut self) {
+        self.switch_now();
+        for k in 0..self.machines.len() {
+            if self.machines[k].poll() {
+                self.machine_ready(k);
+            }
+            if self.on.as_deref() != Some(self.machines[k].host.as_str()) {
+                self.machines[k].drain();
+            }
+        }
+        self.switch_now();
+        let Some(host) = self.on.clone() else { return };
+        if self.client.as_ref().is_some_and(Client::lost) {
+            if let Some(m) = self.machines.iter_mut().find(|m| m.host == host) {
+                m.error = Some("the line dropped".into());
+            }
+            self.show_machine(None);
+            self.say(format!("{host}: the line dropped; its sessions go on there. Reconnect from the sidebar"), true);
+        }
     }
 
     fn add_hooks(&mut self) {
@@ -4478,6 +4772,7 @@ impl App {
         self.menu_open = egui::Popup::is_any_open(&ctx);
         let own = self.new_session.is_some() || self.search.is_some() || self.lists.is_some() || self.help.is_some() || self.diff.is_some() || self.parallel.is_some() || self.prefs.is_some() || self.menu_open || self.renaming_card.is_some() || self.noting_card.is_some() || self.find.as_ref().is_some_and(find::Bar::keyed) || self.paste_ask.is_some();
         keep_tab_for_pane(&ctx, own);
+        self.poll_machines();
         let Some(client) = self.client.clone() else {
             self.message(ui);
             return;
@@ -4494,7 +4789,14 @@ impl App {
         if !workspaces.is_empty() {
             self.had_tabs = true;
         } else if self.had_tabs && self.pending.is_none() {
-            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+            if self.on.is_none() {
+                ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+            } else {
+                // The last tab there closed: this machine's again.
+                self.show_machine(None);
+                ctx.request_repaint();
+                return;
+            }
         }
         self.faces_found = self.faces_next;
         if let Some(loaded) = self.fonts_rx.as_ref().and_then(|rx| rx.try_recv().ok()) {
@@ -4643,9 +4945,21 @@ impl App {
             }
         }
 
+        if current.is_none() {
+            // No tab (the first-run screen): the plain name, with the
+            // machine's when another one is shown.
+            let title = self.on.as_ref().map_or_else(|| "tsumugi".to_owned(), |h| format!("[{h}] tsumugi"));
+            if title != self.title {
+                ctx.send_viewport_cmd(egui::ViewportCommand::Title(title.clone()));
+                self.title = title;
+            }
+        }
         if let Some(w) = &current {
             let t = sessions.iter().find(|i| i.id == w.focus).map(|i| sort::display_title(&i.title, &i.command)).unwrap_or_default();
             let mut title = if t.is_empty() { "tsumugi".to_owned() } else { format!("{t} — tsumugi") };
+            if let Some(host) = &self.on {
+                title = format!("[{host}] {title}");
+            }
             // Where the taskbar cannot carry the number, the title does.
             let n = self.alerts.badge();
             if !alert::TASKBAR_NUMBER && n > 0 {
@@ -5088,7 +5402,8 @@ impl App {
         // Typing into every pane ends with the split.
         self.typing_all.retain(|id| workspaces.iter().any(|w| w.id == *id && w.layout.leaves().len() > 1));
         let ended = client.take_ended();
-        if !ended.is_empty() {
+        // The history is this machine's: what ends on another stays there.
+        if !ended.is_empty() && self.on.is_none() {
             let used = self.usage.get();
             for (info, last) in ended {
                 let tokens = used.conversations.get(&info.conversation).map_or(0, usage::Tokens::total);

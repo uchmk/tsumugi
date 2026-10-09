@@ -92,7 +92,7 @@ pub struct Dialog {
     beside_id: Option<egui::Id>,
     /// Where it runs, and the places found to offer (none: the row is not
     /// shown).
-    on: Where,
+    pub on: Where,
     pub places: Vec<Where>,
 }
 
@@ -499,7 +499,7 @@ pub fn show(ctx: &egui::Context, pal: &Palette, d: &mut Dialog, recents: &[Recen
                 if !d.places.is_empty() || d.on != Where::Here {
                     ui.horizontal(|ui| {
                         ui.label(RichText::new("Runs on").size(12.0).color(pal.fg_dim));
-                        let mut places = d.places.clone();
+                        let mut places = Where::with_kept(&d.places);
                         if !places.contains(&d.on) {
                             places.push(d.on.clone());
                         }
@@ -509,8 +509,14 @@ pub fn show(ctx: &egui::Context, pal: &Palette, d: &mut Dialog, recents: &[Recen
                             }
                         });
                         ring(ui, combo.response);
-                        if matches!(d.on, Where::Ssh(_)) {
-                            ui.label(RichText::new("starts in the login's home folder").size(12.0).color(chrome::grey()));
+                        match d.on {
+                            Where::Ssh(_) => {
+                                ui.label(RichText::new("starts in the login's home folder").size(12.0).color(chrome::grey()));
+                            }
+                            Where::Mux(_) => {
+                                ui.label(RichText::new("on tsumugi there; stays when the line drops").size(12.0).color(chrome::grey()));
+                            }
+                            _ => {}
                         }
                     });
                 }

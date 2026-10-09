@@ -695,7 +695,19 @@ Each of them takes `--host H` to work the sessions on another machine. It runs
 as they are; no password prompt), and `tsumugi proxy` there talks to that
 machine's server, starting it if none runs. The server and its sessions stay
 there when the line drops. tsumugi has to be on that machine's `PATH`;
-`TSUMUGI_SSH` names another `ssh`. The window does not show remote sessions yet.
+`TSUMUGI_SSH` names another `ssh`.
+
+The window reaches them the same way. In the new-session dialog, Runs on →
+**SSH: H, kept there** starts the session on H's own server (in its home
+folder, unless H is already shown) and shows H: the window shows one machine's
+sessions at a time, the sidebar's header says `on H` and the title starts
+`[H]`. **MACHINES** at the foot of the sidebar lists this machine and each one
+reached, with how many sessions each has and how many wait on you; click one
+to show it. When the line drops its sessions go on there: the row turns red,
+a toast says so, and **Reconnect** brings them back (hover the row for ssh's
+error when it fails). The hosts reached are not remembered when the window
+restarts; worktrees, git details, the closed folders and alerts are this
+machine's or the shown one's only.
 
 The terminal pane is the crate `tsumugi-pane` (`crates/tsumugi-pane`), shared
 with [filer](https://github.com/uchmk/filer).

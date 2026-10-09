@@ -236,6 +236,11 @@ what happened, and the steps.
 | 6.11 | `Ctrl+Shift+T`, `Tab` to Shell (the ring on it), `Enter` | A shell starts, as Alt+Enter would split one: Enter on a way to start picks it and creates |
 | 6.12 | With WSL installed: `Ctrl+Shift+T`, Runs on → WSL: Ubuntu, Shell, Create | A Linux shell in the same folder (`/mnt/c/…`); Docker Desktop's distributions are not offered; no console window flashes when the dialog opens |
 | 6.13 | With a `Host box` in `~/.ssh/config`: Runs on → SSH: box, Claude Code, tick Save as a profile, Create | `ssh box` starts in the pane (asks for a password or key if it needs one) and `claude` is typed once logged in; `Host *` lines are not offered; Profile… → it next time picks SSH: box again |
+| 6.14 | With tsumugi on `box`'s `PATH`: `Ctrl+Shift+T`, Runs on → SSH: box, kept there, Shell, Create | A shell on box's own server in its home folder; the sidebar says `on box`, the title starts `[box]`, MACHINES lists This machine and box with their counts |
+| 6.15 | Then click This machine in MACHINES, and box again | This machine's sessions (or the first-run screen, with none of box's folders in it) and title `tsumugi`; box's come back as they were |
+| 6.16 | While box is shown: `Ctrl+Shift+T`, Runs on → This machine, Create | The window goes to this machine and starts the session there |
+| 6.17 | While box is shown, cut the network (or stop its `sshd`) | A toast says the line dropped; box's row turns red with **Reconnect**; hovering it while ssh fails shows ssh's error; once box answers, Reconnect brings the same sessions back with what they printed meanwhile |
+| 6.18 | Leave the window on its first-run screen over two minutes, then go to box and back | This machine's server is still running (no "not connected" mark); if it was stopped, going back to This machine starts it again |
 
 ## 7. The input box
 

@@ -104,12 +104,13 @@ pub struct ServerHandle {
 impl ServerHandle {
     /// Block until the last session has ended (the server stops then, as
     /// docs/v1-scope.md has it). A server no session was ever started on
-    /// stops after `idle` too, so one started by a window that then failed
-    /// does not stay for ever.
+    /// stops after `idle` with no client attached too, so one started by a
+    /// window that then failed does not stay for ever (a window still on
+    /// its first-run screen, or showing another machine, keeps it).
     pub fn wait(&self, idle: Duration) {
         loop {
             match self.done.recv_timeout(idle) {
-                Err(crossbeam_channel::RecvTimeoutError::Timeout) if self.shared.ever.load(Ordering::Relaxed) => {}
+                Err(crossbeam_channel::RecvTimeoutError::Timeout) if self.shared.ever.load(Ordering::Relaxed) || !lock(&self.shared.clients).is_empty() => {}
                 _ => break,
             }
         }
@@ -839,6 +840,7 @@ fn spawn_session(
     cell: (u16, u16),
 ) -> io::Result<SessionId> {
     let id = shared.next.fetch_add(1, Ordering::Relaxed);
+    let cwd = here(cwd, crate::settings::home());
     // No shell asked for: the settings' `[shell]`, else the system's.
     let shell = shell.or_else(|| lock(&shared.rules).shell.command());
     let command = shell.as_ref().map_or_else(tsumugi_pane::default_program, |(p, _)| p.clone());
@@ -923,6 +925,18 @@ fn base64(bytes: &[u8]) -> String {
         }
     }
     out
+}
+
+/// The folder a session starts in: `~` is home, and so is a folder this
+/// machine does not have (a window on another machine asked, over ssh).
+fn here(cwd: PathBuf, home: Option<PathBuf>) -> PathBuf {
+    let Some(home) = home else { return cwd };
+    let rest = cwd.to_str().and_then(|c| c.strip_prefix('~')).filter(|r| r.is_empty() || r.starts_with(['/', '\\']));
+    let cwd = match rest {
+        Some(r) => home.join(r.trim_start_matches(['/', '\\'])),
+        None => cwd,
+    };
+    if cwd.is_dir() { cwd } else { home }
 }
 
 /// A session's shell, told who it is (`TSUMUGI_SESSION`) and where the
@@ -1538,6 +1552,25 @@ mod review {
         for bad in ["", "x; rm -rf ~", "a b", "a\r", "$(id)", "a`b`"] {
             assert!(!super::conversation_id(bad), "{bad:?}");
         }
+    }
+}
+
+#[cfg(test)]
+mod here {
+    /// A window on another machine asks for `~`; a folder that is not on
+    /// this machine starts in the home folder.
+    #[test]
+    fn a_folder_from_elsewhere_lands_in_home() {
+        let home = std::env::temp_dir().join(format!("tsumugi-here-test-{}", std::process::id()));
+        std::fs::create_dir_all(home.join("x")).unwrap();
+        assert_eq!(super::here("~".into(), Some(home.clone())), home);
+        assert_eq!(super::here("~/x".into(), Some(home.clone())), home.join("x"));
+        assert_eq!(super::here("~/missing".into(), Some(home.clone())), home);
+        assert_eq!(super::here(home.join("nowhere"), Some(home.clone())), home);
+        assert_eq!(super::here(home.join("x"), Some(home.clone())), home.join("x"));
+        assert_eq!(super::here("~x".into(), Some(home.clone())), home, "not a home folder: missing, so home");
+        assert_eq!(super::here("~".into(), None), std::path::PathBuf::from("~"), "no home: as it came");
+        let _ = std::fs::remove_dir_all(&home);
     }
 }
 
