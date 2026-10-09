@@ -10,8 +10,31 @@ pub fn server() -> io::Result<()> {
     let run = server_exe(&exe).unwrap_or(exe);
     let mut cmd = Command::new(run);
     cmd.arg("server").stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
+    keep_std_handles();
     detach(&mut cmd).spawn().map(drop)
 }
+
+/// Windows hands every inheritable handle to a child, not only the three it
+/// is given, and the std handles a process was started with are inheritable.
+/// So the server held on to the pipe of whoever ran `tsumugi new` and read its
+/// output (`$id = tsumugi new` in PowerShell, a test's `output()`): the read
+/// waited for the server to stop. Children this process starts later with
+/// inherited stdio still get them: those are duplicated for the child.
+#[cfg(windows)]
+fn keep_std_handles() {
+    use windows::Win32::Foundation::{HANDLE_FLAG_INHERIT, HANDLE_FLAGS, SetHandleInformation};
+    use windows::Win32::System::Console::{GetStdHandle, STD_ERROR_HANDLE, STD_INPUT_HANDLE, STD_OUTPUT_HANDLE};
+    for which in [STD_INPUT_HANDLE, STD_OUTPUT_HANDLE, STD_ERROR_HANDLE] {
+        if let Ok(h) = unsafe { GetStdHandle(which) } {
+            if !h.is_invalid() {
+                let _ = unsafe { SetHandleInformation(h, HANDLE_FLAG_INHERIT.0, HANDLE_FLAGS(0)) };
+            }
+        }
+    }
+}
+
+#[cfg(not(windows))]
+fn keep_std_handles() {}
 
 /// On Windows, the server runs from a copy of the exe: a running exe can
 /// be neither replaced nor removed there, so a server started from
