@@ -78,7 +78,9 @@ last 30 sessions that ended -- when, how, the tokens its conversation used,
 and the last lines on its screen, all 12 for the one picked and two for the
 rest. `Up` / `Down` pick one, `Enter` (or a double click) resumes it (Claude
 Code's conversation again, in a new tab in its folder) or starts it again,
-and `Delete` takes it off the list. The list is `closed-sessions.json` beside
+and `Delete` takes it off the list -- for eight seconds a note at the bottom
+offers **Undo** (`Ctrl+Z` while the panel is open; `Cmd+Z` on macOS), which
+puts back what was taken off, **Clear the list** included. The list is `closed-sessions.json` beside
 the state file.
 
 A tab's right-click menu has **Note…**: a line of your own (what the tab is

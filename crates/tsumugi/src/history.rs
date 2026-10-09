@@ -111,6 +111,14 @@ pub fn push(list: &mut Vec<Closed>, c: Closed) {
     list.truncate(KEPT);
 }
 
+/// Put back sessions taken off the list (Undo), each where its end puts
+/// it: the list is newest first, and sessions may have ended since.
+pub fn restore(list: &mut Vec<Closed>, taken: Vec<Closed>) {
+    list.extend(taken);
+    list.sort_by_key(|c| std::cmp::Reverse(c.ended_ms));
+    list.truncate(KEPT);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -139,5 +147,14 @@ mod tests {
         }
         assert_eq!(many.len(), KEPT);
         assert_eq!(many[0].tokens, (KEPT + 2) as u64, "the newest first");
+    }
+
+    #[test]
+    fn undo_puts_them_back_in_their_places() {
+        let at = |ms| Closed { ended_ms: ms, ..Closed::default() };
+        // 30 and 10 taken off; 40 ended since.
+        let mut list = vec![at(40), at(20)];
+        restore(&mut list, vec![at(30), at(10)]);
+        assert_eq!(list.iter().map(|c| c.ended_ms).collect::<Vec<_>>(), [40, 30, 20, 10]);
     }
 }

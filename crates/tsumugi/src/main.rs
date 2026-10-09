@@ -1057,6 +1057,9 @@ struct App {
     /// A few words above the status bar for a few seconds: what was done,
     /// or (true) what went wrong.
     toast: Option<(String, std::time::Instant, bool)>,
+    /// Closed sessions just taken off the list, and when: Undo (or Ctrl+Z
+    /// while the panel is open) puts them back for a few seconds.
+    forgotten: Option<(Vec<history::Closed>, std::time::Instant)>,
     /// `[font] family` as installed, and the file it found.
     font_family: String,
     font_file: Option<std::path::PathBuf>,
@@ -1389,6 +1392,7 @@ impl App {
             close_ok: false,
             worktree_removing: None,
             toast: None,
+            forgotten: None,
             font_family: first_font.family.clone(),
             font_file: loaded.file,
             shaper: loaded.shaper,
@@ -4035,6 +4039,51 @@ impl App {
         self.toast = Some((words, std::time::Instant::now(), error));
     }
 
+    /// Take closed sessions off the list, kept a while for Undo. Several
+    /// taken off one after another come back together.
+    fn forget(&mut self, taken: Vec<history::Closed>) {
+        if taken.is_empty() {
+            return;
+        }
+        history::save(self.ended.clone());
+        let mut all = self.forgotten.take().filter(|(_, at)| at.elapsed() < UNDO_FOR).map(|(v, _)| v).unwrap_or_default();
+        all.extend(taken);
+        self.forgotten = Some((all, std::time::Instant::now()));
+    }
+
+    /// "Took N off the list · Undo" at the foot of the window while Undo
+    /// can still put them back.
+    fn show_undo(&mut self, ctx: &egui::Context) {
+        let Some((taken, at)) = &self.forgotten else { return };
+        let left = UNDO_FOR.saturating_sub(at.elapsed());
+        if left.is_zero() {
+            self.forgotten = None;
+            return;
+        }
+        ctx.request_repaint_after(left);
+        let words = match taken.as_slice() {
+            [one] => format!("Took {} off the list", sort::display_title(&one.title, &one.command)),
+            many => format!("Took {} sessions off the list", many.len()),
+        };
+        let keyed = self.lists.is_some() && ctx.input_mut(|i| i.consume_key(egui::Modifiers::COMMAND, egui::Key::Z));
+        let c = crate::theme::colors();
+        let undo = egui::Area::new(egui::Id::new("undo-forget")).order(egui::Order::Tooltip).anchor(egui::Align2::CENTER_BOTTOM, egui::vec2(0.0, -44.0)).show(ctx, |ui| {
+            egui::Frame::NONE.fill(c.raised()).stroke(egui::Stroke::new(1.0, c.border)).corner_radius(6.0).inner_margin(egui::Margin::symmetric(12, 6)).show(ui, |ui| {
+                ui.horizontal(|ui| {
+                    ui.add(egui::Label::new(egui::RichText::new(words).size(12.5).color(c.strong())).wrap_mode(egui::TextWrapMode::Extend));
+                    ui.button(egui::RichText::new("Undo").strong()).on_hover_text(if cfg!(target_os = "macos") { "Cmd+Z while the list is open" } else { "Ctrl+Z while the list is open" }).clicked()
+                })
+                .inner
+            })
+            .inner
+        });
+        if undo.inner || keyed {
+            let Some((taken, _)) = self.forgotten.take() else { return };
+            history::restore(&mut self.ended, taken);
+            history::save(self.ended.clone());
+        }
+    }
+
     fn show_toast(&mut self, ctx: &egui::Context) {
         let Some((words, at, error)) = &self.toast else { return };
         let left = std::time::Duration::from_secs(if *error { 10 } else { 5 }).saturating_sub(at.elapsed());
@@ -4803,6 +4852,8 @@ struct Queued {
 
 /// How long something coming into view takes to fade in.
 const FADE: std::time::Duration = std::time::Duration::from_millis(150);
+/// How long Undo can put back closed sessions taken off the list.
+const UNDO_FOR: std::time::Duration = std::time::Duration::from_secs(8);
 
 /// How many lines a card's preview shows.
 const PEEK_LINES: usize = 12;
@@ -5498,6 +5549,7 @@ impl App {
         self.first_shown = false;
         self.send_queued(&client, &sessions);
         self.show_toast(&ctx);
+        self.show_undo(&ctx);
 
         let answer = match &mut self.search {
             Some(view) => {
@@ -5807,13 +5859,13 @@ impl App {
                 }
                 lists::Do::Forget(k) => {
                     if k < self.ended.len() {
-                        self.ended.remove(k);
-                        history::save(self.ended.clone());
+                        let c = self.ended.remove(k);
+                        self.forget(vec![c]);
                     }
                 }
                 lists::Do::ForgetAll => {
-                    self.ended.clear();
-                    history::save(Vec::new());
+                    let all = std::mem::take(&mut self.ended);
+                    self.forget(all);
                 }
                 lists::Do::Close => keep = false,
             }
