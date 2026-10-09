@@ -10,26 +10,26 @@ Windows and Linux keys first; the macOS key is after `·`.
 
 ## The window, changeable (Settings → Keys, `[keys]`)
 
-- [ ] `Ctrl+Shift+T` · `Cmd+T` — New session · `new_tab`
-- [ ] `Ctrl+Shift+W` · `Cmd+W` — Close the session · `close_tab`
-- [ ] `Ctrl+Tab` · `Ctrl+Tab` — Next tab · `next_tab`
-- [ ] `Ctrl+Shift+Tab` · `Ctrl+Shift+Tab` — Previous tab · `prev_tab`
-- [ ] `Ctrl+Shift+U` · `Cmd+Shift+U` — Go to the session waiting longest · `next_waiting`
-- [ ] `Alt+Shift++` · `Cmd+D` — Split right · `split_right`
-- [ ] `Alt+Shift+-` · `Cmd+Shift+D` — Split down · `split_down`
-- [ ] `Ctrl+Shift+Z` · `Cmd+Shift+Z` — Zoom one pane · `zoom`
-- [ ] `Ctrl+Shift+P` · `Cmd+Shift+P` — Search · `search`
-- [ ] `Ctrl+Shift+B` · `Cmd+Shift+B` — Narrow rail · `rail`
-- [ ] `Ctrl+,` · `Cmd+,` — Settings · `settings`
-- [ ] `Ctrl+I` · `Cmd+I` — Input box · `input`
-- [ ] `F2` · `F2` — Rename the tab · `rename`
-- [ ] `Ctrl+Shift+D` · `Cmd+Option+D` — Duplicate in the same folder · `duplicate`
-- [ ] `Ctrl+Shift+Y` · `Cmd+Shift+Y` — The waiting sessions, answered together · `waiting_list`
-- [ ] `Ctrl+Shift+I` · `Cmd+Shift+I` — Type into every pane of the tab · `type_into_all`
-- [ ] `Ctrl+Shift+N` · `Cmd+Shift+N` — Notifications (the bell) · `notifications`
+- [x] `Ctrl+Shift+T` · `Cmd+T` — New session · `new_tab`
+- [x] `Ctrl+Shift+W` · `Cmd+W` — Close the session · `close_tab`
+- [x] `Ctrl+Tab` · `Ctrl+Tab` — Next tab · `next_tab`
+- [x] `Ctrl+Shift+Tab` · `Ctrl+Shift+Tab` — Previous tab · `prev_tab`
+- [x] `Ctrl+Shift+U` · `Cmd+Shift+U` — Go to the session waiting longest · `next_waiting`
+- [x] `Alt+Shift++` · `Cmd+D` — Split right · `split_right`
+- [x] `Alt+Shift+-` · `Cmd+Shift+D` — Split down · `split_down`
+- [x] `Ctrl+Shift+Z` · `Cmd+Shift+Z` — Zoom one pane · `zoom`
+- [x] `Ctrl+Shift+P` · `Cmd+Shift+P` — Search · `search`
+- [x] `Ctrl+Shift+B` · `Cmd+Shift+B` — Narrow rail · `rail`
+- [x] `Ctrl+,` · `Cmd+,` — Settings · `settings`
+- [x] `Ctrl+I` · `Cmd+I` — Input box · `input`
+- [x] `F2` · `F2` — Rename the tab · `rename`
+- [x] `Ctrl+Shift+D` · `Cmd+Option+D` — Duplicate in the same folder · `duplicate`
+- [x] `Ctrl+Shift+Y` · `Cmd+Shift+Y` — The waiting sessions, answered together · `waiting_list`
+- [x] `Ctrl+Shift+I` · `Cmd+Shift+I` — Type into every pane of the tab · `type_into_all`
+- [x] `Ctrl+Shift+N` · `Cmd+Shift+N` — Notifications (the bell) · `notifications`
 - [ ] `Ctrl+=` · `Cmd+=` — Bigger letters · `font_bigger`
-- [ ] `Ctrl+-` · `Cmd+-` — Smaller letters · `font_smaller`
-- [ ] `Ctrl+0` · `Cmd+0` — Letters as the settings have them · `font_reset`
+- [x] `Ctrl+-` · `Cmd+-` — Smaller letters · `font_smaller`
+- [x] `Ctrl+0` · `Cmd+0` — Letters as the settings have them · `font_reset`
 - [ ] `Ctrl+Shift+O` · `Cmd+Shift+O` — Every session on one screen · `overview`
 - [ ] `Ctrl+Shift+M` · `Cmd+Shift+M` — Copy mode: select the output with the keys · `copy_mode`
 - [ ] `Ctrl+Shift+Up` · `Cmd+Shift+Up` — To the prompt above · `prev_prompt`
