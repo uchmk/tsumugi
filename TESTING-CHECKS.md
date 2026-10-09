@@ -23,20 +23,20 @@
 
 ## 2. Panes and splits
 
-- [ ] **2.1** `Alt+Shift++`, then `Alt+Shift+-` → A shell to the right, then one below it, each in the folder of the pane it split
-- [ ] **2.2** `Alt+Arrows` → The keys move to the pane on that side; its cursor fills, the others' go hollow, and the others are dimmed
+- [x] **2.1** `Alt+Shift++`, then `Alt+Shift+-` → A shell to the right, then one below it, each in the folder of the pane it split
+- [~] **2.2** `Alt+Arrows` → The keys move to the pane on that side; its cursor fills, the others' go hollow, and the others are dimmed
 - [ ] **2.3** Bring the pointer to a gap between panes, drag → A cyan line appears, the split follows the pointer; a double-click halves it
-- [ ] **2.4** `Ctrl+Shift+Z` with a hidden pane waiting (notify it) → One pane fills the tab, its heading says ZOOM with a small split; a gold-ringed note at the bottom right says how many wait behind and the key, and a click goes there; `Ctrl+Shift+Z` again restores the split
-- [ ] **2.5** Drag a pane by its header onto the middle of another → A cyan outline and **Swap** while dragging; on release the two trade places
-- [ ] **2.6** Drag a header to another pane's edge → **Move here** on that half; on release the pane goes to that side and the two share the room
-- [ ] **2.7** Split right until a pane is narrower than 20 columns → It folds into a strip with its state's dot and its name (on its side when tall); a click gives it the keys, a drag carries it
-- [ ] **2.8** `exit` in one pane of a split → The pane goes and its neighbour takes its room
-- [ ] **2.9** `lazygit` in a pane, move with `j`/`k`, `?` then `Esc`, then `q` → It draws, takes the keys, its menu closes on `Esc`, and quitting leaves a working prompt
+- [~] **2.4** `Ctrl+Shift+Z` with a hidden pane waiting (notify it) → One pane fills the tab, its heading says ZOOM with a small split; a gold-ringed note at the bottom right says how many wait behind and the key, and a click goes there; `Ctrl+Shift+Z` again restores the split
+- [~] **2.5** Drag a pane by its header onto the middle of another → A cyan outline and **Swap** while dragging; on release the two trade places
+- [~] **2.6** Drag a header to another pane's edge → **Move here** on that half; on release the pane goes to that side and the two share the room
+- [~] **2.7** Split right until a pane is narrower than 20 columns → It folds into a strip with its state's dot and its name (on its side when tall); a click gives it the keys, a drag carries it
+- [x] **2.8** `exit` in one pane of a split → The pane goes and its neighbour takes its room
+- [x] **2.9** `lazygit` in a pane, move with `j`/`k`, `?` then `Esc`, then `q` → It draws, takes the keys, its menu closes on `Esc`, and quitting leaves a working prompt
 - [ ] **2.10** Type Japanese with the IME in a pane → The candidate window sits at the cursor and the committed text arrives once
-- [ ] **2.11** On a JIS keyboard: `Alt+Shift+;` (`+`), then `Alt+Shift+-` → To the right, then below: neither is taken for the other
-- [ ] **2.12** Drag a pane of a split by its header onto the sidebar → The sidebar lights up, **A tab of its own**, the pane's name with the pointer; dropped, the pane is a tab of its own after the one it left
-- [ ] **2.13** One pane alone, and each pane of a split → Every pane is a card with room round it and a 30px heading: the state's mark, the name, the folder, short words on the right (none for a shell); its ring in the state's colour, the one with the keys too; the heading is not lit for the keys
-- [ ] **2.14** A split tab, `Ctrl+Shift+I`, type `echo hi`, Enter; `Ctrl+Shift+I` again → **TYPING INTO ALL** on every pane's heading; `hi` in each; after the second press only the pane with the keys gets keys; the window's own keys (`Ctrl+Shift+T`) act once
+- [x] **2.11** On a JIS keyboard: `Alt+Shift+;` (`+`), then `Alt+Shift+-` → To the right, then below: neither is taken for the other
+- [~] **2.12** Drag a pane of a split by its header onto the sidebar → The sidebar lights up, **A tab of its own**, the pane's name with the pointer; dropped, the pane is a tab of its own after the one it left
+- [~] **2.13** One pane alone, and each pane of a split → Every pane is a card with room round it and a 30px heading: the state's mark, the name, the folder, short words on the right (none for a shell); its ring in the state's colour, the one with the keys too; the heading is not lit for the keys
+- [x] **2.14** A split tab, `Ctrl+Shift+I`, type `echo hi`, Enter; `Ctrl+Shift+I` again → **TYPING INTO ALL** on every pane's heading; `hi` in each; after the second press only the pane with the keys gets keys; the window's own keys (`Ctrl+Shift+T`) act once
 - [ ] **2.15** Three panes split both ways: hover each divider, drag it, double-click it → Near it the cyan line and the resize pointer; the split follows the drag and stays where dropped (and after a restart); a double-click halves it. Unchanged from before the dividers moved into `tsumugi-layout` (v0.52.0)
 - [ ] **2.16** Copy `echo one` + Esc `[201~` + `echo two` (e.g. `printf 'echo one\033[201~echo two' \| clip` / `pbcopy`) and paste it into bash or pwsh with bracketed paste → It lands as one line held on the prompt (`echo one[201~echo two`), not run: the Esc is dropped from a paste
 - [ ] **2.17** Drag a divider and, still holding the button, press `Ctrl+Shift+Z` (or switch tabs with the keyboard); let go; split again → The tab shows its real split afterwards; the new split appears
