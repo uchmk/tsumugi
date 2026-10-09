@@ -225,6 +225,11 @@ five underlines (single, double, curly, dotted and dashed: `ESC[4m`,
 (`ESC[58;2;R;G;Bm`, as editors and linters mark errors), struck through
 (`ESC[9m`), and concealed (`ESC[8m`: not shown, still copied).
 
+A program that asks to hear about **focus** (`ESC[?1004h`: vim, nvim and tmux
+do) is told `ESC[I` when its pane gets the keys and `ESC[O` when it loses
+them: another pane or tab chosen, or the window sent to the back. vim uses it
+to reread files changed meanwhile.
+
 `Ctrl+Shift+F` (`Cmd+F`) **finds in the pane**: a bar at its top right finds
 what is typed as plain text, from the newest line back, and selects it on
 screen (ignoring case unless the text has a capital). `Enter` or **↑** goes on

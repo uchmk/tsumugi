@@ -644,6 +644,10 @@ impl Pane for RemotePane {
         self.with(|r| r.bracketed_paste)
     }
 
+    fn focus_report(&self) -> bool {
+        self.with(|r| r.screen.focus_report)
+    }
+
     fn hyperlinks(&self) -> Vec<tsumugi_pane::Hyperlink> {
         self.with(|r| r.links.clone())
     }

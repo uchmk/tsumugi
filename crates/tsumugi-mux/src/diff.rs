@@ -18,6 +18,7 @@ pub struct Update {
     pub app_cursor: bool,
     pub alt_screen: bool,
     pub mouse: MouseReport,
+    pub focus_report: bool,
     pub scrolled_back: usize,
     pub win32_input: bool,
     pub bracketed_paste: bool,
@@ -56,7 +57,7 @@ pub fn diff(old: Option<(&Screen, &Extra)>, new: &Screen, extra: &Extra) -> Opti
     };
     if let (false, Some((o, e))) = (full, old) {
         let same = rows.is_empty()
-            && (o.cursor, o.app_cursor, o.alt_screen, o.mouse) == (new.cursor, new.app_cursor, new.alt_screen, new.mouse)
+            && (o.cursor, o.app_cursor, o.alt_screen, o.mouse, o.focus_report) == (new.cursor, new.app_cursor, new.alt_screen, new.mouse, new.focus_report)
             && e == extra;
         if same {
             return None;
@@ -70,6 +71,7 @@ pub fn diff(old: Option<(&Screen, &Extra)>, new: &Screen, extra: &Extra) -> Opti
         app_cursor: new.app_cursor,
         alt_screen: new.alt_screen,
         mouse: new.mouse,
+        focus_report: new.focus_report,
         scrolled_back: extra.scrolled_back,
         win32_input: extra.win32_input,
         bracketed_paste: extra.bracketed_paste,
@@ -95,6 +97,7 @@ pub fn apply(screen: &mut Screen, extra: &mut Extra, u: Update) {
     screen.app_cursor = u.app_cursor;
     screen.alt_screen = u.alt_screen;
     screen.mouse = u.mouse;
+    screen.focus_report = u.focus_report;
     *extra = Extra { scrolled_back: u.scrolled_back, win32_input: u.win32_input, bracketed_paste: u.bracketed_paste, title: u.title, links: u.links, blocks: u.blocks, pictures: u.pictures };
 }
 
@@ -130,6 +133,19 @@ mod tests {
         let moved = Extra { scrolled_back: 3, ..Default::default() };
         let u = diff(Some((&a, &e)), &a, &moved).expect("the view moved");
         assert!(u.rows.is_empty() && u.scrolled_back == 3);
+    }
+
+    /// DECSET 1004 alone, with no cell changed, still reaches the client:
+    /// the window decides from it whether to tell the program of focus.
+    #[test]
+    fn a_request_for_focus_reports_goes_on_its_own() {
+        let a = screen(&["one"]);
+        let b = Screen { focus_report: true, ..a.clone() };
+        let e = Extra::default();
+        let u = diff(Some((&a, &e)), &b, &e).expect("the mode changed");
+        let (mut have, mut extra) = (a.clone(), Extra::default());
+        apply(&mut have, &mut extra, u);
+        assert!(have.focus_report);
     }
 
     #[test]

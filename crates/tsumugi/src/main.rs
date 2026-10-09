@@ -1071,6 +1071,9 @@ struct App {
     teller: alert::Teller,
     /// Whether the server was last told this window has the keyboard.
     focus_sent: Option<bool>,
+    /// The pane last told it has the keys (DECSET 1004): the current tab's
+    /// focused pane while the window is in front, else none.
+    keyed: Option<SessionId>,
     /// What the sidebar shows, and in what order (the design's 1a and 1b).
     filter: sort::Filter,
     view: View,
@@ -1385,6 +1388,7 @@ impl App {
                 move || ctx.request_repaint()
             }),
             focus_sent: None,
+            keyed: None,
             filter: sort::Filter::default(),
             view: View::load(),
             dragging_tab: None,
@@ -3729,7 +3733,7 @@ impl App {
         self.saving.clear();
         self.typing_all.clear();
         self.zoom = false;
-        self.focus_sent = None;
+        (self.focus_sent, self.keyed) = (None, None);
         self.failed = None;
         self.had_tabs = false;
         if self.on.is_none() && self.client.is_none() {
@@ -5009,6 +5013,19 @@ impl App {
             }
         }
         let current = self.current(&workspaces);
+        // A program that asked (vim, nvim, tmux) hears when its pane gains
+        // and loses the keys: another pane focused, another tab, or the
+        // window to the back.
+        let keyed = current.as_ref().filter(|_| here).map(|w| w.focus);
+        if keyed != self.keyed {
+            if let Some(pane) = self.keyed.and_then(|id| self.panes.get(&id)) {
+                tsumugi_pane::Pane::focus(pane, false);
+            }
+            if let Some(pane) = keyed.and_then(|id| self.panes.get(&id)) {
+                tsumugi_pane::Pane::focus(pane, true);
+            }
+            self.keyed = keyed;
+        }
         if std::mem::take(&mut self.jump_waiting) {
             if let Some(w) = &current {
                 let area = to_rect(ctx.content_rect());
