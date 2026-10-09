@@ -5,6 +5,20 @@
 
 ## [未リリース]
 
+## [0.76.4] - 2026-10-10
+
+### 変更
+
+- 実機のレーンの PR（`test/win-*`・`test/arm-*`）は、GitHub Actions のワークフロー `Merge lanes`
+  （`.github/workflows/merge-lanes.yml`、中身は filer と同じ `scripts/merge-lanes.py`）がマージするようにした。触ってよいファイル・
+  印の変わり方・印ごとの証拠の行（`[~]` には画像の名前）を確かめ、`check` が緑でぶつかりが無ければ、head の SHA を固定した merge コミットでマージする。
+  守らないもの・赤・ぶつかりには PR にコメントを 1 回残す。Actions のタブから `dry_run` 付きで回すと何をマージするかだけを出す。
+  filer でマージの Routine のマージが自動モードの分類器に拒まれたため。
+- マージの Routine（`.claude/merge-routine.md`）はマージをしない。マージ済みで CHANGELOG に `#N` の無い PR の分け前、ぶつかった PR の解決
+  （PR のブランチへの push）、ワークフローが止めた PR についての QUESTIONS.md への質問をする。
+- `scripts/auto-wintest.ps1` は、自分のレーンの最後にマージされた PR（3 日以内）の `#N` が `main` の CHANGELOG.md に無いあいだ待つ。
+- `scripts/verify.sh` が `scripts/merge-lanes.py --self-test` を回す。
+
 ## [0.76.3] - 2026-10-10
 
 ### 変更

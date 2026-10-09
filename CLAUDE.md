@@ -49,7 +49,10 @@ filer と同じ。`Cargo.toml` の `version` が正、版の繰り上げと CHAN
   塊が無い・自分の PR が開いている・ビルドが落ちたときは Claude を起動しない。道具は `scripts/wintest-kit.ps1`、塊の選び方は `scripts/wintest-queue.ps1`
   （`scripts/check-ps1.ps1` が CI で確かめる）。報告は `qa-reports/<日付>-<ブランチ>.md`。
 - 同じ机で filer のレーンとキーがぶつからないよう、両方のスクリプトが `Local\wintest-desktop` のロックを取る（最大 20 分待って次回へ）。
-- 実機の PR（`test/win-*`・`test/arm-*`）は、クラウドのマージの Routine（毎時 :40、手順は [.claude/merge-routine.md](.claude/merge-routine.md)）が CI 緑を待って merge コミットでマージし、PATCH と CHANGELOG を上げる。
+- 実機の PR（`test/win-*`・`test/arm-*`）は、ワークフロー `Merge lanes`（`.github/workflows/merge-lanes.yml`、中身は filer と同じ `scripts/merge-lanes.py`）が
+  規則（触ってよいファイル・印の変わり方・印ごとの証拠の行）と `check` の緑を確かめて、head を固定した merge コミットでマージする（v0.76.4 から）。
+  クラウドのマージの Routine（毎時 :40、手順は [.claude/merge-routine.md](.claude/merge-routine.md)）はマージをせず、マージ済みの PR の分け前（PATCH・CHANGELOG・再テストの表）、
+  ぶつかった PR の解決、ワークフローが止めた PR の QUESTIONS.md への質問をする。レーンは前の PR の `#N` が CHANGELOG に入るまで次を始めない。
 - `[x]` を付けてよいのはこのセッションと持ち主だけ。版と CHANGELOG は触らず、PR 本文に 1 行書く。
 
 ## 設計の約束事
