@@ -30,29 +30,29 @@ Windows and Linux keys first; the macOS key is after `·`.
 - [ ] `Ctrl+=` · `Cmd+=` — Bigger letters · `font_bigger`
 - [x] `Ctrl+-` · `Cmd+-` — Smaller letters · `font_smaller`
 - [x] `Ctrl+0` · `Cmd+0` — Letters as the settings have them · `font_reset`
-- [ ] `Ctrl+Shift+O` · `Cmd+Shift+O` — Every session on one screen · `overview`
-- [ ] `Ctrl+Shift+M` · `Cmd+Shift+M` — Copy mode: select the output with the keys · `copy_mode`
-- [ ] `Ctrl+Shift+Up` · `Cmd+Shift+Up` — To the prompt above · `prev_prompt`
-- [ ] `Ctrl+Shift+Down` · `Cmd+Shift+Down` — To the prompt below · `next_prompt`
-- [ ] `Ctrl+Shift+F` · `Cmd+F` — Find in the pane · `find`
-- [ ] `F1` · `F1` — Every key (this help) · `help`
+- [~] `Ctrl+Shift+O` · `Cmd+Shift+O` — Every session on one screen · `overview`
+- [x] `Ctrl+Shift+M` · `Cmd+Shift+M` — Copy mode: select the output with the keys · `copy_mode`
+- [x] `Ctrl+Shift+Up` · `Cmd+Shift+Up` — To the prompt above · `prev_prompt`
+- [x] `Ctrl+Shift+Down` · `Cmd+Shift+Down` — To the prompt below · `next_prompt`
+- [~] `Ctrl+Shift+F` · `Cmd+F` — Find in the pane · `find`
+- [~] `F1` · `F1` — Every key (this help) · `help`
 - [ ] `Ctrl+Shift+X` · `Cmd+Shift+X` — Swap the pane with the next one · `swap_pane`
-- [ ] `Ctrl+Shift+E` · `Cmd+Shift+E` — Give every pane the same room · `equalize`
-- [ ] `Ctrl+Shift+J` · `Cmd+Shift+J` — The pane to a tab of its own · `pane_to_tab`
-- [ ] `Ctrl+Shift+R` · `Cmd+Shift+R` — Record the pane (asciinema .cast) · `record`
-- [ ] `Ctrl+Shift+L` · `Cmd+Shift+L` — Copy the last command's output · `copy_output`
-- [ ] `Ctrl+Shift+Space` · `Cmd+Shift+Space` — Quick select: copy a link, hash or number by its letters · `quick_select`
+- [x] `Ctrl+Shift+E` · `Cmd+Shift+E` — Give every pane the same room · `equalize`
+- [x] `Ctrl+Shift+J` · `Cmd+Shift+J` — The pane to a tab of its own · `pane_to_tab`
+- [x] `Ctrl+Shift+R` · `Cmd+Shift+R` — Record the pane (asciinema .cast) · `record`
+- [x] `Ctrl+Shift+L` · `Cmd+Shift+L` — Copy the last command's output · `copy_output`
+- [x] `Ctrl+Shift+Space` · `Cmd+Shift+Space` — Quick select: copy a link, hash or number by its letters · `quick_select`
 
 ## The window, fixed
 
-- [ ] `Ctrl+Alt+1 … 9` · `Cmd+1 … 9` — The Nth tab
-- [ ] `Alt+Left` · `Cmd+Option+Left` — The keys to the pane on the left
-- [ ] `Alt+Right` · `Cmd+Option+Right` — The keys to the pane on the right
-- [ ] `Alt+Up` · `Cmd+Option+Up` — The keys to the pane above
-- [ ] `Alt+Down` · `Cmd+Option+Down` — The keys to the pane below
-- [ ] `Alt+Shift+Left` · `Cmd+Ctrl+Left` — Move the divider nearest the pane with the keys to the left
-- [ ] `Alt+Shift+Right` · `Cmd+Ctrl+Right` — Move the divider nearest the pane with the keys to the right
-- [ ] `Alt+Shift+Up` · `Cmd+Ctrl+Up` — Move the divider nearest the pane with the keys up
+- [x] `Ctrl+Alt+1 … 9` · `Cmd+1 … 9` — The Nth tab
+- [x] `Alt+Left` · `Cmd+Option+Left` — The keys to the pane on the left
+- [x] `Alt+Right` · `Cmd+Option+Right` — The keys to the pane on the right
+- [x] `Alt+Up` · `Cmd+Option+Up` — The keys to the pane above
+- [x] `Alt+Down` · `Cmd+Option+Down` — The keys to the pane below
+- [x] `Alt+Shift+Left` · `Cmd+Ctrl+Left` — Move the divider nearest the pane with the keys to the left
+- [x] `Alt+Shift+Right` · `Cmd+Ctrl+Right` — Move the divider nearest the pane with the keys to the right
+- [x] `Alt+Shift+Up` · `Cmd+Ctrl+Up` — Move the divider nearest the pane with the keys up
 - [ ] `Alt+Shift+Down` · `Cmd+Ctrl+Down` — Move the divider nearest the pane with the keys down
 
 ## Panes
