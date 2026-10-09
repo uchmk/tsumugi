@@ -4,8 +4,12 @@ A terminal built for running many Claude Code and other AI CLI sessions side
 by side: vertical tabs, split panes, and a glance at which session is waiting
 for you. Rust + egui, Windows first, with macOS and Linux on x86_64 and ARM64.
 
-**Status: early.** A window with one shell in it, nothing more yet. The first
-version's scope is in [docs/v1-scope.md](docs/v1-scope.md).
+**Status: early.** Everything in the first version's scope
+([docs/v1-scope.md](docs/v1-scope.md)) is in: sessions that outlive the
+window, vertical tabs, splits, a state ring on every session and the list of
+those waiting for you. The first release, v0.52.0, is on the Releases page.
+Testing on real Windows machines has only just begun
+([TESTING-CHECKS.md](TESTING-CHECKS.md)), so expect rough edges.
 
 ## What it looks like
 
