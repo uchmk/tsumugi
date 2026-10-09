@@ -33,12 +33,20 @@
 #   git -C C:\dev\tsumugi fetch origin
 #   git -C C:\dev\tsumugi worktree add --detach C:\dev\tsumugi-wintest origin/main
 #   $w = 'C:\dev\tsumugi-wintest'
-#   $a = New-ScheduledTaskAction -Execute pwsh -Argument "-NoProfile -WindowStyle Hidden -Command `"git -C $w fetch -q origin main; if (-not (git -C $w status --porcelain)) { git -C $w checkout -q --detach origin/main }; & $w\scripts\auto-wintest.ps1`""
+#   $a = New-ScheduledTaskAction -Execute (Get-Command pwsh).Source -Argument "-NoProfile -WindowStyle Hidden -Command `"git -C $w fetch -q origin main; if (-not (git -C $w status --porcelain)) { git -C $w checkout -q --detach origin/main }; & $w\scripts\auto-wintest.ps1`""
 #   $t = New-ScheduledTaskTrigger -Once -At ((Get-Date).Date.AddHours((Get-Date).Hour).AddMinutes(50)) -RepetitionInterval (New-TimeSpan -Hours 1)
 #   $s = New-ScheduledTaskSettingsSet -MultipleInstances IgnoreNew -ExecutionTimeLimit (New-TimeSpan -Hours 4) -StartWhenAvailable
 #   Register-ScheduledTask -TaskName tsumugi-auto-wintest -Action $a -Trigger $t -Settings $s
 #
 #   Unregister-ScheduledTask -TaskName tsumugi-auto-wintest   # to stop it
+#
+# pwsh is given by its full path: on 2026-10-09 a task registered with a bare
+# `pwsh` ended every firing with 0x80070002 (2147942402, file not found)
+# before the script ran, so nothing reached the log.
+# If that path is under C:\Program Files\WindowsApps (the Store's PowerShell),
+# it names the version and stops working at the next update: give the task
+# $env:LOCALAPPDATA\Microsoft\WindowsApps\pwsh.exe (the Store's own alias,
+# which follows updates) or install the MSI build (C:\Program Files\PowerShell\7).
 #
 # The ARM64 laptop: C:\dev\tsumugi-armtest, `& $w\scripts\auto-wintest.ps1 -Lane arm`,
 # and the task name tsumugi-auto-wintest-arm.
