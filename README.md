@@ -50,7 +50,10 @@ program or tag. On Windows the server runs from a copy of the exe kept in
 version says tsumugi was updated and offers, on Enter, to restart the
 server -- the tabs are written down first -- and brings every one back.
 `restart_after_update = true` under `[general]` (Settings, General) does it
-without asking. The sidebar rings each one in its state's
+without asking. A server of an older build that still speaks the same
+version goes on as it is -- its sessions keep running -- and the window says
+so once, with the way to restart it (Settings, Advanced, which also shows
+the server's version). The sidebar rings each one in its state's
 colour, with a mark that says it without the colour: cyan and a turning arc
 while an agent works, yellow, breathing, and a clock when it wants you, a
 thin yellow ring and a dotted circle when its output has stopped for 10

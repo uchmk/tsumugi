@@ -260,7 +260,7 @@ fn serve(shared: Arc<Shared>, client: ClientId, conn: Conn) {
         return;
     }
     let (tx, rx) = crossbeam_channel::unbounded::<ToClient>();
-    let _ = tx.send(ToClient::Started { at_ms: shared.started_ms });
+    let _ = tx.send(ToClient::Started { at_ms: shared.started_ms, build: env!("CARGO_PKG_VERSION").into() });
     let _ = tx.send(ToClient::Notices(lock(&shared.notices).1.iter().cloned().collect()));
     let _ = tx.send(ToClient::MutedTags(lock(&shared.muted_tags).iter().cloned().collect()));
     lock(&shared.clients).insert(client, tx.clone());

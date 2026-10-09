@@ -20,6 +20,7 @@
 - [ ] **1.8** Task Manager after 1.3 → One `tsumugi-<version>-<hash>.exe` server, and no console window anywhere
 - [ ] **1.9** The taskbar, Alt+Tab, and the window's corner → The logo (two threads, cyan and gold, on a dark tile) as the window's icon
 - [ ] **1.11** Settings → General → Restart the server after an update without asking on; then 1.7 → No question: the older server is restarted at once and every tab comes back
+- [ ] **1.12** Build and start a newer window while the server of the build before runs, when the two speak the same version (no **tsumugi was updated**); then Settings → Advanced → Restart the server → A toast "The server is still tsumugi <old> (this is <new>): Settings → Advanced → Restart the server…", once; Settings → Advanced shows "Running · <old> · <up>"; after the restart it shows the new version and no toast comes
 
 ## 2. Panes and splits
 

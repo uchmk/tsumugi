@@ -7,7 +7,7 @@ use tsumugi_pane::Size;
 
 /// Bumped whenever a message changes shape: a client and a server that
 /// disagree say so at `Hello` instead of misreading each other.
-pub const VERSION: u32 = 34;
+pub const VERSION: u32 = 35;
 
 /// A `Hello` with this version asks the server to stop, writing down its
 /// tabs first so the next window can bring them back. `Hello` stays the
@@ -302,8 +302,10 @@ pub enum ToClient {
     Saved(Option<crate::state::Saved>),
     /// The notification list, newest last, whenever it changes.
     Notices(Vec<Notice>),
-    /// When the server started, in Unix milliseconds (the status bar's "up").
-    Started { at_ms: u64 },
+    /// When the server started, in Unix milliseconds (the status bar's "up"),
+    /// and the tsumugi version it was built as: one older than the window
+    /// speaks the same messages but lacks the server's fixes since.
+    Started { at_ms: u64, build: String },
     /// What changed on the screen of an attached session: every row the
     /// first time, then only the rows that changed.
     Screen { id: SessionId, update: crate::diff::Update },

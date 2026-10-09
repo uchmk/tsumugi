@@ -1071,6 +1071,9 @@ struct App {
     /// The check for a newer release, once a start (`[general] check_updates`).
     update: Option<std::sync::mpsc::Receiver<Option<String>>>,
     update_asked: bool,
+    /// The server's version was looked at: one older than this window is
+    /// said once.
+    build_told: bool,
     /// The question was answered "Close": the next request goes through.
     close_ok: bool,
     worktree_removing: Option<(std::path::PathBuf, std::sync::mpsc::Receiver<Result<(), String>>)>,
@@ -1429,6 +1432,7 @@ impl App {
             jobs: std::sync::mpsc::channel(),
             update: None,
             update_asked: false,
+            build_told: false,
             close_ok: false,
             worktree_removing: None,
             toast: None,
@@ -1838,7 +1842,7 @@ impl App {
             font_names: fonts::names(),
             font_file: self.font_file.as_ref().map(|p| p.display().to_string()),
             faces: self.faces_found,
-            server_up: chrome::elapsed(chrome::now_ms().saturating_sub(client.started_ms())),
+            server_up: format!("{} · {}", client.server_build(), chrome::elapsed(chrome::now_ms().saturating_sub(client.started_ms()))),
             settings_path: shown(tsumugi_mux::settings::default_path().and_then(|p| p.parent().map(std::path::Path::to_path_buf))),
             state_path: shown(tsumugi_mux::state::default_path()),
             address: tsumugi_mux::address().0.display().to_string(),
@@ -5107,6 +5111,18 @@ impl App {
             self.update = None;
             if let Some(v) = answer {
                 self.say(format!("tsumugi {v} is out (this is {}): github.com/uchmk/tsumugi/releases", env!("CARGO_PKG_VERSION")), false);
+            }
+        }
+        // This machine's server of an older build that speaks the same
+        // messages: no "tsumugi was updated" screen, so its fixes since would
+        // be missing without a word.
+        if !self.build_told && self.on.is_none() {
+            let build = client.server_build();
+            if !build.is_empty() {
+                self.build_told = true;
+                if build != env!("CARGO_PKG_VERSION") {
+                    self.say(format!("The server is still tsumugi {build} (this is {}): Settings → Advanced → Restart the server to use this one", env!("CARGO_PKG_VERSION")), false);
+                }
             }
         }
         let mut facts_again = false;
