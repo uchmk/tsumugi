@@ -148,6 +148,10 @@ what happened, and the steps.
 | 2.62 | With the second trigger, `sleep 3; echo Build succeeded` in a session and switch to another app at once | A system notification **<folder>: a trigger matched** with `Build succeeded` below; the bell's list has it marked **trigger**; no flash, sound or number on the taskbar |
 | 2.63 | With the second trigger, `for i in 1 2 3; do echo Build succeeded; done` in a session while another app is in front; 15 seconds later the same again | One notification for the three lines; a second after the 15 seconds |
 | 2.64 | With the second trigger, `printf 'Build succeeded\n' > /tmp/t.txt; less /tmp/t.txt` (`more`) while another app is in front; then a trigger `regex = "a*"`, then `regex = "("`, then one with neither colour nor notify | `less` shows the line coloured but sends no notification; each bad trigger is reported when the settings are read (empty line, does not read, does nothing) and the old settings stay |
+| 2.65 | Windows: with the second trigger, `echo Build succeeded` in a session while another app is in front; after the notification, drag the window's edge to make it narrower and wider several times | One notification only; the redraw ConPTY sends on a resize does not notify again |
+| 2.66 | A trigger `regex = "^done$"` with a colour; in a pane, `echo '  done'` and `echo done.` | The first `done` is coloured (the blanks either side are not part of the line), `done.` is not |
+| 2.67 | `kitten show-key -m kitty` (kitty installed) in one pane of a split; hold `a`, and while holding it `Ctrl+Tab` (or click) to the other pane, let go of `a`, then come back. Again, holding `a` and switching to another app | `show-key` shows `a` released when the keys left it (no `a` held for ever, no repeat) in both cases |
+| 2.68 | Quick select with more than 26 addresses on the screen (`for i in $(seq 30); do echo https://example.com/$i; done`): type `Shift`+the first letter of a two-letter label, `Backspace`, then the label without `Shift` | The address is copied (the clipboard), no browser opens |
 
 ## 3. The sidebar
 

@@ -708,8 +708,8 @@ struct Rules {
 }
 
 impl Rules {
-    /// A file that cannot be read gives the defaults; the window says what
-    /// is wrong with it.
+    /// A file that cannot be read gives the defaults (at the start; a
+    /// reload keeps the rules it had); the window says what is wrong with it.
     fn read(path: Option<&Path>) -> Self {
         let stamp = path.and_then(crate::settings::stamp);
         let s = path.and_then(|p| crate::settings::load(p).ok()).unwrap_or_default();
@@ -1254,7 +1254,8 @@ const TRIGGER_GAP: Duration = Duration::from_secs(10);
 /// thousand matching lines is one notification.
 fn record_triggered(shared: &Shared, s: &mut Session) {
     let hits = s.term.take_triggered();
-    if hits.is_empty() || s.term.with_grid(|t| t.mode().contains(tsumugi_pane::alacritty_terminal::term::TermMode::ALT_SCREEN)) {
+    // What a full-screen program draws is left out as it is read.
+    if hits.is_empty() {
         return;
     }
     let now = std::time::Instant::now();
@@ -1497,7 +1498,11 @@ fn run_pump(shared: Arc<Shared>, dirty: Receiver<SessionId>) {
             // The settings changed: their rules apply to every session.
             let mut rules = lock(&shared.rules);
             let fresh = shared.settings.as_deref().is_some_and(|p| crate::settings::stamp(p) != rules.stamp);
-            if fresh {
+            // A file that does not read (half saved, a mistake) leaves the
+            // rules as they were until it is put right; the window says why.
+            if fresh && shared.settings.as_deref().is_some_and(|p| crate::settings::load(p).is_err()) {
+                rules.stamp = shared.settings.as_deref().and_then(crate::settings::stamp);
+            } else if fresh {
                 // A rule changed or taken out takes its tag off with it.
                 let was: Vec<Vec<String>> = sessions.values().map(|s| rules.given(&s.info.cwd, &s.info.branch)).collect();
                 *rules = Rules::read(shared.settings.as_deref());

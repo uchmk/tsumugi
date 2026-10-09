@@ -26,8 +26,8 @@ pub struct QuickSelect {
     pub hits: Vec<Hit>,
     /// The letters typed so far.
     pub typed: String,
-    /// Shift was held on one of them: open, not copy.
-    open: bool,
+    /// Shift held with each letter typed: one of them held opens.
+    open: Vec<bool>,
 }
 
 /// What a key comes to.
@@ -69,7 +69,7 @@ impl QuickSelect {
         let labels = labels(texts.len());
         let label_of = |t: &str| texts.iter().position(|x| *x == t).and_then(|i| labels.get(i).cloned());
         let hits = found.iter().filter_map(|(y, h)| Some(Hit { row: *y, cells: h.cells.clone(), text: h.text.clone(), link: h.link.clone(), label: label_of(&h.text)? })).collect();
-        Self { hits, typed: String::new(), open: false }
+        Self { hits, typed: String::new(), open: Vec::new() }
     }
 
     /// The labels moved to where their things are on the screen now, when
@@ -96,7 +96,9 @@ impl QuickSelect {
         match key {
             Key::Exit => Step::Exit,
             Key::Back => {
+                // The letter taken back takes its Shift with it.
                 self.typed.pop();
+                self.open.pop();
                 Step::Wait
             }
             Key::Letter(c, shift) => {
@@ -105,11 +107,11 @@ impl QuickSelect {
                 // A letter no label goes on with is not taken.
                 let Some(hit) = self.hits.iter().find(|h| h.label.starts_with(&typed)) else { return Step::Wait };
                 self.typed = typed;
-                self.open |= shift;
+                self.open.push(shift);
                 if hit.label != self.typed {
                     return Step::Wait;
                 }
-                match (&hit.link, self.open) {
+                match (&hit.link, self.open.contains(&true)) {
                     (Some(link), true) => Step::Open(link.clone()),
                     _ => Step::Copy(hit.text.clone()),
                 }
@@ -156,6 +158,16 @@ mod tests {
         assert_eq!(q.press(Key::Letter('S', true)), Step::Open(Link::Url("https://x.dev/a".into())));
         let mut q = QuickSelect::new(&rows);
         assert_eq!(q.press(Key::Letter('A', true)), Step::Copy("12345".into()), "a number has nothing to open");
+    }
+
+    #[test]
+    fn a_shift_taken_back_does_not_open() {
+        let hit = |label: &str| Hit { row: 0, cells: 0..1, text: "x".into(), link: Some(Link::Url("https://x.dev".into())), label: label.into() };
+        let mut q = QuickSelect { hits: vec![hit("aa"), hit("as")], typed: String::new(), open: Vec::new() };
+        assert_eq!(q.press(Key::Letter('A', true)), Step::Wait);
+        assert_eq!(q.press(Key::Back), Step::Wait);
+        assert_eq!(q.press(Key::Letter('a', false)), Step::Wait);
+        assert_eq!(q.press(Key::Letter('s', false)), Step::Copy("x".into()));
     }
 
     #[test]

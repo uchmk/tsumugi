@@ -270,14 +270,16 @@ runs; a pane on a tsumugi server over SSH gets it either way.
 **Triggers** (iTerm2's) are regular expressions matched against the output,
 set in `settings.toml` as `[[triggers]]`. `color` and `background`
 (`#rrggbb`) draw what one matches on screen in them, a row at a time (a match
-is not found across a wrapped line); later triggers draw over earlier ones,
+is not found across a wrapped line, and the blanks either side of the row
+are left out, so `^` and `$` mean the start and end of the text); later triggers draw over earlier ones,
 and a selection keeps its own colour. With `notify = true`, a line a program
 writes that matches goes on the bell's list as **trigger** and raises a
 system notification, as a waiting session does, while you are not looking at
 the window -- no flash, sound or number on the taskbar. One trigger tells of a
 session at most once every 10 seconds, and not of what a full-screen program
 (vim, less, htop) draws. A regular expression that does not read, or
-that matches an empty line, is reported when the settings are read.
+that matches an empty line, is reported when the settings are read, and the
+settings from before stay until the file is put right.
 
 ```toml
 [[triggers]]

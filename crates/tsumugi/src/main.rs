@@ -1077,6 +1077,9 @@ struct App {
     teller: alert::Teller,
     /// Whether the server was last told this window has the keyboard.
     focus_sent: Option<bool>,
+    /// The panes the keys went to last frame: one no longer fed hears of the
+    /// keys it held as let go (a program asking for key releases).
+    fed: Vec<SessionId>,
     /// The pane last told it has the keys (DECSET 1004): the current tab's
     /// focused pane while the window is in front, else none.
     keyed: Option<SessionId>,
@@ -1398,6 +1401,7 @@ impl App {
                 move || ctx.request_repaint()
             }),
             focus_sent: None,
+            fed: Vec::new(),
             keyed: None,
             filter: sort::Filter::default(),
             view: View::load(),
@@ -5187,6 +5191,7 @@ impl App {
             }
             let copying = self.copy_mode.is_some();
             let mut quick_open = None;
+            let mut fed: Vec<SessionId> = Vec::new();
             if let Some(pane) = self.panes.get(&w.focus).filter(|_| self.quick.is_some() && !field && !prefs_were_open) {
                 // Quick select has the keys: letters pick, the rest wait.
                 let events = ctx.input(|i| i.events.clone());
@@ -5278,7 +5283,8 @@ impl App {
                 if held.is_some() {
                     self.paste_ask = held;
                 }
-                tsumugi_pane::input::feed(pane, &events, |key, m| match keys::action(key, m) {
+                fed = to.clone();
+                tsumugi_pane::input::feed_as(pane, w.focus, &events, |key, m| match keys::action(key, m) {
                     Some(a) => {
                         actions.push(a);
                         true
@@ -5290,8 +5296,21 @@ impl App {
                 if self.typing_all.contains(&w.id) {
                     for other in w.layout.leaves().into_iter().filter(|o| *o != w.focus) {
                         if let Some(p) = self.panes.get(&other) {
-                            tsumugi_pane::input::feed(p, &events, |key, m| keys::action(key, m).is_some());
+                            tsumugi_pane::input::feed_as(p, other, &events, |key, m| keys::action(key, m).is_some());
                         }
+                    }
+                }
+            }
+            // Keys held as the keys went elsewhere (another pane, another
+            // window) are let go, or the program would see them held for ever.
+            if !here {
+                fed.clear();
+            }
+            for id in std::mem::replace(&mut self.fed, fed) {
+                if !self.fed.contains(&id) {
+                    match self.panes.get(&id) {
+                        Some(p) => tsumugi_pane::input::let_go(p, id),
+                        None => drop(tsumugi_pane::input::forget(id)),
                     }
                 }
             }
