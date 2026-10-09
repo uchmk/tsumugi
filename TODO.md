@@ -25,7 +25,11 @@ tsumugi のやること。`【人】` は持ち主の作業、`【金】` は 20
 
 マージの Routine（`.claude/merge-routine.md`）が、実機の PR の `### Proposals`・見つけた不具合・`## Queue` の頼みをここに積む。対話のセッションが拾う。
 
-- いまは無い。
+- （実機 #1）仕切りをドラッグして離すと元の比率に戻る。`crates/tsumugi/src/main.rs` の ~:4190 が離したフレームで `self.dragging` を消し、~:4521 の `Moved::Released` で `set_layout` が呼ばれない。直すまで 2.3・2.15 は再テストの列に置く（`qa-reports/2026-10-09-arm-2-1.md`）。
+- （実機 #1）2.10（IME）は無人の実機では確かめられない。本物の IME を使える人に回す（`qa-reports/2026-10-09-arm-2-1.md`）。
+- （実機 #1）提案: `scripts/wintest-kit.ps1` に `Send-Drag`（押す・動かす・離す）を足す。`Invoke-Tsumugi ls --json` が `-Arguments` でないと落ちるので、位置引数を受けるか文書にする（`qa-reports/2026-10-09-arm-2-1.md`）。
+- （実機 #2）`Ctrl+=`（`font_bigger`）は JIS 配列では押せない。US 配列のレーンか、キットが生の仮想キーを押せるようになってから確かめる（`qa-reports/2026-10-09-win-keys-1.md`）。
+- （実機 #2）提案: キットの `Send-Keys` に生の仮想キー（`vk:0xBB`）を渡せるようにする。持ち主のアプリが前面を奪うので、キー実行の前にデスクトップが静かになるのを待つ。`--check` の例は CRLF を無視し、成功時に `in sync` と出す（`qa-reports/2026-10-09-win-keys-1.md`）。
 
 ## ほかのターミナルにあるもの（2026-10-08、持ち主の依頼で全部取り込む）
 
