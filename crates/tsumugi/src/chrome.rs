@@ -1205,6 +1205,16 @@ impl RestoreView {
     }
 }
 
+/// The "Select all" box: every row ticked, else ticks them all; all
+/// ticked, it clears them. Finished ones too: ticked, they open a new shell
+/// in their folder.
+fn tick_all(ticked: &mut [(SessionId, bool)]) {
+    let on = !ticked.iter().all(|(_, on)| *on);
+    for (_, t) in ticked {
+        *t = on;
+    }
+}
+
 pub enum RestoreAnswer {
     Restore(Vec<SessionId>),
     Fresh,
@@ -1234,6 +1244,18 @@ pub fn restore_screen(ui: &mut egui::Ui, pal: &Palette, view: &mut RestoreView) 
         ui.add_space(10.0);
         // The rows scroll, so Restore and Start fresh stay in sight however
         // many there were.
+        if view.ticked.len() > 1 {
+            let count = view.ticked.iter().filter(|(_, on)| *on).count();
+            let mut all = count == view.ticked.len();
+            let some = count > 0 && !all;
+            let ticked = &mut view.ticked;
+            egui::Frame::NONE.inner_margin(egui::Margin::symmetric(8, 2)).show(ui, |ui| {
+                let label = RichText::new("Select all").size(12.5).color(pal.fg_dim);
+                if ui.add(egui::Checkbox::new(&mut all, label).indeterminate(some)).clicked() {
+                    tick_all(ticked);
+                }
+            });
+        }
         let room = (ui.available_height() - 60.0).max(80.0);
         egui::ScrollArea::vertical().id_salt("restore-rows").max_height(room).auto_shrink([false, true]).show(ui, |ui| {
             for &i in &order {
@@ -1338,6 +1360,19 @@ pub fn foot(ui: &mut egui::Ui, main: egui::Button<'_>, enabled: bool, cancel: &s
 #[cfg(test)]
 mod tests {
     use super::{BREATHE, SWEEP, breathe, edge_at, elapsed, sweep_at, when_words};
+
+    /// "Select all" ticks every row, finished ones too, unless all were
+    /// ticked; then it clears them.
+    #[test]
+    fn select_all_ticks_every_row_then_none() {
+        let mut ticked = vec![(1, true), (2, false), (3, false)];
+        super::tick_all(&mut ticked);
+        assert!(ticked.iter().all(|(_, on)| *on));
+        super::tick_all(&mut ticked);
+        assert!(ticked.iter().all(|(_, on)| !*on));
+        super::tick_all(&mut ticked);
+        assert!(ticked.iter().all(|(_, on)| *on));
+    }
 
     /// Every dialog's Cancel goes through `foot`, so the buttons sit alike
     /// everywhere: no Cancel button made by hand anywhere else.

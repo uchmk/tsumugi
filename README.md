@@ -92,6 +92,11 @@ types `claude --resume <conversation>` where Claude Code ran. The file is
 on Linux, `~/Library/Application Support/tsumugi/state` on macOS
 (`TSUMUGI_STATE` overrides).
 
+With Settings → General → On start set to Ask, **Welcome back** lists them
+first, each with a box, ticked but those that had finished. **Select all**
+ticks every one (a finished one comes back as a new shell in its folder), and
+clears them when all are ticked.
+
 On Windows a shell's folder can only be known when the shell says it, so add
 the hook to PowerShell 7's profile; without it a tab comes back in the folder
 it was opened in:

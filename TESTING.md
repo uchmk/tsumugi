@@ -290,6 +290,7 @@ what happened, and the steps.
 | 8.3 | Settings → General → On start → Restore the last sessions, then 8.1 | No Welcome back; the tabs simply return |
 | 8.4 | 8.1 with fourteen or more tabs | The list scrolls; Restore and Start fresh stay in sight; the time reads `today at …` or `yesterday at …` |
 | 8.5 | A session where `codex` ran; restart the machine (or the server) | The restored tab types `codex resume --last`; with `[agents.gemini] resume = "…"`, a Gemini session types that |
+| 8.6 | 8.1 with some sessions that had finished (`exit` in them first); click **Select all**, then again, then tick one row by hand | The box above the rows is half-filled while some are ticked; the first click ticks every row (the finished ones now say `new shell in …`) and Restore counts them all; the second clears them all and Restore is greyed; one row ticked makes the box half-filled again |
 
 ## 9. The settings screen
 
