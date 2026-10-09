@@ -18,7 +18,7 @@ Windows and Linux keys first; the macOS key is after `·`.
 - [x] `Alt+Shift++` · `Cmd+D` — Split right · `split_right`
 - [x] `Alt+Shift+-` · `Cmd+Shift+D` — Split down · `split_down`
 - [x] `Ctrl+Shift+Z` · `Cmd+Shift+Z` — Zoom one pane · `zoom`
-- [x] `Ctrl+Shift+P` · `Cmd+Shift+P` — Search · `search`
+- [ ] `Ctrl+Shift+P` · `Cmd+Shift+P` — Command palette: commands, prompts, layouts, folders · `search`
 - [x] `Ctrl+Shift+B` · `Cmd+Shift+B` — Narrow rail · `rail`
 - [x] `Ctrl+,` · `Cmd+,` — Settings · `settings`
 - [x] `Ctrl+I` · `Cmd+I` — Input box · `input`
@@ -30,7 +30,7 @@ Windows and Linux keys first; the macOS key is after `·`.
 - [ ] `Ctrl+=` · `Cmd+=` — Bigger letters · `font_bigger`
 - [x] `Ctrl+-` · `Cmd+-` — Smaller letters · `font_smaller`
 - [x] `Ctrl+0` · `Cmd+0` — Letters as the settings have them · `font_reset`
-- [ ] `Ctrl+Shift+O` · `Cmd+Shift+O` — Every session on one screen · `overview`
+- [ ] `Ctrl+Shift+O` · `Cmd+Shift+O` — All sessions: find a session or a line in any scrollback · `overview`
 - [ ] `Ctrl+Shift+M` · `Cmd+Shift+M` — Copy mode: select the output with the keys · `copy_mode`
 - [ ] `Ctrl+Shift+Up` · `Cmd+Shift+Up` — To the prompt above · `prev_prompt`
 - [ ] `Ctrl+Shift+Down` · `Cmd+Shift+Down` — To the prompt below · `next_prompt`
@@ -40,6 +40,7 @@ Windows and Linux keys first; the macOS key is after `·`.
 - [ ] `Ctrl+Shift+E` · `Cmd+Shift+E` — Give every pane the same room · `equalize`
 - [ ] `Ctrl+Shift+J` · `Cmd+Shift+J` — The pane to a tab of its own · `pane_to_tab`
 - [ ] `Ctrl+Shift+R` · `Cmd+Shift+R` — Record the pane (asciinema .cast) · `record`
+- [ ] `Ctrl+Shift+S` · `Cmd+Shift+S` — Write a work log of the pane (text in Downloads) · `work_log`
 - [ ] `Ctrl+Shift+L` · `Cmd+Shift+L` — Copy the last command's output · `copy_output`
 - [ ] `Ctrl+Shift+Space` · `Cmd+Shift+Space` — Quick select: copy a link, hash or number by its letters · `quick_select`
 
@@ -78,10 +79,18 @@ Windows and Linux keys first; the macOS key is after `·`.
 - [ ] `Up / Down` · `Up / Down` — The prompts sent before (in an empty box, or one showing a sent one)
 - [ ] `Esc` · `Esc` — Close the box, the keys back to the pane, the draft kept
 
-## The search box
+## The command palette
 
 - [ ] `Up / Down` · `Up / Down` — Walk the entries
 - [ ] `Enter` · `Enter` — Do the entry picked
+- [ ] `Esc` · `Esc` — Close it
+
+## All sessions
+
+- [ ] `Letters` · `Letters` — Narrow the sessions; 3 letters or more also list the lines of every scrollback that hold them
+- [ ] `Up / Down` · `Up / Down` — Walk the sessions, then the scrollback lines
+- [ ] `Enter` · `Enter` — Go to the session (a line: go there and show it)
+- [ ] `Left / Right` · `Left / Right` — The page beside it, while nothing is typed
 - [ ] `Esc` · `Esc` — Close it
 
 ## Copy mode

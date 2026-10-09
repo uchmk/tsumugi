@@ -1220,6 +1220,24 @@ impl CardLines<'_> {
     }
 }
 
+/// Start a session's work log in Downloads, named for its tab, or finish
+/// it. The server writes the file. What the toast says, and whether it is
+/// an error.
+fn work_log(client: &Client, info: &Info, tab: &str) -> (String, bool) {
+    if !info.logging.is_empty() {
+        client.log(info.id, None);
+        return (format!("Saved the work log to {}", info.logging), false);
+    }
+    match export::log_path(tab) {
+        Some(path) => {
+            let words = format!("Writing a work log to {} as the session goes (the same key finishes it)", path.display());
+            client.log(info.id, Some(path));
+            (words, false)
+        }
+        None => ("No home folder to write the work log in".into(), true),
+    }
+}
+
 /// A change asked for from the sidebar, made once it is drawn.
 enum SideOp {
     Mute(Vec<SessionId>, bool),
@@ -1237,6 +1255,8 @@ enum SideOp {
     Diff(String, std::path::PathBuf),
     /// Ask for the session's whole buffer, to save it under this name.
     SaveOutput(SessionId, String),
+    /// Start or finish the session's work log, named for this tab.
+    WorkLog(SessionId, String),
     /// Push the branch in this folder and open a pull request for it.
     CreatePr(std::path::PathBuf),
 }
@@ -1604,6 +1624,13 @@ impl App {
                 },
                 None => {}
             },
+            keys::Action::WorkLog => {
+                if let Some(info) = sessions.iter().find(|i| i.id == w.focus) {
+                    let tab = if w.name.is_empty() { sort::display_title(&info.title, &info.command) } else { w.name.clone() };
+                    let (words, error) = work_log(&client, info, &tab);
+                    self.say(words, error);
+                }
+            }
             keys::Action::Search => self.search = Some(palette::View::new()),
             keys::Action::Settings => self.open_settings(),
             keys::Action::Input => self.input.toggle(),
@@ -1695,23 +1722,19 @@ impl App {
         }
     }
 
-    /// What the search box lists: every session, every folder the sessions
-    /// are in, and the commands.
-    fn search_entries(workspaces: &[Workspace], sessions: &[Info], saved: &[prompts::Prompt], kept: &[layouts::Layout]) -> Vec<palette::Entry> {
+    /// What the command palette lists: the commands, saved prompts and
+    /// layouts, then every folder the sessions are in.
+    fn search_entries(sessions: &[Info], saved: &[prompts::Prompt], kept: &[layouts::Layout]) -> Vec<palette::Entry> {
         let mut out = Vec::new();
-        for w in workspaces {
-            for id in w.layout.leaves() {
-                let Some(i) = sessions.iter().find(|i| i.id == id) else { continue };
-                let name = sort::display_title(&i.title, &i.command);
-                let mut detail = home_short(&i.cwd);
-                if !i.branch.is_empty() {
-                    detail.push_str(&format!(" · {}", i.branch));
-                }
-                for t in &i.tags {
-                    detail.push_str(&format!(" · {t}"));
-                }
-                out.push(palette::Entry { title: name, detail, pick: palette::Pick::Session(id) });
-            }
+        for c in palette::Command::ALL {
+            out.push(palette::Entry { title: c.title(), detail: c.key(), pick: palette::Pick::Command(c) });
+        }
+        for (k, p) in saved.iter().enumerate() {
+            let first = p.text.lines().next().unwrap_or_default();
+            out.push(palette::Entry { title: format!("Send prompt: {}", p.name), detail: first.chars().take(60).collect(), pick: palette::Pick::Prompt(k) });
+        }
+        for (k, l) in kept.iter().enumerate() {
+            out.push(palette::Entry { title: format!("Open layout: {}", l.name), detail: layouts::words(&l.tree), pick: palette::Pick::Layout(k) });
         }
         let mut folders: Vec<&std::path::Path> = Vec::new();
         for i in sessions {
@@ -1723,16 +1746,6 @@ impl App {
         }
         for f in folders {
             out.push(palette::Entry { title: format!("New session in {}", home_short(f)), detail: "folder".into(), pick: palette::Pick::Folder(f.to_path_buf()) });
-        }
-        for c in palette::Command::ALL {
-            out.push(palette::Entry { title: c.title(), detail: c.key(), pick: palette::Pick::Command(c) });
-        }
-        for (k, p) in saved.iter().enumerate() {
-            let first = p.text.lines().next().unwrap_or_default();
-            out.push(palette::Entry { title: format!("Send prompt: {}", p.name), detail: first.chars().take(60).collect(), pick: palette::Pick::Prompt(k) });
-        }
-        for (k, l) in kept.iter().enumerate() {
-            out.push(palette::Entry { title: format!("Open layout: {}", l.name), detail: layouts::words(&l.tree), pick: palette::Pick::Layout(k) });
         }
         out
     }
@@ -2083,11 +2096,6 @@ impl App {
     fn picked(&mut self, pick: palette::Pick, current: Option<&Workspace>, workspaces: &[Workspace], area: Rect) {
         let Some(client) = self.client.clone() else { return };
         match pick {
-            palette::Pick::Session(id) => self.go_to(&client, workspaces, id),
-            palette::Pick::Line { id, line, col, len } => {
-                self.go_to(&client, workspaces, id);
-                client.reveal(id, line, col, len);
-            }
             palette::Pick::Folder(dir) => match new_session(&client, dir, Place::NewWorkspace) {
                 Ok(pane) => self.pending = Some(pane.id()),
                 Err(e) => self.failed = Some(e),
@@ -2158,6 +2166,7 @@ impl App {
                     palette::Command::Help => keys::Action::Help,
                     palette::Command::SwapPane => keys::Action::SwapPane,
                     palette::Command::Equalize => keys::Action::Equalize,
+                    palette::Command::WorkLog => keys::Action::WorkLog,
                     palette::Command::Sort(_) | palette::Command::Closed | palette::Command::Changes | palette::Command::SaveOutput | palette::Command::Parallel | palette::Command::SaveLayout => return,
                 };
                 if let Some(w) = current {
@@ -3008,6 +3017,18 @@ impl App {
                                     ui.close();
                                 }
                             }
+                            "work-log" => {
+                                let (label, hint) = if focus.logging.is_empty() {
+                                    ("Write a work log", "The pane with the keys to a text file in Downloads as it goes: the scrollback now, then each line as it scrolls off")
+                                } else {
+                                    ("Finish the work log", "Write the screen and close the file")
+                                };
+                                if ui.add(egui::Button::new(label).shortcut_text(keys::label(keys::Action::WorkLog))).on_hover_text(hint).clicked() {
+                                    let tab = if w.name.is_empty() { sort::display_title(&focus.title, &focus.command) } else { w.name.clone() };
+                                    ops.push(SideOp::WorkLog(focus.id, tab));
+                                    ui.close();
+                                }
+                            }
                             "pr" => {
                                 let shown = !focus.branch.is_empty() && !matches!(focus.branch.as_str(), "main" | "master");
                                 if shown && ui.button("Create a pull request").on_hover_text(format!("Push {} and open a pull request with gh, titled from its commits", focus.branch)).clicked() {
@@ -3064,6 +3085,7 @@ impl App {
                 self.dragging_tab = None;
             }
         }
+        let mut toasts = Vec::new();
         if let Some(client) = &self.client {
             for op in ops {
                 match op {
@@ -3085,6 +3107,11 @@ impl App {
                         self.saving.insert(id, name);
                         client.all_text(id);
                     }
+                    SideOp::WorkLog(id, tab) => {
+                        if let Some(info) = sessions.iter().find(|i| i.id == id) {
+                            toasts.push(work_log(client, info, &tab));
+                        }
+                    }
                     SideOp::Diff(title, cwd) => {
                         let ctx = ui.ctx().clone();
                         self.diff = Some(diffview::View::open(title, cwd, move || ctx.request_repaint()));
@@ -3105,6 +3132,9 @@ impl App {
                     }
                 }
             }
+        }
+        for (words, error) in toasts {
+            self.say(words, error);
         }
         picked
     }
@@ -4347,6 +4377,11 @@ impl App {
                         let r = p.text(egui::pos2(right_x, head.center().y), egui::Align2::RIGHT_CENTER, "● REC", egui::FontId::proportional(10.5), chrome::ink(chrome::red()));
                         right_x = r.left() - 10.0;
                     }
+                    // A work log being written (Ctrl+Shift+S finishes it).
+                    if !info.logging.is_empty() {
+                        let r = p.text(egui::pos2(right_x, head.center().y), egui::Align2::RIGHT_CENTER, "LOG", egui::FontId::proportional(10.5), chrome::ink(chrome::gold()));
+                        right_x = r.left() - 10.0;
+                    }
                     // A character set other than UTF-8, said where it applies.
                     if !info.charset.is_empty() && info.charset != "UTF-8" {
                         let r = p.text(egui::pos2(right_x, head.center().y), egui::Align2::RIGHT_CENTER, &info.charset, egui::FontId::monospace(10.5), chrome::ink(chrome::gold()));
@@ -5552,29 +5587,7 @@ impl App {
         self.show_undo(&ctx);
 
         let answer = match &mut self.search {
-            Some(view) => {
-                // The scrollbacks are asked once typing pauses, for three
-                // letters or more; their answer comes a frame or two later.
-                let q = view.query.trim().to_owned();
-                if q.chars().count() >= 3 && q != view.asked && view.changed.elapsed() > std::time::Duration::from_millis(250) {
-                    client.search_all(q.clone());
-                    view.asked = q.clone();
-                } else if q != view.asked {
-                    ctx.request_repaint_after(std::time::Duration::from_millis(260));
-                }
-                let lines: Vec<palette::Entry> = match client.found_all() {
-                    Some((asked, hits)) if asked == q && q.chars().count() >= 3 => hits
-                        .into_iter()
-                        .map(|h| {
-                            let name = sessions.iter().find(|i| i.id == h.id).map(|i| sort::display_title(&i.title, &i.command)).unwrap_or_default();
-                            let len = q.chars().count();
-                            palette::Entry { title: h.text.trim().to_owned(), detail: name, pick: palette::Pick::Line { id: h.id, line: h.line, col: h.col, len } }
-                        })
-                        .collect(),
-                    _ => Vec::new(),
-                };
-                chrome::search_box(&ctx, &self.palette, view, &Self::search_entries(&workspaces, &sessions, &self.input.prompts, &self.layouts), &lines)
-            }
+            Some(view) => chrome::search_box(&ctx, &self.palette, view, &Self::search_entries(&sessions, &self.input.prompts, &self.layouts)),
             None => None,
         };
         match answer {
@@ -5807,9 +5820,35 @@ impl App {
                 });
             }
         }
+        // The scrollbacks, asked once typing in All sessions' field pauses,
+        // for three letters or more; their answer comes a frame or two later.
+        let mut found = Vec::new();
+        if view.page == lists::Page::All {
+            let q = view.query.trim().to_owned();
+            let enough = q.chars().count() >= 3;
+            if enough && q != view.asked && view.changed.elapsed() > std::time::Duration::from_millis(250) {
+                client.search_all(q.clone());
+                view.asked = q.clone();
+            } else if enough && q != view.asked {
+                ctx.request_repaint_after(std::time::Duration::from_millis(260));
+            }
+            if let Some((asked, hits)) = client.found_all() {
+                if enough && asked == q {
+                    let len = q.chars().count();
+                    found = hits
+                        .into_iter()
+                        .take(30)
+                        .map(|h| {
+                            let name = sessions.iter().find(|i| i.id == h.id).map(|i| sort::display_title(&i.title, &i.command)).unwrap_or_default();
+                            lists::Found { id: h.id, name, text: h.text, line: h.line, col: h.col, len }
+                        })
+                        .collect();
+                }
+            }
+        }
         let colors = theme::colors();
         let mut keep = true;
-        for d in lists::show(ctx, &mut view, &all, sessions.len(), &rows, &self.ended, &colors) {
+        for d in lists::show(ctx, &mut view, &all, &found, sessions.len(), &rows, &self.ended, &colors) {
             match d {
                 lists::Do::Type(id, key) => {
                     if let Some(pane) = self.panes.get(&id) {
@@ -5831,6 +5870,11 @@ impl App {
                 }
                 lists::Do::Go(id) => {
                     self.go_to(client, workspaces, id);
+                    keep = false;
+                }
+                lists::Do::Reveal(f) => {
+                    self.go_to(client, workspaces, f.id);
+                    client.reveal(f.id, f.line, f.col, f.len);
                     keep = false;
                 }
                 lists::Do::StartAgain(k) => {

@@ -172,6 +172,8 @@ to `cli.rs` and a line to this table instead of a row.
 | 2.67 | `kitten show-key -m kitty` (kitty installed) in one pane of a split; hold `a`, and while holding it `Ctrl+Tab` (or click) to the other pane, let go of `a`, then come back. Again, holding `a` and switching to another app | `show-key` shows `a` released when the keys left it (no `a` held for ever, no repeat) in both cases |
 | 2.68 | Quick select with more than 26 addresses on the screen (`for i in $(seq 30); do echo https://example.com/$i; done`): type `Shift`+the first letter of a two-letter label, `Backspace`, then the label without `Shift` | The address is copied (the clipboard), no browser opens |
 | 2.69 | Settings → General → Copy and paste: **Copy a selection when the mouse lets go** off. `seq 200`, drag over `1` to `3` near the top of the scrollback, wheel down to the bottom so none of it shows, `Ctrl+Shift+C` (`Cmd+C`); paste in Notepad. Then click to clear it, `sleep 30`, `Ctrl+Shift+C` | `1` to `3` on the clipboard and the shell gets no `^C`; with nothing selected `Ctrl+Shift+C` stops `sleep` |
+| 2.70 | `Ctrl+Shift+S` in a shell pane; `seq 200`, `echo あいう`, a line longer than the pane; wait a second; `Ctrl+Shift+S` again. Then right-click the card → **Write a work log**, and again | A toast names `Downloads\tsumugi-<name>-<date>-<time>.txt` and the heading says LOG; while it runs the file already has the lines that scrolled off; the second press toasts "Saved …", LOG goes, and the file has every line once, in order, the long line whole, Japanese whole, ending with the screen; the menu does the same, a second file `-2` when the time is the same |
+| 2.71 | Start a work log, close the window (the server keeps running), `seq 300` in that pane, open it again, `vim` something and quit it, finish the log; then close the session while another log runs | The heading still says LOG after reopening; the file has the lines printed while the window was closed, none of vim's screen; closing the session with a log running leaves a whole file with its last screen |
 
 ## 3. The sidebar
 
@@ -244,10 +246,10 @@ to `cli.rs` and a line to this table instead of a row.
 
 | # | Do | Expect |
 | --- | --- | --- |
-| 5.1 | `Ctrl+Shift+P`, type part of a session's name | That session first; Enter goes there |
+| 5.1 | `Ctrl+Shift+O`, type part of a session's name (then a tag as `#tag`, then a word from a card's last lines) | Only the cards that match, that session first; `Down` / `Up` move, Enter goes there |
 | 5.2 | Type a folder another session is in | **Folder** entries: Enter starts a session there |
 | 5.3 | Type `split` | The commands, with their keys beside them |
-| 5.4 | Type three letters printed long ago in another tab's scrollback | **IN THE SCROLLBACK** lines below the rest; picking one goes to that tab, scrolls back to the line, the match selected |
+| 5.4 | `Ctrl+Shift+O`, type three letters printed long ago in another tab's scrollback | **IN THE SCROLLBACK** lines under the cards a moment later; `Down` walks the cards then the lines; Enter (or a click) on one goes to that tab, scrolls back to the line, the match selected |
 | 5.5 | `Esc`, and a click outside | Closes without doing anything |
 | 5.6 | Keep a prompt `Say {project}` in the input box's **Prompts…**; in the search box type `send`, pick **Send prompt: …**; then `Ctrl+Shift+I` in a split tab and pick it again | It is sent to the pane with the keys, the project's name in it; the second time every pane of the tab gets it |
 | 5.7 | A tab of three panes (Claude Code, a shell beside, one below), dividers moved; **Save this tab's layout**; close it; **Open layout: …** from another pane | `layouts.toml` beside the settings has it; a new tab opens in that pane's folder with the same splits and shares, Claude Code and the shells started as they were |
@@ -255,6 +257,8 @@ to `cli.rs` and a line to this table instead of a row.
 | 5.8 | `Ctrl+Shift+O` with sessions waiting, running and done, on a 1280 × 800 window; arrows, `Enter`; a click on another; `Ctrl+Shift+O` again; then `Ctrl+Tab` twice, `Ctrl+Shift+Tab`, `Right`, `Left` | **All sessions** across most of the window, several rows at once, with the waiting first, each row's state, folder, branch, tags, tokens and last two lines; Enter and the click go to that session; the key closes it; the keys turn to Waiting, Recently closed, back to Waiting, and so on, round the three |
 | 5.9 | Give the tab with the keys five tags, `[tags] shown = 3`; make the window narrower step by step; move the keys to a tab without tags | The search box and the bell stay in the middle of the band; three tags and `+2` on the right, fewer and a bigger `+N` as it narrows, never over the box; the box shrinks to its magnifier last |
 | 5.10 | `F1` on a 1280 × 800 window; then a 1000 × 700 one; `F1` again, `Esc`, a click outside | Every key by kind, in the middle of the window, in three columns or more (smaller letters on the smaller window), all of it with no scrollbar; a key moved in the settings shows its new key; each closes it |
+| 5.11 | `Ctrl+Shift+O`, type `abc`, then `Left` and `Right`; clear the box, `Left` and `Right` again; type `zzzzqqq` | While typing the arrows move in the box and the page stays All; with it empty they turn the page; the last says Nothing matches |
+| 5.12 | `Ctrl+Shift+P`, type part of a session's name, then `work` | No session or scrollback lines in the palette (its hint points to Ctrl+Shift+O); `work` shows **Work log …** with `Ctrl+Shift+S` beside it |
 
 ## 6. New sessions
 

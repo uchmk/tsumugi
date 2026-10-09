@@ -384,6 +384,7 @@ mod tests {
             agent: String::new(),
             ports: Vec::new(),
             recording: String::new(),
+            logging: String::new(),
         }
     }
 

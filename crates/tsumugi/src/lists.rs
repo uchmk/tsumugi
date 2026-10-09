@@ -2,7 +2,10 @@
 //!
 //! - **All sessions**: every session on one screen, the ones waiting for a
 //!   person first, with its state, folder, tags, tokens and last words;
-//!   Up and Down pick one, Enter (or a click) goes to it.
+//!   Up and Down pick one, Enter (or a click) goes to it. A field at the top
+//!   narrows them by name, folder, tag or last words, and from three letters
+//!   on also lists the lines of every scrollback that hold what is typed
+//!   (Enter goes to the session and shows the line).
 //! - **Waiting**: every session waiting for a person, with what it said and
 //!   its menu's choices as buttons, picked by a tick each, and "Yes" or "No"
 //!   typed into all those picked at once. Only a menu on the session's
@@ -12,7 +15,8 @@
 //!   Up and Down pick one, Enter starts it again, Delete takes it off.
 //!
 //! Ctrl+Tab and Ctrl+PageDown go to the next page, with Shift or PageUp to
-//! the one before, as on the settings screen; Left and Right as well.
+//! the one before, as on the settings screen; Left and Right as well, except
+//! while something is typed in All sessions' field.
 
 use std::collections::HashSet;
 
@@ -41,14 +45,46 @@ pub struct View {
     confirming: Option<SessionId>,
     /// Opened this frame: the click that opened it is not a click outside.
     opening: bool,
-    /// The row of All sessions the arrow keys are on.
+    /// The row of All sessions the arrow keys are on: its cards that match,
+    /// then the scrollback lines.
     picked: usize,
+    /// What All sessions' field holds.
+    pub query: String,
+    /// What the scrollbacks were last asked for, and when the query last
+    /// changed (asked once typing pauses).
+    pub asked: String,
+    pub changed: std::time::Instant,
 }
 
 impl View {
     pub fn new(page: Page) -> Self {
-        Self { page, off: HashSet::new(), shown: None, confirming: None, opening: true, picked: 0 }
+        let changed = std::time::Instant::now();
+        Self { page, off: HashSet::new(), shown: None, confirming: None, opening: true, picked: 0, query: String::new(), asked: String::new(), changed }
     }
+}
+
+/// A line found in a session's scrollback, for All sessions.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Found {
+    pub id: SessionId,
+    /// The session's name.
+    pub name: String,
+    pub text: String,
+    /// Where it is, as `Client::reveal` takes it.
+    pub line: i32,
+    pub col: usize,
+    pub len: usize,
+}
+
+/// The cards that match `query` (all of them while it is empty), in their
+/// order: by the name, folder, tags and last lines together.
+pub fn matching<'a>(query: &str, all: &'a [Card]) -> Vec<&'a Card> {
+    all.iter()
+        .filter(|s| {
+            let text = format!("{} {} {} {}", s.name, s.folder, s.tags.iter().map(|t| format!("#{t}")).collect::<Vec<_>>().join(" "), s.last.join(" "));
+            crate::palette::score(query, &text).is_some()
+        })
+        .collect()
 }
 
 /// A waiting session as the list shows it.
@@ -110,6 +146,8 @@ pub enum Do {
     Allow(SessionId, String),
     /// Go to the session (and close the panel).
     Go(SessionId),
+    /// Go to the session and show the line found in its scrollback.
+    Reveal(Found),
     /// Start the closed session again in its folder.
     StartAgain(usize),
     /// Put text on the clipboard.
@@ -132,8 +170,10 @@ pub fn bulk(rows: &[Row], off: &HashSet<SessionId>, yes: bool) -> Vec<(SessionId
         .collect()
 }
 
-/// `all` is filled only while its page shows; `count` is how many there are.
-pub fn show(ctx: &egui::Context, view: &mut View, all: &[Card], count: usize, rows: &[Row], closed: &[Closed], c: &Colors) -> Vec<Do> {
+/// `all` (and `found`, the scrollback lines that hold the query) is filled
+/// only while its page shows; `count` is how many there are.
+#[allow(clippy::too_many_arguments)]
+pub fn show(ctx: &egui::Context, view: &mut View, all: &[Card], found: &[Found], count: usize, rows: &[Row], closed: &[Closed], c: &Colors) -> Vec<Do> {
     let mut out = Vec::new();
     let screen = ctx.content_rect();
     // The rest of the window dimmed behind it; a click there closes it.
@@ -149,7 +189,9 @@ pub fn show(ctx: &egui::Context, view: &mut View, all: &[Card], count: usize, ro
     if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
         out.push(Do::Close);
     }
-    let (next, back) = ctx.input_mut(turn);
+    // The arrows sideways move in the field once something is typed there.
+    let arrows = !(view.page == Page::All && !view.query.is_empty());
+    let (next, back) = ctx.input_mut(|i| turn(i, arrows));
     if next || back {
         view.page = step(view.page, next);
     }
@@ -178,7 +220,7 @@ pub fn show(ctx: &egui::Context, view: &mut View, all: &[Card], count: usize, ro
             // Waiting's row of buttons.
             let max = (screen.height() - if view.page == Page::Waiting { 170.0 } else { 120.0 }).max(160.0);
             match view.page {
-                Page::All => overview(ui, view, all, c, max, &mut out),
+                Page::All => overview(ui, view, all, found, c, max, &mut out),
                 Page::Waiting => waiting(ui, view, rows, c, max, &mut out),
                 Page::Closed => history(ui, view, closed, c, max, &mut out),
             }
@@ -187,11 +229,12 @@ pub fn show(ctx: &egui::Context, view: &mut View, all: &[Card], count: usize, ro
     out
 }
 
-/// The keys that turn the page: (next, before).
-fn turn(i: &mut egui::InputState) -> (bool, bool) {
+/// The keys that turn the page: (next, before). `arrows`: Left and Right
+/// too.
+fn turn(i: &mut egui::InputState, arrows: bool) -> (bool, bool) {
     let ctrl = egui::Modifiers::CTRL;
-    let back = i.consume_key(ctrl | egui::Modifiers::SHIFT, egui::Key::Tab) || i.consume_key(ctrl, egui::Key::PageUp) || i.consume_key(egui::Modifiers::NONE, egui::Key::ArrowLeft);
-    let next = i.consume_key(ctrl, egui::Key::Tab) || i.consume_key(ctrl, egui::Key::PageDown) || i.consume_key(egui::Modifiers::NONE, egui::Key::ArrowRight);
+    let back = i.consume_key(ctrl | egui::Modifiers::SHIFT, egui::Key::Tab) || i.consume_key(ctrl, egui::Key::PageUp) || (arrows && i.consume_key(egui::Modifiers::NONE, egui::Key::ArrowLeft));
+    let next = i.consume_key(ctrl, egui::Key::Tab) || i.consume_key(ctrl, egui::Key::PageDown) || (arrows && i.consume_key(egui::Modifiers::NONE, egui::Key::ArrowRight));
     (next, back)
 }
 
@@ -302,20 +345,44 @@ fn waiting(ui: &mut egui::Ui, view: &mut View, rows: &[Row], c: &Colors, max: f3
     });
 }
 
-fn overview(ui: &mut egui::Ui, view: &mut View, all: &[Card], c: &Colors, max: f32, out: &mut Vec<Do>) {
+fn overview(ui: &mut egui::Ui, view: &mut View, all: &[Card], found: &[Found], c: &Colors, max: f32, out: &mut Vec<Do>) {
     if all.is_empty() {
         ui.add_space(12.0);
         ui.label(RichText::new("No session is running.").size(13.0).color(c.dim));
         ui.add_space(12.0);
         return;
     }
-    let (up, down, enter) = ui.input(|i| (i.key_pressed(egui::Key::ArrowUp), i.key_pressed(egui::Key::ArrowDown), i.key_pressed(egui::Key::Enter)));
-    view.picked = if up { view.picked.saturating_sub(1) } else if down { view.picked + 1 } else { view.picked }.min(all.len() - 1);
+    // Taken before the field sees them.
+    let none = egui::Modifiers::NONE;
+    let (up, down, enter) = ui.input_mut(|i| (i.consume_key(none, egui::Key::ArrowUp), i.consume_key(none, egui::Key::ArrowDown), i.consume_key(none, egui::Key::Enter)));
+    let before = view.query.clone();
+    let field = egui::TextEdit::singleline(&mut view.query)
+        .id(egui::Id::new("all-sessions-filter"))
+        .hint_text("Filter by name, folder, tag or last lines; 3 letters or more also search every scrollback")
+        .desired_width(f32::INFINITY);
+    crate::keep_focus(&ui.add(field));
+    if view.query != before {
+        view.picked = 0;
+        view.changed = std::time::Instant::now();
+    }
+    ui.add_space(4.0);
+    let cards = matching(view.query.trim(), all);
+    let shown = cards.len() + found.len();
+    if shown == 0 {
+        ui.add_space(8.0);
+        ui.label(RichText::new("Nothing matches").size(13.0).color(c.dim));
+        ui.add_space(8.0);
+        return;
+    }
+    view.picked = if up { view.picked.saturating_sub(1) } else if down { view.picked + 1 } else { view.picked }.min(shown - 1);
     if enter {
-        out.push(Do::Go(all[view.picked].id));
+        out.push(match view.picked.checked_sub(cards.len()) {
+            None => Do::Go(cards[view.picked].id),
+            Some(k) => Do::Reveal(found[k].clone()),
+        });
     }
     egui::ScrollArea::vertical().max_height(max).min_scrolled_height(max).auto_shrink([false, true]).show(ui, |ui| {
-        for (k, s) in all.iter().enumerate() {
+        for (k, s) in cards.iter().enumerate() {
             let picked = k == view.picked;
             let frame = egui::Frame::NONE.fill(if picked { c.hover() } else { egui::Color32::TRANSPARENT }).corner_radius(8.0).inner_margin(egui::Margin::symmetric(8, 6));
             let shown = frame.show(ui, |ui| {
@@ -342,6 +409,28 @@ fn overview(ui: &mut egui::Ui, view: &mut View, all: &[Card], c: &Colors, max: f
             }
             if resp.clicked() {
                 out.push(Do::Go(s.id));
+            }
+        }
+        if !found.is_empty() {
+            ui.add_space(6.0);
+            ui.label(RichText::new("IN THE SCROLLBACK").size(10.5).strong().color(c.dim));
+        }
+        for (k, f) in found.iter().enumerate() {
+            let picked = cards.len() + k == view.picked;
+            let frame = egui::Frame::NONE.fill(if picked { c.hover() } else { egui::Color32::TRANSPARENT }).corner_radius(6.0).inner_margin(egui::Margin::symmetric(8, 3));
+            let shown = frame.show(ui, |ui| {
+                ui.set_width(ui.available_width());
+                ui.horizontal(|ui| {
+                    ui.label(RichText::new(&f.name).size(11.5).color(c.dim));
+                    ui.add(egui::Label::new(RichText::new(f.text.trim()).monospace().size(11.5).color(c.fg)).truncate());
+                });
+            });
+            let resp = ui.interact(shown.response.rect, egui::Id::new(("overview-line", f.id, f.line, f.col)), egui::Sense::click()).on_hover_text("Go to it and show the line (Enter)");
+            if picked && (up || down) {
+                resp.scroll_to_me(None);
+            }
+            if resp.clicked() {
+                out.push(Do::Reveal(f.clone()));
             }
         }
     });
@@ -504,6 +593,32 @@ mod tests {
     fn row(id: SessionId, texts: &[&str]) -> Row {
         let choices = texts.iter().enumerate().map(|(k, t)| Choice { key: char::from_digit(k as u32 + 1, 10).unwrap(), text: t.to_string() }).collect();
         Row { id, name: format!("s{id}"), folder: "f".into(), note: String::new(), waited: "1m".into(), choices, asking: Vec::new(), rule: None, rule_file: Default::default() }
+    }
+
+    fn card(id: SessionId, name: &str, folder: &str, tags: &[&str], last: &[&str]) -> Card {
+        Card {
+            id,
+            name: name.into(),
+            state: tsumugi_mux::State::Running,
+            words: String::new(),
+            folder: folder.into(),
+            tags: tags.iter().map(|t| t.to_string()).collect(),
+            tokens: String::new(),
+            last: last.iter().map(|l| l.to_string()).collect(),
+        }
+    }
+
+    /// All sessions' field narrows by name, folder, tag and last lines.
+    #[test]
+    fn the_filter_matches_name_folder_tags_and_last_lines() {
+        let all = [card(1, "claude", "~/dev/filer · main", &["work"], &["Tests passed"]), card(2, "pwsh", "~/notes", &[], &["PS> ls"])];
+        let ids = |q: &str| matching(q, &all).into_iter().map(|c| c.id).collect::<Vec<_>>();
+        assert_eq!(ids(""), [1, 2], "nothing typed, all in order");
+        assert_eq!(ids("pwsh"), [2]);
+        assert_eq!(ids("filer"), [1]);
+        assert_eq!(ids("#work"), [1]);
+        assert_eq!(ids("passed"), [1]);
+        assert!(ids("zzz").is_empty());
     }
 
     #[test]

@@ -320,6 +320,13 @@ and `Enter`, or a click, go to one. It takes most of the window. `Ctrl+Tab` /
 `Ctrl+Shift+Tab` (or `Ctrl+PageDown` / `Ctrl+PageUp`, or `Right` / `Left`) turn
 to **Waiting** and **Recently closed** and back.
 
+Typing filters the cards there -- a few letters in order, from the name,
+folder, `#tags` or last lines -- and three letters or more also search every
+session's scrollback: the lines found come under the cards, under IN THE
+SCROLLBACK, and picking one goes to its session and scrolls to it, the match
+selected. While something is typed, `Left` and `Right` move in the box rather
+than turning the page.
+
 ### The status bar
 
 Along the bottom: the server, how many sessions wait, run or failed, and the
@@ -366,6 +373,14 @@ run, the pull request opened in the browser.
 every pane of the tab -- **TYPING INTO ALL** on each heading -- until it is
 pressed again. **Save the output to a file** in the tab's menu (or the search
 box) writes the pane's whole scrollback as text to Downloads.
+
+`Ctrl+Shift+S` (`Cmd+Shift+S` on macOS), or **Write a work log** in the
+tab's menu, keeps writing the pane's text as it goes to
+`Downloads/tsumugi-<name>-<date>-<time>.txt` (`-2` and on when that file is
+there): each line once it has scrolled off the screen, and the screen itself
+when the same key finishes the log or the session ends. The heading says LOG
+meanwhile. A full-screen program's screen (vim, less) is left out. The server
+writes it, so it goes on with the window closed.
 
 When a waiting session has a menu of numbered choices on its screen --
 Claude Code's "Do you want to proceed? 1. Yes 2. … 3. No" -- its card shows
@@ -433,8 +448,9 @@ editable in Settings → Sessions & profiles).
 ### Searching
 
 `Ctrl+Shift+P` (`Cmd+Shift+P` on macOS), or the box in the band along the
-top, searches the sessions (by title, folder, branch and tags), the folders
-they are in (to start a new session there) and the window's commands. Type
+top, is the command palette: the window's commands, saved prompts and
+layouts, and the folders of the sessions (to start a new session there).
+Sessions themselves are found in All sessions (`Ctrl+Shift+O`). Type
 a few letters in order, move with the arrows, `Enter` to go, `Esc` to close.
 The box and the bell beside it stay in the middle of the window; the band
 also shows the tags of the session with the keys at its right, `[tags]
@@ -445,10 +461,6 @@ middle of the window, by kind in columns, the keys as the settings have
 them now. It fits without scrolling: when it would run over, it takes another
 column, then smaller letters, and only scrolls on a very small window. `F1` or
 `Esc` closes it.
-
-Three letters or more also search every session's scrollback: the lines
-found come last, under IN THE SCROLLBACK, and picking one goes to its
-session and scrolls to it, the match selected.
 
 The input box's saved prompts are there too, as **Send prompt: name**: picked,
 the prompt goes to the pane with the keys (to every pane of the tab while
@@ -688,7 +700,7 @@ Editor's menus do), **Copy the folder path**; your own items from
 `[[menu.session]]`; and **Close the session**, which asks a second click
 while something is running in it. `[menu] hide` leaves out any of rename,
 note, tags, mute, pin, restart, duplicate, new-window, filer, editor, copy-path,
-save-output, pr, close.
+save-output, work-log, pr, close.
 
 Themes: tsumugi Dark (the default) and Light, Tokyo Night, Catppuccin Mocha
 and Latte, Dracula, Nord, Gruvbox Dark and Light, Solarized Dark and Light,

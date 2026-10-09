@@ -637,7 +637,7 @@ pub struct MenuItem {
 }
 
 /// The words of the menu's own items, for `menu.hide`.
-pub const MENU_ITEMS: [&str; 14] = ["rename", "note", "tags", "mute", "pin", "restart", "duplicate", "new-window", "filer", "editor", "copy-path", "save-output", "pr", "close"];
+pub const MENU_ITEMS: [&str; 15] = ["rename", "note", "tags", "mute", "pin", "restart", "duplicate", "new-window", "filer", "editor", "copy-path", "save-output", "work-log", "pr", "close"];
 
 /// The menu's items in the order `order` asks for: those it names first,
 /// in its order, then the rest in their own.
@@ -658,7 +658,7 @@ pub fn menu_group(word: &str) -> &'static str {
     match word {
         "rename" | "note" | "tags" | "mute" | "pin" => "look",
         "restart" | "duplicate" | "new-window" => "start",
-        "filer" | "editor" | "copy-path" | "save-output" | "pr" => "folder",
+        "filer" | "editor" | "copy-path" | "save-output" | "work-log" | "pr" => "folder",
         _ => "close",
     }
 }
@@ -678,6 +678,7 @@ pub fn menu_label(word: &str) -> &'static str {
         "editor" => "Open in the editor",
         "copy-path" => "Copy the folder path",
         "save-output" => "Save the output to a file",
+        "work-log" => "Write a work log",
         "pr" => "Create a pull request",
         "close" => "Close the session",
         _ => "",

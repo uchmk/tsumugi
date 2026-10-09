@@ -356,6 +356,12 @@ impl Client {
         self.0.send(ToServer::Record { id, path });
     }
 
+    /// Write a session's work log to `path` as it goes; `None` finishes it.
+    /// Where it went is the session's `logging`.
+    pub fn log(&self, id: SessionId, path: Option<PathBuf>) {
+        self.0.send(ToServer::Log { id, path });
+    }
+
     /// Put a tab at `to` in the sidebar's order.
     pub fn move_workspace(&self, id: WorkspaceId, to: usize) {
         self.0.send(ToServer::MoveWorkspace { id, to });
