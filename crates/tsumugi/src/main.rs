@@ -610,13 +610,28 @@ fn connect(wake: impl Fn() + Send + Sync + Clone + 'static) -> Result<Client, St
     }
     spawn::server().map_err(|e| format!("could not start the server: {e}"))?;
     let deadline = std::time::Instant::now() + Duration::from_secs(10);
+    let mut spawned = std::time::Instant::now();
     loop {
         match Client::connect(&at, wake.clone()) {
             Ok(c) => return Ok(c),
             Err(e) if std::time::Instant::now() > deadline => return Err(format!("the server did not answer: {e}")),
+            // Nobody at the address a second after the start: the new server
+            // left, most likely because an old one stopping still held the
+            // address then. Another start; one too many leaves at once.
+            Err(e) if nobody_at(&e) && spawned.elapsed() > Duration::from_secs(1) => {
+                let _ = spawn::server();
+                spawned = std::time::Instant::now();
+            }
             Err(_) => std::thread::sleep(Duration::from_millis(50)),
         }
     }
+}
+
+/// Whether a failed connection says no server listens at the address at all
+/// (no pipe of that name; no socket, or one nobody accepts on), rather than
+/// one that is there but busy, stopping or of another version.
+fn nobody_at(e: &std::io::Error) -> bool {
+    matches!(e.kind(), std::io::ErrorKind::NotFound | std::io::ErrorKind::ConnectionRefused)
 }
 
 /// The offer to add Claude Code's hooks (the design's First run): ringed in
@@ -682,11 +697,16 @@ fn replace_server(wake: impl Fn() + Send + Sync + Clone + 'static) -> std::sync:
     let _ = std::thread::Builder::new().name("replace-server".into()).spawn(move || {
         let at = tsumugi_mux::address();
         let _ = Client::stop(&at);
-        let deadline = std::time::Instant::now() + Duration::from_secs(8);
+        let deadline = std::time::Instant::now() + Duration::from_secs(15);
+        // Gone only when nobody is at the address: a server stopping hangs
+        // up on a new client without a word, and a new server started then
+        // found the address still taken and left (the window said "the
+        // server did not answer" after every update).
         let stopped = loop {
             match Client::connect(&at, || {}) {
-                Err(e) if e.kind() == std::io::ErrorKind::InvalidData => {}
-                _ => break true,
+                Ok(_) => break true,
+                Err(e) if nobody_at(&e) => break true,
+                Err(_) => {}
             }
             if std::time::Instant::now() > deadline {
                 break false;
