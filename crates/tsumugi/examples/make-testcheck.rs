@@ -95,7 +95,9 @@ fn main() -> ExitCode {
         eprintln!("{SOURCE} not found");
         return ExitCode::FAILURE;
     };
-    let old = std::fs::read_to_string(root.join(OUT)).unwrap_or_default();
+    // A checkout with CRLF (core.autocrlf on Windows) is not out of date: compared
+    // with its CRs, every --check failed and the rewrite left a dirty worktree.
+    let old = std::fs::read_to_string(root.join(OUT)).unwrap_or_default().replace("\r\n", "\n");
     let sections = read(&source);
     let kept = marks(&old);
     let new = write(&sections, &kept);

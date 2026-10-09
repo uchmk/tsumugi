@@ -65,7 +65,9 @@ fn write(lines: &[(String, String)], marks: &HashMap<String, char>) -> String {
 
 fn main() -> ExitCode {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let old = std::fs::read_to_string(root.join(OUT)).unwrap_or_default();
+    // A checkout with CRLF (core.autocrlf on Windows) is not out of date: compared
+    // with its CRs, every --check failed and the rewrite left a dirty worktree.
+    let old = std::fs::read_to_string(root.join(OUT)).unwrap_or_default().replace("\r\n", "\n");
     let kept = marks(&old);
     let all = lines();
     let new = write(&all, &kept);
