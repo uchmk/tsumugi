@@ -135,6 +135,7 @@ what happened, and the steps.
 | 2.49 | Windows, PowerShell 7 in tsumugi: `wsl img2sixel some.png`, and yazi in a pane with a picture selected | Both show the picture (ConPTY passes the sequences through); yazi's preview changes with the selection and leaves nothing behind |
 | 2.50 | After 2.46: scroll the pane up and down, then `clear` (`cls`) | The picture moves with its lines, half shown at the top edge, cut at the pane's edges; `clear` takes it away |
 | 2.51 | After 2.46: close the window (the server keeps running), open it again | The picture is back where it was; a second pane or a split shows its own |
+| 2.52 | `printf 'a \e[4mu\e[0m \e[4:2mdd\e[0m \e[4:3;58;2;255;0;0mcurl\e[0m \e[4:4mdots\e[0m \e[4:5mdash\e[0m \e[9mstrike\e[0m [\e[8mhid\e[0m]\n'` (PowerShell 7: the same with `` `e `` for `\e`, in `Write-Host "…"`); then close the window and open it again | A single and a double line, a red wave under **curl**, dots and dashes under the next two, a line through **strike**, and `[   ]` with nothing between; the lines run unbroken under each word and come back the same after reopening |
 
 ## 3. The sidebar
 

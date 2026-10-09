@@ -200,6 +200,12 @@ animation are not taken; its files and temporary files are. tsumugi answers
 the questions programs ask first (the pane's size in pixels, and that
 it does sixel), so they pick the right size by themselves.
 
+**Text styles** are drawn as programs ask: bold, italic, dim, reversed, the
+five underlines (single, double, curly, dotted and dashed: `ESC[4m`,
+`ESC[4:2m` to `ESC[4:5m`) in their own colour where one is given
+(`ESC[58;2;R;G;Bm`, as editors and linters mark errors), struck through
+(`ESC[9m`), and concealed (`ESC[8m`: not shown, still copied).
+
 `Ctrl+Shift+F` (`Cmd+F`) **finds in the pane**: a bar at its top right finds
 what is typed as plain text, from the newest line back, and selects it on
 screen (ignoring case unless the text has a capital). `Enter` or **↑** goes on
