@@ -197,6 +197,15 @@ the box; `y` or `Enter` copies it -- or the box's whole line when nothing is
 selected -- and leaves; `Esc` or `q` leaves without copying. The window's
 own keys still work.
 
+`Ctrl+Shift+Space` (`Cmd+Shift+Space`) is **quick select** (WezTerm's Quick
+Select, kitty's hints): every web address, file path (with its line), commit
+hash, UUID, IPv4 address and number of four digits or more on the screen gets
+a gold label of a letter or two, the newest output the first letters
+(`a`, `s`, `d`, `f`, …), the same text one label. Typing a label copies that
+thing and leaves; with `Shift` held a link opens instead, as with
+`Ctrl+click`. `Backspace` takes a letter back, `Esc` leaves. The labels follow
+their things while output comes or the view scrolls.
+
 `Ctrl+Shift+Up` and `Ctrl+Shift+Down` (`Cmd+Shift+Up` / `Down`) scroll the
 pane to the prompt above or below the view's top, where the shell marks its
 prompts (OSC 133;A, which the shell hook adds; Windows Terminal's and
@@ -573,7 +582,7 @@ quake_height = 50
 # split_down, zoom, search, rail, settings, input, rename, duplicate,
 # waiting_list, type_into_all, notifications, font_bigger, font_smaller,
 # font_reset, overview, copy_mode, find, prev_prompt, next_prompt, help,
-# swap_pane, equalize, pane_to_tab, record, copy_output.
+# swap_pane, equalize, pane_to_tab, record, copy_output, quick_select.
 [keys]
 new_tab = "Ctrl+Shift+N"
 

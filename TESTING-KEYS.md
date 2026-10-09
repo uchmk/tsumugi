@@ -41,6 +41,7 @@ Windows and Linux keys first; the macOS key is after `·`.
 - [ ] `Ctrl+Shift+J` · `Cmd+Shift+J` — The pane to a tab of its own · `pane_to_tab`
 - [ ] `Ctrl+Shift+R` · `Cmd+Shift+R` — Record the pane (asciinema .cast) · `record`
 - [ ] `Ctrl+Shift+L` · `Cmd+Shift+L` — Copy the last command's output · `copy_output`
+- [ ] `Ctrl+Shift+Space` · `Cmd+Shift+Space` — Quick select: copy a link, hash or number by its letters · `quick_select`
 
 ## The window, fixed
 
@@ -88,6 +89,13 @@ Windows and Linux keys first; the macOS key is after `·`.
 - [ ] `v / Space` · `v / Space` — Start a selection at the cursor, or drop it
 - [ ] `y / Enter` · `y / Enter` — Copy the selection (none: the cursor's line) and leave
 - [ ] `Esc / q` · `Esc / q` — Leave without copying
+
+## Quick select
+
+- [ ] `a … z` · `a … z` — Copy the thing with that label and leave
+- [ ] `Shift+a … z` · `Shift+a … z` — Open the link with that label (a file in the editor, an address in the browser)
+- [ ] `Backspace` · `Backspace` — Take back the letter typed
+- [ ] `Esc` · `Esc` — Leave without copying
 
 ## The settings screen
 

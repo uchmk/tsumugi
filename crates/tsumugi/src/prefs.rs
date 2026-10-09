@@ -887,6 +887,8 @@ fn keys(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut Vec<
         sep(ui, l);
         changeable(ui, Action::CopyMode);
         sep(ui, l);
+        changeable(ui, Action::QuickSelect);
+        sep(ui, l);
         changeable(ui, Action::Find);
         sep(ui, l);
         changeable(ui, Action::PrevPrompt);

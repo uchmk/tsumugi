@@ -77,6 +77,9 @@ pub enum Action {
     /// The last command's output on the clipboard (the shell's OSC 133
     /// marks; Warp's and iTerm2's).
     CopyOutput,
+    /// Letters on the screen's links, hashes and numbers: one typed copies
+    /// it, with Shift opens it (WezTerm's Quick Select, kitty's hints).
+    QuickSelect,
 }
 
 /// The action for a key press, if it is one of the window's: a key the
@@ -109,7 +112,7 @@ fn action_with(key: Key, m: Modifiers, mac: bool, bound: &[(Action, Option<Chord
 
 /// The actions the settings can give another key, by the name `[keys]`
 /// uses, with their own keys (elsewhere, then on macOS).
-pub const NAMED: [(Action, &str, &str, &str); 31] = [
+pub const NAMED: [(Action, &str, &str, &str); 32] = [
     (Action::NewTab, "new_tab", "Ctrl+Shift+T", "Cmd+T"),
     (Action::CloseTab, "close_tab", "Ctrl+Shift+W", "Cmd+W"),
     (Action::NextTab, "next_tab", "Ctrl+Tab", "Ctrl+Tab"),
@@ -156,6 +159,8 @@ pub const NAMED: [(Action, &str, &str, &str); 31] = [
     (Action::Record, "record", "Ctrl+Shift+R", "Cmd+Shift+R"),
     // L for last output.
     (Action::CopyOutput, "copy_output", "Ctrl+Shift+L", "Cmd+Shift+L"),
+    // WezTerm's. Ctrl+Space alone stays the shell's (and an IME's).
+    (Action::QuickSelect, "quick_select", "Ctrl+Shift+Space", "Cmd+Shift+Space"),
 ];
 
 /// The keys the settings cannot move, the window's and its boxes': (section,
@@ -194,6 +199,10 @@ pub const FIXED: &[(&str, &str, &str, &str)] = &[
     ("Copy mode", "v / Space", "v / Space", "Start a selection at the cursor, or drop it"),
     ("Copy mode", "y / Enter", "y / Enter", "Copy the selection (none: the cursor's line) and leave"),
     ("Copy mode", "Esc / q", "Esc / q", "Leave without copying"),
+    ("Quick select", "a … z", "a … z", "Copy the thing with that label and leave"),
+    ("Quick select", "Shift+a … z", "Shift+a … z", "Open the link with that label (a file in the editor, an address in the browser)"),
+    ("Quick select", "Backspace", "Backspace", "Take back the letter typed"),
+    ("Quick select", "Esc", "Esc", "Leave without copying"),
     ("The settings screen", "Esc", "Esc", "Leave the control that has the keys (a field as it was); with none, close the screen"),
     ("The settings screen", "Ctrl+Tab / Ctrl+PageDown", "Ctrl+Tab / Cmd+PageDown", "The next page"),
     ("The settings screen", "Ctrl+Shift+Tab / Ctrl+PageUp", "Ctrl+Shift+Tab / Cmd+PageUp", "The page before"),
@@ -239,6 +248,7 @@ pub fn title(a: Action) -> &'static str {
         Action::PaneToTab => "The pane to a tab of its own",
         Action::Record => "Record the pane (asciinema .cast)",
         Action::CopyOutput => "Copy the last command's output",
+        Action::QuickSelect => "Quick select: copy a link, hash or number by its letters",
         Action::Tab(_) => "The Nth tab",
         Action::Move(_) => "Move between panes",
         Action::Resize(_) => "Resize the pane",
@@ -479,6 +489,7 @@ fn action_on(key: Key, m: Modifiers, mac: bool) -> Option<Action> {
             Key::J if cmd && m.shift => Some(Action::PaneToTab),
             Key::R if cmd && m.shift => Some(Action::Record),
             Key::L if cmd && m.shift => Some(Action::CopyOutput),
+            Key::Space if cmd && m.shift && !m.alt && !m.ctrl => Some(Action::QuickSelect),
             Key::Equals | Key::Plus if cmd && !m.alt && !m.ctrl => Some(Action::FontBigger),
             Key::Minus if cmd && !m.shift && !m.alt && !m.ctrl => Some(Action::FontSmaller),
             Key::Num0 if cmd && !m.shift && !m.alt && !m.ctrl => Some(Action::FontReset),
@@ -512,6 +523,7 @@ fn action_on(key: Key, m: Modifiers, mac: bool) -> Option<Action> {
         Key::J if ctrl_shift => Some(Action::PaneToTab),
         Key::R if ctrl_shift => Some(Action::Record),
         Key::L if ctrl_shift => Some(Action::CopyOutput),
+        Key::Space if ctrl_shift => Some(Action::QuickSelect),
         // `+` is Shift and `=` on a US keyboard, Shift and `;` on a JIS one:
         // Shift may be held.
         Key::Equals | Key::Plus if m.ctrl && !m.alt => Some(Action::FontBigger),
@@ -608,6 +620,8 @@ mod tests {
         assert_eq!(action_on(Key::R, CTRL_SHIFT, false), Some(Action::Record));
         assert_eq!(action_on(Key::L, CTRL, false), None, "the shell's clear screen");
         assert_eq!(action_on(Key::L, CTRL_SHIFT, false), Some(Action::CopyOutput));
+        assert_eq!(action_on(Key::Space, CTRL, false), None, "Ctrl+Space is the shell's (and an IME's)");
+        assert_eq!(action_on(Key::Space, CTRL_SHIFT, false), Some(Action::QuickSelect));
     }
 
     #[test]
@@ -661,6 +675,7 @@ mod tests {
         assert_eq!(action_on(Key::Num0, CMD, true), Some(Action::FontReset));
         assert_eq!(action_on(Key::O, cmd_shift, true), Some(Action::Overview));
         assert_eq!(action_on(Key::M, cmd_shift, true), Some(Action::CopyMode));
+        assert_eq!(action_on(Key::Space, cmd_shift, true), Some(Action::QuickSelect));
         assert_eq!(action_on(Key::ArrowUp, cmd_shift, true), Some(Action::PrevPrompt));
         assert_eq!(action_on(Key::F, CMD, true), Some(Action::Find));
         assert_eq!(action_on(Key::X, Modifiers { shift: true, ..CMD }, true), Some(Action::SwapPane));

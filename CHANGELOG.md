@@ -5,6 +5,12 @@
 
 ## [未リリース]
 
+## [0.72.0] - 2026-10-09
+
+### 追加
+
+- quick-select（`Ctrl+Shift+Space`、macOS は `Cmd+Shift+Space`。WezTerm の Quick Select・kitty の hints）。画面の URL・パス（行番号付きも）・コミットのハッシュ・UUID・IPv4 アドレス・4 桁以上の数に 1〜2 文字の金色の印を付け、印を打つとそれをコピーする。Shift を押しながらならリンクを開く（Ctrl+クリックと同じ）。新しい出力ほど短い印で、同じ文字列には同じ印。設定の `[keys]` では `quick_select`。見つける処理は `tsumugi-pane` の `hints` にあり、filer からも使える。
+
 ## [0.71.0] - 2026-10-09
 
 ### 追加

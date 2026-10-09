@@ -59,6 +59,7 @@ mod history;
 mod diffview;
 mod lists;
 mod copymode;
+mod quickselect;
 mod remote;
 mod layouts;
 mod help;
@@ -921,6 +922,8 @@ struct App {
     font_step: f32,
     /// Copy mode, on the pane it was started in.
     copy_mode: Option<(SessionId, copymode::CopyMode)>,
+    /// Quick select's labels over the pane with the keys.
+    quick: Option<(SessionId, quickselect::QuickSelect)>,
     /// The find bar, on the pane it finds in (`Ctrl+Shift+F`).
     find: Option<find::Bar>,
     /// A paste waiting for its answer (`paste::why`).
@@ -1301,6 +1304,7 @@ impl App {
             font: egui::FontId::monospace(first_font.size),
             font_step: 0.0,
             copy_mode: None,
+            quick: None,
             find: None,
             paste_ask: None,
             layouts: layouts::load(),
@@ -1616,6 +1620,13 @@ impl App {
                         None
                     }
                     None => self.panes.get(&w.focus).map(|pane| (w.focus, copymode::CopyMode::new(tsumugi_pane::Pane::screen(pane).cursor))),
+                };
+            }
+            // Pressed again, the labels go.
+            keys::Action::QuickSelect => {
+                self.quick = match self.quick {
+                    Some(_) => None,
+                    None => self.panes.get(&w.focus).map(|pane| (w.focus, quickselect::QuickSelect::new(&tsumugi_pane::Pane::screen(pane).rows))),
                 };
             }
             keys::Action::CopyOutput => {
@@ -3720,7 +3731,7 @@ impl App {
         self.panes.clear();
         self.views.clear();
         (self.active, self.pending, self.following) = (None, None, None);
-        (self.dragging, self.moving, self.copy_mode, self.find) = (None, None, None, None);
+        (self.dragging, self.moving, self.copy_mode, self.find, self.quick) = (None, None, None, None, None);
         (self.peek, self.renaming_card, self.noting_card, self.renaming) = (None, None, None, None);
         (self.opening, self.lists, self.diff, self.restore, self.paste_ask) = (None, None, None, None, None);
         (self.shown_tab, self.dragging_tab, self.close_armed) = (None, None, None);
@@ -4345,6 +4356,38 @@ impl App {
                         p.galley(badge.min + egui::vec2(7.0, 3.0), galley, egui::Color32::WHITE);
                     }
                 }
+                // Quick select's labels: each thing underlined in gold and
+                // its letters at its start, the ones typed already dimmed.
+                if let (Some((on, q)), Some((origin, cell))) = (&self.quick, shown.grid) {
+                    if on == id {
+                        let p = ui.painter_at(rect);
+                        let font = egui::FontId::monospace((cell.y * 0.72).max(9.0));
+                        let ink = crate::theme::colors().on_accent();
+                        for hit in q.live() {
+                            let at = origin + egui::vec2(hit.cells.start as f32 * cell.x, hit.row as f32 * cell.y);
+                            let span = egui::Rect::from_min_size(at, egui::vec2(hit.cells.len() as f32 * cell.x, cell.y));
+                            p.rect_filled(span, 2.0, chrome::gold().gamma_multiply(0.22));
+                            p.line_segment([span.left_bottom(), span.right_bottom()], egui::Stroke::new(1.5, chrome::gold()));
+                            let mut job = egui::text::LayoutJob::default();
+                            let (done, rest) = hit.label.split_at(q.typed.len());
+                            job.append(done, 0.0, egui::TextFormat { font_id: font.clone(), color: ink.gamma_multiply(0.45), ..Default::default() });
+                            job.append(rest, 0.0, egui::TextFormat { font_id: font.clone(), color: ink, ..Default::default() });
+                            let galley = p.layout_job(job);
+                            let tag = egui::Rect::from_min_size(at, egui::vec2(galley.size().x + 6.0, cell.y));
+                            p.rect_filled(tag, 3.0, chrome::gold());
+                            p.galley(tag.center() - galley.size() / 2.0, galley, ink);
+                        }
+                        let words = if q.hits.is_empty() { "QUICK SELECT · nothing to pick on the screen · Esc leaves" } else { "QUICK SELECT · a label copies · Shift and a label opens · Esc leaves" };
+                        let galley = p.layout_no_wrap(words.into(), egui::FontId::proportional(11.5), ink);
+                        // At the top, or at the bottom when it would hide a label.
+                        let size = galley.size() + egui::vec2(14.0, 6.0);
+                        let top = egui::Rect::from_min_size(egui::pos2(rect.right() - size.x - 8.0, rect.top() + 6.0), size);
+                        let covers = |r: egui::Rect| q.live().any(|h| r.intersects(egui::Rect::from_min_size(origin + egui::vec2(h.cells.start as f32 * cell.x, h.row as f32 * cell.y), egui::vec2(h.cells.len() as f32 * cell.x, cell.y))));
+                        let badge = if covers(top) { top.translate(egui::vec2(0.0, rect.height() - size.y - 12.0)) } else { top };
+                        p.rect_filled(badge, 6.0, chrome::gold());
+                        p.galley(badge.min + egui::vec2(7.0, 3.0), galley, egui::Color32::WHITE);
+                    }
+                }
                 if let Some(bar) = self.find.as_mut().filter(|b| b.id == *id) {
                     if let Some(said) = pane.take_found() {
                         bar.said = Some(said);
@@ -4734,6 +4777,25 @@ const FADE: std::time::Duration = std::time::Duration::from_millis(150);
 const PEEK_LINES: usize = 12;
 
 /// Copy mode's key for a key pressed: the arrows and vi's letters.
+/// The key quick select reads: a letter (Shift held or not), Backspace
+/// and Esc.
+fn quick_key(key: egui::Key, m: egui::Modifiers) -> Option<quickselect::Key> {
+    if m.ctrl || m.alt || m.mac_cmd {
+        return None;
+    }
+    match key {
+        egui::Key::Escape => Some(quickselect::Key::Exit),
+        egui::Key::Backspace => Some(quickselect::Key::Back),
+        k => {
+            let mut name = k.name().chars();
+            match (name.next(), name.next()) {
+                (Some(c), None) if c.is_ascii_alphabetic() => Some(quickselect::Key::Letter(c.to_ascii_lowercase(), m.shift)),
+                _ => None,
+            }
+        }
+    }
+}
+
 fn copy_key(key: egui::Key, m: egui::Modifiers) -> Option<copymode::Key> {
     use copymode::Key as K;
     use egui::Key;
@@ -5093,8 +5155,39 @@ impl App {
             if self.find.as_ref().is_some_and(|b| b.id != w.focus) {
                 self.find = None;
             }
+            if self.quick.as_ref().is_some_and(|(id, _)| *id != w.focus) {
+                self.quick = None;
+            }
             let copying = self.copy_mode.is_some();
-            if let Some(pane) = self.panes.get(&w.focus).filter(|_| copying && !field && !prefs_were_open) {
+            let mut quick_open = None;
+            if let Some(pane) = self.panes.get(&w.focus).filter(|_| self.quick.is_some() && !field && !prefs_were_open) {
+                // Quick select has the keys: letters pick, the rest wait.
+                let events = ctx.input(|i| i.events.clone());
+                if let Some((_, q)) = self.quick.as_mut() {
+                    q.follow(&tsumugi_pane::Pane::screen(pane).rows);
+                }
+                for e in &events {
+                    let egui::Event::Key { key, pressed: true, modifiers, .. } = e else { continue };
+                    if let Some(a) = keys::action(*key, *modifiers) {
+                        actions.push(a);
+                        continue;
+                    }
+                    let Some(k) = quick_key(*key, *modifiers) else { continue };
+                    let Some((_, q)) = self.quick.as_mut() else { break };
+                    match q.press(k) {
+                        quickselect::Step::Wait => {}
+                        quickselect::Step::Copy(text) => {
+                            ctx.copy_text(text);
+                            self.quick = None;
+                        }
+                        quickselect::Step::Open(link) => {
+                            self.quick = None;
+                            quick_open = Some(link);
+                        }
+                        quickselect::Step::Exit => self.quick = None,
+                    }
+                }
+            } else if let Some(pane) = self.panes.get(&w.focus).filter(|_| copying && !field && !prefs_were_open) {
                 let events = ctx.input(|i| i.events.clone());
                 let screen = tsumugi_pane::Pane::screen(pane);
                 let (cols, rows) = (screen.rows.first().map_or(0, Vec::len), screen.rows.len());
@@ -5163,6 +5256,10 @@ impl App {
                         }
                     }
                 }
+            }
+            if let Some(link) = quick_open {
+                let cwd = sessions.iter().find(|i| i.id == w.focus).map(|i| i.cwd.clone()).unwrap_or_default();
+                self.open_link(link, &cwd);
             }
             let area = to_rect(ctx.content_rect());
             for a in actions {
