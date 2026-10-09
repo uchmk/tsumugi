@@ -14,7 +14,7 @@ tsumugi のやること。`【人】` は持ち主の作業、`【金】` は 20
       （ペインごとの文字コード `Charset` と `encoding_rs`、`all_text`、`sys` のプロセスとポートの検出、`Terminal::shell_pid()` など）が filer に届いていない。
       上げたら filer で `cargo build` して `Cargo.lock` を合わせ、filer の `scripts/verify.sh` を回す。`Palette` などの形が変わっていれば filer の
       `src/ui/term.rs` を合わせる。filer の TESTING.md の 1・19・29・40 節（ペイン）を filer の実機の再テストに積む。
-  - [x] （filer v0.79.4。filer には引ける境目が無く（列は yazi の `ratio`、ターミナルは 35% 固定）、置き換えではなく新しく足すかの決定になる。依存の追加なので filer の Q94 で持ち主に聞いた）同じときに、filer の 2 分割の境目を `tsumugi_layout::ui::dividers`（v0.52.0、`egui` 機能）に置き換えられるかを見る。
+  - [x] （filer v0.79.5。filer には引ける境目が無く（列は yazi の `ratio`、ターミナルは 35% 固定）、置き換えではなく新しく足すかの決定になる。依存の追加なので filer の Q94 で持ち主に聞いた。回答は 1 で、filer v0.80.0 がターミナルペインの上の境目を `dividers` で引けるようにした。列は `ratio` のまま）同じときに、filer の 2 分割の境目を `tsumugi_layout::ui::dividers`（v0.52.0、`egui` 機能）に置き換えられるかを見る。
       filer の分割は「2 つのタブを横に並べる」形なので、`tsumugi_layout::Node` に載せ替えるかどうかは filer の QUESTIONS.md で聞く。
 - [x] 最初のリリースを切る。v0.52.0 を 2026-10-07 に出した（6 つの成果物と SHA-256 の表が揃った。run 37577264990）。
 
