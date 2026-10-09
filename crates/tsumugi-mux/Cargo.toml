@@ -8,6 +8,7 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
+tsumugi-ipc = { path = "../tsumugi-ipc" }
 tsumugi-pane = { path = "../tsumugi-pane", features = ["serde"] }
 tsumugi-layout = { path = "../tsumugi-layout", features = ["serde"] }
 serde = { version = "1", features = ["derive"] }

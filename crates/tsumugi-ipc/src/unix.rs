@@ -7,14 +7,14 @@ use std::path::PathBuf;
 
 use super::Address;
 
-/// `$XDG_RUNTIME_DIR/tsumugi/sock`, the folder systemd makes for each user;
-/// without one, `/tmp/tsumugi-<user>/sock`.
-pub fn default_address() -> PathBuf {
+/// `$XDG_RUNTIME_DIR/<app>/sock`, the folder systemd makes for each user;
+/// without one, `/tmp/<app>-<user>/sock`.
+pub fn default_address(app: &str) -> PathBuf {
     match std::env::var_os("XDG_RUNTIME_DIR").filter(|d| !d.is_empty()) {
-        Some(dir) => PathBuf::from(dir).join("tsumugi").join("sock"),
+        Some(dir) => PathBuf::from(dir).join(app).join("sock"),
         None => {
             let user = std::env::var("USER").unwrap_or_else(|_| "user".into());
-            std::env::temp_dir().join(format!("tsumugi-{user}")).join("sock")
+            std::env::temp_dir().join(format!("{app}-{user}")).join("sock")
         }
     }
 }
@@ -32,7 +32,7 @@ impl Listener {
             // A server that is still there answers; a file left by one that
             // died does not, and is in the way.
             if UnixStream::connect(path).is_ok() {
-                return Err(io::Error::new(io::ErrorKind::AddrInUse, "a tsumugi server is already running"));
+                return Err(io::Error::new(io::ErrorKind::AddrInUse, format!("another program is already listening at {}", path.display())));
             }
             std::fs::remove_file(path)?;
         }

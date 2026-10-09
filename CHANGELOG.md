@@ -5,6 +5,17 @@
 
 ## [未リリース]
 
+## [0.75.0] - 2026-10-09
+
+### 追加
+
+- `tsumugi mcp`: 標準入出力の MCP サーバー。Claude Code に `claude mcp add tsumugi -- tsumugi mcp` で足すと、道具 `tsumugi_sessions`（セッションの一覧、`tsumugi ls --json` と同じ中身）と `tsumugi_screen`（1 つのセッションの最後の行か全部の履歴、`tsumugi read` と同じ）を呼べる。読むだけで、サーバーは起こさない（動いていなければそう返す）。filer の QUESTIONS.md Q95・Q96 の推奨の形。
+- 共有のクレート `tsumugi-mcp`（MCP の JSON-RPC と道具の登録、`serde_json` だけで書き、`tokio` は使わない）と `tsumugi-ipc`（アプリへのローカルの口: Unix のソケット / Windows の名前付きパイプと、長さ＋ postcard の枠）。filer の `filer mcp` も同じものを使う。
+
+### 変更
+
+- サーバーの口（ソケット / 名前付きパイプ）と枠のコードを `tsumugi-mux` から `tsumugi-ipc` に移した。口の場所・権限・動きは変えていない。
+
 ## [0.74.8] - 2026-10-09
 
 ### 変更

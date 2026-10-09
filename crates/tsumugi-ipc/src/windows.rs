@@ -30,10 +30,10 @@ use windows::Win32::System::IO::{GetOverlappedResult, OVERLAPPED};
 
 use super::Address;
 
-/// `\\.\pipe\tsumugi-<user>`.
-pub fn default_address() -> PathBuf {
+/// `\\.\pipe\<app>-<user>`.
+pub fn default_address(app: &str) -> PathBuf {
     let user = std::env::var("USERNAME").unwrap_or_else(|_| "user".into());
-    PathBuf::from(format!(r"\\.\pipe\tsumugi-{user}"))
+    PathBuf::from(format!(r"\\.\pipe\{app}-{user}"))
 }
 
 /// A handle closed when dropped.
@@ -96,7 +96,7 @@ fn create_instance(name: &HSTRING, first: bool) -> io::Result<Owned> {
     unsafe { LocalFree(Some(HLOCAL(sd.0))) };
     if h == INVALID_HANDLE_VALUE {
         return Err(match (first, err.raw_os_error()) {
-            (true, Some(5)) => io::Error::new(io::ErrorKind::AddrInUse, "a tsumugi server is already running"),
+            (true, Some(5)) => io::Error::new(io::ErrorKind::AddrInUse, "another program is already listening at this pipe"),
             _ => err,
         });
     }
@@ -155,7 +155,7 @@ pub fn connect(at: &Address) -> io::Result<Conn> {
             Err(e) => return Err(os_error(e)),
         }
     }
-    Err(io::Error::new(io::ErrorKind::TimedOut, "the tsumugi server stayed busy"))
+    Err(io::Error::new(io::ErrorKind::TimedOut, "the server at this pipe stayed busy"))
 }
 
 pub struct Conn(Arc<Owned>);

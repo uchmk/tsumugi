@@ -174,7 +174,10 @@ pub fn start(at: &Address) -> io::Result<ServerHandle> {
 }
 
 pub fn start_with(at: &Address, options: Options) -> io::Result<ServerHandle> {
-    let listener = Listener::bind(at)?;
+    let listener = Listener::bind(at).map_err(|e| match e.kind() {
+        io::ErrorKind::AddrInUse => io::Error::new(io::ErrorKind::AddrInUse, "a tsumugi server is already running"),
+        _ => e,
+    })?;
     let (dirty_tx, dirty_rx) = crossbeam_channel::unbounded();
     let (done_tx, done_rx) = crossbeam_channel::bounded(1);
     let (git_tx, git_rx) = crossbeam_channel::unbounded::<PathBuf>();

@@ -21,4 +21,4 @@ mod tests;
 
 pub use client::{Client, RemotePane};
 pub use proto::{Dir, Info, Node, Notice, Place, SessionId, State, Workspace, WorkspaceId};
-pub use transport::Address;
+pub use transport::{address, Address};

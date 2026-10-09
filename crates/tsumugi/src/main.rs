@@ -67,6 +67,7 @@ mod help;
 mod find;
 mod paste;
 mod machine;
+mod mcp;
 
 use std::time::Duration;
 
@@ -74,7 +75,7 @@ use eframe::egui;
 use std::collections::HashMap;
 
 use tsumugi_layout::{Node, Rect};
-use tsumugi_mux::{Address, Client, Dir, Info, Place, RemotePane, SessionId, State, Workspace, WorkspaceId};
+use tsumugi_mux::{Client, Dir, Info, Place, RemotePane, SessionId, State, Workspace, WorkspaceId};
 use tsumugi_pane::{Palette, Size, ViewOptions, ViewState};
 
 fn main() -> std::process::ExitCode {
@@ -82,8 +83,8 @@ fn main() -> std::process::ExitCode {
     tsumugi_pane::restrict_dll_search();
     let args: Vec<String> = std::env::args().skip(1).collect();
     // The server and the proxy speak to no one through a console; the proxy's
-    // stdout is the line to ssh.
-    if args.first().is_some_and(|a| a != "server" && a != "proxy") {
+    // stdout is the line to ssh, and `mcp`'s the line to the LLM client.
+    if args.first().is_some_and(|a| a != "server" && a != "proxy" && a != "mcp") {
         attach_console();
     }
     match args.first().map(String::as_str) {
@@ -91,9 +92,10 @@ fn main() -> std::process::ExitCode {
         Some("server") => server(),
         Some("proxy") => proxy(),
         Some("ls") => ls(&args[1..]),
+        Some("mcp") => mcp::run(),
         Some("send" | "read" | "split" | "close" | "wait") => remote(&args[0], &args[1..]),
         Some("help" | "--help" | "-h") => {
-            println!("tsumugi: the window, or one of\n{}\n{}\ntsumugi attach N|NAME\ntsumugi proxy                            (what --host runs on the other machine)\ntsumugi notify [--state S] [--session N] [MESSAGE]\ntsumugi tag [--session N] [--remove] TAG...\ntsumugi shell-hook bash|zsh|pwsh", cli::NEW_USAGE, cli::REMOTE_USAGE);
+            println!("tsumugi: the window, or one of\n{}\n{}\ntsumugi attach N|NAME\ntsumugi proxy                            (what --host runs on the other machine)\ntsumugi notify [--state S] [--session N] [MESSAGE]\ntsumugi tag [--session N] [--remove] TAG...\ntsumugi shell-hook bash|zsh|pwsh\ntsumugi mcp                              an MCP server on stdin/stdout, for Claude Code (see the README)", cli::NEW_USAGE, cli::REMOTE_USAGE);
             std::process::ExitCode::SUCCESS
         }
         Some("notify") => notify(&args[1..]),
@@ -115,7 +117,7 @@ fn main() -> std::process::ExitCode {
             std::process::ExitCode::SUCCESS
         }
         Some(other) => {
-            eprintln!("tsumugi: unknown command `{other}` (server, proxy, ls, new, attach, send, read, split, close, wait, notify, tag, shell-hook, help, --version)");
+            eprintln!("tsumugi: unknown command `{other}` (server, proxy, ls, new, attach, send, read, split, close, wait, notify, tag, shell-hook, mcp, help, --version)");
             std::process::ExitCode::from(2)
         }
     }
@@ -135,7 +137,7 @@ fn attach_console() {
 }
 
 fn server() -> std::process::ExitCode {
-    match tsumugi_mux::server::start(&Address::for_user()) {
+    match tsumugi_mux::server::start(&tsumugi_mux::address()) {
         // A server no window ever started a session on goes after a minute.
         Ok(srv) => {
             srv.wait(Duration::from_secs(60));
@@ -185,7 +187,7 @@ fn attach(args: &[String]) -> std::process::ExitCode {
         eprintln!("usage: tsumugi attach NUMBER|NAME (tsumugi ls lists them)");
         return std::process::ExitCode::from(2);
     };
-    let found = Client::connect(&Address::for_user(), || {}).map_err(|e| format!("no server ({e})")).and_then(|c| c.list().map_err(|e| e.to_string())).and_then(|list| cli::find(&list, name));
+    let found = Client::connect(&tsumugi_mux::address(), || {}).map_err(|e| format!("no server ({e})")).and_then(|c| c.list().map_err(|e| e.to_string())).and_then(|list| cli::find(&list, name));
     match found {
         Ok(id) => {
             let _ = SHOW_SESSION.set(id);
@@ -205,7 +207,7 @@ fn client_at(host: Option<&str>) -> std::io::Result<Client> {
             let remote = tsumugi_mux::settings::default_path().and_then(|p| tsumugi_mux::settings::load(&p).ok()).unwrap_or_default().remote;
             Client::over_ssh(h, &remote.command_for(h), || {})
         }
-        None => Client::connect(&Address::for_user(), || {}),
+        None => Client::connect(&tsumugi_mux::address(), || {}),
     }
 }
 
@@ -214,7 +216,7 @@ fn client_at(host: Option<&str>) -> std::io::Result<Client> {
 /// the bytes both ways until either side hangs up. The server stays.
 fn proxy() -> std::process::ExitCode {
     use std::io::{Read, Write};
-    let at = Address::for_user();
+    let at = tsumugi_mux::address();
     let conn = match tsumugi_mux::transport::connect(&at) {
         Ok(c) => Ok(c),
         Err(_) => spawn::server().and_then(|()| {
@@ -448,7 +450,7 @@ fn notify(args: &[String]) -> std::process::ExitCode {
         eprintln!("tsumugi notify: not inside a tsumugi session (no TSUMUGI_SESSION); give --session N");
         return std::process::ExitCode::from(2);
     };
-    match Client::connect(&Address::for_user(), || {}).and_then(|c| c.notify(id, state, words.join(" "), claude)) {
+    match Client::connect(&tsumugi_mux::address(), || {}).and_then(|c| c.notify(id, state, words.join(" "), claude)) {
         Ok(()) => std::process::ExitCode::SUCCESS,
         Err(e) => {
             eprintln!("tsumugi notify: {e}");
@@ -487,7 +489,7 @@ fn tag(args: &[String]) -> std::process::ExitCode {
         eprintln!("tsumugi tag: not inside a tsumugi session (no TSUMUGI_SESSION); give --session N");
         return std::process::ExitCode::from(2);
     };
-    let done = Client::connect(&Address::for_user(), || {}).and_then(|c| {
+    let done = Client::connect(&tsumugi_mux::address(), || {}).and_then(|c| {
         for t in tags.iter().filter_map(|t| tsumugi_mux::proto::tag_name(t)) {
             c.tag(vec![id], t, on);
         }
@@ -598,7 +600,7 @@ fn wgpu_options(backend: &str) -> eframe::WgpuConfiguration {
 
 /// Connect to this user's server, starting one if none answers.
 fn connect(wake: impl Fn() + Send + Sync + Clone + 'static) -> Result<Client, String> {
-    let at = Address::for_user();
+    let at = tsumugi_mux::address();
     match Client::connect(&at, wake.clone()) {
         Ok(c) => return Ok(c),
         // A server of another version answers: no new one can start beside
@@ -678,7 +680,7 @@ const OTHER_VERSION: &str = "A tsumugi server of another version is running: ";
 fn replace_server(wake: impl Fn() + Send + Sync + Clone + 'static) -> std::sync::mpsc::Receiver<Result<Client, String>> {
     let (tx, rx) = std::sync::mpsc::channel();
     let _ = std::thread::Builder::new().name("replace-server".into()).spawn(move || {
-        let at = Address::for_user();
+        let at = tsumugi_mux::address();
         let _ = Client::stop(&at);
         let deadline = std::time::Instant::now() + Duration::from_secs(8);
         let stopped = loop {
@@ -1802,7 +1804,7 @@ impl App {
             server_up: chrome::elapsed(chrome::now_ms().saturating_sub(client.started_ms())),
             settings_path: shown(tsumugi_mux::settings::default_path().and_then(|p| p.parent().map(std::path::Path::to_path_buf))),
             state_path: shown(tsumugi_mux::state::default_path()),
-            address: Address::for_user().0.display().to_string(),
+            address: tsumugi_mux::address().0.display().to_string(),
             facts: self.facts.as_ref(),
         };
         let Some(screen) = &mut self.prefs else { return };

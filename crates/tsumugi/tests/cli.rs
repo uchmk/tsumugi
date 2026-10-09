@@ -181,3 +181,58 @@ fn wait_and_close() {
     let gone = s.run(&["wait", &id, "--state", "done"]);
     assert_eq!(gone.status.code(), Some(3), "{}", String::from_utf8_lossy(&gone.stderr));
 }
+
+/// `tsumugi mcp` the way Claude Code runs it: JSON-RPC lines on stdin, one
+/// answer per request on stdout. With no server it says tsumugi is not
+/// running; with one, `tsumugi_sessions` lists the session and
+/// `tsumugi_screen` gives what it shows.
+#[test]
+fn mcp_lists_sessions_and_reads_a_screen() {
+    use std::io::Write;
+    let s = Server::new("mcp");
+    let mcp = |lines: &[String]| -> Vec<String> {
+        let mut child = Command::new(env!("CARGO_BIN_EXE_tsumugi"))
+            .arg("mcp")
+            .current_dir(&s.dir)
+            .env("TSUMUGI_ADDRESS", &s.address)
+            .env_remove("TSUMUGI_SESSION")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .spawn()
+            .unwrap();
+        let mut input = child.stdin.take().unwrap();
+        for l in lines {
+            writeln!(input, "{l}").unwrap();
+        }
+        drop(input);
+        let out = child.wait_with_output().unwrap();
+        assert!(out.status.success(), "tsumugi mcp: {:?}", out.status);
+        String::from_utf8(out.stdout).unwrap().lines().map(str::to_owned).collect()
+    };
+    let call = |id: u32, tool: &str, args: &str| format!(r#"{{"jsonrpc":"2.0","id":{id},"method":"tools/call","params":{{"name":"{tool}","arguments":{args}}}}}"#);
+    let hello = [
+        r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"test","version":"0"}}}"#.to_owned(),
+        r#"{"jsonrpc":"2.0","method":"notifications/initialized"}"#.to_owned(),
+        r#"{"jsonrpc":"2.0","id":2,"method":"tools/list"}"#.to_owned(),
+    ];
+
+    let mut lines = hello.to_vec();
+    lines.push(call(3, "tsumugi_sessions", "{}"));
+    let out = mcp(&lines);
+    assert_eq!(out.len(), 3, "{out:#?}");
+    assert!(out[0].contains(r#""protocolVersion":"2025-06-18""#) && out[0].contains(r#""name":"tsumugi""#), "{}", out[0]);
+    assert!(out[1].contains("tsumugi_sessions") && out[1].contains("tsumugi_screen"), "{}", out[1]);
+    assert!(out[2].contains(r#""isError":true"#) && out[2].contains("not running"), "no server yet: {}", out[2]);
+
+    let id = s.new_session(&["--tag", "mcp", "--", "echo", "mcp-says-hi"]);
+    s.read_until(&id, "`mcp-says-hi` run", |t| t.matches("mcp-says-hi").count() >= 2);
+    let mut lines = hello.to_vec();
+    lines.push(call(3, "tsumugi_sessions", "{}"));
+    lines.push(call(4, "tsumugi_screen", &format!(r#"{{"session":"{id}","all":true}}"#)));
+    lines.push(call(5, "tsumugi_screen", r#"{"session":"mcp","lines":3}"#));
+    let out = mcp(&lines);
+    assert_eq!(out.len(), 5, "{out:#?}");
+    assert!(out[2].contains(r#""isError":false"#) && out[2].contains(&format!(r#"\"id\": {id}"#)), "{}", out[2]);
+    assert!(out[3].contains(r#""isError":false"#) && out[3].contains("echo mcp-says-hi"), "{}", out[3]);
+    assert!(out[4].contains(r#""isError":false"#) && out[4].contains("mcp-says-hi"), "by its tag: {}", out[4]);
+}

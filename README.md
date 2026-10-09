@@ -824,8 +824,30 @@ When the two ends speak different versions of the protocol, it says to
 install the same version there and then use **Restart its server**: the old
 server stops (its sessions end, its tabs come back) and the new one starts.
 
+### From Claude Code (MCP)
+
+`tsumugi mcp` is an [MCP](https://modelcontextprotocol.io) server on stdin and
+stdout, so Claude Code (or another MCP client) can read your sessions as tools:
+
+| Tool | Gives |
+| --- | --- |
+| `tsumugi_sessions` | The sessions: number, state, command, folder, branch, title, note, tags (`tsumugi ls --json`) |
+| `tsumugi_screen` | One session's last lines (`lines`, 40) or whole scrollback (`all`), by number or name (`tsumugi read`) |
+
+```sh
+claude mcp add tsumugi -- tsumugi mcp          # the full path to tsumugi(.exe) if it is not on PATH
+```
+
+It only reads, and only from this machine's server, which it never starts:
+with none running, the tools say tsumugi is not running. What they return
+(the sessions' folders and screens) goes to the model like anything else
+Claude Code reads. Typing into a session from Claude Code will come later,
+behind a confirmation in the window.
+
 The terminal pane is the crate `tsumugi-pane` (`crates/tsumugi-pane`), shared
-with [filer](https://github.com/uchmk/filer).
+with [filer](https://github.com/uchmk/filer). So are the local channel to a
+running app (`tsumugi-ipc`, the socket or named pipe the server listens on)
+and the MCP server (`tsumugi-mcp`), which filer's `filer mcp` uses too.
 
 ## Why
 

@@ -357,6 +357,7 @@
 - [ ] **18.7** With tsumugi on PATH on another machine you reach by `ssh HOST` with a key: `tsumugi ls --host HOST`, then `tsumugi split --host HOST N` and `tsumugi read --host HOST N` → That machine's sessions listed (its server started if none ran); the split and read work there; no console window flashes on Windows
 - [ ] **18.8** Pull the network while `tsumugi wait --host HOST N` waits, then `tsumugi ls --host HOST` again once it is back → The wait fails within about 30 s; the sessions on HOST are still there afterwards
 - [ ] **18.9** `tsumugi ls --host HOST` where HOST has no tsumugi, and where the key is refused → One line naming HOST and what ssh said (`command not found`, `Permission denied`); no password prompt
+- [ ] **18.10** In a terminal, `claude mcp add tsumugi -- "<full path>\tsumugi.exe" mcp`; start `claude`, type `/mcp`, then ask "Which tsumugi sessions are waiting, and what does the first one show?" with two sessions open in tsumugi → `/mcp` shows tsumugi connected with 2 tools; Claude Code calls `tsumugi_sessions` and `tsumugi_screen` and answers with the real sessions; no console window flashes. With tsumugi's server stopped, the answer says tsumugi is not running
 
 ## 19. Keys through every screen
 

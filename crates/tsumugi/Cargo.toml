@@ -19,6 +19,7 @@ test = true
 [dependencies]
 tsumugi-pane = { path = "../tsumugi-pane", features = ["egui", "wgpu"] }
 tsumugi-mux = { path = "../tsumugi-mux" }
+tsumugi-mcp = { path = "../tsumugi-mcp" }
 tsumugi-layout = { path = "../tsumugi-layout", features = ["egui"] }
 # eframe's own defaults, but for `winit/default`: that draws the title on
 # Wayland's window frame with ab_glyph, which brings the unmaintained
