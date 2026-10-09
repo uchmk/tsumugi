@@ -117,6 +117,7 @@ New-Item -ItemType Directory -Force -Path $Scratch | Out-Null
 $log = Join-Path $LogDir "auto-wintest$suffix.log"
 $attemptedFile = Join-Path $state "attempted$suffix.txt"
 $failFile = Join-Path $state "failures$suffix.json"
+$dirtyFile = Join-Path $state "dirty$suffix.txt"
 $buildLog = Join-Path $LogDir "build$suffix.log"
 
 # Points $Work\target at the RAM disk (see the top). Returns where the build
@@ -312,6 +313,35 @@ function Add-Failure([string]$Branch, [string]$Why) {
     }
 }
 
+# A worktree with uncommitted changes stops every run until a person cleans
+# it. The log says so once a day, and $dirtyFile lists what is changed.
+function Note-Dirty([string[]]$changes) {
+    $now = Get-Date
+    $since = $now
+    $told = [datetime]::MinValue
+    if (Test-Path $dirtyFile) {
+        foreach ($line in Get-Content $dirtyFile) {
+            if ($line -match '^since: (.+)$') { $since = [datetime]::Parse($Matches[1]) }
+            if ($line -match '^told: (.+)$') { $told = [datetime]::Parse($Matches[1]) }
+        }
+    }
+    $hours = [int]($now - $since).TotalHours
+    $what = "$Work has uncommitted changes (first seen $('{0:yyyy-MM-dd HH:mm}' -f $since), $hours h ago). No run starts until a person looks at them and cleans the worktree."
+    if (($now - $told).TotalHours -ge 24) {
+        Say "!!!!! [$Lane] $what !!!!!"
+        $told = $now
+    }
+    $body = @(
+        "since: $('{0:o}' -f $since)"
+        "told: $('{0:o}' -f $told)"
+        "checked: $('{0:o}' -f $now)"
+        $what
+        ''
+        'git status --porcelain:'
+    ) + @($changes | Select-Object -First 40)
+    Set-Content -Path $dirtyFile -Value $body
+}
+
 # claude writes UTF-8 and so does git, and PowerShell decodes a native
 # command's output with the console's code page (CP932 on a Japanese
 # Windows): decoded as UTF-8 here, Japanese stays as it was.
@@ -344,7 +374,23 @@ try {
 
     git -C $Work fetch -q origin main
     if ($LASTEXITCODE -ne 0) { Say 'git fetch failed. Trying again next time.'; exit 0 }
-    if (-not (git -C $Work status --porcelain)) { git -C $Work checkout -q --detach origin/main }
+    $changes = @(git -C $Work status --porcelain)
+    # Files changed in their line endings only (a checkout of a commit made
+    # before .gitattributes, on a machine with core.autocrlf=true): nothing is
+    # lost by putting them back, and left alone they stop the lane for good.
+    if ($changes.Count -and -not ($changes | Where-Object { $_ -notmatch '^ M ' })) {
+        $paths = @($changes | ForEach-Object { $_.Substring(3) })
+        git -C $Work diff --ignore-cr-at-eol --quiet HEAD -- $paths
+        if ($LASTEXITCODE -eq 0) {
+            git -C $Work checkout -q -- $paths
+            Say "Put back $($paths -join ', '): only their line endings had changed."
+            $changes = @(git -C $Work status --porcelain)
+        }
+    }
+    if ($changes.Count -eq 0) {
+        git -C $Work checkout -q --detach origin/main
+        if (Test-Path $dirtyFile) { Say "$Work is clean again."; Remove-Item -LiteralPath $dirtyFile }
+    } elseif (-not $DryRun) { Note-Dirty $changes }
 
     # 1. The chunk, from origin/main's checklists.
     if ($Force) { Remove-Item -LiteralPath $attemptedFile -ErrorAction SilentlyContinue }
@@ -367,8 +413,9 @@ try {
         exit 0
     }
 
-    if ((git -C $Work status --porcelain) -and -not $DryRun) {
-        Say "$Work has uncommitted changes, left by a run that was cut off. Look at them, then clean it (git -C $Work stash -u, or git restore/clean) and run again."
+    if ($changes.Count -and -not $DryRun) {
+        $names = @($changes | Select-Object -First 5 | ForEach-Object { $_.Trim() }) -join ', '
+        Say "$Work has uncommitted changes ($names; all in $dirtyFile), left by a run that was cut off. Look at them, then clean it (git -C $Work stash -u, or git restore/clean) and run again."
         exit 1
     }
     if (-not $DryRun) { git -C $Work checkout -q --detach origin/main }

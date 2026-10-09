@@ -5,6 +5,20 @@
 
 ## [未リリース]
 
+## [0.76.2] - 2026-10-10
+
+### 修正
+
+- Windows 実機のレーン（`scripts/auto-wintest.ps1`）が、改行だけ違うファイルを「未コミットの変更」とみなして止まり続けたのを直した。
+  `.gitattributes` より前のコミットを `core.autocrlf=true` の機械で取り出すと、LF に書き直された TESTING.md などが変更に見え、
+  作業ツリーが `origin/main` に進めないまま x64 のレーンが 2026-10-09 19:50 から毎時止まっていた。
+  変更が作業ツリーの ` M ` だけで、`git diff --ignore-cr-at-eol` に差が無いときは、そのファイルを戻してから先へ進む。
+
+### 変更
+
+- 作業ツリーに変更が残っているとき、ログに変わったファイルの名前を書き、`%LOCALAPPDATA%\tsumugi-wintest\dirty.txt`（ARM64 は `dirty-arm.txt`）に
+  最初に見た時刻と `git status --porcelain` の一覧を残す。ログの `!!!!!` の行は 1 日 1 回。きれいに戻ると「clean again」と書いて消す。
+
 ## [0.76.1] - 2026-10-10
 
 ### 修正
