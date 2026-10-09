@@ -52,6 +52,12 @@ WINDOWS_MARKS = {
     "TESTING-CHECKS.md": {(" ", "x"), (" ", "~")},
     "TESTING-KEYS.md": {(" ", "x")},
 }
+# tsumugi's keys may also be looked at: a key whose only effect is on screen
+# gets `[~]` with its picture, as a checklist row does (owner, 2026-10-10)
+TSUMUGI_WINDOWS_MARKS = {
+    "TESTING-CHECKS.md": {(" ", "x"), (" ", "~")},
+    "TESTING-KEYS.md": {(" ", "x"), (" ", "~")},
+}
 
 RULES = {
     "uchmk/filer": {
@@ -67,7 +73,7 @@ RULES = {
         "hold_heading": "マージで止めている実機の PR",
     },
     "uchmk/tsumugi": {
-        "lanes": {"test/win-": WINDOWS_MARKS, "test/arm-": WINDOWS_MARKS},
+        "lanes": {"test/win-": TSUMUGI_WINDOWS_MARKS, "test/arm-": TSUMUGI_WINDOWS_MARKS},
         "reports": (0, 99),
         "evidence_in_report": True,
         "required_checks": ["check"],
@@ -423,9 +429,11 @@ def self_test():
     try:
         new_marks("TESTING-KEYS.md", "@@\n-- [ ] `q` — Quit\n+- [~] `q` — Quit\n",
                   WINDOWS_MARKS["TESTING-KEYS.md"])
-        raise AssertionError("accepted [~] in TESTING-KEYS.md")
+        raise AssertionError("accepted [~] in filer's TESTING-KEYS.md")
     except RuleError:
         pass
+    assert new_marks("TESTING-KEYS.md", "@@\n-- [ ] `F1` — Help\n+- [~] `F1` — Help\n",
+                     TSUMUGI_WINDOWS_MARKS["TESTING-KEYS.md"]) == [("~", "`F1` — Help")]
 
     assert row_id("TESTING-CHECKS.md", "**25.4e** text") == "25.4e"
     assert row_id("TESTING-KEYS.md", "`<C-q>` — Quit the process · `quit`") == "<C-q>"

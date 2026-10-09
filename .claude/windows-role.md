@@ -63,7 +63,8 @@ kept on `C:` and named in the pull request. The owner turns `[~]` into `[x]`.
 TESTING-KEYS.md the same way: press the key, read before and after everything
 it must **not** change (the window title, `tsumugi ls --json`, the clipboard
 with a sentinel, the PTY log of the pane with the keys), one line per key with
-both halves. Only flip `[ ]` to `[x]`; then
+both halves. Flip `[ ]` to `[x]`, or to `[~]` for a key whose only effect is a
+look, under the same rule as a row (since v0.76.5); then
 `cargo run --release -q -p tsumugi --example make-testcheck -- --check` and
 `make-keycheck -- --check` must say `in sync`.
 

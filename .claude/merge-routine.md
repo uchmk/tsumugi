@@ -55,8 +55,8 @@ why):
 1. **It touches only** `TESTING-CHECKS.md`, `TESTING-KEYS.md` and new files
    under `qa-reports/` (added, not edited).
 2. **The checklists only change marks**: each changed line differs from
-   `main`'s only in `[ ]` -> `[x]` or `[ ]` -> `[~]` (`[x]` only in
-   TESTING-KEYS.md). A reworded row, a row removed, a `[x]` taken back: no.
+   `main`'s only in `[ ]` -> `[x]` or `[ ]` -> `[~]`, in both checklists
+   (keys may be `[~]` since v0.76.5). A reworded row, a row removed, a `[x]` taken back: no.
 3. **Every new mark has its evidence**: a line in the pull request body or
    its report that names the row (`**2.28**`, `2.28`, a range like
    `2.28-2.30`, or for TESTING-KEYS.md the key in backticks) and says more
