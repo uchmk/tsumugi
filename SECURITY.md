@@ -42,7 +42,7 @@ question is where that goes further than intended:
 
 Not in scope, because it is the program working:
 
-- a command in your `settings.toml` (`[open]`, `[[menu.session]]`,
+- a command in your `config.toml` (`[open]`, `[[menu.session]]`,
   `[shell]`) running what it says it runs;
 - the shell in a pane doing what you type into it, or a program you started
   there doing what it does;

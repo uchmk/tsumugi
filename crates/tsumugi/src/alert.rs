@@ -10,7 +10,7 @@ use std::sync::{Arc, mpsc};
 
 use tsumugi_mux::{Notice, SessionId, State};
 
-/// Which ways to tell, per state: `[notify]` in `settings.toml`.
+/// Which ways to tell, per state: `[notify]` in `config.toml`.
 #[derive(Clone, Copy, Debug)]
 pub struct Rules {
     /// The system's notification.

@@ -15,12 +15,14 @@
 - [ ] **1.3** Close the window, then start `tsumugi` again → The same tab and the same shell, its output still there: the server kept it
 - [ ] **1.4** With the window closed, `tsumugi new . -- echo hi`, then start `tsumugi` → The window has a tab with `hi` in it (the number printed and the session itself: `cli.rs`)
 - [ ] **1.5** `tsumugi attach <that number>`, and `tsumugi attach <folder name>` → The window opens on that session. A name two sessions share says so and names their numbers
-- [ ] **1.6** With tsumugi running, `cargo build` (Windows) → The build replaces `tsumugi.exe` -- no `アクセスが拒否されました` -- because the server runs from its copy in `%LOCALAPPDATA%\tsumugi\server\`
+- [ ] **1.6** With tsumugi running, `cargo build` (Windows) → The build replaces `tsumugi.exe` -- no `アクセスが拒否されました` -- because the server runs from its copy in `%LOCALAPPDATA%\uchmk\tsumugi\server\`
 - [ ] **1.7** Start the newly built window while the older server runs (an unattended run: the older release in `$env:WINTEST_OLD_EXE`, started with `Start-OldTsumugi` and its window closed; by hand, a build of 0.45.0 or 0.46.0 too) → **tsumugi was updated**, what that means in a sentence, **Restart the server** lit; Enter (no Tab or click) restarts it and every tab comes back at once, with no Welcome back, never "the server did not answer" (try it with several Claude Code sessions running); Esc closes the window and the old sessions go on
 - [ ] **1.8** Task Manager after 1.3 → One `tsumugi-<version>-<hash>.exe` server, and no console window anywhere
 - [ ] **1.9** The taskbar, Alt+Tab, and the window's corner → The logo (two threads, cyan and gold, on a dark tile) as the window's icon
 - [ ] **1.11** Settings → General → Restart the server after an update without asking on; then 1.7 (an unattended run: with `$env:WINTEST_OLD_EXE`) → No question: the older server is restarted at once and every tab comes back
 - [ ] **1.12** Build and start a newer window while the server of the build before runs, when the two speak the same version (no **tsumugi was updated**); then Settings → Advanced → Restart the server → A toast "The server is still tsumugi <old> (this is <new>): Settings → Advanced → Restart the server…", once; Settings → Advanced shows "Running · <old> · <up>"; after the restart it shows the new version and no toast comes
+- [ ] **1.13** Start tsumugi on a machine (or a Windows user) it never ran on → The window opens 1280 × 800
+- [ ] **1.14** With a `settings.toml` of 0.86.0 in `%APPDATA%\tsumugi\` and its state in `%LOCALAPPDATA%\tsumugi\`, start the newer tsumugi (an unattended run: lay the kit's files out that way in a scratch folder and point `APPDATA` and `LOCALAPPDATA` there, with `TSUMUGI_*_HOME`, the older names and `UCHMK_CONFIG_DIR` unset) → The same settings and the same tabs as before; `config.toml` is in `%APPDATA%\uchmk\tsumugi\`, the state in `%LOCALAPPDATA%\uchmk\tsumugi\`; the old folders have no settings or state left (an old `server` folder may stay)
 
 ## 2. Panes and splits
 
@@ -84,7 +86,7 @@
 - [x] **2.58** Run `sleep 30`, select some text in the pane and press `Ctrl+C`; run `sleep 30` again, click to clear the selection and press `Ctrl+Shift+C` → Plain `Ctrl+C` stops `sleep` (`^C`) even with a selection on; with nothing selected `Ctrl+Shift+C` reaches the program as `Ctrl+C` does and stops it too
 - [x] **2.59** `ls -l` (`Get-ChildItem`) in a folder of a few files; hold `Alt` and drag from the size column of the first file down to the last; paste in Notepad → A rectangle is highlighted, not whole lines; the pasted text is that column, one row a line
 - [x] **2.60** Linux (X11 or a Wayland desktop with XWayland): select a word in a pane, middle-click in a text editor; then select a word in the editor and middle-click in the pane (in `cat`); then select three lines elsewhere and middle-click in `cat`. Windows and macOS: copy a word elsewhere, middle-click in the pane → The editor gets the pane's word, `cat` gets the editor's word (the clipboard is not changed by either); three lines ask **Paste 3 lines?** first; on Windows and macOS the middle-click pastes the clipboard
-- [~] **2.61** Put the README's two `[[triggers]]` in `settings.toml`; in a pane, `echo an error here; echo ERROR; echo errors` and `echo Build succeeded`; then select across `error` with the mouse → `error` and `ERROR` in red, `errors` not; `Build succeeded` on a dark green background, its text as it was; the selected part takes the selection's colour, the rest stays red
+- [~] **2.61** Put the README's two `[[triggers]]` in `config.toml`; in a pane, `echo an error here; echo ERROR; echo errors` and `echo Build succeeded`; then select across `error` with the mouse → `error` and `ERROR` in red, `errors` not; `Build succeeded` on a dark green background, its text as it was; the selected part takes the selection's colour, the rest stays red
 - [~] **2.62** With the second trigger, `sleep 3; echo Build succeeded` in a session and switch to another app at once → A system notification **<folder>: a trigger matched** with `Build succeeded` below; the bell's list has it marked **trigger**; no flash, sound or number on the taskbar
 - [~] **2.63** With the second trigger, `for i in 1 2 3; do echo Build succeeded; done` in a session while another app is in front; 15 seconds later the same again → One notification for the three lines; a second after the 15 seconds
 - [~] **2.64** With the second trigger, `printf 'Build succeeded\n' > /tmp/t.txt; less /tmp/t.txt` (`more`) while another app is in front; then a trigger `regex = "a*"`, then `regex = "("`, then one with neither colour nor notify → `less` shows the line coloured but sends no notification; each bad trigger is reported when the settings are read (empty line, does not read, does nothing) and the old settings stay
@@ -234,14 +236,16 @@
 ## 9. The settings screen
 
 - [ ] **9.1** `Ctrl+,` → The screen with its nine pages and the search field over them; the band says Settings in the middle with an X; no sidebar or status bar; `Esc` and the X close it
-- [ ] **9.2** Change something on each page → Only that line of `settings.toml` changes (diff the file); comments stay. Language, the clock and the theme change that line of `common.toml` in the uchmk folder instead
-- [ ] **9.3** Write a mistake into `settings.toml` by hand → A red line above the status bar says what and where, until it is fixed; nothing else changes
-- [ ] **9.4** Open settings.toml / Open the settings folder → The system's editor / file manager opens
+- [ ] **9.2** Change something on each page → Only that line of `config.toml` changes (diff the file); comments stay. Language, the clock and the theme change that line of `common.toml` in the uchmk folder instead
+- [ ] **9.3** Write a mistake into `config.toml` by hand → A red line above the status bar says what and where, until it is fixed; nothing else changes
+- [ ] **9.4** Open config.toml / Open the settings folder → The system's editor / file manager opens
 - [~] **9.5** Type `scroll` in Search settings → Only Advanced in the list, with a count; its Scrollback row lit; Enter goes there. `copy` lists General (**Copy a selection when the mouse lets go**)
 - [ ] **9.6** Next to the design's "Settings: every page" → The same pages, sections and rows in the same order
 - [ ] **9.7** Only the keyboard: `Ctrl+Tab` / `Ctrl+Shift+Tab` through the pages, `Tab` through a page, `Space` on a switch, `Esc` twice → A cyan ring on the control with the keys; Tab never stops on the top band or the list of pages; Space flips the switch (the file changes); the first Esc leaves the control, the second closes the screen; nothing typed reaches the shell behind it
 - [ ] **9.8** Notifications → WHEN A SESSION… → A line between rows; the three state columns the same width, each switch in the middle of its column and row, under its heading's dot
 - [ ] **9.9** `Ctrl+,` (macOS `Cmd+,`) with the settings open → They close and stay closed (not reopened on their first page)
+- [ ] **9.10** Settings → General → Scale, pick 150% → The whole window (bands, sidebar, settings and panes) grows at once; `scale = 1.5` in `common.toml`, `config.toml` unchanged; `Ctrl+=` and `Ctrl+-` still change only the panes' font size
+- [ ] **9.11** With tsumugi and kura (or yagura) open, write `scale = 1.25` into `common.toml` by hand → Both windows grow to 125% within a couple of seconds; Settings → General → Scale shows 125%
 
 ## 10. Themes
 
@@ -251,8 +255,8 @@
 - [ ] **10.4** The same with an iTerm2 `.itermcolors` → As 10.3
 - [ ] **10.5** `theme.toml` with one colour → Only that colour changes in the theme in force
 - [ ] **10.6** Settings → Theme, in Follow OS → Mode (Follow OS, Light, Dark) at the left under the heading; only the theme shown now is lit, it and the other kind's pick are named `when dark` / `when light`; PREVIEW names the theme in force; a line with the font, the window and motion, a click goes to Appearance; each theme's swatches bordered and rounded
-- [ ] **10.7** With tsumugi and mimamori open, write `theme = "Nord"` into `common.toml` by hand; then pick Dracula in tsumugi's Settings → Theme → Both apps turn Nord within a couple of seconds, then both turn Dracula; `settings.toml` is unchanged
-- [ ] **10.8** An older `settings.toml` with `theme = "Nord"` and no `theme` in `common.toml`; start tsumugi → Nord, as before; Settings → Theme shows Nord lit. Picking another writes it to `common.toml`
+- [ ] **10.7** With tsumugi and mimamori open, write `theme = "Nord"` into `common.toml` by hand; then pick Dracula in tsumugi's Settings → Theme → Both apps turn Nord within a couple of seconds, then both turn Dracula; `config.toml` is unchanged
+- [ ] **10.8** An older `config.toml` with `theme = "Nord"` and no `theme` in `common.toml`; start tsumugi → Nord, as before; Settings → Theme shows Nord lit. Picking another writes it to `common.toml`
 - [ ] **10.9** Save a theme `.toml` (with `name = "Mine"`) in `%APPDATA%\uchmk\themes\` → Mine is in Settings → Theme's list within a couple of seconds, in tsumugi and mimamori alike
 
 ## 11. Fonts
@@ -263,6 +267,7 @@
 - [ ] **11.4** Size and line height: type a value, Enter → The grid re-fits; text in the middle of taller rows; `tsumugi ls` shows the new columns × rows after a moment; `Esc` in the field leaves it as it was
 - [ ] **11.5** Cascadia Code or Fira Code, `echo '-> != == >= => |> www'` → Each shown as one sign, on the grid; Ligatures off draws them as plain characters
 - [ ] **11.6** Japanese text and a Nerd Font icon in a prompt → Japanese from the system font, icons from the Nerd Font, neither as boxes
+- [ ] **11.7** Japanese, Korean and Chinese in the sidebar and a pane, next to kura showing the same → The same faces as kura picks for each (the shared fallback order), none as boxes
 
 ## 12. Claude Code's hooks
 
@@ -290,7 +295,7 @@
 - [ ] **13.11** Linux on Wayland: tsumugi's own title bar off → The system's frame (Adwaita) with its buttons, moving and resizing the window; no title text on it
 - [ ] **13.12** Settings → Appearance → Opacity 80, restart; then 60 without restarting → The desktop shows through the whole window -- band, sidebar, panes and the gaps between them -- evenly, no darker bands where the panes are; text stays solid (a reversed status line in vim or htop too); 60 thins it at once
 - [ ] **13.13** Opacity 80 with Material mica (Windows 11) or vibrancy (macOS), restart → The material behind the chrome as before, the panes see-through to it; nothing goes fully clear at a pane's corners
-- [ ] **13.14** Background image → a large png or jpeg (`~/…` and a name beside settings.toml); Image strength 25, then 60 → The picture fills each pane cut to its shape (not stretched), faint behind the text; 60 brings it forward; a pane split or resized refits it; a name that is not a picture toasts why; empty takes it away
+- [ ] **13.14** Background image → a large png or jpeg (`~/…` and a name beside config.toml); Image strength 25, then 60 → The picture fills each pane cut to its shape (not stretched), faint behind the text; 60 brings it forward; a pane split or resized refits it; a name that is not a picture toasts why; empty takes it away
 - [ ] **13.15** Settings → Appearance → Quake mode key `` Ctrl+` `` (no restart); go to another program and press it; press it again; again from another program → The window comes down at the top of the screen, the screen's width and half its height, with the keys; the second press hides it, off the taskbar (Dock stays on macOS); the third brings it back with the sessions as they were
 - [ ] **13.16** Quake mode key set to a key another program holds (or `Ctrl+Nothing`) → A toast says it could not be taken (or is not a key); the window works on
 
@@ -354,13 +359,13 @@
 - [ ] **17.28** Scrollback 200; a new session; `seq 1000` → Only about 200 lines to scroll back
 - [ ] **17.29** Log what each pane sends and receives on; a new session → `pane-logs/session-N.log` beside the saved tabs grows as it runs
 - [ ] **17.30** Export…, then Import on another machine (or after changing things) → One file in Downloads; importing brings the settings, themes and profiles back, the old ones kept as `.bak`
-- [ ] **17.31** Keys → set a key to `Ctrl+[` by hand in `settings.toml`, then change another key and a font size in Settings → `settings.toml` still has every table and comment it had; only the changed lines differ
-- [ ] **17.32** Put a mistake in `settings.toml` (`[broken`), then change anything in Settings → A toast says the file does not read and is left as it is; the file is unchanged
+- [ ] **17.31** Keys → set a key to `Ctrl+[` by hand in `config.toml`, then change another key and a font size in Settings → `config.toml` still has every table and comment it had; only the changed lines differ
+- [ ] **17.32** Put a mistake in `config.toml` (`[broken`), then change anything in Settings → A toast says the file does not read and is left as it is; the file is unchanged
 - [ ] **17.33** `[[menu.session]] command = "\"C:\\Program Files\\Microsoft VS Code\\Code.exe\" {folder}"` (Windows), then the card menu item → VS Code opens on the tab's folder (cmd took the line whole)
 - [ ] **17.34** Open with → Editor: type `sakura {folder}` into Add another; right-click a card → `[open] editor = ["code {folder}", "sakura {folder}"]`; Open in the editor has ▶; a click on it opens VS Code, hovering opens `code` and `sakura` to its right and each opens its own; × on the second row (or emptying its field) leaves one again
 - [ ] **17.35** Open with → take out every kura command; right-click a card → Open the folder in kura is greyed, its hover says where to set it
 - [ ] **17.36** Tags → Tags shown 1, then 5 → The band and the cards show one tag and `+N`, then all five
-- [ ] **17.37** Tags → a rule's Edit: change its folder, then add a branch, Save; Edit another and take it out → `settings.toml` has the rule changed in place (one rule with both, then neither); the sessions it tagged before lose the tag, those it now matches get it
+- [ ] **17.37** Tags → a rule's Edit: change its folder, then add a branch, Save; Edit another and take it out → `config.toml` has the rule changed in place (one rule with both, then neither); the sessions it tagged before lose the tag, those it now matches get it
 - [ ] **17.38** General → Language → 日本語; right-click a tab, a tag chip and the input box's `+ Sessions` and `Prompts…`; then start yagura; then write `language = "en"` into `common.toml` by hand → `common.toml` in the uchmk folder (`%APPDATA%\uchmk`) has `language = "ja"`, its other lines kept; the settings screen's search, Language row, CLOCK card and Theme page turn Japanese within a couple of seconds (tsumugi's own rows stay English); those menus and the charset at the status bar's right end read Japanese; yagura comes up in Japanese; within a couple of seconds of the hand edit the select and the menus read English again
 
 ## 18. From a script

@@ -26,8 +26,8 @@ row a look, find something that can be **read**:
 | keys reached the shell, not the window | `TSUMUGI_PTY_LOG=<file>`: the bytes sent to each pane; or a command that **creates a file** |
 | the window got a key | `TSUMUGI_KEYLOG=1`, which prints each key press as the window sees it (`Get-KeyLog`); egui turns Ctrl+X, C and V (Shift held or not) into an `event Cut` / `Copy` / `Paste` line instead, with the action it does |
 | the pointer is over a divider | `TSUMUGI_KEYLOG=1`: a `divider x,y wxh` line (the gap, in points) when the pointer comes over one, `divider none` when it leaves (`Get-DividerLog`). Drag from the middle of the gap it names |
-| a setting was written | `settings.toml` (`%APPDATA%\tsumugi\`) before and after, by hash and by the one line that changed |
-| the server kept running / the window closed | `Get-Process tsumugi` (the server runs from `%LOCALAPPDATA%\tsumugi\server\`) |
+| a setting was written | `config.toml` (`%APPDATA%\uchmk\tsumugi\`, or `TSUMUGI_CONFIG_HOME`) before and after, by hash and by the one line that changed |
+| the server kept running / the window closed | `Get-Process tsumugi` (the server runs from `%LOCALAPPDATA%\uchmk\tsumugi\server\`) |
 | a toast, a notification, the taskbar number | a screenshot read as text; the toast's words are in the bell's list too (`Ctrl+Shift+N`) |
 | a program was started, and how | `Get-CimInstance Win32_Process` for tsumugi's children: `CommandLine` |
 | where Tab went, the keys' order through a screen | `TSUMUGI_KEYLOG=1`: a `focus x,y wxh` line each time the keys move to another control. Reading order is y, then x; a jump back, a control never named, or `focus none` in the middle of a walk is a finding |
@@ -35,7 +35,7 @@ row a look, find something that can be **read**:
 | a click, a hover | `SendInput` for the mouse (a 64-bit `INPUT` is 40 bytes); never `PostMessage` for the mouse, egui ignores a posted click |
 
 Start a test with its own state and settings so nothing of the owner's is
-touched: `TSUMUGI_STATE=<scratch>\state`, `TSUMUGI_SETTINGS=<scratch>\settings.toml`,
+touched: `TSUMUGI_STATE_HOME=<scratch>` and `TSUMUGI_CONFIG_HOME=<scratch>` (the state and `config.toml` go in it),
 and `TSUMUGI_ADDRESS=<a pipe name of its own>` so the run's server is not the
 owner's. An unattended run has them set already, and `scripts\wintest-kit.ps1`
 sets them when dot-sourced by hand. **Never stop or restart the owner's own
@@ -92,7 +92,7 @@ What suits each section:
 | **19. Keys through every screen** | The focus log turns the Tab order into text; only the ring (`[~]`) and 19.6's looks are pictures. Also, on any screen you touch for another row: if Tab goes right to left, skips a control, or leaves a ring behind, write it down as a finding |
 | **4. States, notifications and answering** | Toasts and the taskbar number: Windows only |
 | **2. Panes and splits** | ConPTY: lazygit, Japanese, the PTY log |
-| **16. Keys**, **17. What the settings' rows do**, **8. Restoring after a restart** | `settings.toml` and `tsumugi ls --json` before and after |
+| **16. Keys**, **17. What the settings' rows do**, **8. Restoring after a restart** | `config.toml` and `tsumugi ls --json` before and after |
 | **13. The window's frame**, **15. The status bar** | Partly text (the window title, the status words), partly the owner's |
 
 Rows CI checks on every push are not here: TESTING.md's "Covered by tests"

@@ -219,7 +219,7 @@ pub const FIXED: &[(&str, &str, &str, &str)] = &[
     ("The settings screen", "Ctrl+Tab / Ctrl+PageDown", "Ctrl+Tab / Cmd+PageDown", "The next page"),
     ("The settings screen", "Ctrl+Shift+Tab / Ctrl+PageUp", "Ctrl+Shift+Tab / Cmd+PageUp", "The page before"),
     ("The settings screen", "Ctrl+F", "Cmd+F", "To the search"),
-    ("The settings screen", "Tab / Shift+Tab", "Tab / Shift+Tab", "The search, the page's controls one by one, then Open settings.toml"),
+    ("The settings screen", "Tab / Shift+Tab", "Tab / Shift+Tab", "The search, the page's controls one by one, then Open config.toml"),
     ("The settings screen", "Space / Enter", "Space / Enter", "Flip the switch or press the button that has the keys"),
     ("The settings screen", "Ctrl+,", "Cmd+,", "Open it (the changeable key above, while not moved)"),
     ("The help", "Esc / F1", "Esc / F1", "Close it"),

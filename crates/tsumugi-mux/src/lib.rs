@@ -9,6 +9,7 @@
 pub mod client;
 pub mod diff;
 pub mod frame;
+pub mod places;
 pub mod proto;
 pub mod quote;
 pub mod server;

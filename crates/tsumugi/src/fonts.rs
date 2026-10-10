@@ -1,22 +1,11 @@
-//! The fonts: a Nerd Font in front when one is installed, as filer does (its
+//! The fonts: a Nerd Font in front when one is installed, as kura does (its
 //! icons are what a prompt such as starship draws, and the branch mark), and
 //! a system font behind egui's own for what that lacks (Japanese, in the
-//! first place).
+//! first place). Which files, and in what order, every uchmk app shares
+//! (`ito_common::fonts`).
 
 use eframe::egui;
-
-/// Fonts to try, in order; the first that reads is used.
-#[cfg(windows)]
-const CANDIDATES: &[&str] = &[r"C:\Windows\Fonts\BIZ-UDGothicR.ttc", r"C:\Windows\Fonts\msgothic.ttc", r"C:\Windows\Fonts\YuGothM.ttc", r"C:\Windows\Fonts\meiryo.ttc"];
-#[cfg(target_os = "macos")]
-const CANDIDATES: &[&str] = &["/System/Library/Fonts/ヒラギノ角ゴシック W3.ttc", "/System/Library/Fonts/Hiragino Sans GB.ttc"];
-#[cfg(not(any(windows, target_os = "macos")))]
-const CANDIDATES: &[&str] = &[
-    "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
-    "/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc",
-    "/usr/share/fonts/opentype/ipafont-gothic/ipag.ttf",
-    "/usr/share/fonts/truetype/fonts-japanese-gothic.ttf",
-];
+use ito_common::fonts::{JAPANESE, JAPANESE_BOLD, NERD_FONTS, find_file, font_dirs, nerd_font, read_first};
 
 /// The window's own words (titles, buttons) in a proportional face, as the
 /// design has them (IBM Plex Sans JP): the first of these found in the font
@@ -41,13 +30,6 @@ const UI_BOLD: &[&str] = &[
     "NotoSans-SemiBold.ttf",
     "DejaVuSans-Bold.ttf",
 ];
-/// Japanese in bold behind those, where the system has it.
-#[cfg(windows)]
-const JA_BOLD: &[&str] = &[r"C:\Windows\Fonts\YuGothB.ttc", r"C:\Windows\Fonts\meiryob.ttc"];
-#[cfg(target_os = "macos")]
-const JA_BOLD: &[&str] = &["/System/Library/Fonts/ヒラギノ角ゴシック W6.ttc"];
-#[cfg(not(any(windows, target_os = "macos")))]
-const JA_BOLD: &[&str] = &["/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc", "/usr/share/fonts/noto-cjk/NotoSansCJK-Bold.ttc"];
 
 /// The family the window's titles are drawn in: bold, proportional.
 pub const UI_BOLD_FAMILY: &str = "ui-bold";
@@ -57,51 +39,8 @@ pub fn bold(size: f32) -> egui::FontId {
     egui::FontId::new(size, egui::FontFamily::Name(UI_BOLD_FAMILY.into()))
 }
 
-/// The first of `names` in the font folders or one folder below them
-/// (`truetype/ibm-plex/…`).
-fn find_file(names: &[&str]) -> Option<std::path::PathBuf> {
-    let dirs = font_dirs();
-    let mut all: Vec<std::path::PathBuf> = dirs.clone();
-    for d in &dirs {
-        if let Ok(entries) = std::fs::read_dir(d) {
-            all.extend(entries.flatten().map(|e| e.path()).filter(|p| p.is_dir()));
-        }
-    }
-    names.iter().find_map(|n| all.iter().map(|d| d.join(n)).find(|p| p.is_file()))
-}
-
-/// The Nerd Fonts filer looks for (filer's `NERD_FONTS`), in the same order.
-const NERD_FONTS: [&str; 6] = [
-    "HackGen35ConsoleNF-Regular.ttf",
-    "HackGenConsoleNF-Regular.ttf",
-    "HackGen35Console-Regular.ttf",
-    "FiraCodeNerdFont-Regular.ttf",
-    "CaskaydiaCoveNerdFont-Regular.ttf",
-    "JetBrainsMonoNerdFont-Regular.ttf",
-];
-
-/// Where a user's own fonts are, then the system's: a Nerd Font is usually
-/// installed for the user alone.
-fn font_dirs() -> Vec<std::path::PathBuf> {
-    let var = |k: &str| std::env::var_os(k).filter(|v| !v.is_empty()).map(std::path::PathBuf::from);
-    let mut out = Vec::new();
-    if cfg!(windows) {
-        out.extend(var("LOCALAPPDATA").map(|d| d.join("Microsoft").join("Windows").join("Fonts")));
-        out.push(std::path::PathBuf::from(r"C:\Windows\Fonts"));
-    } else if cfg!(target_os = "macos") {
-        out.extend(var("HOME").map(|h| h.join("Library").join("Fonts")));
-        out.push("/Library/Fonts".into());
-    } else {
-        out.extend(var("XDG_DATA_HOME").or_else(|| var("HOME").map(|h| h.join(".local").join("share"))).map(|d| d.join("fonts")));
-        out.extend(var("HOME").map(|h| h.join(".fonts")));
-        out.push("/usr/share/fonts/truetype".into());
-        out.push("/usr/local/share/fonts".into());
-    }
-    out
-}
-
 /// The private-use character Nerd Fonts (and Powerline) draw the git branch
-/// mark with; filer's status bar uses the same.
+/// mark with; kura's status bar uses the same.
 pub const BRANCH: char = '\u{e0a0}';
 
 /// The families the pane's bold and italic text are drawn in, when found.
@@ -129,9 +68,8 @@ pub struct Loaded {
 /// Reads files: not on the UI thread, but for the first frame.
 pub fn load(family: &str) -> Loaded {
     let mut fonts = egui::FontDefinitions::default();
-    let nerd_file = || font_dirs().iter().flat_map(|d| NERD_FONTS.iter().map(move |n| d.join(n))).find(|p| p.is_file());
     let chosen = if family.trim().is_empty() { None } else { find(family.trim()) };
-    let regular = chosen.clone().or_else(nerd_file);
+    let regular = chosen.clone().or_else(nerd_font);
     let read = |p: &std::path::Path| std::fs::read(p).ok().map(|b| egui::FontData::from_owned(b).into());
     let mut nerd = false;
     let mut faces = [false; 3];
@@ -163,17 +101,16 @@ pub fn load(family: &str) -> Loaded {
         fonts.families.entry(egui::FontFamily::Proportional).or_default().insert(0, name);
     }
     let mut bold_list = Vec::new();
-    for path in find_file(UI_BOLD).into_iter().chain(JA_BOLD.iter().map(std::path::PathBuf::from).filter(|p| p.is_file()).take(1)) {
+    for path in find_file(UI_BOLD).into_iter().chain(JAPANESE_BOLD.iter().map(std::path::PathBuf::from).filter(|p| p.is_file()).take(1)) {
         if let Some(data) = read(&path) {
             let name = format!("ui-bold:{}", path.display());
             fonts.font_data.insert(name.clone(), data);
             bold_list.push(name);
         }
     }
-    let system = CANDIDATES.iter().find_map(|p| std::fs::read(p).ok().map(|b| (*p, b)));
-    if let Some((path, bytes)) = &system {
-        let name = format!("system:{path}");
-        fonts.font_data.insert(name.clone(), egui::FontData::from_owned(bytes.clone()).into());
+    if let Some((path, bytes)) = read_first(JAPANESE) {
+        let name = format!("system:{}", path.display());
+        fonts.font_data.insert(name.clone(), egui::FontData::from_owned(bytes).into());
         for family in [egui::FontFamily::Monospace, egui::FontFamily::Proportional] {
             fonts.families.entry(family).or_default().push(name.clone());
         }

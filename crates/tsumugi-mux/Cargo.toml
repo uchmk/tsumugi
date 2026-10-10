@@ -8,21 +8,21 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
-ito-ipc = { git = "https://github.com/uchmk/ito", rev = "138647e4d2614d179dd09340b631a7468787efd1" }
-ito-pane = { git = "https://github.com/uchmk/ito", rev = "138647e4d2614d179dd09340b631a7468787efd1", features = ["serde"] }
-ito-layout = { git = "https://github.com/uchmk/ito", rev = "138647e4d2614d179dd09340b631a7468787efd1", features = ["serde"] }
+ito-ipc = { git = "https://github.com/uchmk/ito", rev = "2a1fe9c08ff0b7e4ca77bbc43d83fe89078d0857" }
+ito-pane = { git = "https://github.com/uchmk/ito", rev = "2a1fe9c08ff0b7e4ca77bbc43d83fe89078d0857", features = ["serde"] }
+ito-layout = { git = "https://github.com/uchmk/ito", rev = "2a1fe9c08ff0b7e4ca77bbc43d83fe89078d0857", features = ["serde"] }
 serde = { version = "1", features = ["derive"] }
 # Pure Rust, with a documented and stable wire format (1.0). bincode was the
 # first choice and is unmaintained since 2025 (its 3.0.0 is only a notice);
 # QUESTIONS.md Q4.
 postcard = { version = "1", default-features = false, features = ["alloc"] }
 crossbeam-channel = "0.5"
-# settings.toml (QUESTIONS.md Q6): Pure Rust, and what filer reads yazi's
+# config.toml (QUESTIONS.md Q6): Pure Rust, and what filer reads yazi's
 # settings with.
 toml = "1.1"
-# Editing settings.toml in place -- one key, its comments and layout kept --
+# Editing config.toml in place -- one key, its comments and layout kept --
 # and the clock, both shared with every uchmk app.
-ito-common = { git = "https://github.com/uchmk/ito", rev = "138647e4d2614d179dd09340b631a7468787efd1" }
+ito-common = { git = "https://github.com/uchmk/ito", rev = "2a1fe9c08ff0b7e4ca77bbc43d83fe89078d0857" }
 
 [target."cfg(windows)".dependencies]
 windows = { version = "0.62", features = ["Win32_Foundation", "Win32_Security", "Win32_Security_Authorization", "Win32_Storage_FileSystem", "Win32_System_IO", "Win32_System_Pipes", "Win32_System_Threading"] }

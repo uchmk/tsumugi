@@ -33,7 +33,7 @@ impl Server {
         std::fs::create_dir_all(&dir).unwrap();
         let address = if cfg!(windows) { PathBuf::from(format!(r"\\.\pipe\tsumugi-test-{label}-{}", std::process::id())) } else { dir.join("s.sock") };
         let args: Vec<String> = args.iter().map(|a| format!("{a:?}")).collect();
-        std::fs::write(dir.join("settings.toml"), format!("[shell]\nprogram = \"{shell}\"\nargs = [{}]\n", args.join(", "))).unwrap();
+        std::fs::write(dir.join("config.toml"), format!("[shell]\nprogram = \"{shell}\"\nargs = [{}]\n", args.join(", "))).unwrap();
         Self { dir, address }
     }
 
@@ -42,8 +42,8 @@ impl Server {
             .args(args)
             .current_dir(&self.dir)
             .env("TSUMUGI_ADDRESS", &self.address)
-            .env("TSUMUGI_STATE", self.dir.join("state"))
-            .env("TSUMUGI_SETTINGS", self.dir.join("settings.toml"))
+            .env("TSUMUGI_STATE_HOME", &self.dir)
+            .env("TSUMUGI_CONFIG_HOME", &self.dir)
             .env_remove("TSUMUGI_SESSION")
             .stdin(Stdio::null())
             .output()
@@ -254,6 +254,8 @@ fn mcp_lists_sessions_and_reads_a_screen() {
             .arg("mcp")
             .current_dir(&s.dir)
             .env("TSUMUGI_ADDRESS", &s.address)
+            .env("TSUMUGI_STATE_HOME", &s.dir)
+            .env("TSUMUGI_CONFIG_HOME", &s.dir)
             .env_remove("TSUMUGI_SESSION")
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
@@ -294,4 +296,12 @@ fn mcp_lists_sessions_and_reads_a_screen() {
     assert!(out[2].contains(r#""isError":false"#) && out[2].contains(&format!(r#"\"id\": {id}"#)), "{}", out[2]);
     assert!(out[3].contains(r#""isError":false"#) && out[3].contains("echo mcp-says-hi"), "{}", out[3]);
     assert!(out[4].contains(r#""isError":false"#) && out[4].contains("mcp-says-hi"), "by its tag: {}", out[4]);
+}
+
+/// `--help` names the folders the settings and the state can be moved to.
+#[test]
+fn help_names_the_folders() {
+    let s = Server::new("help");
+    let out = s.ok(&["--help"]);
+    assert!(out.contains("TSUMUGI_CONFIG_HOME") && out.contains("TSUMUGI_STATE_HOME"), "{out}");
 }

@@ -256,23 +256,20 @@ mod old {
     }
 }
 
-/// Where the state is kept: `TSUMUGI_STATE` when set; else
-/// `%LOCALAPPDATA%\tsumugi\state` on Windows, `~/Library/Application
-/// Support/tsumugi/state` on macOS, `$XDG_STATE_HOME/tsumugi/state` (or
-/// `~/.local/state/tsumugi/state`) elsewhere.
+/// Where the state is kept: `state` in `TSUMUGI_STATE_HOME` when set; else
+/// `TSUMUGI_STATE` (the file, as before v0.87.0); else in tsumugi's state
+/// folder beside every uchmk app's (`%LOCALAPPDATA%\uchmk\tsumugi\state` on
+/// Windows, `ito_common::state_dir`). The first time, the old state is moved
+/// there (`places`).
 pub fn default_path() -> Option<PathBuf> {
-    if let Some(p) = std::env::var_os("TSUMUGI_STATE").filter(|p| !p.is_empty()) {
-        return Some(PathBuf::from(p));
+    crate::places::move_old_once();
+    if let Some(d) = ito_common::env_dir("TSUMUGI_STATE_HOME") {
+        return Some(d.join("state"));
     }
-    let var = |k: &str| std::env::var_os(k).filter(|v| !v.is_empty()).map(PathBuf::from);
-    let dir = if cfg!(windows) {
-        var("LOCALAPPDATA")?
-    } else if cfg!(target_os = "macos") {
-        var("HOME")?.join("Library").join("Application Support")
-    } else {
-        var("XDG_STATE_HOME").or_else(|| var("HOME").map(|h| h.join(".local").join("state")))?
-    };
-    Some(dir.join("tsumugi").join("state"))
+    if let Some(p) = ito_common::env_dir("TSUMUGI_STATE") {
+        return Some(p);
+    }
+    Some(ito_common::state_dir("tsumugi")?.join("state"))
 }
 
 /// The saved state, or nothing when there is none or it cannot be read.

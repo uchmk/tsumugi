@@ -45,7 +45,7 @@ Claude Code's hooks. `tsumugi new [FOLDER] [--tag TAG] [-- claude]` starts one i
 of its own (the server too, if it is not running) and prints its number;
 `tsumugi attach NAME` opens a window on one, named by its number, folder,
 program or tag. On Windows the server runs from a copy of the exe kept in
-`%LOCALAPPDATA%\tsumugi\server\`, so a rebuild or an update can replace
+`%LOCALAPPDATA%\uchmk\tsumugi\server\`, so a rebuild or an update can replace
 `tsumugi.exe` while sessions run. A window that finds a server of another
 version says tsumugi was updated and offers, on Enter, to restart the
 server -- the tabs are written down first -- and brings every one back.
@@ -95,9 +95,11 @@ The server writes the tabs down as they change: each tab's splits, and per
 pane its folder, its shell and the Claude Code conversation running in it.
 After a restart of the machine, the first window starts them all again and
 types `claude --resume <conversation>` where Claude Code ran. The file is
-`%LOCALAPPDATA%\tsumugi\state` on Windows, `~/.local/state/tsumugi/state`
-on Linux, `~/Library/Application Support/tsumugi/state` on macOS
-(`TSUMUGI_STATE` overrides).
+`%LOCALAPPDATA%\uchmk\tsumugi\state` on Windows,
+`~/.local/state/uchmk/tsumugi/state` on Linux and
+`~/Library/Application Support/uchmk/tsumugi/state/state` on macOS
+(`TSUMUGI_STATE_HOME` names another folder; `TSUMUGI_STATE`, the file, is
+still read).
 
 With Settings → General → On start set to Ask, **Welcome back** lists them
 first, each with a box, ticked but those that had finished. **Select all**
@@ -276,7 +278,7 @@ before. On Windows, ConPTY may not pass the request on from a program it
 runs; a pane on a tsumugi server over SSH gets it either way.
 
 **Triggers** (iTerm2's) are regular expressions matched against the output,
-set in `settings.toml` as `[[triggers]]`. `color` and `background`
+set in `config.toml` as `[[triggers]]`. `color` and `background`
 (`#rrggbb`) draw what one matches on screen in them, a row at a time (a match
 is not found across a wrapped line, and the blanks either side of the row
 are left out, so `^` and `$` mean the start and end of the text); later triggers draw over earlier ones,
@@ -534,22 +536,28 @@ Theme, Shell & hooks (the shell, its arguments and variables, Claude Code's
 hooks and the shell integration put in or taken out) and Advanced
 (restarting the server, the graphics backend, scrollback, a log of the
 panes' traffic, exporting and importing the settings). A change there
-rewrites only its own line or table of `settings.toml`, so what you wrote
+rewrites only its own line or table of `config.toml`, so what you wrote
 by hand stays; a field writes on Enter, and Esc leaves it as it was.
 
-`settings.toml` is read from `%APPDATA%\tsumugi\` on Windows,
-`~/Library/Application Support/tsumugi/` on macOS and `~/.config/tsumugi/`
-elsewhere (`TSUMUGI_SETTINGS` names another file). Changes apply within a
+`config.toml` is read from `%APPDATA%\uchmk\tsumugi\` on Windows,
+`~/Library/Application Support/uchmk/tsumugi/` on macOS and
+`~/.config/uchmk/tsumugi/` elsewhere, the folder every uchmk app keeps its
+own in (`TSUMUGI_CONFIG_HOME` names another folder; `TSUMUGI_SETTINGS`, the
+file, is still read). Before v0.87.0 it was `settings.toml` in a `tsumugi`
+folder of its own; the first start moves that, and the state, to the new
+places (the copies of the server in the old `server` folder stay). Changes apply within a
 couple of seconds, without restarting; a mistake shows above the status bar
 with its line, and the last good settings stay in force.
 
-The language, the theme and the clock are not in `settings.toml`: they
+The language, the theme, the clock and the scale of the window are not in `config.toml`: they
 are in the `common.toml` that kura and yagura read too
 (`%APPDATA%\uchmk\`, `~/Library/Application Support/uchmk/`,
 `~/.config/uchmk/`; `UCHMK_CONFIG_DIR` names another folder), so they are
 set once for every uchmk app, and a change there reaches them all within a
-couple of seconds. `auto` follows the OS. tsumugi's own menus are English
-for now. An older `settings.toml` with `theme` or `[clock]` still counts
+couple of seconds. `auto` follows the OS. tsumugi's menus follow the
+language; its settings screen is English for now. The scale (Settings →
+General, or `scale = 1.25` in `common.toml`) enlarges the whole window;
+`Ctrl+=` and `Ctrl+-` stay the panes' font size. An older `config.toml` with `theme` or `[clock]` still counts
 until `common.toml` has its own. What the apps share, and the crates that
 do it, are in ito's [docs/common-spec.md](https://github.com/uchmk/ito/blob/main/docs/common-spec.md).
 
@@ -573,7 +581,7 @@ weekday = true
 ```
 
 ```toml
-# settings.toml
+# config.toml
 # Tag a session by the folder it is in, or anywhere under it.
 [[tags.rule]]
 folder = "~/dev/filer"

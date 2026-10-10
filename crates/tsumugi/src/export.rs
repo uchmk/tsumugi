@@ -10,7 +10,7 @@ const HEAD: &str = "# tsumugi settings export";
 
 /// The files of the settings folder that go in, by their path in it.
 fn files(dir: &Path) -> Vec<String> {
-    let mut out: Vec<String> = ["settings.toml", "profiles.toml", "prompts.toml", "layouts.toml", "theme.toml"].iter().filter(|n| dir.join(n).is_file()).map(|n| n.to_string()).collect();
+    let mut out: Vec<String> = ["config.toml", "profiles.toml", "prompts.toml", "layouts.toml", "theme.toml"].iter().filter(|n| dir.join(n).is_file()).map(|n| n.to_string()).collect();
     if let Ok(entries) = std::fs::read_dir(dir.join("themes")) {
         let mut themes: Vec<String> = entries.flatten().filter_map(|e| e.file_name().to_str().map(str::to_owned)).filter(|n| n.ends_with(".toml")).map(|n| format!("themes/{n}")).collect();
         themes.sort();
@@ -33,7 +33,9 @@ pub fn pack(files: &[(String, String)]) -> String {
 }
 
 /// The files in a text `pack` made. Only names of the settings folder's
-/// own kinds come out: nothing can be written outside it.
+/// own kinds come out: nothing can be written outside it. An export made
+/// before v0.87.0 names the settings `settings.toml`: they come out as
+/// `config.toml`.
 pub fn unpack(text: &str) -> Result<Vec<(String, String)>, String> {
     let mut lines = text.split_inclusive('\n');
     if !lines.next().is_some_and(|l| l.starts_with(HEAD)) {
@@ -46,7 +48,7 @@ pub fn unpack(text: &str) -> Result<Vec<(String, String)>, String> {
             if !allowed(name) {
                 return Err(format!("`{name}` is not a settings file"));
             }
-            out.push((name.to_string(), String::new()));
+            out.push((if name == "settings.toml" { "config.toml" } else { name }.to_string(), String::new()));
         } else if let Some((_, body)) = out.last_mut() {
             body.push_str(l);
         }
@@ -59,7 +61,7 @@ pub fn unpack(text: &str) -> Result<Vec<(String, String)>, String> {
 
 fn allowed(name: &str) -> bool {
     let theme = name.strip_prefix("themes/").is_some_and(|n| n.ends_with(".toml") && !n.contains(['/', '\\']) && !n.starts_with('.'));
-    matches!(name, "settings.toml" | "profiles.toml" | "prompts.toml" | "layouts.toml" | "theme.toml") || theme
+    matches!(name, "config.toml" | "settings.toml" | "profiles.toml" | "prompts.toml" | "layouts.toml" | "theme.toml") || theme
 }
 
 /// Write the export into `to` (a folder): its file's path (a thread's work).
@@ -135,7 +137,7 @@ mod tests {
 
     #[test]
     fn an_export_comes_back_as_it_went() {
-        let files = vec![("settings.toml".to_string(), "theme = \"dark\"\n".to_string()), ("themes/Mine.toml".to_string(), "name = \"Mine\"".to_string())];
+        let files = vec![("config.toml".to_string(), "theme = \"dark\"\n".to_string()), ("themes/Mine.toml".to_string(), "name = \"Mine\"".to_string())];
         let text = pack(&files);
         let back = unpack(&text).unwrap();
         assert_eq!(back[0], files[0]);
@@ -143,6 +145,8 @@ mod tests {
         assert!(unpack("hello").is_err());
         assert!(unpack(&format!("{HEAD} 0\n=== ../evil.toml ===\nx\n")).is_err(), "nothing outside the folder");
         assert!(unpack(&format!("{HEAD} 0\n=== themes/../../x.toml ===\nx\n")).is_err());
+        let old = unpack(&format!("{HEAD} 0.86.0\n=== settings.toml ===\nx = 1\n")).unwrap();
+        assert_eq!(old, vec![("config.toml".to_string(), "x = 1\n".to_string())], "an older export's settings");
     }
 
     #[test]
@@ -157,13 +161,13 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("tsumugi-export-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(dir.join("themes")).unwrap();
-        std::fs::write(dir.join("settings.toml"), "old = 1\n").unwrap();
+        std::fs::write(dir.join("config.toml"), "old = 1\n").unwrap();
         std::fs::write(dir.join("themes/A.toml"), "a = 1\n").unwrap();
         let file = export(&dir, &dir).unwrap();
-        std::fs::write(dir.join("settings.toml"), "newer = 2\n").unwrap();
+        std::fs::write(dir.join("config.toml"), "newer = 2\n").unwrap();
         assert_eq!(import(&dir, &file).unwrap(), 2);
-        assert_eq!(std::fs::read_to_string(dir.join("settings.toml")).unwrap(), "old = 1\n");
-        assert_eq!(std::fs::read_to_string(dir.join("settings.toml.bak")).unwrap(), "newer = 2\n");
+        assert_eq!(std::fs::read_to_string(dir.join("config.toml")).unwrap(), "old = 1\n");
+        assert_eq!(std::fs::read_to_string(dir.join("config.toml.bak")).unwrap(), "newer = 2\n");
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

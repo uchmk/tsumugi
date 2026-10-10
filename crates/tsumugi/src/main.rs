@@ -97,7 +97,7 @@ fn main() -> std::process::ExitCode {
         Some("mcp") => mcp::run(),
         Some("send" | "read" | "split" | "close" | "log" | "wait") => remote(&args[0], &args[1..]),
         Some("help" | "--help" | "-h") => {
-            println!("tsumugi: the window, or one of\n{}\n{}\ntsumugi attach N|NAME\ntsumugi proxy                            (what --host runs on the other machine)\ntsumugi notify [--state S] [--session N] [MESSAGE]\ntsumugi tag [--session N] [--remove] TAG...\ntsumugi shell-hook bash|zsh|pwsh\ntsumugi mcp                              an MCP server on stdin/stdout, for Claude Code (see the README)", cli::NEW_USAGE, cli::REMOTE_USAGE);
+            println!("tsumugi: the window, or one of\n{}\n{}\ntsumugi attach N|NAME\ntsumugi proxy                            (what --host runs on the other machine)\ntsumugi notify [--state S] [--session N] [MESSAGE]\ntsumugi tag [--session N] [--remove] TAG...\ntsumugi shell-hook bash|zsh|pwsh\ntsumugi mcp                              an MCP server on stdin/stdout, for Claude Code (see the README)\n\nTSUMUGI_CONFIG_HOME and TSUMUGI_STATE_HOME name other folders for the settings (config.toml) and the state.", cli::NEW_USAGE, cli::REMOTE_USAGE);
             std::process::ExitCode::SUCCESS
         }
         Some("notify") => notify(&args[1..]),
@@ -559,7 +559,7 @@ fn window() -> std::process::ExitCode {
     let first = tsumugi_mux::settings::default_path().and_then(|p| tsumugi_mux::settings::load(&p).ok()).unwrap_or_default();
     // The design's logo as the window's and the taskbar's icon.
     let icon = egui::IconData { rgba: icon::pixels(256), width: 256, height: 256 };
-    let mut viewport = egui::ViewportBuilder::default().with_title("tsumugi").with_inner_size([960.0, 600.0]).with_min_inner_size([420.0, 260.0]).with_icon(icon);
+    let mut viewport = egui::ViewportBuilder::default().with_title("tsumugi").with_inner_size([1280.0, 800.0]).with_min_inner_size([420.0, 260.0]).with_icon(icon);
     if first.window.own_titlebar() {
         // macOS keeps its traffic lights, over the band; elsewhere the band
         // draws its own buttons (chrome::top_band).
@@ -1132,7 +1132,7 @@ struct App {
     search: Option<palette::View>,
     /// What is being typed into a tab menu's "Add a tag".
     tag_input: String,
-    /// `settings.toml` as read again whenever it changes, and what is wrong
+    /// `config.toml` as read again whenever it changes, and what is wrong
     /// with it.
     settings: std::sync::mpsc::Receiver<Read>,
     /// For a write of the settings to say what it wrote at once.
@@ -1874,6 +1874,7 @@ impl App {
             address: tsumugi_mux::address().0.display().to_string(),
             facts: self.facts.as_ref(),
             language: &self.language,
+            scale: self.common.scale_or_one(),
             choice: (&self.theme_choice.0, &self.theme_choice.1, &self.theme_choice.2),
             clock: &clock,
         };
@@ -4792,7 +4793,7 @@ fn themes_stamp(dir: &std::path::Path) -> Vec<(std::path::PathBuf, Option<std::t
     out
 }
 
-/// Read `settings.toml`, `profiles.toml` and the theme files now and
+/// Read `config.toml`, `profiles.toml` and the theme files now and
 /// whenever they change, on a thread of its own (no disk on the window's
 /// thread).
 fn watch_settings(ctx: egui::Context, tx: std::sync::mpsc::Sender<Read>) {
@@ -4850,7 +4851,7 @@ fn watch_settings(ctx: egui::Context, tx: std::sync::mpsc::Sender<Read>) {
     });
 }
 
-/// Change one key of `settings.toml`, on a thread of its own, and say what
+/// Change one key of `config.toml`, on a thread of its own, and say what
 /// the file now holds at once rather than at the next look.
 fn edit_settings(tx: std::sync::mpsc::Sender<Read>, change: impl FnOnce(&str) -> Result<String, String> + Send + 'static) {
     // One change at a time, each on the file the last one wrote: several in
@@ -5110,7 +5111,7 @@ impl App {
     }
 
     /// The clock's settings: common.toml's, else the older `[clock]` in
-    /// settings.toml.
+    /// config.toml.
     fn clock(&self) -> ito_common::Clock {
         self.common.clock_or(Some(&self.settings_now.clock))
     }
@@ -5266,6 +5267,12 @@ impl App {
                     self.theme_choice = common.theme_choice(Some((&s.theme, &s.dark_theme, &s.light_theme)));
                     self.common = common;
                     self.common_warning = warnings.into_iter().next();
+                    // The whole window's scale, as every uchmk app shares it;
+                    // tsumugi's own Ctrl+= and Ctrl+- stay the font size.
+                    let scale = self.common.scale_or_one();
+                    if (ctx.zoom_factor() - scale).abs() > 1e-3 {
+                        ctx.set_zoom_factor(scale);
+                    }
                 }
                 Read::Common(Err(e)) => self.common_warning = Some(e),
                 Read::Profiles(Err(e)) => self.settings_error = Some(e),

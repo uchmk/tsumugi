@@ -1,6 +1,6 @@
 //! "Start the server at sign-in" (Settings, General): the server is started
 //! by the system when the user signs in, so the sessions of a restore are
-//! there before the window is opened. Not kept in `settings.toml`: the
+//! there before the window is opened. Not kept in `config.toml`: the
 //! system's own list is the truth, and is what the switch reads.
 //!
 //! - Windows: a value under `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`.

@@ -32,8 +32,9 @@
 #   Backup-UserFile / Restore-UserFile  a person's file: copy and hash first, put back and compare
 #   Stop-Mine                           every window and the server this kit started; never the owner's
 #
-# Isolation: auto-wintest.ps1 sets TSUMUGI_ADDRESS, TSUMUGI_STATE,
-# TSUMUGI_SETTINGS, TSUMUGI_PTY_LOG and TSUMUGI_KEYLOG for the whole run, and
+# Isolation: auto-wintest.ps1 sets TSUMUGI_ADDRESS, TSUMUGI_STATE_HOME,
+# TSUMUGI_CONFIG_HOME (and the names before v0.87.0, TSUMUGI_STATE and
+# TSUMUGI_SETTINGS, for an older build), TSUMUGI_PTY_LOG and TSUMUGI_KEYLOG for the whole run, and
 # WINTEST_KIT (the kit's folder) and WINTEST_EXE, so even a bare `tsumugi ls`
 # reaches the run's own server: the owner's server, sessions and settings are
 # never touched. By hand, the kit sets them itself (a folder under TEMP).
@@ -220,8 +221,10 @@ function Use-Isolation {
     New-Item -ItemType Directory -Force -Path $script:KitDir | Out-Null
     if (-not $env:TSUMUGI_ADDRESS -or $env:TSUMUGI_ADDRESS -notlike '*tsumugi-wintest*') {
         $env:TSUMUGI_ADDRESS = '\\.\pipe\tsumugi-wintest-kit'
+        $env:TSUMUGI_STATE_HOME = $script:KitDir
+        $env:TSUMUGI_CONFIG_HOME = $script:KitDir
         $env:TSUMUGI_STATE = Join-Path $script:KitDir 'state'
-        $env:TSUMUGI_SETTINGS = Join-Path $script:KitDir 'settings.toml'
+        $env:TSUMUGI_SETTINGS = Join-Path $script:KitDir 'config.toml'
         $env:TSUMUGI_PTY_LOG = Join-Path $script:KitDir 'pty.log'
     }
     $env:TSUMUGI_KEYLOG = '1'
@@ -597,8 +600,8 @@ function Restore-UserFile([string]$Path) {
 
 # Every window this kit started, and the server it started: the one running
 # from <kit dir>\server\ (the copy a server runs from sits beside its
-# TSUMUGI_STATE), with what that server started. The owner's server runs from
-# %LOCALAPPDATA%\tsumugi\server\ and is never matched.
+# state, in TSUMUGI_STATE_HOME), with what that server started. The owner's
+# server runs from %LOCALAPPDATA%\uchmk\tsumugi\server\ and is never matched.
 function Stop-Mine {
     $list = Join-Path $script:KitDir 'windows.txt'
     $windows = @(if (Test-Path -LiteralPath $list) { Get-Content -LiteralPath $list })
@@ -609,8 +612,8 @@ function Stop-Mine {
         if ($p -and "$($p.StartTime.Ticks)" -eq $ticks) { Stop-Process -Id $id -Force -ErrorAction SilentlyContinue }
     }
     Remove-Item -LiteralPath $list -ErrorAction SilentlyContinue
-    # The server runs from a copy beside TSUMUGI_STATE.
-    $root = (Join-Path (Split-Path -Parent $env:TSUMUGI_STATE) 'server') + [IO.Path]::DirectorySeparatorChar
+    # The server runs from a copy beside the state.
+    $root = (Join-Path $env:TSUMUGI_STATE_HOME 'server') + [IO.Path]::DirectorySeparatorChar
     $servers = @(Get-Process tsumugi* -ErrorAction SilentlyContinue | Where-Object { $_.Path -and $_.Path.StartsWith($root, [StringComparison]::OrdinalIgnoreCase) })
     foreach ($s in $servers) {
         Get-CimInstance Win32_Process -Filter "ParentProcessId = $($s.Id)" | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }

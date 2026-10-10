@@ -153,7 +153,7 @@ fn folder_rules_tag_sessions() {
     let dir = std::env::temp_dir().join(format!("tsumugi-rules-test-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(dir.join("proj")).unwrap();
-    let settings = dir.join("settings.toml");
+    let settings = dir.join("config.toml");
     let rule = |folder: &std::path::Path, tag: &str| format!("[[tags.rule]]\nfolder = '{}'\ntag = '{tag}'\n", folder.display());
     std::fs::write(&settings, rule(&dir, "here")).unwrap();
     let at = address();
@@ -332,7 +332,7 @@ fn the_settings_variables_reach_the_shell() {
     let at = address();
     let dir = std::env::temp_dir().join(format!("tsumugi-env-test-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
-    let path = dir.join("settings.toml");
+    let path = dir.join("config.toml");
     std::fs::write(&path, "[shell.env]\nTSUMUGI_T = \"from-settings\"\n").unwrap();
     let _srv = server::start_with(&at, server::Options { state: None, settings: Some(path) }).expect("the server starts");
     let c = Client::connect(&at, || {}).expect("a client connects");
@@ -357,7 +357,7 @@ fn a_wait_nobody_sees_goes_to_the_webhook_once() {
     let at = address();
     let dir = std::env::temp_dir().join(format!("tsumugi-webhook-test-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
-    let path = dir.join("settings.toml");
+    let path = dir.join("config.toml");
     std::fs::write(&path, format!("[notify]\nwebhook = \"http://127.0.0.1:{port}/topic\"\nwebhook_after = 0\n")).unwrap();
     let _srv = server::start_with(&at, server::Options { state: None, settings: Some(path) }).expect("the server starts");
     let c = Client::connect(&at, || {}).expect("a client connects");
@@ -732,7 +732,7 @@ fn a_program_redrawing_the_same_screen_is_quiet() {
     let at = address();
     let dir = std::env::temp_dir().join(format!("tsumugi-redraw-test-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
-    let path = dir.join("settings.toml");
+    let path = dir.join("config.toml");
     std::fs::write(&path, "[sessions]\nquiet = 2\n").unwrap();
     let _srv = server::start_with(&at, server::Options { state: None, settings: Some(path) }).expect("the server starts");
     let c = Client::connect(&at, || {}).expect("a client connects");

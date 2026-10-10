@@ -49,7 +49,7 @@ impl Backdrop {
     }
 }
 
-/// `~/` is the home folder; a relative path is beside settings.toml.
+/// `~/` is the home folder; a relative path is beside config.toml.
 fn resolve(path: &str) -> PathBuf {
     let path = path.trim();
     if let (Some(rest), Some(home)) = (path.strip_prefix("~/").or_else(|| path.strip_prefix("~\\")), tsumugi_mux::settings::home()) {

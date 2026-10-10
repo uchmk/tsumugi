@@ -35,6 +35,12 @@ tsumugi のやること。`【人】` は持ち主の作業、`【金】` は 20
       タブ・タグ・マシンの右クリックのメニュー、文字コードのメニュー、入力欄の `+ Sessions` と `Prompts…` を `src/lang/` の表にした。
 - [ ] 残りの画面の文字も表に載せる: 設定の画面の tsumugi のページ（`prefs.rs` の行と見出し）、パレット、ヘルプ（keys.rs の説明は `[keydesc]`）、
       サイドバー、ステータスバー、トースト。
+- [x] （v0.87.0）common.toml の `scale` で窓全体の倍率を当てる（設定の画面の General → Scale も書く）。Ctrl+= / Ctrl+- はペインの字の大きさのまま。
+      設定を `<config>/uchmk/tsumugi/config.toml`、状態を `ito_common::state_dir` に移し（古い場所から自動で移す）、
+      環境変数を `TSUMUGI_CONFIG_HOME`・`TSUMUGI_STATE_HOME` にした。字体のフォールバックは `ito_common::fonts`。窓の既定は 1280×800。
+- [ ] 標準の CLI の `--keys`（キーの表を文字で出す）を、kura・yagura と揃えて足す。出し方（keys.rs の表をそのまま・`<C-…>` の書き方）を
+      ito の common-spec に先に決める。`mcp` と `shell-hook` は tsumugi だけのものとして残す。
+- [ ] 古い `TSUMUGI_SETTINGS`（ファイル）と `TSUMUGI_STATE` を読むのをやめる時期を決める（v0.87.0 からは新しい名前が正）。
 
 ## 実機のレーンから
 

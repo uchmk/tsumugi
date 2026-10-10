@@ -19,8 +19,9 @@
 #   4. The desktop. filer's lane drives the same screen; both take
 #      Local\wintest-desktop for the time they drive it, and wait up to
 #      -DesktopWaitMin minutes for the other.
-#   5. The isolation: TSUMUGI_ADDRESS (a pipe of the run's own), TSUMUGI_STATE,
-#      TSUMUGI_SETTINGS, TSUMUGI_PTY_LOG and TSUMUGI_KEYLOG are set for the
+#   5. The isolation: TSUMUGI_ADDRESS (a pipe of the run's own),
+#      TSUMUGI_STATE_HOME and TSUMUGI_CONFIG_HOME (with TSUMUGI_STATE and
+#      TSUMUGI_SETTINGS for an older build), TSUMUGI_PTY_LOG and TSUMUGI_KEYLOG are set for the
 #      whole run, so even a bare `tsumugi ls` reaches the run's server, never
 #      the owner's; scripts/wintest-kit.ps1 has the tools the run uses.
 #   6. The older build: for a chunk with a row that names WINTEST_OLD_EXE,
@@ -321,7 +322,7 @@ function Get-OldBuild([string]$Arch) {
 # Every tsumugi this run started: the window from the worktree's build (by
 # its path through the junction and the path it points at), and
 # the server, which runs from a copy under the run's kit folder. The owner's
-# runs from %LOCALAPPDATA%\tsumugi\server\ and matches neither.
+# runs from %LOCALAPPDATA%\uchmk\tsumugi\server\ and matches neither.
 function Stop-RunTsumugi([string[]]$Exe, [string]$Under) {
     $mine = @(Get-Process tsumugi* -ErrorAction SilentlyContinue | Where-Object {
             $_.Path -and ($_.Path -in $Exe -or $_.Path.StartsWith($Under, [StringComparison]::OrdinalIgnoreCase)) })
@@ -562,7 +563,7 @@ $chunkText
 - チェックアウトは $Work です（役割定義の C:\dev\tsumugi は、すべてここに読み替えてください）。
 - ビルド（--release）、``cargo test``、ConPTY の取得は、このスクリプトが済ませました。exe は $exe で、テストは緑です。cargo build / cargo test はしないでください。表の確かめは ``cargo run --release -q -p tsumugi --example make-testcheck -- --check``（make-keycheck も同じ）で、ビルド済みのものを使います。
 - 道具は scripts\wintest-kit.ps1 にあります。PowerShell を呼ぶたびに、先頭で ``. .\scripts\wintest-kit.ps1`` を読み込んでください（関数の一覧はファイルの先頭）。SendInput・PrintWindow・バックアップを自分で書き直さないでください。
-- 環境変数は分離済みです（TSUMUGI_ADDRESS・TSUMUGI_STATE・TSUMUGI_SETTINGS・TSUMUGI_PTY_LOG・TSUMUGI_KEYLOG・WINTEST_KIT=$kit）。素の ``tsumugi ls`` もこの実行のサーバに届き、持ち主のサーバには届きません。終わる前に ``Stop-Mine`` を呼びます。
+- 環境変数は分離済みです（TSUMUGI_ADDRESS・TSUMUGI_STATE_HOME・TSUMUGI_CONFIG_HOME・TSUMUGI_PTY_LOG・TSUMUGI_KEYLOG・WINTEST_KIT=$kit）。素の ``tsumugi ls`` もこの実行のサーバに届き、持ち主のサーバには届きません。終わる前に ``Stop-Mine`` を呼びます。
 - 作業用の一時ディレクトリは $Scratch で、TEMP / TMP も既にそこを指しています（役割定義に出てくる R:\Temp は、すべてここに読み替えてください）。
 "@
 
@@ -610,8 +611,11 @@ $chunkText
     $env:TSUMUGI_ADDRESS = "\\.\pipe\tsumugi-wintest$suffix-$stamp"
     $env:WINTEST_KIT = $kit
     $env:WINTEST_EXE = $exe
+    $env:TSUMUGI_STATE_HOME = $kit
+    $env:TSUMUGI_CONFIG_HOME = $kit
+    # The names before v0.87.0, for an older build (WINTEST_OLD_EXE): the same files.
     $env:TSUMUGI_STATE = Join-Path $kit 'state'
-    $env:TSUMUGI_SETTINGS = Join-Path $kit 'settings.toml'
+    $env:TSUMUGI_SETTINGS = Join-Path $kit 'config.toml'
     $env:TSUMUGI_PTY_LOG = Join-Path $kit 'pty.log'
     $env:TSUMUGI_KEYLOG = '1'
     Remove-Item Env:TSUMUGI_SESSION -ErrorAction SilentlyContinue

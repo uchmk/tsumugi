@@ -116,7 +116,7 @@ Windows and Linux keys first; the macOS key is after `·`.
 - [ ] `Ctrl+Tab / Ctrl+PageDown` · `Ctrl+Tab / Cmd+PageDown` — The next page
 - [ ] `Ctrl+Shift+Tab / Ctrl+PageUp` · `Ctrl+Shift+Tab / Cmd+PageUp` — The page before
 - [ ] `Ctrl+F` · `Cmd+F` — To the search
-- [ ] `Tab / Shift+Tab` · `Tab / Shift+Tab` — The search, the page's controls one by one, then Open settings.toml
+- [ ] `Tab / Shift+Tab` · `Tab / Shift+Tab` — The search, the page's controls one by one, then Open config.toml
 - [ ] `Space / Enter` · `Space / Enter` — Flip the switch or press the button that has the keys
 - [ ] `Ctrl+,` · `Cmd+,` — Open it (the changeable key above, while not moved)
 

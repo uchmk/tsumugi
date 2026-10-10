@@ -1,6 +1,6 @@
 //! The settings screen (the design's 1m and "Settings: every page",
 //! `Ctrl+,`): nine pages down the left under a search field, each a few
-//! cards of rows. It shows what `settings.toml` says and hands back what to
+//! cards of rows. It shows what `config.toml` says and hands back what to
 //! change; the window writes it (one line or one table of the file at a
 //! time, so the rest stays as written) and reads it again. What the machine
 //! says rather than the file (the shells installed, the hooks, starting at
@@ -68,6 +68,7 @@ impl Page {
 /// drawn on its page.
 pub const INDEX: &[(Page, &str)] = &[
     (Page::General, "Language"),
+    (Page::General, "Scale"),
     (Page::General, "On start"),
     (Page::General, "Default folder"),
     (Page::General, "Start the server at sign-in"),
@@ -239,7 +240,7 @@ impl ProfileDraft {
 /// What the screen was asked to change.
 #[derive(Debug, PartialEq)]
 pub enum Change {
-    /// One key of `settings.toml`: its table (`None` at the top), its name
+    /// One key of `config.toml`: its table (`None` at the top), its name
     /// and its value as TOML.
     Set(Option<&'static str>, &'static str, String),
     /// One key of a table named at run time (`[tags.colors]`, `[shell.env]`),
@@ -306,6 +307,8 @@ pub struct Seen<'a> {
     pub facts: Option<&'a Facts>,
     /// `language` in the common.toml uchmk's apps share (`auto` when unset).
     pub language: &'a str,
+    /// `scale` in common.toml: the whole window's size (1.0 when unset).
+    pub scale: f32,
     /// The theme as common.toml picks it (`theme`, `dark_theme`,
     /// `light_theme`), and its clock.
     pub choice: (&'a str, &'a str, &'a str),
@@ -322,7 +325,7 @@ pub fn show(ui: &mut egui::Ui, pal: &Palette, screen: &mut Screen, seen: &Seen) 
     let mut out = Vec::new();
     let pages: Vec<(&str, &str)> = Page::ALL.iter().map(|p| (p.title(), p.lead())).collect();
     let index: Vec<(usize, &str)> = INDEX.iter().map(|(p, words)| (Page::ALL.iter().position(|q| q == p).unwrap_or(0), *words)).collect();
-    let nav = ito_prefs::Nav { pages: &pages, index: &index, words: words(), file: "settings.toml" };
+    let nav = ito_prefs::Nav { pages: &pages, index: &index, words: words(), file: "config.toml" };
     let page = Page::ALL.iter().position(|p| *p == screen.page).unwrap_or(0);
     let mut state = ito_prefs::State { page, query: std::mem::take(&mut screen.query), held: screen.held };
     // Esc leaves the screen, unless a control or a key being changed has it.
@@ -372,6 +375,9 @@ fn general(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut V
     section(ui, l, "STARTUP", |ui| {
         let note = "Shared with kura and yagura (common.toml); tsumugi's own menus are English for now";
         out.extend(ito_prefs::language_row(ui, l, words(), seen.language, note).map(Change::Common));
+        sep(ui, l);
+        let note = "The whole window, in every uchmk app (common.toml); Ctrl+= and Ctrl+- here change the panes' font size instead";
+        out.extend(ito_prefs::scale_row(ui, l, words(), seen.scale, note).map(Change::Common));
         sep(ui, l);
         let starts = [(true, "Restore the last sessions"), (false, "Ask (Welcome back)")];
         if let Some(on) = row(ui, l, "On start", "What the window shows first after a restart", |ui| select(ui, "on-start", seen.always_restore, &starts)) {
@@ -500,7 +506,7 @@ fn appearance(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mu
             }
         }
         sep(ui, l);
-        let note = "A png or jpeg behind the panes; ~/ is the home folder, a relative path is beside settings.toml. Empty for none";
+        let note = "A png or jpeg behind the panes; ~/ is the home folder, a relative path is beside config.toml. Empty for none";
         if let Some(t) = row(ui, l, "Background image", note, |ui| field(ui, &mut edit.drafts, "image", &w.image, "~/Pictures/bg.png", 220.0)) {
             out.push(Change::Set(Some("window"), "image", cfg::quote(t.trim())));
         }
@@ -672,7 +678,7 @@ fn keys(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut Vec<
             changeable(ui, a);
         }
     });
-    ui.label(RichText::new("A key is written to [keys] in settings.toml; \"none\" there gives it back to the shell.").size(12.0).color(c.dim));
+    ui.label(RichText::new("A key is written to [keys] in config.toml; \"none\" there gives it back to the shell.").size(12.0).color(c.dim));
 }
 
 /// The sounds by what the list says.
@@ -1584,6 +1590,7 @@ mod tests {
                 state_path: "/home/u/.local/state/tsumugi/state.toml".into(),
                 facts: Some(&self.facts),
                 language: "auto",
+                scale: 1.0,
                 choice: ("dark", "tsumugi Dark", "tsumugi Light"),
                 clock: &self.clock,
             };

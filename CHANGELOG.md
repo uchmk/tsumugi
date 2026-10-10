@@ -5,6 +5,29 @@
 
 ## [未リリース]
 
+## [0.87.0] - 2026-10-11
+
+### 追加
+
+- common.toml の `scale`（ito 0.6.0、uchmk のアプリ共通の倍率）で窓全体を拡大・縮小する。設定の画面の General → Scale でも選べ、
+  書く先は common.toml なので kura と yagura も同じ倍率になる。手で書き換えても数秒で当て直す。
+  `Ctrl+=` / `Ctrl+-` / `Ctrl+0` はこれまでどおりペインの字の大きさ（TESTING.md 9.10・9.11）。
+- `tsumugi --help` が `TSUMUGI_CONFIG_HOME` と `TSUMUGI_STATE_HOME` を説明する（テスト `help_names_the_folders`）。
+
+### 変更
+
+- 設定と状態の置き場所を uchmk のアプリ共通の形にした（ito の common-spec）。初めての起動で古い場所から自動で移す（TESTING.md 1.14）。
+  - 設定: `%APPDATA%\tsumugi\settings.toml` → `%APPDATA%\uchmk\tsumugi\config.toml`（macOS は `~/Library/Application Support/uchmk/tsumugi/`、
+    ほかは `~/.config/uchmk/tsumugi/`）。プロファイル・プロンプト・レイアウト・テーマのファイルも一緒に移る。
+  - 状態: `%LOCALAPPDATA%\tsumugi\` → `%LOCALAPPDATA%\uchmk\tsumugi\`（macOS は `…/uchmk/tsumugi/state/`、ほかは `~/.local/state/uchmk/tsumugi/`）。
+    サーバーの写しも新しい場所の `server\` から動く。古い `server\` フォルダは、古いサーバーがそこから動いているかもしれないので残す。
+  - 環境変数は `TSUMUGI_CONFIG_HOME` と `TSUMUGI_STATE_HOME`（どちらもフォルダ）。古い `TSUMUGI_SETTINGS`（ファイル）と `TSUMUGI_STATE` も当面は読む。
+    名前で指したフォルダは移さない。
+  - 設定の書き出し（Export）は `config.toml` の名前で書く。前の版の書き出しの `settings.toml` は読み込むときに `config.toml` にする。
+- 字体のフォールバックの並びを `ito_common::fonts` にし、kura と同じ字体を選ぶ（TESTING.md 11.7）。
+- 窓の既定の大きさを 1280×800 にした（uchmk のアプリ共通、TESTING.md 1.13）。
+- 実機の道具（`wintest-kit.ps1`・`auto-wintest.ps1`）が新しい環境変数で隔離する。前の版の exe（`WINTEST_OLD_EXE`）のために古い名前も同じファイルに向ける。
+
 ## [0.86.0] - 2026-10-11
 
 ### 追加

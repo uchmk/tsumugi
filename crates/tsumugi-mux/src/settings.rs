@@ -1,4 +1,4 @@
-//! The settings file, `settings.toml`: what a person writes to change how
+//! The settings file, `config.toml`: what a person writes to change how
 //! tsumugi behaves (QUESTIONS.md Q6). The server reads the tag rules from it,
 //! the window the ways to tell; both read it again when it changes.
 //!
@@ -438,7 +438,7 @@ impl Remote {
 }
 
 // The status bar's clock (the design's 1n) is common.toml's now, shared by
-// every uchmk app; settings.toml's `[clock]` is still read for a person who
+// every uchmk app; config.toml's `[clock]` is still read for a person who
 // has not moved it.
 pub use ito_common::{Clock, DATE_FORMATS};
 
@@ -790,23 +790,20 @@ impl Default for Notify {
     }
 }
 
-/// Where the file is: `TSUMUGI_SETTINGS` when set; else
-/// `%APPDATA%\tsumugi\settings.toml` on Windows, `~/Library/Application
-/// Support/tsumugi/settings.toml` on macOS, `$XDG_CONFIG_HOME/tsumugi/
-/// settings.toml` (or `~/.config/tsumugi/settings.toml`) elsewhere.
+/// Where the file is: `config.toml` in `TSUMUGI_CONFIG_HOME` when set; else
+/// `TSUMUGI_SETTINGS` (the file, as before v0.87.0); else in tsumugi's folder
+/// beside every uchmk app's (`%APPDATA%\uchmk\tsumugi\config.toml` on
+/// Windows, `ito_common::app_dir`). The first time, the old settings are
+/// moved there (`places`).
 pub fn default_path() -> Option<PathBuf> {
-    if let Some(p) = std::env::var_os("TSUMUGI_SETTINGS").filter(|p| !p.is_empty()) {
-        return Some(PathBuf::from(p));
+    crate::places::move_old_once();
+    if let Some(d) = ito_common::env_dir("TSUMUGI_CONFIG_HOME") {
+        return Some(d.join("config.toml"));
     }
-    let var = |k: &str| std::env::var_os(k).filter(|v| !v.is_empty()).map(PathBuf::from);
-    let dir = if cfg!(windows) {
-        var("APPDATA")?
-    } else if cfg!(target_os = "macos") {
-        var("HOME")?.join("Library").join("Application Support")
-    } else {
-        var("XDG_CONFIG_HOME").or_else(|| var("HOME").map(|h| h.join(".config")))?
-    };
-    Some(dir.join("tsumugi").join("settings.toml"))
+    if let Some(p) = ito_common::env_dir("TSUMUGI_SETTINGS") {
+        return Some(p);
+    }
+    Some(ito_common::app_dir("tsumugi")?.join("config.toml"))
 }
 
 /// The settings in `path`: the defaults when there is no file, and what is
