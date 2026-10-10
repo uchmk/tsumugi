@@ -1,6 +1,7 @@
 # The PowerShell scripts, checked from any machine (CI runs it on Linux):
-# every scripts/*.ps1 parses, and wintest-queue.ps1 picks the chunks it
-# should from a small sample. The scripts themselves run only on Windows, so
+# every scripts/*.ps1 parses, wintest-queue.ps1 picks the chunks it should
+# from a small sample, and lane-status.ps1 writes the lane's status issue as
+# it should. The scripts themselves run only on Windows, so
 # this is all a cloud session can learn about them before a push.
 #
 #   pwsh -NoProfile -File scripts/check-ps1.ps1
@@ -95,6 +96,28 @@ Expect 'the marks dropped' ($r.Dropped -join ',') '2.2'
 $r = Set-LaneMarks -Main "- [ ] ``F3`` other`n" -Marks @(Get-LaneMarks -Base '- [ ] `F2` rename' -Branch '- [x] `F2` rename')
 Expect 'a key dropped' "$($r.Dropped)|$($r.Text)" "``F2`` rename|- [ ] ``F3`` other`n"
 Expect 'no marks' (Set-LaneMarks -Main "a`nb" -Marks @()).Text "a`nb"
+
+# The lane's status issue (lane-status.ps1, the same file as kura's): the
+# user's folder written as ~, no @ that mentions anyone, the log and the dirty
+# paths folded away, and the history kept to its length.
+. (Join-Path $PSScriptRoot 'lane-status.ps1')
+$when = [datetimeoffset]::Parse('2026-10-10T21:50:00+09:00').LocalDateTime
+$b = Format-LaneStatus -Lane win -When $when -Script 'v1.2.3 (abc1234)' -Outcome 'Done: WINTEST_DONE @claude' -Task t `
+    -Said @('[x] Script: C:\Users\me\dev\a.ps1') -Dirty @(' M TESTING-CHECKS.md') -Failures 2 -UserDir 'C:\Users\me'
+Expect 'the user folder' ($b -match [regex]::Escape('C:\Users\me')) $false
+Expect 'the folder as ~' ($b -match [regex]::Escape('[x] Script: ~\dev\a.ps1')) $true
+Expect 'a mention' ($b -match '@claude') $false
+Expect 'the dirty worktree' ($b -match '\*\*Worktree:\*\* \*\*dirty\*\* \(1 changed') $true
+Expect 'the failures' ($b -match 'Failed runs in a row:\*\* 2') $true
+Expect 'the dirty paths' ($b -match '(?s)git status --porcelain</summary>.* M TESTING-CHECKS\.md') $true
+$b = Format-LaneStatus -Lane arm -When $when -Script 'v1' -Outcome 'Nothing new.' -Task t
+Expect 'a clean worktree' ($b -match '\*\*Worktree:\*\* clean') $true
+Expect 'no log' ($b -match '<details>') $false
+$h = Join-Path ([IO.Path]::GetTempPath()) "lane-history-$PID.txt"
+Remove-Item -LiteralPath $h -ErrorAction SilentlyContinue
+foreach ($i in 1..5) { $kept = Add-LaneHistory $h "firing $i" 3 }
+Remove-Item -LiteralPath $h -ErrorAction SilentlyContinue
+Expect 'the history' ($kept -join ',') 'firing 5,firing 4,firing 3'
 
 if ($failed) { "check-ps1: $failed problem(s)"; exit 1 }
 'check-ps1: OK'

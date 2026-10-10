@@ -67,6 +67,13 @@ kura と同じ。`Cargo.toml` の `version` が正、版の繰り上げと CHANG
   塊が無い・自分の PR が開いている・ビルドが落ちたときは Claude を起動しない。道具は `scripts/wintest-kit.ps1`、塊の選び方は `scripts/wintest-queue.ps1`
   （`scripts/check-ps1.ps1` が CI で確かめる）。報告は `qa-reports/<日付>-<ブランチ>-<時刻>.md`（名前はプロンプトが渡す）。
   実行の後、main とチェック表だけがぶつかるならスクリプトが main を取り込み、印を入れ直して push する（v0.84.1 から）。
+- **レーンの様子は GitHub の issue で見える（v0.87.1 から、kura と同じ `scripts/lane-status.ps1`）。**`auto-wintest.ps1` は起動のたびと実行の始めに、
+  レーンごとの issue「Lane status: win」「Lane status: arm」（ラベル `lane-status`、最初の起動で作る）の本文を書き直す（通知は出ない）。
+  最後の起動の時刻・スクリプトの版・その起動の結末・作業フォルダの汚れ・続けて失敗した回数・その起動のログ・それまでの 24 回の結末が載る。
+  クラウドからは `gh api 'repos/uchmk/tsumugi/issues?labels=lane-status&state=all' --jq '.[]|{number,title,updated_at,body}'` で読む。
+  **最後の起動が 2 時間より前で、その前の起動が実行を始めていないなら、タスクがスクリプトを起動していない**
+  （機械が止まっている・眠っている、またはスクリプトの前でタスクが落ちている。機械で `Get-ScheduledTaskInfo tsumugi-auto-wintest` の `LastTaskResult`）。
+  リポジトリは公開なので、本文ではユーザーのフォルダを `~` に変え、`@` はメンションにせず、実行の出力は最後の 1 行だけを載せる。
 - 同じ机で kura のレーンとキーがぶつからないよう、両方のスクリプトが `Local\wintest-desktop` のロックを取る（最大 20 分待って次回へ）。
 - 実機の PR（`test/win-*`・`test/arm-*`）は、ワークフロー `Merge lanes`（`.github/workflows/merge-lanes.yml`、中身は kura と同じ `scripts/merge-lanes.py`）が
   規則（触ってよいファイル・印の変わり方・印ごとの証拠の行）と `check` の緑を確かめて、head を固定した merge コミットでマージする（v0.76.4 から）。
