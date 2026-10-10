@@ -55,7 +55,9 @@ a look, and gets `[~]` with the screenshot, never `[x]`.
 - A git repository with a pull request open on its branch, and one with
   changes not committed.
 - `TSUMUGI_KEYLOG=1` prints every key the window gets, for a key that does
-  nothing.
+  nothing (`key …`; Ctrl+X/C/V, with Shift too, come as `event Cut`/`Copy`/
+  `Paste`), and `divider x,y wxh` (`divider none`) as the pointer goes onto a
+  divider and off it.
 
 ## How to report
 
@@ -75,6 +77,8 @@ they are not ticked by hand any more. A change that breaks one turns CI red.
 | 1.2 | `tsumugi ls`: one line per session, its seven columns | `new_starts_a_server_and_ls_lists_the_session` |
 | 1.4 (half) | `tsumugi new . -- echo hi` with no server: starts one, prints a number, `hi` runs | `new_starts_a_server_and_ls_lists_the_session` |
 | 1.10 | `tsumugi new . --tag a --tag b --tag c`: all three tags | `new_starts_a_server_and_ls_lists_the_session` |
+| 1.4 (words) | `tsumugi new . -- "<a folder with a space>\run.cmd" "a  b" "it's"` in pwsh (sh elsewhere): the program runs and gets each word as it was | `new_gives_the_words_to_the_program_as_they_are` |
+| 2.70 (`-2`) | `tsumugi log N logs/work.txt`, `--stop`, the same again: the second file is `work-2.txt`, the first is whole; a second log while one runs and `--stop` with none are refused | `log_starts_and_finishes_a_work_log_and_never_writes_over_one` |
 | 18.1 | `tsumugi ls --json`: one array, every key | `ls_json_is_one_array_of_sessions` |
 | 18.2 | `tsumugi send N "…"`: typed and run | `send_runs_a_line_and_read_gives_it_back` |
 | 18.3 | `tsumugi read N --lines 5` and `--all`, Japanese whole | `send_runs_a_line_and_read_gives_it_back` |
@@ -140,7 +144,7 @@ to `cli.rs` and a line to this table instead of a row.
 | 2.34 | Paste 10 KB of text into Claude Code; turn off both switches in Settings → General → Copy and paste and paste again; typing into all panes, paste three lines into `cat` panes | **Paste 10 KB?** even there; with the switches off, no dialog; with all panes, the dialog says it goes to all of them and **Paste** sends it to each |
 | 2.35 | `printf '\e]8;;https://example.com\e\\a link\e]8;;\e\\ and text\n'`; hold `Ctrl` over **a link**, click | A dotted line under **a link** only; with Ctrl, a solid line and a hand; the click opens example.com in the browser |
 | 2.36 | Linux/macOS: `ls --hyperlink=auto` in a folder with `a b.txt`; Ctrl+click it. Then scroll the output back a few lines and Ctrl+click it again | Dotted lines under the names; the file opens (the space read right); after scrolling, the line still sits under the name and the click opens the same file |
-| 2.37 | Split a tab into three: right, then right again from the new pane, then down; `Ctrl+Shift+X` twice | The pane with the keys trades places with the next one each press and keeps the keys (its ring moves with it); the shape stays |
+| 2.37 | Split a tab into three: right, then right again from the new pane, then down; `Ctrl+Shift+X` twice | The pane with the keys trades places with the next one each press and keeps the keys (its ring moves with it); the shape stays; `TSUMUGI_KEYLOG=1` logs each press as `event Cut … -> Some(SwapPane)` (egui gives Ctrl+Shift+X as Cut, not as a key) |
 | 2.38 | In the same tab, `Ctrl+Shift+E` | The three columns get a third of the width each; the two stacked panes half the height each |
 | 2.39 | `Ctrl+Shift+J` on one of the panes; then on a tab with a single pane | The pane leaves the split for a new tab just after this one, which is shown with the keys in it; the old tab keeps the others. With one pane, nothing happens |
 | 2.40 | `Ctrl+Shift+R` in a pane; run `dir` / `ls`, type some Japanese (`echo あいう`), resize the window; `Ctrl+Shift+R` again | A toast says where it records and the pane's heading says ● REC; the second press toasts "Saved …" and the mark goes. The file in `Videos\tsumugi` (Movies on macOS) holds the Japanese whole and, for the resize, an `"r"` event with the new size (`Select-String '"r"'` on it); a person can also play it with `asciinema play` |
@@ -148,7 +152,7 @@ to `cli.rs` and a line to this table instead of a row.
 | 2.42 | Windows, PowerShell 7 started by tsumugi: `dir`, then `dir nothing-here`, then `cmd /c exit 3` | A green bar in the left margin beside `dir` and its output; red bars beside the other two; none beside the prompt still waiting |
 | 2.43 | Linux/macOS: `tsumugi shell-hook bash >> ~/.bashrc` (zsh: `~/.zshrc`), open a new pane, `ls`, `false`, `ls /nope` | Green bar for `ls`, red for the other two; scrolling moves the bars with the lines; `vim` or `less` (the alternate screen) shows no bars |
 | 2.44 | After 2.42 or 2.43: `echo one; echo two`, then `Ctrl+Shift+L`, paste somewhere | The paste is `one` and `two` on two lines, without the command line or the prompt |
-| 2.45 | Through the mux: close the window after 2.42 (Windows) or 2.43 and open it again | The bars come back on the same lines; `Ctrl+Shift+L` still copies the last output |
+| 2.45 | Through the mux: close the window after 2.42 or 2.43 (either: on Windows a Git Bash pane with `tsumugi shell-hook bash` in its rc does as well) and open it again | The bars come back on the same lines; `Ctrl+Shift+L` still copies the last output |
 | 2.46 | Linux/macOS (WSL on Windows): `img2sixel some.png` (or `chafa -f sixel some.png`) | The picture shows below the command, at its own size (cut to the pane's width), and the prompt comes under it |
 | 2.47 | `kitten icat some.png` (kitty installed), then `kitten icat --place 20x10@5x2 some.png` | The first under the command, fitted to the pane; the second at column 5, row 2 in a 20 x 10 cell box; `kitten icat --clear` takes them away |
 | 2.48 | `imgcat some.jpg` (iTerm2's script) or `wezterm imgcat some.jpg` | The picture under the command, its shape kept |
@@ -173,7 +177,7 @@ to `cli.rs` and a line to this table instead of a row.
 | 2.67 | `kitten show-key -m kitty` (kitty installed) in one pane of a split; hold `a`, and while holding it `Ctrl+Tab` (or click) to the other pane, let go of `a`, then come back. Again, holding `a` and switching to another app | `show-key` shows `a` released when the keys left it (no `a` held for ever, no repeat) in both cases |
 | 2.68 | Quick select with more than 26 addresses on the screen (`for i in $(seq 30); do echo https://example.com/$i; done`): type `Shift`+the first letter of a two-letter label, `Backspace`, then the label without `Shift` | The address is copied (the clipboard), no browser opens |
 | 2.69 | Settings → General → Copy and paste: **Copy a selection when the mouse lets go** off. `seq 200`, drag over `1` to `3` near the top of the scrollback, wheel down to the bottom so none of it shows, `Ctrl+Shift+C` (`Cmd+C`); paste in Notepad. Then click to clear it, `sleep 30`, `Ctrl+Shift+C` | `1` to `3` on the clipboard and the shell gets no `^C`; with nothing selected `Ctrl+Shift+C` stops `sleep` |
-| 2.70 | `Ctrl+Shift+S` in a shell pane; `seq 200`, `echo あいう`, a line longer than the pane; wait a second; `Ctrl+Shift+S` again. Then right-click the card → **Write a work log**, and again | A toast names `Downloads\tsumugi-<name>-<date>-<time>.txt` and the heading says LOG; while it runs, opening the file shows everything up to now, the screen included (open it again after typing: it has the new lines); `ls -l` twice, then make the window narrower and taller: nothing of the first listing is missing and nothing comes twice; the second press toasts "Saved …", LOG goes, and the file has every line once, in order, the long line whole, Japanese whole, ending with the screen; the menu does the same, a second file `-2` when the time is the same |
+| 2.70 | `Ctrl+Shift+S` in a shell pane; `seq 200`, `echo あいう`, a line longer than the pane; wait a second; `Ctrl+Shift+S` again. Then right-click the card → **Write a work log**, and again | A toast names `Downloads\tsumugi-<name>-<date>-<time>.txt` and the heading says LOG; while it runs, opening the file shows everything up to now, the screen included (open it again after typing: it has the new lines); `ls -l` twice, then make the window narrower and taller: nothing of the first listing is missing and nothing comes twice; the second press toasts "Saved …", LOG goes, and the file has every line once, in order, the long line whole, Japanese whole, ending with the screen; the menu does the same |
 | 2.71 | Start a work log, close the window (the server keeps running), `seq 300` in that pane, open it again, `vim` something and quit it, finish the log; then close the session while another log runs | The heading still says LOG after reopening; the file has the lines printed while the window was closed, none of vim's screen; closing the session with a log running leaves a whole file with its last screen |
 | 2.72 | `seq 300`, then drag from a line in the middle of the pane up past the pane's top edge and hold the button there; then drag down past the bottom edge; let go and paste in Notepad | While the pointer is above the pane the view scrolls back through older output and the selection grows with it; the farther from the edge the faster; below the pane it scrolls toward the newest; held still inside the pane nothing scrolls; the pasted text is every line from the start to where it ended |
 

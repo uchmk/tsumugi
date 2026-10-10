@@ -20,10 +20,11 @@ $WintestOrder = @{
 }
 
 # Rows a lane never takes: the tools they need are not on that machine
-# (2.46-2.49 on the ARM64 one: img2sixel, chafa, kitten, imgcat, WSL).
+# (2.46-2.49 on the ARM64 one: img2sixel, chafa, kitten, imgcat, WSL), and
+# 1.7, 1.11 and 1.12 on both until a run can fetch an older server build.
 $WintestSkip = @{
-    win = @()
-    arm = @('2.46', '2.47', '2.48', '2.49')
+    win = @('1.7', '1.11', '1.12')
+    arm = @('1.7', '1.11', '1.12', '2.46', '2.47', '2.48', '2.49')
 }
 
 # A row an unattended Windows run can do: not one for Linux or macOS only

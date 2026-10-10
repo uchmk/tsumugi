@@ -24,7 +24,8 @@ row a look, find something that can be **read**:
 | what a pane shows | `tsumugi read N --lines 40`, `--all` for the scrollback |
 | a session waits / finishes / fails | `tsumugi notify --state waiting --session N "…"` to make it so, `tsumugi wait N --state done --timeout 30` to wait for it |
 | keys reached the shell, not the window | `TSUMUGI_PTY_LOG=<file>`: the bytes sent to each pane; or a command that **creates a file** |
-| the window got a key | `TSUMUGI_KEYLOG=1`, which prints each key press as the window sees it |
+| the window got a key | `TSUMUGI_KEYLOG=1`, which prints each key press as the window sees it (`Get-KeyLog`); egui turns Ctrl+X, C and V (Shift held or not) into an `event Cut` / `Copy` / `Paste` line instead, with the action it does |
+| the pointer is over a divider | `TSUMUGI_KEYLOG=1`: a `divider x,y wxh` line (the gap, in points) when the pointer comes over one, `divider none` when it leaves (`Get-DividerLog`). Drag from the middle of the gap it names |
 | a setting was written | `settings.toml` (`%APPDATA%\tsumugi\`) before and after, by hash and by the one line that changed |
 | the server kept running / the window closed | `Get-Process tsumugi` (the server runs from `%LOCALAPPDATA%\tsumugi\server\`) |
 | a toast, a notification, the taskbar number | a screenshot read as text; the toast's words are in the bell's list too (`Ctrl+Shift+N`) |
@@ -77,9 +78,9 @@ no others, and do not read TESTING.md's list of rows (its rules, up to
 
 | Chunk | Up to | Notes |
 | --- | --- | --- |
-| **Re-tests of changed behaviour** | 15 rows | The rows named here, still `[ ]`: 1.12, 1.7, 1.11, 17.26, 5.1, 5.4, 5.8, 2.70, 5.11, 5.12, 5.10, 2.37, 9.5 |
+| **Re-tests of changed behaviour** | 15 rows | The rows named here, still `[ ]`: 17.26, 5.1, 5.4, 5.8, 2.70, 5.11, 5.12, 5.10, 2.37, 9.5 |
 | **Unticked keys in TESTING-KEYS.md** | 20 keys | x64 only |
-| **The sections, in this order** | 15 rows of one section | 1, 18, 12, 19, 4, 2, 16, 17, 8, 13, 15, then the rest. ARM64: 2, 4, 12, 1 only. Never given: rows starting `Linux/macOS:` or `A person:`, and 2.46–2.49 on ARM64 (no tools there) |
+| **The sections, in this order** | 15 rows of one section | 1, 18, 12, 19, 4, 2, 16, 17, 8, 13, 15, then the rest. ARM64: 2, 4, 12, 1 only. Never given: rows starting `Linux/macOS:` or `A person:`, 2.46–2.49 on ARM64 (no tools there), and 1.7, 1.11, 1.12 until a run can fetch an older server |
 
 What suits each section:
 
@@ -128,6 +129,9 @@ at the same time. **Nobody will answer a question**, so:
   to 10 s for the input desktop to be `Default` and the window in front to be
   tsumugi's, and throw when it does not come. Nothing measured after input
   stopped reaching the window counts.
+- **Closing the last session stops the server**, by design: the next window
+  opens on Welcome back, which takes the keys. `Esc` it (or read the screen)
+  before typing into a pane.
 - **Before writing a helper of your own**, look at the kit's list again: held
   chords (`Send-Keys -Hold`), raw virtual keys (`'Ctrl+vk:0xBB'`), drags, the
   wheel and the middle button are there.

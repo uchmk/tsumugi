@@ -22,14 +22,18 @@ struct Server {
 
 impl Server {
     fn new(label: &str) -> Self {
+        // A plain shell: no rc files, and no PSReadLine drawing a guess
+        // from history into what `read` gives back.
+        Self::with_shell(label, if cfg!(windows) { "cmd" } else { "sh" }, &[])
+    }
+
+    fn with_shell(label: &str, shell: &str, args: &[&str]) -> Self {
         let dir = std::env::temp_dir().join(format!("tsumugi-cli-{label}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let address = if cfg!(windows) { PathBuf::from(format!(r"\\.\pipe\tsumugi-test-{label}-{}", std::process::id())) } else { dir.join("s.sock") };
-        // A plain shell: no rc files, and no PSReadLine drawing a guess
-        // from history into what `read` gives back.
-        let shell = if cfg!(windows) { "cmd" } else { "sh" };
-        std::fs::write(dir.join("settings.toml"), format!("[shell]\nprogram = \"{shell}\"\n")).unwrap();
+        let args: Vec<String> = args.iter().map(|a| format!("{a:?}")).collect();
+        std::fs::write(dir.join("settings.toml"), format!("[shell]\nprogram = \"{shell}\"\nargs = [{}]\n", args.join(", "))).unwrap();
         Self { dir, address }
     }
 
@@ -119,6 +123,34 @@ fn new_starts_a_server_and_ls_lists_the_session() {
     assert_eq!(cols[6], "a,b,c");
 }
 
+/// `new … -- PROGRAM ARGS` gives each word to the program as it was, quoted
+/// for the shell it is typed into: a program in a folder with a space in its
+/// name made pwsh read the line as an expression (`ParserError`, the ARM64
+/// lane, 2026-10-10).
+#[test]
+fn new_gives_the_words_to_the_program_as_they_are() {
+    let s = if cfg!(windows) { Server::with_shell("argv", "pwsh", &["-NoProfile"]) } else { Server::new("argv") };
+    let tools = s.dir.join("my tools");
+    std::fs::create_dir_all(&tools).unwrap();
+    let program = if cfg!(windows) { tools.join("run.cmd") } else { tools.join("run") };
+    if cfg!(windows) {
+        std::fs::write(&program, "@echo %~1> ran.txt\r\n@echo %~2>> ran.txt\r\n").unwrap();
+    } else {
+        std::fs::write(&program, "#!/bin/sh\nprintf '%s\\n' \"$@\" > ran.txt\n").unwrap();
+        #[cfg(unix)]
+        std::fs::set_permissions(&program, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+    }
+    let id = s.new_session(&["--", program.to_str().unwrap(), "a  b", "it's"]);
+    let ran = s.dir.join("ran.txt");
+    let deadline = Instant::now() + PATIENCE;
+    while !std::fs::read_to_string(&ran).is_ok_and(|t| t.lines().count() >= 2) {
+        assert!(Instant::now() < deadline, "no ran.txt; the session shows:\n{}", s.ok(&["read", &id, "--all"]));
+        std::thread::sleep(Duration::from_millis(200));
+    }
+    let lines: Vec<String> = std::fs::read_to_string(&ran).unwrap().lines().map(|l| l.trim_end().to_owned()).collect();
+    assert_eq!(lines, ["a  b", "it's"]);
+}
+
 /// 18.1: one array, a session an object with the keys a script reads.
 #[test]
 fn ls_json_is_one_array_of_sessions() {
@@ -155,6 +187,33 @@ fn send_runs_a_line_and_read_gives_it_back() {
     let five = s.ok(&["read", &id, "--lines", "5"]);
     assert!(five.lines().count() <= 5, "{five}");
     assert!(!five.contains("日本語ok"), "--lines 5 gave more than the last five:\n{five}");
+}
+
+/// 2.70's last clause, and starting a work log without the key: `log N
+/// PATH` (relative to where it is run) prints the file, a second start is
+/// refused while one runs, `--stop` finishes it, and a log started again at
+/// the same path goes to `-2` instead of over the first.
+#[test]
+fn log_starts_and_finishes_a_work_log_and_never_writes_over_one() {
+    let s = Server::new("log");
+    let id = s.new_session(&[]);
+    s.ok(&["send", &id, "echo before-log"]);
+    s.read_until(&id, "the first line", |t| t.matches("before-log").count() >= 2);
+    let first = s.dir.join("logs").join("work.txt");
+    let printed = s.ok(&["log", &id, "logs/work.txt"]);
+    assert!(same_folder(printed.trim(), &first), "log printed {printed:?}, not {}", first.display());
+    let twice = s.run(&["log", &id, "logs/other.txt"]);
+    assert_eq!(twice.status.code(), Some(1), "a second log while one runs: {}", String::from_utf8_lossy(&twice.stderr));
+    s.ok(&["send", &id, "echo during-log"]);
+    s.read_until(&id, "the second line", |t| t.matches("during-log").count() >= 2);
+    assert_eq!(s.ok(&["log", &id, "--stop"]), printed);
+    let second = s.ok(&["log", &id, "logs/work.txt"]);
+    assert!(same_folder(second.trim(), &s.dir.join("logs").join("work-2.txt")), "the second log went to {second:?}");
+    s.ok(&["log", &id, "--stop"]);
+    let text = std::fs::read_to_string(&first).unwrap();
+    assert!(text.contains("before-log") && text.contains("during-log"), "the first log has:\n{text}");
+    assert!(std::fs::metadata(second.trim()).is_ok(), "no {second:?}");
+    assert_eq!(s.run(&["log", &id, "--stop"]).status.code(), Some(1), "--stop with no log running");
 }
 
 /// 18.5 with `notify` standing in for Claude Code's hook: `wait` returns the

@@ -7,7 +7,7 @@ use ito_pane::Size;
 
 /// Bumped whenever a message changes shape: a client and a server that
 /// disagree say so at `Hello` instead of misreading each other.
-pub const VERSION: u32 = 35;
+pub const VERSION: u32 = 36;
 
 /// A `Hello` with this version asks the server to stop, writing down its
 /// tabs first so the next window can bring them back. `Hello` stays the
@@ -184,8 +184,9 @@ pub enum ToServer {
     List,
     /// Start a shell (`None`: the default one) in `cwd`; answered with
     /// `Spawned`, and the session is attached.
-    /// `typed`: a line typed into the shell once its prompt shows (`claude`).
-    Spawn { cwd: PathBuf, shell: Option<(String, Vec<String>)>, size: Size, cell: (u16, u16), place: Place, typed: Option<String> },
+    /// `typed`: a command's words, typed into the shell once its prompt
+    /// shows, quoted for that shell (`quote::typed_line`; one word is a line).
+    Spawn { cwd: PathBuf, shell: Option<(String, Vec<String>)>, size: Size, cell: (u16, u16), place: Place, typed: Vec<String> },
     /// Send this session's screen whenever it changes, starting now.
     Attach { id: SessionId },
     Detach { id: SessionId },

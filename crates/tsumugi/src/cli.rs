@@ -13,7 +13,8 @@ use crate::sort;
 pub struct New {
     pub folder: Option<PathBuf>,
     pub tags: Vec<String>,
-    /// The command typed into the new shell (`claude`), from after `--`.
+    /// The command typed into the new shell (`claude`), from after `--`:
+    /// its words, quoted there for the shell (one word is a line).
     pub command: Vec<String>,
 }
 
@@ -39,20 +40,6 @@ pub fn parse_new(args: &[String]) -> Result<New, String> {
     Ok(out)
 }
 
-/// The command as one line for the shell: words with a space or a quote in
-/// them in double quotes, which bash, zsh, PowerShell and cmd all read. One
-/// word alone is a line already (`-- "claude --continue"`), as typed.
-pub fn command_line(words: &[String]) -> Option<String> {
-    if let [line] = words {
-        return Some(line.clone());
-    }
-    let quoted: Vec<String> = words
-        .iter()
-        .map(|w| if w.is_empty() || w.contains([' ', '\t', '"', '\'']) { format!("\"{}\"", w.replace('"', "\\\"")) } else { w.clone() })
-        .collect();
-    (!quoted.is_empty()).then(|| quoted.join(" "))
-}
-
 /// Start the session in a tab of its own; its id.
 pub fn new(client: &Client, n: New) -> Result<SessionId, String> {
     let here = std::env::current_dir().map_err(|e| format!("no current folder: {e}"))?;
@@ -68,7 +55,7 @@ pub fn new(client: &Client, n: New) -> Result<SessionId, String> {
     }
     let shell = None;
     let pane = client
-        .spawn_typing(folder, shell, Size::new(80, 24), (8, 16), Place::NewWorkspace, command_line(&n.command))
+        .spawn_typing(folder, shell, Size::new(80, 24), (8, 16), Place::NewWorkspace, n.command)
         .map_err(|e| format!("the session did not start: {e}"))?;
     let id = pane.id();
     for t in n.tags.iter().filter_map(|t| tsumugi_mux::proto::tag_name(t)) {
@@ -145,10 +132,6 @@ mod tests {
         assert_eq!(parse_new(&[]).unwrap(), New::default());
         assert!(parse_new(&a("a b")).is_err(), "two folders");
         assert!(parse_new(&a("--tag")).is_err());
-        assert_eq!(command_line(&a("claude --continue")).as_deref(), Some("claude --continue"));
-        assert_eq!(command_line(&["echo".into(), "a b".into()]).as_deref(), Some("echo \"a b\""));
-        assert_eq!(command_line(&["claude --continue".into()]).as_deref(), Some("claude --continue"), "one word is the line");
-        assert_eq!(command_line(&[]), None);
     }
 
     #[test]
@@ -172,6 +155,8 @@ tsumugi send N|NAME TEXT...              type TEXT into the session, then Enter
 tsumugi read N|NAME [--lines K] [--all]  its last K lines (40), or its whole scrollback
 tsumugi split N|NAME [--down] [-- CMD]   a new pane beside it, in its folder; prints its number
 tsumugi close N|NAME                     end the session
+tsumugi log N|NAME [PATH] [--stop]       write its text to PATH (Downloads) as it goes, or finish;
+                                         prints the file (`-2` when PATH is there already)
 tsumugi wait N|NAME [--state S] [--timeout SECS]
                                          until it is waiting, done or failed (or S: waiting,
                                          done, error, running); exit 1 on timeout, 3 if it ended
@@ -254,6 +239,68 @@ pub fn parse_split(args: &[String]) -> Result<Split, String> {
     Ok(out)
 }
 
+/// `tsumugi log`'s choices.
+#[derive(Debug, PartialEq)]
+pub struct Log {
+    pub who: String,
+    pub path: Option<std::path::PathBuf>,
+    pub stop: bool,
+}
+
+pub fn parse_log(args: &[String]) -> Result<Log, String> {
+    let mut out = Log { who: String::new(), path: None, stop: false };
+    for a in args {
+        match a.as_str() {
+            "--stop" => out.stop = true,
+            s if s.starts_with('-') => return Err(format!("unknown option `{s}`")),
+            _ if out.who.is_empty() => out.who = a.clone(),
+            _ if out.path.is_none() => out.path = Some(a.into()),
+            _ => return Err(format!("one file only (`{a}` is a second)")),
+        }
+    }
+    if out.who.is_empty() {
+        return Err("which session? (tsumugi ls lists them)".into());
+    }
+    if out.stop && out.path.is_some() {
+        return Err("--stop takes no file".into());
+    }
+    Ok(out)
+}
+
+/// Start or finish a session's work log as the window's key does (a
+/// lane's way to make one without the key, 2.70); the file it went to.
+/// `remote`: the sessions are another machine's, so the file is one of its
+/// paths, given as it is.
+pub fn log(client: &Client, list: &[Info], id: SessionId, l: Log, remote: bool) -> Result<String, String> {
+    let info = list.iter().find(|i| i.id == id).ok_or_else(|| format!("no session {id}"))?;
+    if l.stop {
+        if info.logging.is_empty() {
+            return Err(format!("session {id} writes no work log"));
+        }
+        client.log(id, None);
+        // Asked after it: the server has finished the file once this answers.
+        client.list().map_err(|e| e.to_string())?;
+        return Ok(info.logging.clone());
+    }
+    if !info.logging.is_empty() {
+        return Err(format!("session {id} writes a work log to {} already (--stop finishes it)", info.logging));
+    }
+    let path = match l.path {
+        Some(p) if remote => p,
+        // The server's folder is not this one.
+        Some(p) => std::path::absolute(&p).map_err(|e| format!("{}: {e}", p.display()))?,
+        None if remote => return Err("give the file on that machine (--host)".into()),
+        None => crate::export::log_path(&crate::sort::display_title(&info.title, &info.command)).ok_or("no home folder to write the work log in")?,
+    };
+    client.log(id, Some(path.clone()));
+    let now = client.list().map_err(|e| e.to_string())?;
+    match now.iter().find(|i| i.id == id) {
+        Some(i) if !i.logging.is_empty() => Ok(i.logging.clone()),
+        Some(_) => Err(format!("the work log did not start: {}", path.display())),
+        None => Err(format!("session {id} ended")),
+    }
+}
+
 /// `tsumugi wait`'s choices: the states that end the wait.
 #[derive(Debug, PartialEq)]
 pub struct Wait {
@@ -319,7 +366,7 @@ pub fn split(client: &Client, list: &[Info], id: SessionId, s: &Split) -> Result
     let info = list.iter().find(|i| i.id == id).ok_or_else(|| format!("no session {id}"))?;
     let dir = if s.down { tsumugi_mux::Dir::Down } else { tsumugi_mux::Dir::Right };
     let pane = client
-        .spawn_typing(info.cwd.clone(), None, Size::new(80, 24), (8, 16), Place::Split { beside: id, dir }, command_line(&s.command))
+        .spawn_typing(info.cwd.clone(), None, Size::new(80, 24), (8, 16), Place::Split { beside: id, dir }, s.command.clone())
         .map_err(|e| format!("the pane did not start: {e}"))?;
     Ok(pane.id())
 }
@@ -347,6 +394,9 @@ mod remote_tests {
         assert_eq!(parse_read(&words("3 --lines 10")).unwrap(), Read { who: "3".into(), lines: 10, all: false });
         assert!(parse_read(&words("--all")).is_err(), "which session");
         assert_eq!(parse_split(&words("filer --down -- npm run dev")).unwrap(), Split { who: "filer".into(), down: true, command: words("npm run dev") });
+        assert_eq!(parse_log(&words("3 out.txt")).unwrap(), Log { who: "3".into(), path: Some("out.txt".into()), stop: false });
+        assert_eq!(parse_log(&words("3 --stop")).unwrap(), Log { who: "3".into(), path: None, stop: true });
+        assert!(parse_log(&words("3 a.txt --stop")).is_err());
         let w = parse_wait(&words("2 --state waiting --timeout 1.5")).unwrap();
         assert_eq!((w.states.len(), w.timeout), (2, Some(std::time::Duration::from_millis(1500))), "waiting takes probably waiting too");
         assert!(parse_wait(&words("2 --state soon")).is_err());

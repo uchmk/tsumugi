@@ -45,36 +45,35 @@ tsumugi のやること。`【人】` は持ち主の作業、`【金】` は 20
       2.10・2.18・2.19 は人の行にし、2.28 の zsh は「入っていれば」、2.29 は `291`、2.30 は「Wrapped」、2.40 は `"r"` イベント、2.45 は「2.42 のあと」。
       直した行は `.claude/windows-role.md` の再テストの列に積んだ。
 - [ ] 【実機】2.52（SGR の下線・打ち消し線・隠し文字）は Linux では再現しなかった。再テストで落ちたら PTY ログの `out` 行を報告に貼ってもらい、それから直す。
-- [ ] （実機 #7）`tsumugi new` が argv を受ける（または語ごとに引用する）ようにする。`Program Files` の bash.exe を渡すと pwsh が `ParserError` になる（`qa-reports/2026-10-10-arm-2-28.md`）。
-- [ ] （実機 #7）TESTING.md 2.45 に「フック付きの bash のペインでも成り立つ」と書く（同レポート）。
-- [ ] （実機 #7）最後のセッションを閉じるとサーバーも止まり、次の起動の Welcome back ダイアログがキーを取る。入力が吸われた（同レポート。不具合ではない）。
+- [x] （v0.83.0、語をセッションのシェルに合わせて引用する。`crates/tsumugi-mux/src/quote.rs`）（実機 #7）`tsumugi new` が argv を受ける（または語ごとに引用する）ようにする。`Program Files` の bash.exe を渡すと pwsh が `ParserError` になる（`qa-reports/2026-10-10-arm-2-28.md`）。
+- [x] （v0.83.0）（実機 #7）TESTING.md 2.45 に「フック付きの bash のペインでも成り立つ」と書く（同レポート）。
+- [x] （v0.83.0、作りどおり。役割に Welcome back を Esc で閉じてから打つと書いた）（実機 #7）最後のセッションを閉じるとサーバーも止まり、次の起動の Welcome back ダイアログがキーを取る。入力が吸われた（同レポート。不具合ではない）。
 - [ ] 【実機】`Ctrl+=`（`font_bigger`）を `'Ctrl+vk:0xBB'` で確かめる（JIS 配列のレーン）。
 - [ ] （実機 #9）**Last-output copy and prompt jumps with multi-line prompts** (2.27, 2.44): start at the row after the *input* mark (OSC 133 `B`/`C`), or the row after the last prompt row, so a two-line prompt does not leak the command row into the copy. Small (one function in the OSC handling plus a test with a two-line prompt).（qa-reports/2026-10-10-arm-retest-1-7.md）
-- [ ] （実機 #9）**Log the keys egui turns into events** (Cut/Copy/Paste): add a `key X` line, or an `event Cut` line, to `TSUMUGI_KEYLOG`, so `Ctrl+Shift+X` and its siblings can be read as text. Small.（qa-reports/2026-10-10-arm-retest-1-7.md）
-- [ ] （実機 #9）**A CLI or log line for the divider under the pointer** (for example a `hover divider x,y` line in the key log): rows 2.3 and 2.15 are pictures now and could be read. Small.（qa-reports/2026-10-10-arm-retest-1-7.md）
+- [x] （v0.83.0、`event Cut … -> …` の行）（実機 #9）**Log the keys egui turns into events** (Cut/Copy/Paste): add a `key X` line, or an `event Cut` line, to `TSUMUGI_KEYLOG`, so `Ctrl+Shift+X` and its siblings can be read as text. Small.（qa-reports/2026-10-10-arm-retest-1-7.md）
+- [x] （v0.83.0、`divider x,y wxh`・`divider none` の行と `Get-DividerLog`）（実機 #9）**A CLI or log line for the divider under the pointer** (for example a `hover divider x,y` line in the key log): rows 2.3 and 2.15 are pictures now and could be read. Small.（qa-reports/2026-10-10-arm-retest-1-7.md）
 - [ ] （実機 #9）**Older-server fixture**: keep an older `tsumugi.exe` (0.46.x) in the repo's releases or the scratch cache so 1.7, 1.11 and 1.12 can be run by the unattended lane. Medium.（qa-reports/2026-10-10-arm-retest-1-7.md）
-- [ ] （実機 #9・キュー）Keep 1.7, 1.11, 1.12 in the re-tests, but they need the older build first (see the last proposal); until then the lane keeps offering rows it cannot do. Move them out of the ARM64 re-tests, or give them to a run with the old build.（qa-reports/2026-10-10-arm-retest-1-7.md）
-- [ ] （実機 #9・キュー）Keep 2.3, 2.15 in the re-tests (retry with the divider's exact coordinates, or after the hover log exists).（qa-reports/2026-10-10-arm-retest-1-7.md）
-- [ ] （実機 #9・キュー）Keep 2.27, 2.44, 2.37 in the re-tests; they are not done, and the first two will fail until the multi-line prompt is handled.（qa-reports/2026-10-10-arm-retest-1-7.md）
-- [ ] （実機 #9・キュー）Drop 2.24 from the ARM64 lane (the bash path is not available here).（qa-reports/2026-10-10-arm-retest-1-7.md）
-- [ ] （実機 #9・キュー）2.25, 2.26, 2.42, 2.53 can leave the re-tests (now `[x]`); 2.29 and 2.31 are `[~]`, the owner's to confirm.（qa-reports/2026-10-10-arm-retest-1-7.md）
+- [x] （v0.83.0、古いサーバーを取れるまで両方のレーンが 1.7・1.11・1.12 を渡さない）（実機 #9・キュー）Keep 1.7, 1.11, 1.12 in the re-tests, but they need the older build first (see the last proposal); until then the lane keeps offering rows it cannot do. Move them out of the ARM64 re-tests, or give them to a run with the old build.（qa-reports/2026-10-10-arm-retest-1-7.md）
+- [x] （x64 で `[x]` になった。仕切りのログは v0.83.0）（実機 #9・キュー）Keep 2.3, 2.15 in the re-tests (retry with the divider's exact coordinates, or after the hover log exists).（qa-reports/2026-10-10-arm-retest-1-7.md）
+- [x] （2.27・2.44 は x64 で `[x]`。2.37 は残し、v0.83.0 のキーのログで読める）（実機 #9・キュー）Keep 2.27, 2.44, 2.37 in the re-tests; they are not done, and the first two will fail until the multi-line prompt is handled.（qa-reports/2026-10-10-arm-retest-1-7.md）
+- [x] （2.24 は x64 で `[x]` で、ARM64 にも渡らない）（実機 #9・キュー）Drop 2.24 from the ARM64 lane (the bash path is not available here).（qa-reports/2026-10-10-arm-retest-1-7.md）
+- [x] （v0.83.0 までに再テストの表から外した）（実機 #9・キュー）2.25, 2.26, 2.42, 2.53 can leave the re-tests (now `[x]`); 2.29 and 2.31 are `[~]`, the owner's to confirm.（qa-reports/2026-10-10-arm-retest-1-7.md）
 - [ ] （実機 #10）**Kit: double-click, window resize, cursor-shape and "same-second" helpers.** I wrote `GetCursorInfo`, a double-click and `SetWindowPos` by hand for 2.3/2.15/2.70. A `Send-DoubleClick`, `Get-KitCursor` and `Set-KitWindow` in `wintest-kit.ps1` would stop every lane from doing it again. Small.（qa-reports/2026-10-10-win-retest-1-7.md）
 - [ ] （実機 #10）**Kit: keep the foreground.** The owner's Claude desktop takes it between two sends; for a two-input race (2.70's `-2`) the kit should send both inputs inside one `SendInput` batch or hold the desktop lock with `LockSetForegroundWindow`. Small–medium.（qa-reports/2026-10-10-win-retest-1-7.md）
-- [ ] （実機 #10）**Make 2.70's `-2` a test** in `crates/tsumugi/tests/cli.rs` (two `log` requests with the same path) instead of a real-machine row; it is server logic with a file as the result. Small.（qa-reports/2026-10-10-win-retest-1-7.md）
-- [ ] （実機 #10）**Read the log keys.** `Ctrl+Shift+X` (and Cut/Copy/Paste) never show in `TSUMUGI_KEYLOG`; a `key X` or `event Cut` line would let 2.37 be read as text. Small.（qa-reports/2026-10-10-win-retest-1-7.md）
+- [x] （v0.83.0、`log_starts_and_finishes_a_work_log_and_never_writes_over_one`）（実機 #10）**Make 2.70's `-2` a test** in `crates/tsumugi/tests/cli.rs` (two `log` requests with the same path) instead of a real-machine row; it is server logic with a file as the result. Small.（qa-reports/2026-10-10-win-retest-1-7.md）
+- [x] （v0.83.0、`event Cut … -> …` の行）（実機 #10）**Read the log keys.** `Ctrl+Shift+X` (and Cut/Copy/Paste) never show in `TSUMUGI_KEYLOG`; a `key X` or `event Cut` line would let 2.37 be read as text. Small.（qa-reports/2026-10-10-win-retest-1-7.md）
 - [ ] （実機 #10）**Large OSC 1337 images are slow** (37–91 KB: 10–15 s before the prompt returns). Decoding or the escape parser looks quadratic. Medium; worth a profile.（qa-reports/2026-10-10-win-retest-1-7.md）
-- [ ] （実機 #10）**A `tsumugi log N [PATH]` CLI** would let a lane start and finish work logs without the key or the menu, and make 2.70/2.71 text rows. Small.（qa-reports/2026-10-10-win-retest-1-7.md）
+- [x] （v0.83.0）（実機 #10）**A `tsumugi log N [PATH]` CLI** would let a lane start and finish work logs without the key or the menu, and make 2.70/2.71 text rows. Small.（qa-reports/2026-10-10-win-retest-1-7.md）
 - [ ] （実機 #10）**Older-server fixture** for 1.7/1.11/1.12: keep one old `tsumugi.exe` (0.46.x) next to the scratch cache, or let `scripts/auto-wintest.ps1` fetch the previous release's `.zip` from GitHub into `kit\old\`. Medium.（qa-reports/2026-10-10-win-retest-1-7.md）
-- [ ] （実機 #10・キュー）Take 2.58, 2.24, 2.44, 2.27, 2.3, 2.15, 2.71, 4.16 out of the re-tests (now `[x]`), and 2.54, 2.48 (`[~]`, the owner's to confirm).（qa-reports/2026-10-10-win-retest-1-7.md）
-- [ ] （実機 #10・キュー）Keep 2.70 in the re-tests, but only for the `-2` file; it is better moved to `cli.rs` (see Proposals) and the row's last clause then lives in "Covered by tests". Everything else in it passed on the real exe, key and menu.（qa-reports/2026-10-10-win-retest-1-7.md）
-- [ ] （実機 #10・キュー）Keep 2.37 in the re-tests until `Ctrl+Shift+X` can be seen reaching tsumugi (key-log line, or a machine where the chord is not swallowed). Do not offer it to this machine's lane again before then.（qa-reports/2026-10-10-win-retest-1-7.md）
-- [ ] （実機 #10・キュー）Keep 1.7, 1.11, 1.12 out of the lanes until an older server build can be fetched (they were offered here and could not be done).（qa-reports/2026-10-10-win-retest-1-7.md）
-- [ ] （実機 #10・キュー）`TESTING-KEYS.md` needs regenerating on `main` (see Findings) before the keys chunk is offered again; `Ctrl+Shift+S` and `Ctrl+Shift+O` are then unticked keys for the next x64 run.（qa-reports/2026-10-10-win-retest-1-7.md）
-- [ ] （実機 #10・キュー）Keep 2.70 for the `-2` file only; better moved to `cli.rs` as a test, then "Covered by tests".（PR 本文）
-- [ ] （実機 #10・キュー）Keep 2.37 until `Ctrl+Shift+X` can be seen reaching tsumugi; do not offer it to this machine's lane before then.（PR 本文）
-- [ ] （実機 #10・キュー）Keep 1.7, 1.11, 1.12 out of the lanes until an older server build can be fetched.（PR 本文）
-- [ ] （実機 #10・キュー）Regenerate TESTING-KEYS.md on `main` before the keys chunk is offered again.（PR 本文）
-- [ ] （実機 #10・キュー）🤖 Generated with [Claude Code](https://claude.com/claude-code)（PR 本文）
+- [x] （v0.83.0 までに再テストの表から外した）（実機 #10・キュー）Take 2.58, 2.24, 2.44, 2.27, 2.3, 2.15, 2.71, 4.16 out of the re-tests (now `[x]`), and 2.54, 2.48 (`[~]`, the owner's to confirm).（qa-reports/2026-10-10-win-retest-1-7.md）
+- [x] （v0.83.0、`-2` は CI のテストに移し、2.70 は残りだけで再テストに残す）（実機 #10・キュー）Keep 2.70 in the re-tests, but only for the `-2` file; it is better moved to `cli.rs` (see Proposals) and the row's last clause then lives in "Covered by tests". Everything else in it passed on the real exe, key and menu.（qa-reports/2026-10-10-win-retest-1-7.md）
+- [x] （v0.83.0、キーのログで読めるので再テストに残す）（実機 #10・キュー）Keep 2.37 in the re-tests until `Ctrl+Shift+X` can be seen reaching tsumugi (key-log line, or a machine where the chord is not swallowed). Do not offer it to this machine's lane again before then.（qa-reports/2026-10-10-win-retest-1-7.md）
+- [x] （v0.83.0、両方のレーンが渡さない）（実機 #10・キュー）Keep 1.7, 1.11, 1.12 out of the lanes until an older server build can be fetched (they were offered here and could not be done).（qa-reports/2026-10-10-win-retest-1-7.md）
+- [x] （v0.83.0 の時点で main の TESTING-KEYS.md は追いついている）（実機 #10・キュー）`TESTING-KEYS.md` needs regenerating on `main` (see Findings) before the keys chunk is offered again; `Ctrl+Shift+S` and `Ctrl+Shift+O` are then unticked keys for the next x64 run.（qa-reports/2026-10-10-win-retest-1-7.md）
+- [x] （v0.83.0）（実機 #10・キュー）Keep 2.70 for the `-2` file only; better moved to `cli.rs` as a test, then "Covered by tests".（PR 本文）
+- [x] （v0.83.0）（実機 #10・キュー）Keep 2.37 until `Ctrl+Shift+X` can be seen reaching tsumugi; do not offer it to this machine's lane before then.（PR 本文）
+- [x] （v0.83.0）（実機 #10・キュー）Keep 1.7, 1.11, 1.12 out of the lanes until an older server build can be fetched.（PR 本文）
+- [x] （v0.83.0 の時点で追いついている）（実機 #10・キュー）Regenerate TESTING-KEYS.md on `main` before the keys chunk is offered again.（PR 本文）
 
 ## ほかのターミナルにあるもの（2026-10-08、持ち主の依頼で全部取り込む）
 

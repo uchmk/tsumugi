@@ -93,7 +93,7 @@ fn main() -> std::process::ExitCode {
         Some("proxy") => proxy(),
         Some("ls") => ls(&args[1..]),
         Some("mcp") => mcp::run(),
-        Some("send" | "read" | "split" | "close" | "wait") => remote(&args[0], &args[1..]),
+        Some("send" | "read" | "split" | "close" | "log" | "wait") => remote(&args[0], &args[1..]),
         Some("help" | "--help" | "-h") => {
             println!("tsumugi: the window, or one of\n{}\n{}\ntsumugi attach N|NAME\ntsumugi proxy                            (what --host runs on the other machine)\ntsumugi notify [--state S] [--session N] [MESSAGE]\ntsumugi tag [--session N] [--remove] TAG...\ntsumugi shell-hook bash|zsh|pwsh\ntsumugi mcp                              an MCP server on stdin/stdout, for Claude Code (see the README)", cli::NEW_USAGE, cli::REMOTE_USAGE);
             std::process::ExitCode::SUCCESS
@@ -285,8 +285,8 @@ fn ls(args: &[String]) -> std::process::ExitCode {
     }
 }
 
-/// The remote control (`cli::REMOTE_USAGE`): send, read, split, close and
-/// wait on a session from another program, or an AI in another pane.
+/// The remote control (`cli::REMOTE_USAGE`): send, read, split, close, log
+/// and wait on a session from another program, or an AI in another pane.
 fn remote(what: &str, args: &[String]) -> std::process::ExitCode {
     use std::process::ExitCode;
     let fail = |e: String| {
@@ -357,6 +357,13 @@ fn remote(what: &str, args: &[String]) -> std::process::ExitCode {
         "split" => match cli::parse_split(args).and_then(|s| cli::split(&client, &list, id, &s)) {
             Ok(new) => {
                 println!("{new}");
+                ExitCode::SUCCESS
+            }
+            Err(e) => fail(e),
+        },
+        "log" => match cli::parse_log(args).and_then(|l| cli::log(&client, &list, id, l, host.is_some())) {
+            Ok(path) => {
+                println!("{path}");
                 ExitCode::SUCCESS
             }
             Err(e) => fail(e),
@@ -1151,6 +1158,8 @@ struct App {
     key_log: bool,
     /// What the key log last said had the keys.
     focus_logged: Option<egui::Id>,
+    /// The divider the key log last said the pointer was over.
+    divider_logged: Option<String>,
     settings_error: Option<String>,
     /// What is wrong with common.toml, or not known in it.
     common_warning: Option<String>,
@@ -1475,6 +1484,7 @@ impl App {
             input: inputbox::InputBox::with_history(load_history(), prompts::load()),
             key_log: std::env::var_os("TSUMUGI_KEYLOG").is_some(),
             focus_logged: None,
+            divider_logged: None,
             replacing: None,
             replaced_unasked: false,
             animated: false,
@@ -1732,7 +1742,7 @@ impl App {
             keys::Action::Duplicate => {
                 if let Some(focus) = sessions.iter().find(|i| i.id == w.focus) {
                     let typed = focus.claude.then(|| newsession::Start::Claude.typed(&self.settings_now.sessions.claude)).flatten();
-                    if let Ok(pane) = client.spawn_typing(focus.cwd.clone(), None, Size::new(80, 24), (8, 16), Place::NewWorkspace, typed) {
+                    if let Ok(pane) = client.spawn_typing(focus.cwd.clone(), None, Size::new(80, 24), (8, 16), Place::NewWorkspace, typed.into_iter().collect()) {
                         self.pending = Some(pane.id());
                     }
                 }
@@ -2034,7 +2044,7 @@ impl App {
             _ => Place::NewWorkspace,
         };
         let shell = c.on.shell();
-        match client.spawn_typing(c.folder.clone(), shell, Size::new(80, 24), (8, 16), place, c.start.typed(&self.settings_now.sessions.claude)) {
+        match client.spawn_typing(c.folder.clone(), shell, Size::new(80, 24), (8, 16), place, c.start.typed(&self.settings_now.sessions.claude).into_iter().collect()) {
             Ok(pane) => {
                 let id = pane.id();
                 self.pending = Some(id);
@@ -2051,7 +2061,7 @@ impl App {
                 for (k, s) in c.more.iter().enumerate() {
                     let (beside, dir) = newsession::more_place(k, id, &made);
                     let shell = c.on.shell();
-                    match client.spawn_typing(c.folder.clone(), shell, Size::new(80, 24), (8, 16), Place::Split { beside, dir }, s.typed(&self.settings_now.sessions.claude)) {
+                    match client.spawn_typing(c.folder.clone(), shell, Size::new(80, 24), (8, 16), Place::Split { beside, dir }, s.typed(&self.settings_now.sessions.claude).into_iter().collect()) {
                         Ok(pane) => {
                             made.push(pane.id());
                             for t in c.tags.iter().cloned() {
@@ -2113,7 +2123,7 @@ impl App {
                 None => Place::NewWorkspace,
                 Some(first) => Place::Split { beside: *first, dir: Dir::Right },
             };
-            match client.spawn_typing(folder.clone(), None, Size::new(80, 24), (8, 16), place, s.typed(&claude)) {
+            match client.spawn_typing(folder.clone(), None, Size::new(80, 24), (8, 16), place, s.typed(&claude).into_iter().collect()) {
                 Ok(pane) => made.push(pane.id()),
                 Err(e) if k == 0 => {
                     self.failed = Some(format!("the shell did not start: {e}"));
@@ -3160,7 +3170,7 @@ impl App {
                     SideOp::Duplicate(cwd, claude) => {
                         let shell = None;
                         let typed = claude.then(|| newsession::Start::Claude.typed(&self.settings_now.sessions.claude)).flatten();
-                        if let Ok(pane) = client.spawn_typing(cwd, shell, Size::new(80, 24), (8, 16), Place::NewWorkspace, typed) {
+                        if let Ok(pane) = client.spawn_typing(cwd, shell, Size::new(80, 24), (8, 16), Place::NewWorkspace, typed.into_iter().collect()) {
                             self.pending = Some(pane.id());
                         }
                     }
@@ -3724,7 +3734,7 @@ impl App {
         for m in made {
             match m {
                 Ok((path, task)) => {
-                    if let Err(e) = client.spawn_typing(path, None, Size::new(80, 24), (8, 16), Place::NewWorkspace, Some(parallel::typed(&claude, &task, how))) {
+                    if let Err(e) = client.spawn_typing(path, None, Size::new(80, 24), (8, 16), Place::NewWorkspace, vec![parallel::typed(&claude, &task, how)]) {
                         self.say(format!("A parallel session did not start: {e}"), true);
                     }
                 }
@@ -4661,6 +4671,22 @@ impl App {
             }
             None => {}
         }
+        // `TSUMUGI_KEYLOG=1` also says which divider the pointer is over
+        // (its gap, in points) when that changes, so a drag is started
+        // where the log says instead of where a picture looked (2.3, 2.15).
+        if self.key_log {
+            let pointer = ui.ctx().pointer_hover_pos();
+            let more = (GRAB - GAP) / 2.0;
+            let over = layout.dividers(area, GAP).into_iter().map(|d| (from_rect(d.gap), d.dir)).find(|(g, dir)| {
+                let grab = if *dir == ito_layout::Dir::Right { g.expand2(egui::vec2(more, 0.0)) } else { g.expand2(egui::vec2(0.0, more)) };
+                pointer.is_some_and(|p| grab.contains(p))
+            });
+            let now = over.map(|(g, _)| format!("divider {:.0},{:.0} {:.0}x{:.0}", g.left(), g.top(), g.width(), g.height()));
+            if now != self.divider_logged {
+                eprintln!("{}", now.as_deref().unwrap_or("divider none"));
+                self.divider_logged = now;
+            }
+        }
         if !held {
             self.dragging = None;
         }
@@ -5354,9 +5380,22 @@ impl App {
                 // `TSUMUGI_KEYLOG=1`: every key press as the window gets it,
                 // to see on a real machine why a key does nothing.
                 for ev in ctx.input(|i| i.events.clone()) {
-                    if let egui::Event::Key { key, pressed: true, modifiers, .. } = ev {
-                        let held = ctx.memory(|m| m.focused());
-                        eprintln!("key {key:?} {modifiers:?} -> {:?}; a widget has the keys: {held:?}", keys::action(key, modifiers));
+                    let held = ctx.memory(|m| m.focused());
+                    match ev {
+                        egui::Event::Key { key, pressed: true, modifiers, .. } => eprintln!("key {key:?} {modifiers:?} -> {:?}; a widget has the keys: {held:?}", keys::action(key, modifiers)),
+                        // egui gives Ctrl+X, C and V (Shift held or not) as
+                        // these and no key, so Ctrl+Shift+X was never in the
+                        // log (the real machine, 2.37).
+                        egui::Event::Cut | egui::Event::Copy | egui::Event::Paste(_) => {
+                            let (name, key) = match ev {
+                                egui::Event::Cut => ("Cut", egui::Key::X),
+                                egui::Event::Copy => ("Copy", egui::Key::C),
+                                _ => ("Paste", egui::Key::V),
+                            };
+                            let modifiers = ctx.input(|i| i.modifiers);
+                            eprintln!("event {name} {modifiers:?} -> {:?}; a widget has the keys: {held:?}", keys::action(key, modifiers));
+                        }
+                        _ => {}
                     }
                 }
             }
@@ -5982,7 +6021,7 @@ impl App {
                     } else {
                         None
                     };
-                    match client.spawn_typing(c.cwd.clone(), None, Size::new(80, 24), (8, 16), Place::NewWorkspace, typed) {
+                    match client.spawn_typing(c.cwd.clone(), None, Size::new(80, 24), (8, 16), Place::NewWorkspace, typed.into_iter().collect()) {
                         Ok(pane) => self.pending = Some(pane.id()),
                         Err(e) => self.failed = Some(e.to_string()),
                     }

@@ -10,6 +10,7 @@ pub mod client;
 pub mod diff;
 pub mod frame;
 pub mod proto;
+pub mod quote;
 pub mod server;
 pub mod settings;
 pub mod state;
