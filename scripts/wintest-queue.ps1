@@ -62,8 +62,9 @@ function Get-OpenKeys([string]$Keys) {
 function Get-RetestIds([string]$Role) {
     $row = ($Role -split "`r?`n") | Where-Object { $_ -like '|*Re-tests of changed behaviour*' } | Select-Object -First 1
     if (-not $row) { return @() }
-    # The row's second cell: the first is its name.
-    $cell = ($row -split '\|')[2]
+    # Every cell after the first, which is its name: the role's table has the
+    # ids in its third cell ("Up to" is the second), the tests' in its second.
+    $cell = (($row -split '\|') | Select-Object -Skip 2) -join '|'
     @([regex]::Matches($cell, '\b\d+\.\d+[a-z]?\b') | ForEach-Object Value | Select-Object -Unique)
 }
 

@@ -6,6 +6,9 @@ on:
     paths-ignore: ['**.md', 'LICENSE-*']
   pull_request:
     paths-ignore: ['**.md', 'LICENSE-*']
+  # Merge lanes starts it after its share: its push, made with the
+  # workflow's token, starts no workflow by itself
+  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}

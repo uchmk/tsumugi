@@ -113,6 +113,15 @@ pub fn cast_path(name: &str) -> Option<PathBuf> {
     Some(videos.join("tsumugi").join(format!("{}-{}.cast", chrono::Local::now().format("%Y%m%d-%H%M%S"), file_word(name))))
 }
 
+/// Where a work log of `name` goes: Downloads, as
+/// `tsumugi-<name>-<date>-<time>.txt` (the name of [`save_output`]'s file).
+/// The mux server makes the folder, and gives the name `-2` when a file
+/// of it is there.
+pub fn log_path(name: &str) -> Option<PathBuf> {
+    let downloads = tsumugi_mux::settings::home()?.join("Downloads");
+    Some(downloads.join(format!("tsumugi-{}-{}.txt", file_word(name), chrono::Local::now().format("%Y%m%d-%H%M%S"))))
+}
+
 /// Where an export goes: Downloads when there is one, else the home folder.
 pub fn place() -> Option<PathBuf> {
     let home = tsumugi_mux::settings::home()?;

@@ -1,0 +1,911 @@
+#!/usr/bin/env python3
+"""Merge the real-machine lanes' pull requests that keep to the rules.
+
+Run by .github/workflows/merge-lanes.yml. It merges a pull request from a lane
+branch (test/win-*, test/arm-*, and in filer test/linux-*) with a merge commit
+pinned to its head, and only when all of these hold:
+
+  1. it touches only the files a lane may write: the checklists and one new
+     report under qa-reports/ (filer), or the checklists and new files under
+     qa-reports/ (tsumugi);
+  2. every changed checklist line is the same line with only its mark changed,
+     from `[ ]` to a mark that lane may set;
+  3. every new mark has its evidence: a line naming the row (or the key) in
+     the pull request body -- in tsumugi the new report counts too -- and a
+     `[~]` names its picture;
+  4. filer: TODO.md's "マージで止めている実機の PR" does not hold it;
+  5. every check run on its head has finished, none failed, and the
+     checklist job is among them;
+  6. GitHub says it merges without a conflict.
+
+A pull request that keeps to 1-4 but conflicts with the base, and has no
+red check, is merged here by hand (git, in the workflow's checkout of main):
+when only checklist files conflict, each one is main's file with the pull
+request's mark changes made again on the rows main still has unticked and
+unchanged. The result is checked to be marks and new reports only, then
+pushed to main; GitHub then counts the pull request as merged. A mark whose
+row main reworded is dropped and named in a comment. Any other conflict is
+left alone.
+
+Anything else is left alone. A rule that fails, a red check or a conflict
+gets one comment per head (a hidden marker keeps it from repeating), which
+the merge routine reads (.claude/merge-routine.md).
+
+It also does the merger's share for lane pull requests merged in the last 7
+days whose `#N` is not in CHANGELOG.md: a PATCH bump (Cargo.toml and
+Cargo.lock), a CHANGELOG line per pull request, and the reports' proposals,
+queue notes and votes into TODO.md. In tsumugi it also takes the ticked rows
+out of the role's re-test list. In filer, whose lane queue is prose, the
+TODO.md lines carry `【後】` and one more line per pull request asks for its
+report to be read: the merge routine sorts them once a day.
+
+It reads the pull request through the API and git, never runs its code, and
+runs only main's copy of this script.
+
+    python3 scripts/merge-lanes.py              # GITHUB_TOKEN, GITHUB_REPOSITORY
+    MERGE_LANES_DRY_RUN=1 python3 scripts/merge-lanes.py
+    python3 scripts/merge-lanes.py --self-test
+
+The same file lives in uchmk/filer and uchmk/tsumugi; keep the two copies
+identical (the repository picks its rules from RULES).
+"""
+
+import base64
+import datetime
+import json
+import os
+import re
+import subprocess
+import sys
+import time
+import urllib.error
+import urllib.request
+
+API = os.environ.get("GITHUB_API_URL", "https://api.github.com")
+REPO = os.environ.get("GITHUB_REPOSITORY", "")
+TOKEN = os.environ.get("GITHUB_TOKEN", "")
+DRY = os.environ.get("MERGE_LANES_DRY_RUN", "") not in ("", "0", "false")
+
+WINDOWS_MARKS = {
+    "TESTING-CHECKS.md": {(" ", "x"), (" ", "~")},
+    "TESTING-KEYS.md": {(" ", "x")},
+}
+# tsumugi's keys may also be looked at: a key whose only effect is on screen
+# gets `[~]` with its picture, as a checklist row does (owner, 2026-10-10)
+TSUMUGI_WINDOWS_MARKS = {
+    "TESTING-CHECKS.md": {(" ", "x"), (" ", "~")},
+    "TESTING-KEYS.md": {(" ", "x"), (" ", "~")},
+}
+
+RULES = {
+    "uchmk/filer": {
+        "lanes": {
+            "test/win-": WINDOWS_MARKS,
+            "test/arm-": WINDOWS_MARKS,
+            "test/linux-": {"TESTING-LINUX.md": {(" ", "x"), (" ", "-")}},
+        },
+        # exactly one new report: another run's file is not this run's to edit
+        "reports": (1, 1),
+        "evidence_in_report": False,
+        "required_checks": ["checklists"],
+        "hold_heading": "マージで止めている実機の PR",
+        # the lane's queue is prose in .claude/windows-role.md, so the role is
+        # left alone; the lines wait for the merge routine to sort them
+        "share": {
+            "role": None,
+            "todo_heading": "実機のレーンから",
+            "todo_mark": "【後】",
+            "review_line": True,
+            "dispatch": ["ci.yml"],
+        },
+    },
+    "uchmk/tsumugi": {
+        "lanes": {"test/win-": TSUMUGI_WINDOWS_MARKS, "test/arm-": TSUMUGI_WINDOWS_MARKS},
+        "reports": (0, 99),
+        "evidence_in_report": True,
+        "required_checks": ["check"],
+        "hold_heading": None,
+        "share": {
+            "role": ".claude/windows-role.md",
+            "todo_heading": "実機のレーンから",
+            "todo_mark": "",
+            "review_line": False,
+            # a push with the workflow's token starts no workflows, except these
+            "dispatch": ["ci.yml", "checklists.yml"],
+        },
+    },
+}
+
+OK_CONCLUSIONS = {"success", "skipped", "neutral"}
+MARK_LINE = re.compile(r"^- \[(.)\] (.*)$")
+PICTURE = re.compile(r"\.(png|jpe?g|bmp|gif|webp)\b", re.IGNORECASE)
+MARKER = "<!-- merge-lanes:{kind}:{sha} -->"
+MACHINES = {"test/win-": "x64", "test/arm-": "ARM64", "test/linux-": "Linux"}
+RETESTS = "| **Re-tests of changed behaviour** |"
+BOT = ["-c", "user.name=github-actions[bot]",
+       "-c", "user.email=41898282+github-actions[bot]@users.noreply.github.com"]
+
+
+class RuleError(Exception):
+    pass
+
+
+# ---------------------------------------------------------------- pure parts
+
+
+def mark_pairs(patch):
+    """The (old, new) line pairs of a unified diff that only replaces lines.
+
+    Raises RuleError when a group of removed lines is not matched by as many
+    added lines (a line added or removed, not changed)."""
+    pairs, removed, added = [], [], []
+
+    def flush():
+        if len(removed) != len(added):
+            raise RuleError(
+                f"{len(removed)} line(s) removed and {len(added)} added in one place"
+                " -- only changed marks may differ")
+        pairs.extend(zip(removed, added))
+        removed.clear()
+        added.clear()
+
+    for line in patch.split("\n"):
+        if line.startswith("\\"):  # "\ No newline at end of file"
+            continue
+        if line.startswith("-"):
+            if added:
+                flush()
+            removed.append(line[1:])
+        elif line.startswith("+"):
+            added.append(line[1:])
+        else:  # a hunk header or a context line
+            flush()
+    flush()
+    return pairs
+
+
+def new_marks(path, patch, allowed):
+    """[(mark, rest of the line)] for each line the patch re-marks.
+
+    Raises RuleError for any change that is not one allowed mark change."""
+    out = []
+    for old, new in mark_pairs(patch):
+        mo, mn = MARK_LINE.match(old), MARK_LINE.match(new)
+        if not mo or not mn:
+            raise RuleError(f"{path}: a changed line is not a checklist row: {new[:80]!r}")
+        if mo.group(2) != mn.group(2):
+            raise RuleError(f"{path}: a row's text changed, not only its mark: {new[:80]!r}")
+        if (mo.group(1), mn.group(1)) not in allowed:
+            raise RuleError(
+                f"{path}: [{mo.group(1)}] -> [{mn.group(1)}] is not a lane's to make: {new[:80]!r}")
+        out.append((mn.group(1), mn.group(2)))
+    return out
+
+
+def row_id(path, rest):
+    """The row's id (`**25.4e**`), or for TESTING-KEYS.md the key (`<Esc>`)."""
+    if path == "TESTING-KEYS.md":
+        m = re.match(r"`([^`]+)`", rest)
+    else:
+        m = re.match(r"\*\*([^*]+)\*\*", rest)
+    if not m:
+        raise RuleError(f"{path}: no id at the start of {rest[:80]!r}")
+    return m.group(1)
+
+
+RANGE = re.compile(r"(\d+)\.(\d+)\s*(?:-|–|—|〜|~|to)\s*(?:(\d+)\.)?(\d+)(?![\w.])")
+
+
+def mentions(line, rid, key):
+    """Whether an evidence line names this row or key."""
+    if key:
+        return f"`{rid}`" in line
+    if f"**{rid}**" in line:
+        return True
+    if re.search(r"(?<![\w.])" + re.escape(rid) + r"(?![\w]|\.\d)", line):
+        return True
+    m = re.fullmatch(r"(\d+)\.(\d+)", rid)
+    if m:  # "2.32-2.35", "2.4〜2.7", "49.9-49.11"
+        major, n = m.group(1), int(m.group(2))
+        for r in RANGE.finditer(line):
+            if r.group(1) == major and r.group(3) in (None, major) \
+                    and int(r.group(2)) <= n <= int(r.group(4)):
+                return True
+    return False
+
+
+def missing_evidence(ticks, text):
+    """The ticks with no evidence line in `text`, each with what is missing.
+
+    `ticks` is [(path, mark, id)]. An evidence line names the row and says
+    something beyond it; a `[~]` also names its picture somewhere on a line
+    that names the row."""
+    lines = text.split("\n")
+    out = []
+    for path, mark, rid in ticks:
+        key = path == "TESTING-KEYS.md"
+        found = [ln for ln in lines if mentions(ln, rid, key) and len(ln.strip()) >= len(rid) + 10]
+        if not found:
+            out.append(f"{rid} [{mark}] ({path}): no evidence line")
+        elif mark == "~" and not any(PICTURE.search(ln) for ln in found):
+            out.append(f"{rid} [~] ({path}): no picture named on its evidence line")
+    return out
+
+
+def held_numbers(todo, heading):
+    """The pull request numbers named under TODO.md's hold heading."""
+    out, inside = set(), False
+    for line in todo.split("\n"):
+        if line.startswith("#"):
+            inside = line.lstrip("#").strip() == heading
+            continue
+        if inside:
+            out.update(int(n) for n in re.findall(r"#(\d+)(?!\d)", line))
+    return out
+
+
+def check_verdict(runs, statuses, required, own):
+    """'green', 'pending' or 'red: <names>' for a head's check runs.
+
+    Re-runs leave older runs of the same name behind: the newest counts."""
+    latest = {}
+    for r in runs:
+        if r["name"] in own:
+            continue
+        k = (r["name"], (r.get("app") or {}).get("id"))
+        if k not in latest or r["id"] > latest[k]["id"]:
+            latest[k] = r
+    runs = list(latest.values())
+    red = sorted(r["name"] for r in runs
+                 if r["status"] == "completed" and r["conclusion"] not in OK_CONCLUSIONS)
+    red += [s["context"] for s in statuses if s["state"] in ("failure", "error")]
+    if red:
+        return "red: " + ", ".join(red)
+    if any(r["status"] != "completed" for r in runs) \
+            or any(s["state"] == "pending" for s in statuses):
+        return "pending"
+    names = {r["name"] for r in runs if r["conclusion"] == "success"}
+    if any(n not in names for n in required):
+        return "pending"  # not started yet
+    return "green"
+
+
+def diff_body(diff):
+    """A `git diff` without its file headers: what mark_pairs reads."""
+    i = diff.find("\n@@")
+    if diff.startswith("@@"):
+        return diff
+    return "" if i < 0 else diff[i + 1:]
+
+
+def reapply_marks(text, marks):
+    """`text` with each (mark, rest) set on its `- [ ] rest` line.
+
+    Returns the text and the rests whose unticked line is not there (main
+    reworded the row, or someone ticked it already)."""
+    lines = text.split("\n")
+    where = {ln: i for i, ln in enumerate(lines)}
+    dropped = []
+    for mark, rest in marks:
+        i = where.get(f"- [ ] {rest}")
+        if i is None:
+            if f"- [{mark}] {rest}" not in where:
+                dropped.append(rest)
+            continue
+        lines[i] = f"- [{mark}] {rest}"
+    return "\n".join(lines), dropped
+
+
+def bump_patch(version):
+    major, minor, patch = version.split(".")
+    return f"{major}.{minor}.{int(patch) + 1}"
+
+
+def set_lock_version(lock, old, new):
+    """Cargo.lock with the workspace's own packages (no `source`) at `new`."""
+    blocks = lock.split("\n\n")
+    count = 0
+    for i, b in enumerate(blocks):
+        if b.startswith("[[package]]") and "\nsource = " not in b \
+                and f'\nversion = "{old}"\n' in b + "\n":
+            blocks[i] = b.replace(f'\nversion = "{old}"', f'\nversion = "{new}"', 1)
+            count += 1
+    return "\n\n".join(blocks), count
+
+
+def add_changelog(text, version, date, lines):
+    """A new section for `version` at the top, under `## [未リリース]`."""
+    head = "## [未リリース]\n\n"
+    if head not in text:
+        raise RuntimeError("CHANGELOG.md has no `## [未リリース]` heading")
+    section = f"## [{version}] - {date}\n\n### 変更\n\n" + "\n".join(lines) + "\n\n"
+    return text.replace(head, head + section, 1)
+
+
+def drop_retests(role, ids):
+    """The role with `ids` out of its re-test list (`none yet` when it empties)."""
+    out = []
+    for line in role.split("\n"):
+        if line.startswith(RETESTS):
+            cells = line.split("|")
+            cell = cells[-2]
+            m = re.match(r"(.*:\s*|\s*)(.*?)(\s*)$", cell)
+            pre, items, post = m.groups()
+            kept = [t.strip() for t in items.split(",") if t.strip() and t.strip() not in ids]
+            if items.strip() != "none yet":
+                cells[-2] = pre + (", ".join(kept) if kept else "none yet") + post
+            line = "|".join(cells)
+        out.append(line)
+    return "\n".join(out)
+
+
+def section_items(text, name):
+    """The bullets (and paragraphs) under every `## name` / `### name` heading,
+    each folded onto one line."""
+    items, inside = [], False
+    for line in text.split("\n"):
+        if line.startswith("#"):
+            inside = re.fullmatch(r"#{2,4}\s+" + re.escape(name) + r"\s*", line) is not None
+            continue
+        if not inside or not line.strip():
+            continue
+        if line.startswith("- ") or not items or not line.startswith((" ", "\t")):
+            items.append(line.strip()[2:] if line.startswith("- ") else line.strip())
+        else:
+            items[-1] += " " + line.strip()
+    return items
+
+
+def changelog_line(number, machine, done, dropped):
+    """One Japanese CHANGELOG line for a merged lane pull request.
+
+    `done` and `dropped` are [(path, mark, id)]."""
+    def ids(marks):
+        return "・".join(f"`{rid}`" if path == "TESTING-KEYS.md" else rid
+                         for path, _, rid in marks)
+    ticked = [t for t in done if t[1] != "~"]
+    looked = [t for t in done if t[1] == "~"]
+    parts = []
+    if ticked:
+        parts.append(f"{ids(ticked)} を確かめ")
+    if looked:
+        parts.append(f"{ids(looked)} を画面の画像で見")
+    if parts:
+        line = f"- 実機（{machine}）で " + "、".join(parts) + "た"
+    else:
+        line = f"- 実機（{machine}）の実行の報告を足した。印の変わった行は無い"
+    if dropped:
+        line += f"。{ids(dropped)} は main で行が変わっていたので印を入れていない"
+    return line + f"（#{number}）。"
+
+
+def todo_add(todo, heading, lines):
+    """TODO.md with `lines` at the end of the `## heading` section."""
+    rows = todo.split("\n")
+    start = next((i for i, ln in enumerate(rows) if ln == f"## {heading}"), None)
+    if start is None:
+        rows += ["", f"## {heading}", ""]
+        start = len(rows) - 2
+    end = next((i for i in range(start + 1, len(rows)) if rows[i].startswith("## ")), len(rows))
+    while end > start + 1 and not rows[end - 1].strip():
+        end -= 1
+    return "\n".join(rows[:end] + lines + rows[end:])
+
+
+# ---------------------------------------------------------------- GitHub
+
+
+def api(method, path, body=None):
+    url = path if path.startswith("http") else API + path
+    req = urllib.request.Request(url, method=method)
+    req.add_header("Authorization", f"Bearer {TOKEN}")
+    req.add_header("Accept", "application/vnd.github+json")
+    req.add_header("X-GitHub-Api-Version", "2022-11-28")
+    data = None
+    if body is not None:
+        data = json.dumps(body).encode()
+        req.add_header("Content-Type", "application/json")
+    try:
+        with urllib.request.urlopen(req, data, timeout=60) as resp:
+            raw = resp.read()
+            link = resp.headers.get("Link", "")
+            return resp.status, (json.loads(raw) if raw else None), link
+    except urllib.error.HTTPError as e:
+        raw = e.read()
+        try:
+            payload = json.loads(raw)
+        except ValueError:
+            payload = {"message": raw.decode(errors="replace")}
+        return e.code, payload, ""
+
+
+def get(path):
+    status, payload, _ = api("GET", path)
+    if status != 200:
+        raise RuntimeError(f"GET {path}: {status} {payload}")
+    return payload
+
+
+def get_all(path, key=None):
+    out, url = [], path + ("&" if "?" in path else "?") + "per_page=100"
+    while url:
+        status, payload, link = api("GET", url)
+        if status != 200:
+            raise RuntimeError(f"GET {url}: {status} {payload}")
+        out.extend(payload[key] if key else payload)
+        m = re.search(r'<([^>]+)>;\s*rel="next"', link)
+        url = m.group(1) if m else None
+    return out
+
+
+def raw_file(path, ref):
+    status, payload, _ = api("GET", f"/repos/{REPO}/contents/{path}?ref={ref}")
+    if status != 200:
+        return ""
+    return base64.b64decode(payload.get("content", "")).decode("utf-8", errors="replace")
+
+
+def comment_once(pr, kind, sha, text, lead=None):
+    marker = MARKER.format(kind=kind, sha=sha)
+    for c in get_all(f"/repos/{REPO}/issues/{pr['number']}/comments"):
+        if marker in (c.get("body") or ""):
+            return
+    if lead:
+        body = f"{marker}\n**merge-lanes** {lead}:\n\n{text}"
+    else:
+        body = f"{marker}\n**merge-lanes** did not merge this ({kind}, head `{sha[:7]}`):\n\n{text}\n\n" \
+               "The merge routine reads this and takes it from here (`.claude/merge-routine.md`)."
+    if DRY:
+        print(f"  (dry run) would comment: {kind}: {text}")
+        return
+    api("POST", f"/repos/{REPO}/issues/{pr['number']}/comments", {"body": body})
+
+
+def git(*args, check=True):
+    p = subprocess.run(["git", *args], capture_output=True, text=True, encoding="utf-8")
+    if check and p.returncode != 0:
+        raise RuntimeError(f"git {' '.join(args)}: {p.stderr.strip() or p.stdout.strip()}")
+    return p.stdout if check else p
+
+
+def read(path):
+    try:
+        with open(path, encoding="utf-8", newline="") as f:
+            return f.read()
+    except FileNotFoundError:
+        return ""
+
+
+def write(path, text):
+    with open(path, "w", encoding="utf-8", newline="") as f:
+        f.write(text)
+
+
+def checkout_base(base):
+    git("fetch", "-q", "origin", f"+refs/heads/{base}:refs/remotes/origin/{base}")
+    git("checkout", "-q", "--force", "--detach", f"origin/{base}")
+
+
+def staged_problems(base, allowed_marks):
+    """What in the index, against the base, is not marks and new reports."""
+    problems = []
+    for line in git("diff", "--cached", "--name-status", f"origin/{base}").splitlines():
+        status, path = line.split("\t", 1)
+        if path.startswith("qa-reports/") and status == "A":
+            continue
+        if path in allowed_marks and status == "M":
+            try:
+                new_marks(path, diff_body(git("diff", "--cached", f"origin/{base}", "--", path)),
+                          allowed_marks[path])
+            except RuleError as e:
+                problems.append(str(e))
+            continue
+        problems.append(f"{path}: {status} after the merge")
+    return problems
+
+
+def resolve_conflict(pr, allowed_marks, ticks):
+    """Merge a conflicting lane pull request by hand and push it to the base.
+
+    Returns (outcome, dropped rests) -- outcome None when it was not done."""
+    n, head, base = pr["number"], pr["head"]["sha"], pr["base"]["ref"]
+    checkout_base(base)
+    git("fetch", "-q", "origin", f"+refs/pull/{n}/head:refs/merge-lanes/{n}")
+    if git("rev-parse", f"refs/merge-lanes/{n}").strip() != head:
+        return "head moved while resolving; next time", []
+    label = pr["head"]["label"].replace(":", "/", 1)
+    msg = f"Merge pull request #{n} from {label}\n\n{pr['title']}"
+    git("merge", "-q", "--no-ff", "--no-commit", "-m", msg, head, check=False)
+    conflicted = git("diff", "--name-only", "--diff-filter=U").split()
+    others = [f for f in conflicted if f not in allowed_marks]
+    if others:
+        git("merge", "--abort", check=False)
+        return None, []
+    dropped = []
+    for path in conflicted:
+        marks = [(mark, rest) for p, mark, _, rest in ticks if p == path]
+        text, lost = reapply_marks(git("show", f"origin/{base}:{path}"), marks)
+        write(path, text)
+        git("add", "--", path)
+        dropped += [(p, mark, rid) for p, mark, rid, rest in ticks if p == path and rest in lost]
+    problems = staged_problems(base, allowed_marks)
+    if problems:
+        git("merge", "--abort", check=False)
+        raise RuntimeError("the resolved merge is not marks only: " + "; ".join(problems))
+    if DRY:
+        git("merge", "--abort", check=False)
+        return f"(dry run) would resolve and push ({len(conflicted)} file(s))", dropped
+    git(*BOT, "commit", "-q", "--no-edit")
+    p = git("push", "-q", "origin", f"HEAD:refs/heads/{base}", check=False)
+    if p.returncode != 0:
+        return f"push refused, next time: {p.stderr.strip()[:200]}", dropped
+    return f"resolved {len(conflicted)} conflicting file(s) and pushed to {base}", dropped
+
+
+# ---------------------------------------------------------------- one pull request
+
+
+def rule_problems(pr, rules, allowed_marks, head):
+    """What breaks the file, mark and evidence rules (empty: none)."""
+    files = get_all(f"/repos/{REPO}/pulls/{pr['number']}/files")
+    problems, ticks, reports = [], [], []
+    for f in files:
+        name, status = f["filename"], f["status"]
+        if name.startswith("qa-reports/"):
+            if status != "added":
+                problems.append(f"{name}: {status} -- a run only adds its own report")
+            else:
+                reports.append(name)
+            continue
+        if name not in allowed_marks:
+            problems.append(f"{name}: not a file this lane may change")
+            continue
+        if status != "modified" or "patch" not in f:
+            problems.append(f"{name}: {status}, no line diff to read")
+            continue
+        try:
+            for mark, rest in new_marks(name, f["patch"], allowed_marks[name]):
+                ticks.append((name, mark, row_id(name, rest), rest))
+        except RuleError as e:
+            problems.append(str(e))
+    lo, hi = rules["reports"]
+    if not lo <= len(reports) <= hi:
+        problems.append(f"{len(reports)} new file(s) under qa-reports/; expected {lo}" +
+                        (f" to {hi}" if hi != lo else ""))
+    if not problems:
+        text = pr.get("body") or ""
+        if rules["evidence_in_report"]:
+            text += "\n" + "\n".join(raw_file(r, head) for r in reports if r.endswith(".md"))
+        problems += missing_evidence([t[:3] for t in ticks], text)
+    return problems, ticks
+
+
+def mergeable(number):
+    """GitHub's `mergeable` for a pull request, waiting a little while it is computed."""
+    for _ in range(6):
+        pr = get(f"/repos/{REPO}/pulls/{number}")
+        if pr["mergeable"] is not None:
+            return pr
+        time.sleep(5)
+    return pr
+
+
+def handle(pr, rules, allowed_marks, held, own_checks):
+    n, head = pr["number"], pr["head"]["sha"]
+    if n in held:
+        return "held in TODO.md"
+    problems, ticks = rule_problems(pr, rules, allowed_marks, head)
+    if problems:
+        comment_once(pr, "rules", head, "\n".join(f"- {p}" for p in problems))
+        return "rules: " + "; ".join(problems)
+    runs = get_all(f"/repos/{REPO}/commits/{head}/check-runs", "check_runs")
+    statuses = get(f"/repos/{REPO}/commits/{head}/status")["statuses"]
+    verdict = check_verdict(runs, statuses, rules["required_checks"], own_checks)
+    if verdict.startswith("red"):
+        comment_once(pr, "red", head, f"- {verdict}")
+        return verdict
+    fresh = mergeable(n)
+    if fresh["head"]["sha"] != head:
+        return "head moved while checking; next time"
+    if fresh["mergeable"] is None:
+        return "GitHub has not worked out mergeability yet; next time"
+    if not fresh["mergeable"]:
+        # a conflicting pull request's checks may never start, so this does
+        # not wait for green: its files are marks and reports, checked above
+        outcome, dropped = resolve_conflict(fresh, allowed_marks, ticks)
+        if outcome is None:
+            comment_once(pr, "conflict", head, "- it conflicts with the base branch in a file"
+                         " other than the checklists")
+            return "conflict"
+        if dropped and not DRY and outcome.startswith("resolved"):
+            comment_once(pr, "dropped", head, "\n".join(
+                f"- {rid} [{mark}] ({path})" for path, mark, rid in dropped),
+                lead="merged this by resolving the conflict; main had reworded these rows,"
+                     " so their marks were not carried over")
+        return outcome
+    if verdict != "green":
+        return "checks still running"
+    if DRY:
+        return f"(dry run) would merge {head[:7]} ({len(ticks)} marks)"
+    status, payload, _ = api("PUT", f"/repos/{REPO}/pulls/{n}/merge",
+                             {"merge_method": "merge", "sha": head})
+    if status != 200 or not payload.get("merged"):
+        return f"merge refused: {status} {payload.get('message')}"
+    return f"merged {head[:7]} ({len(ticks)} marks)"
+
+
+# ---------------------------------------------------------------- the share
+
+
+def merged_ticks(pr, allowed_marks, merge_sha):
+    """The merged pull request's (path, mark, id, rest), and its new reports."""
+    ticks, reports = [], []
+    for f in get_all(f"/repos/{REPO}/pulls/{pr['number']}/files"):
+        name = f["filename"]
+        if name.startswith("qa-reports/") and f["status"] == "added" and name.endswith(".md"):
+            reports.append((name, read(name) or raw_file(name, merge_sha)))
+        elif name in allowed_marks and "patch" in f:
+            try:
+                for mark, rest in new_marks(name, f["patch"], allowed_marks[name]):
+                    ticks.append((name, mark, row_id(name, rest), rest))
+            except RuleError as e:  # merged by hand by the owner
+                print(f"  #{pr['number']}: {e}")
+    return ticks, reports
+
+
+def share_once(rules, share, base, since):
+    """Make the share commit on a fresh base; returns (prs shared, problem)."""
+    checkout_base(base)
+    changelog = read("CHANGELOG.md")
+    prs = []
+    for pr in get_all(f"/repos/{REPO}/pulls?state=closed&sort=updated&direction=desc")[:100]:
+        lane = next((p for p in rules["lanes"] if pr["head"]["ref"].startswith(p)), None)
+        if lane and pr.get("merged_at") and pr["merged_at"] >= since \
+                and not re.search(rf"#{pr['number']}(?!\d)", changelog):
+            prs.append((pr, lane))
+    if not prs:
+        return [], None
+    prs.sort(key=lambda x: x[0]["number"])
+    lines, todo_lines, retested = [], [], set()
+    for pr, lane in prs:
+        n = pr["number"]
+        ticks, reports = merged_ticks(pr, rules["lanes"][lane], pr["merge_commit_sha"])
+        done, dropped = [], []
+        for path, mark, rid, rest in ticks:
+            (done if f"- [{mark}] {rest}" in read(path).split("\n") else dropped).append((path, mark, rid))
+        lines.append(changelog_line(n, MACHINES[lane], done, dropped))
+        retested.update(rid for path, _, rid in done if path == "TESTING-CHECKS.md")
+        mark = share["todo_mark"]
+        if share["review_line"]:
+            where = "、".join(name for name, _ in reports) or "PR 本文"
+            todo_lines.append(f"- [ ] （実機 #{n}）報告の所見と印の証拠を読み、振り分ける（{where}）{mark}")
+        seen = set()
+        for where, text in reports + \
+                [("PR 本文", pr.get("body") or "")]:
+            for kind, name in [("", "Proposals"), ("・キュー", "Queue"), ("・票", "Votes")]:
+                for item in section_items(text, name):
+                    if item not in seen:
+                        seen.add(item)
+                        todo_lines.append(f"- [ ] （実機 #{n}{kind}）{item}（{where}）{mark}")
+    cargo = read("Cargo.toml")
+    m = re.search(r'^version = "(\d+\.\d+\.\d+)"', cargo, re.M)
+    old = m.group(1)
+    new = bump_patch(old)
+    lock, count = set_lock_version(read("Cargo.lock"), old, new)
+    if count == 0:
+        return [], f"Cargo.lock has no workspace package at {old}"
+    write("Cargo.toml", cargo[:m.start(1)] + new + cargo[m.end(1):])
+    write("Cargo.lock", lock)
+    today = datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=9))).strftime("%Y-%m-%d")
+    write("CHANGELOG.md", add_changelog(changelog, new, today, lines))
+    if retested and share["role"]:
+        write(share["role"], drop_retests(read(share["role"]), retested))
+    if todo_lines:
+        write("TODO.md", todo_add(read("TODO.md"), share["todo_heading"], todo_lines))
+    numbers = ", ".join(f"#{pr['number']}" for pr, _ in prs)
+    which = ", ".join(f"#{pr['number']} ({MACHINES[lane]})" for pr, lane in prs)
+    msg = (f"v{new}: Merge real-machine checks from {numbers}\n\n"
+           f"Record the real-machine lane runs merged from {which}: the rows they checked are listed"
+           " in the changelog" + (", the re-test list drops them," if share["role"] else "") +
+           " and their reports' proposals, queue notes and votes are listed in TODO.md"
+           + (" for the merge routine to sort." if share["review_line"] else " for an interactive session."))
+    if DRY:
+        print(f"(dry run) would commit:\n{msg}\n" + "\n".join(lines + todo_lines))
+        git("checkout", "-q", "--force", "--detach", f"origin/{base}")
+        return [pr for pr, _ in prs], None
+    git("add", "-A", "--", "Cargo.toml", "Cargo.lock", "CHANGELOG.md", "TODO.md",
+        *([share["role"]] if share["role"] else []))
+    git(*BOT, "commit", "-q", "-m", msg)
+    p = git("push", "-q", "origin", f"HEAD:refs/heads/{base}", check=False)
+    if p.returncode != 0:
+        return [], "push refused: " + p.stderr.strip()[:200]
+    return [pr for pr, _ in prs], None
+
+
+def do_share(rules, share):
+    base = get(f"/repos/{REPO}")["default_branch"]
+    since = (datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=7)) \
+        .strftime("%Y-%m-%dT%H:%M:%SZ")
+    problem = None
+    for _ in range(3):  # main moved under the push: start again from it
+        shared, problem = share_once(rules, share, base, since)
+        if shared:
+            print("share: " + ", ".join(f"#{pr['number']}" for pr in shared))
+            if not DRY:
+                for wf in share["dispatch"]:
+                    status, payload, _ = api("POST", f"/repos/{REPO}/actions/workflows/{wf}/dispatches",
+                                             {"ref": base})
+                    print(f"  dispatched {wf}: {status}" + ("" if status == 204 else f" {payload}"))
+            return
+        if problem is None:
+            print("share: nothing to share")
+            return
+        print(f"share: {problem}")
+        if not problem.startswith("push refused"):
+            return
+    print("share: gave up for this run")
+
+
+def main():
+    rules = RULES.get(REPO)
+    if not rules:
+        sys.exit(f"merge-lanes: no rules for {REPO!r}")
+    if not TOKEN:
+        sys.exit("merge-lanes: GITHUB_TOKEN is not set")
+    own_checks = {os.environ.get("MERGE_LANES_JOB", "merge")}
+    held = set()
+    if rules["hold_heading"]:
+        default = get(f"/repos/{REPO}")["default_branch"]
+        held = held_numbers(raw_file("TODO.md", default), rules["hold_heading"])
+    prs = get_all(f"/repos/{REPO}/pulls?state=open&sort=created&direction=asc")
+    for pr in prs:
+        ref = pr["head"]["ref"]
+        lane = next((p for p in rules["lanes"] if ref.startswith(p)), None)
+        if lane is None:
+            continue
+        if pr["draft"] or (pr["head"].get("repo") or {}).get("full_name") != REPO:
+            print(f"#{pr['number']} {ref}: skipped (draft or from a fork)")
+            continue
+        try:
+            outcome = handle(pr, rules, rules["lanes"][lane], held, own_checks)
+        except RuntimeError as e:
+            outcome = f"error: {e}"
+        print(f"#{pr['number']} {ref}: {outcome}")
+    if rules["share"]:
+        do_share(rules, rules["share"])
+
+
+# ---------------------------------------------------------------- self-test
+
+
+def self_test():
+    patch = ("@@ -38,4 +38,4 @@\n - [x] **1.1** a\n-- [ ] **1.2** b\n-- [ ] **1.3** c\n"
+             "+- [x] **1.2** b\n+- [~] **1.3** c\n - [ ] **1.4** d\n"
+             "@@ -90,2 +90,2 @@\n-- [ ] **49.10** e\n+- [x] **49.10** e\n\\ No newline at end of file")
+    marks = new_marks("TESTING-CHECKS.md", patch, WINDOWS_MARKS["TESTING-CHECKS.md"])
+    assert marks == [("x", "**1.2** b"), ("~", "**1.3** c"), ("x", "**49.10** e")], marks
+    for bad, why in [
+        ("@@\n-- [ ] **1.2** b\n+- [x] **1.2** B\n", "text changed"),
+        ("@@\n - [ ] **1.2** b\n+- [x] **1.3** c\n", "line added"),
+        ("@@\n-- [x] **1.2** b\n+- [ ] **1.2** b\n", "untick"),
+        ("@@\n-- [~] **1.2** b\n+- [x] **1.2** b\n", "[~] to [x] is the owner's"),
+        ("@@\n-## 1. Pane\n+## 1. Panes\n", "not a row"),
+    ]:
+        try:
+            new_marks("TESTING-CHECKS.md", bad, WINDOWS_MARKS["TESTING-CHECKS.md"])
+        except RuleError:
+            continue
+        raise AssertionError(f"accepted: {why}")
+    try:
+        new_marks("TESTING-KEYS.md", "@@\n-- [ ] `q` — Quit\n+- [~] `q` — Quit\n",
+                  WINDOWS_MARKS["TESTING-KEYS.md"])
+        raise AssertionError("accepted [~] in filer's TESTING-KEYS.md")
+    except RuleError:
+        pass
+    assert new_marks("TESTING-KEYS.md", "@@\n-- [ ] `F1` — Help\n+- [~] `F1` — Help\n",
+                     TSUMUGI_WINDOWS_MARKS["TESTING-KEYS.md"]) == [("~", "`F1` — Help")]
+
+    assert row_id("TESTING-CHECKS.md", "**25.4e** text") == "25.4e"
+    assert row_id("TESTING-KEYS.md", "`<C-q>` — Quit the process · `quit`") == "<C-q>"
+    assert row_id("TESTING-KEYS.md", "`Ctrl+Shift+T` · `Cmd+T` — New session") == "Ctrl+Shift+T"
+
+    assert mentions("- **25.4e** `[x]`: shows v7.5.4.0", "25.4e", False)
+    assert mentions("- 2.28: Ctrl+Shift+Up x3 put CMD5 at the top", "2.28", False)
+    assert not mentions("- 2.28: ...", "2.2", False)
+    assert not mentions("- **1.1a** ...", "1.1", False)
+    assert not mentions("- 12.28: ...", "2.28", False)
+    assert mentions("- 2.32-2.35: all four held as written", "2.33", False)
+    assert mentions("- 49.9-49.11 held on the new pane", "49.10", False)
+    assert mentions("- 2.4〜2.7 looked right in the picture", "2.4", False)
+    assert not mentions("- 2.32-2.35: ...", "2.36", False)
+    assert not mentions("- 3.32-3.35: ...", "2.33", False)
+    assert mentions("- `Ctrl+Shift+T`: key log `Some(NewTab)`", "Ctrl+Shift+T", True)
+    assert not mentions("- `Ctrl+Shift+Tab`: ...", "Ctrl+Shift+T", True)
+
+    body = ("## Evidence\n- **1.2** `[x]`: printed `ok` twice, exit 0\n"
+            "- **1.3** `[~]`: the block cursor, `C:\\ev\\run\\1.3-cursor.png`, no hollow box\n"
+            "- **1.4** `[~]`: looked fine\n- **1.5**\n")
+    ticks = [("TESTING-CHECKS.md", "x", "1.2"), ("TESTING-CHECKS.md", "~", "1.3"),
+             ("TESTING-CHECKS.md", "~", "1.4"), ("TESTING-CHECKS.md", "x", "1.5"),
+             ("TESTING-CHECKS.md", "x", "1.6")]
+    miss = missing_evidence(ticks, body)
+    assert [m.split(" ")[0] for m in miss] == ["1.4", "1.5", "1.6"], miss
+
+    todo = ("## A\n- #12 not this\n## マージで止めている実機の PR\n\n説明（#3 の例）\n\n"
+            "- #311: 32.20 を…\n  - 持ち主の答え: #312 と同じ\n## B\n- #400\n")
+    assert held_numbers(todo, "マージで止めている実機の PR") == {3, 311, 312}
+    assert held_numbers("## マージで止めている実機の PR\n\nいまは無い\n", "マージで止めている実機の PR") == set()
+
+    def run(name, status, conclusion, rid=1, app=1):
+        return {"name": name, "status": status, "conclusion": conclusion, "id": rid, "app": {"id": app}}
+    green = [run("checklists", "completed", "success"), run("audit", "completed", "skipped", 2)]
+    assert check_verdict(green, [], ["checklists"], {"merge"}) == "green"
+    assert check_verdict(green, [], ["clippy"], {"merge"}) == "pending"
+    assert check_verdict(green + [run("test", "in_progress", None, 3)], [], [], set()) == "pending"
+    assert check_verdict(green + [run("test", "completed", "failure", 3)], [], [], set()) == "red: test"
+    rerun = [run("test", "completed", "failure", 3), run("test", "completed", "success", 4)]
+    assert check_verdict(green + rerun, [], [], set()) == "green"
+    assert check_verdict(green + [run("merge", "in_progress", None, 5)], [], [], {"merge"}) == "green"
+    assert check_verdict(green, [{"context": "ci/x", "state": "failure"}], [], set()) == "red: ci/x"
+
+    diff = ("diff --git a/T.md b/T.md\nindex 1..2 100644\n--- a/T.md\n+++ b/T.md\n"
+            "@@ -1 +1 @@\n-- [ ] **1.2** b\n+- [x] **1.2** b\n")
+    assert new_marks("T.md", diff_body(diff), {(" ", "x")}) == [("x", "**1.2** b")]
+    assert diff_body("") == ""
+
+    main_text = "# T\n- [x] **1.1** a\n- [ ] **1.2** b\n- [ ] **1.3** C now\n- [~] **1.4** d\n"
+    text, lost = reapply_marks(main_text, [("x", "**1.2** b"), ("~", "**1.3** c"), ("~", "**1.4** d")])
+    assert text == "# T\n- [x] **1.1** a\n- [x] **1.2** b\n- [ ] **1.3** C now\n- [~] **1.4** d\n", text
+    assert lost == ["**1.3** c"], lost
+
+    assert bump_patch("0.76.5") == "0.76.6"
+    lock = ('version = 4\n\n[[package]]\nname = "a"\nversion = "0.76.5"\n'
+            'source = "registry+https://github.com/rust-lang/crates.io-index"\n\n'
+            '[[package]]\nname = "tsumugi"\nversion = "0.76.5"\ndependencies = [\n "a",\n]\n\n'
+            '[[package]]\nname = "tsumugi-ipc"\nversion = "0.76.5"\n')
+    out, count = set_lock_version(lock, "0.76.5", "0.76.6")
+    assert count == 2 and out.count('"0.76.6"') == 2 and out.count('"0.76.5"') == 1, out
+
+    log = "# 変更履歴\n\n## [未リリース]\n\n## [0.76.5] - 2026-10-10\n"
+    assert add_changelog(log, "0.76.6", "2026-10-11", ["- a（#9）。"]) == (
+        "# 変更履歴\n\n## [未リリース]\n\n## [0.76.6] - 2026-10-11\n\n### 変更\n\n"
+        "- a（#9）。\n\n## [0.76.5] - 2026-10-10\n")
+
+    role = ("| Chunk | Up to | Notes |\n"
+            "| **Re-tests of changed behaviour** | 15 rows | Still `[ ]`: 2.58, 2.54, 9.5 |\n| x | y |")
+    assert drop_retests(role, {"2.54", "3.1"}).split("\n")[1] == \
+        "| **Re-tests of changed behaviour** | 15 rows | Still `[ ]`: 2.58, 9.5 |"
+    assert drop_retests(role, {"2.58", "2.54", "9.5"}).split("\n")[1] == \
+        "| **Re-tests of changed behaviour** | 15 rows | Still `[ ]`: none yet |"
+    assert drop_retests("| **Re-tests of changed behaviour** | 2.4, 1.3 |", {"2.4"}) == \
+        "| **Re-tests of changed behaviour** | 1.3 |"
+    none = "| **Re-tests of changed behaviour** | 15 rows | Still `[ ]`: none yet |"
+    assert drop_retests(none, {"2.4"}) == none
+
+    report = ("# Run\n\n### Proposals\n\n- **Reword 2.62** so the command\n  differs. Size: small.\n"
+              "- Kit helpers.\n\n## Queue\n\n- 2.67 stays `[ ]`.\n\n## Other\n- not this\n")
+    assert section_items(report, "Proposals") == ["**Reword 2.62** so the command differs. Size: small.",
+                                                  "Kit helpers."]
+    assert section_items(report, "Queue") == ["2.67 stays `[ ]`."]
+    assert section_items("## Queue\n\nNothing in the queue needs to change.\n", "Queue") == \
+        ["Nothing in the queue needs to change."]
+
+    done = [("TESTING-CHECKS.md", "x", "2.61"), ("TESTING-CHECKS.md", "~", "2.62"),
+            ("TESTING-KEYS.md", "x", "F1")]
+    assert changelog_line(9, "ARM64", done, []) == "- 実機（ARM64）で 2.61・`F1` を確かめ、2.62 を画面の画像で見た（#9）。"
+    assert changelog_line(10, "x64", [], [("TESTING-CHECKS.md", "x", "2.3")]) == \
+        "- 実機（x64）の実行の報告を足した。印の変わった行は無い。2.3 は main で行が変わっていたので印を入れていない（#10）。"
+
+    todo = "# TODO\n\n## 実機のレーンから\n\n説明\n\n- [ ] a\n\n## 後で\n\n- b\n"
+    assert todo_add(todo, "実機のレーンから", ["- [ ] c"]) == \
+        "# TODO\n\n## 実機のレーンから\n\n説明\n\n- [ ] a\n- [ ] c\n\n## 後で\n\n- b\n"
+    assert todo_add("# TODO\n\n## 実機のレーンから\n\n- [ ] a\n", "実機のレーンから", ["- [ ] c"]) == \
+        "# TODO\n\n## 実機のレーンから\n\n- [ ] a\n- [ ] c\n"
+    print("merge-lanes self-test: OK")
+
+
+if __name__ == "__main__":
+    if sys.argv[1:] == ["--self-test"]:
+        self_test()
+    else:
+        main()

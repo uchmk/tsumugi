@@ -610,13 +610,28 @@ fn connect(wake: impl Fn() + Send + Sync + Clone + 'static) -> Result<Client, St
     }
     spawn::server().map_err(|e| format!("could not start the server: {e}"))?;
     let deadline = std::time::Instant::now() + Duration::from_secs(10);
+    let mut spawned = std::time::Instant::now();
     loop {
         match Client::connect(&at, wake.clone()) {
             Ok(c) => return Ok(c),
             Err(e) if std::time::Instant::now() > deadline => return Err(format!("the server did not answer: {e}")),
+            // Nobody at the address a second after the start: the new server
+            // left, most likely because an old one stopping still held the
+            // address then. Another start; one too many leaves at once.
+            Err(e) if nobody_at(&e) && spawned.elapsed() > Duration::from_secs(1) => {
+                let _ = spawn::server();
+                spawned = std::time::Instant::now();
+            }
             Err(_) => std::thread::sleep(Duration::from_millis(50)),
         }
     }
+}
+
+/// Whether a failed connection says no server listens at the address at all
+/// (no pipe of that name; no socket, or one nobody accepts on), rather than
+/// one that is there but busy, stopping or of another version.
+fn nobody_at(e: &std::io::Error) -> bool {
+    matches!(e.kind(), std::io::ErrorKind::NotFound | std::io::ErrorKind::ConnectionRefused)
 }
 
 /// The offer to add Claude Code's hooks (the design's First run): ringed in
@@ -682,11 +697,16 @@ fn replace_server(wake: impl Fn() + Send + Sync + Clone + 'static) -> std::sync:
     let _ = std::thread::Builder::new().name("replace-server".into()).spawn(move || {
         let at = tsumugi_mux::address();
         let _ = Client::stop(&at);
-        let deadline = std::time::Instant::now() + Duration::from_secs(8);
+        let deadline = std::time::Instant::now() + Duration::from_secs(15);
+        // Gone only when nobody is at the address: a server stopping hangs
+        // up on a new client without a word, and a new server started then
+        // found the address still taken and left (the window said "the
+        // server did not answer" after every update).
         let stopped = loop {
             match Client::connect(&at, || {}) {
-                Err(e) if e.kind() == std::io::ErrorKind::InvalidData => {}
-                _ => break true,
+                Ok(_) => break true,
+                Err(e) if nobody_at(&e) => break true,
+                Err(_) => {}
             }
             if std::time::Instant::now() > deadline {
                 break false;
@@ -1051,12 +1071,18 @@ struct App {
     /// The check for a newer release, once a start (`[general] check_updates`).
     update: Option<std::sync::mpsc::Receiver<Option<String>>>,
     update_asked: bool,
+    /// The server's version was looked at: one older than this window is
+    /// said once.
+    build_told: bool,
     /// The question was answered "Close": the next request goes through.
     close_ok: bool,
     worktree_removing: Option<(std::path::PathBuf, std::sync::mpsc::Receiver<Result<(), String>>)>,
     /// A few words above the status bar for a few seconds: what was done,
     /// or (true) what went wrong.
     toast: Option<(String, std::time::Instant, bool)>,
+    /// Closed sessions just taken off the list, and when: Undo (or Ctrl+Z
+    /// while the panel is open) puts them back for a few seconds.
+    forgotten: Option<(Vec<history::Closed>, std::time::Instant)>,
     /// `[font] family` as installed, and the file it found.
     font_family: String,
     font_file: Option<std::path::PathBuf>,
@@ -1217,6 +1243,24 @@ impl CardLines<'_> {
     }
 }
 
+/// Start a session's work log in Downloads, named for its tab, or finish
+/// it. The server writes the file. What the toast says, and whether it is
+/// an error.
+fn work_log(client: &Client, info: &Info, tab: &str) -> (String, bool) {
+    if !info.logging.is_empty() {
+        client.log(info.id, None);
+        return (format!("Saved the work log to {}", info.logging), false);
+    }
+    match export::log_path(tab) {
+        Some(path) => {
+            let words = format!("Writing a work log to {} as the session goes (the same key finishes it)", path.display());
+            client.log(info.id, Some(path));
+            (words, false)
+        }
+        None => ("No home folder to write the work log in".into(), true),
+    }
+}
+
 /// A change asked for from the sidebar, made once it is drawn.
 enum SideOp {
     Mute(Vec<SessionId>, bool),
@@ -1234,6 +1278,8 @@ enum SideOp {
     Diff(String, std::path::PathBuf),
     /// Ask for the session's whole buffer, to save it under this name.
     SaveOutput(SessionId, String),
+    /// Start or finish the session's work log, named for this tab.
+    WorkLog(SessionId, String),
     /// Push the branch in this folder and open a pull request for it.
     CreatePr(std::path::PathBuf),
 }
@@ -1386,9 +1432,11 @@ impl App {
             jobs: std::sync::mpsc::channel(),
             update: None,
             update_asked: false,
+            build_told: false,
             close_ok: false,
             worktree_removing: None,
             toast: None,
+            forgotten: None,
             font_family: first_font.family.clone(),
             font_file: loaded.file,
             shaper: loaded.shaper,
@@ -1600,6 +1648,13 @@ impl App {
                 },
                 None => {}
             },
+            keys::Action::WorkLog => {
+                if let Some(info) = sessions.iter().find(|i| i.id == w.focus) {
+                    let tab = if w.name.is_empty() { sort::display_title(&info.title, &info.command) } else { w.name.clone() };
+                    let (words, error) = work_log(&client, info, &tab);
+                    self.say(words, error);
+                }
+            }
             keys::Action::Search => self.search = Some(palette::View::new()),
             keys::Action::Settings => self.open_settings(),
             keys::Action::Input => self.input.toggle(),
@@ -1657,7 +1712,7 @@ impl App {
                 Some(bar) if bar.id == w.focus => bar.focus = true,
                 _ => self.find = Some(find::Bar::new(w.focus)),
             },
-            keys::Action::Help => self.help = if self.help.is_some() { None } else { Some(help::View { opening: true }) },
+            keys::Action::Help => self.help = if self.help.is_some() { None } else { Some(help::View::new()) },
             keys::Action::Overview => {
                 self.lists = match &self.lists {
                     Some(v) if v.page == lists::Page::All => None,
@@ -1691,23 +1746,19 @@ impl App {
         }
     }
 
-    /// What the search box lists: every session, every folder the sessions
-    /// are in, and the commands.
-    fn search_entries(workspaces: &[Workspace], sessions: &[Info], saved: &[prompts::Prompt], kept: &[layouts::Layout]) -> Vec<palette::Entry> {
+    /// What the command palette lists: the commands, saved prompts and
+    /// layouts, then every folder the sessions are in.
+    fn search_entries(sessions: &[Info], saved: &[prompts::Prompt], kept: &[layouts::Layout]) -> Vec<palette::Entry> {
         let mut out = Vec::new();
-        for w in workspaces {
-            for id in w.layout.leaves() {
-                let Some(i) = sessions.iter().find(|i| i.id == id) else { continue };
-                let name = sort::display_title(&i.title, &i.command);
-                let mut detail = home_short(&i.cwd);
-                if !i.branch.is_empty() {
-                    detail.push_str(&format!(" · {}", i.branch));
-                }
-                for t in &i.tags {
-                    detail.push_str(&format!(" · {t}"));
-                }
-                out.push(palette::Entry { title: name, detail, pick: palette::Pick::Session(id) });
-            }
+        for c in palette::Command::ALL {
+            out.push(palette::Entry { title: c.title(), detail: c.key(), pick: palette::Pick::Command(c) });
+        }
+        for (k, p) in saved.iter().enumerate() {
+            let first = p.text.lines().next().unwrap_or_default();
+            out.push(palette::Entry { title: format!("Send prompt: {}", p.name), detail: first.chars().take(60).collect(), pick: palette::Pick::Prompt(k) });
+        }
+        for (k, l) in kept.iter().enumerate() {
+            out.push(palette::Entry { title: format!("Open layout: {}", l.name), detail: layouts::words(&l.tree), pick: palette::Pick::Layout(k) });
         }
         let mut folders: Vec<&std::path::Path> = Vec::new();
         for i in sessions {
@@ -1719,16 +1770,6 @@ impl App {
         }
         for f in folders {
             out.push(palette::Entry { title: format!("New session in {}", home_short(f)), detail: "folder".into(), pick: palette::Pick::Folder(f.to_path_buf()) });
-        }
-        for c in palette::Command::ALL {
-            out.push(palette::Entry { title: c.title(), detail: c.key(), pick: palette::Pick::Command(c) });
-        }
-        for (k, p) in saved.iter().enumerate() {
-            let first = p.text.lines().next().unwrap_or_default();
-            out.push(palette::Entry { title: format!("Send prompt: {}", p.name), detail: first.chars().take(60).collect(), pick: palette::Pick::Prompt(k) });
-        }
-        for (k, l) in kept.iter().enumerate() {
-            out.push(palette::Entry { title: format!("Open layout: {}", l.name), detail: layouts::words(&l.tree), pick: palette::Pick::Layout(k) });
         }
         out
     }
@@ -1801,7 +1842,7 @@ impl App {
             font_names: fonts::names(),
             font_file: self.font_file.as_ref().map(|p| p.display().to_string()),
             faces: self.faces_found,
-            server_up: chrome::elapsed(chrome::now_ms().saturating_sub(client.started_ms())),
+            server_up: format!("{} · {}", client.server_build(), chrome::elapsed(chrome::now_ms().saturating_sub(client.started_ms()))),
             settings_path: shown(tsumugi_mux::settings::default_path().and_then(|p| p.parent().map(std::path::Path::to_path_buf))),
             state_path: shown(tsumugi_mux::state::default_path()),
             address: tsumugi_mux::address().0.display().to_string(),
@@ -2079,11 +2120,6 @@ impl App {
     fn picked(&mut self, pick: palette::Pick, current: Option<&Workspace>, workspaces: &[Workspace], area: Rect) {
         let Some(client) = self.client.clone() else { return };
         match pick {
-            palette::Pick::Session(id) => self.go_to(&client, workspaces, id),
-            palette::Pick::Line { id, line, col, len } => {
-                self.go_to(&client, workspaces, id);
-                client.reveal(id, line, col, len);
-            }
             palette::Pick::Folder(dir) => match new_session(&client, dir, Place::NewWorkspace) {
                 Ok(pane) => self.pending = Some(pane.id()),
                 Err(e) => self.failed = Some(e),
@@ -2154,6 +2190,7 @@ impl App {
                     palette::Command::Help => keys::Action::Help,
                     palette::Command::SwapPane => keys::Action::SwapPane,
                     palette::Command::Equalize => keys::Action::Equalize,
+                    palette::Command::WorkLog => keys::Action::WorkLog,
                     palette::Command::Sort(_) | palette::Command::Closed | palette::Command::Changes | palette::Command::SaveOutput | palette::Command::Parallel | palette::Command::SaveLayout => return,
                 };
                 if let Some(w) = current {
@@ -3004,6 +3041,18 @@ impl App {
                                     ui.close();
                                 }
                             }
+                            "work-log" => {
+                                let (label, hint) = if focus.logging.is_empty() {
+                                    ("Write a work log", "The pane with the keys to a text file in Downloads as it goes: the scrollback now, then each line as it scrolls off")
+                                } else {
+                                    ("Finish the work log", "Write the screen and close the file")
+                                };
+                                if ui.add(egui::Button::new(label).shortcut_text(keys::label(keys::Action::WorkLog))).on_hover_text(hint).clicked() {
+                                    let tab = if w.name.is_empty() { sort::display_title(&focus.title, &focus.command) } else { w.name.clone() };
+                                    ops.push(SideOp::WorkLog(focus.id, tab));
+                                    ui.close();
+                                }
+                            }
                             "pr" => {
                                 let shown = !focus.branch.is_empty() && !matches!(focus.branch.as_str(), "main" | "master");
                                 if shown && ui.button("Create a pull request").on_hover_text(format!("Push {} and open a pull request with gh, titled from its commits", focus.branch)).clicked() {
@@ -3060,6 +3109,7 @@ impl App {
                 self.dragging_tab = None;
             }
         }
+        let mut toasts = Vec::new();
         if let Some(client) = &self.client {
             for op in ops {
                 match op {
@@ -3081,6 +3131,11 @@ impl App {
                         self.saving.insert(id, name);
                         client.all_text(id);
                     }
+                    SideOp::WorkLog(id, tab) => {
+                        if let Some(info) = sessions.iter().find(|i| i.id == id) {
+                            toasts.push(work_log(client, info, &tab));
+                        }
+                    }
                     SideOp::Diff(title, cwd) => {
                         let ctx = ui.ctx().clone();
                         self.diff = Some(diffview::View::open(title, cwd, move || ctx.request_repaint()));
@@ -3101,6 +3156,9 @@ impl App {
                     }
                 }
             }
+        }
+        for (words, error) in toasts {
+            self.say(words, error);
         }
         picked
     }
@@ -4035,6 +4093,51 @@ impl App {
         self.toast = Some((words, std::time::Instant::now(), error));
     }
 
+    /// Take closed sessions off the list, kept a while for Undo. Several
+    /// taken off one after another come back together.
+    fn forget(&mut self, taken: Vec<history::Closed>) {
+        if taken.is_empty() {
+            return;
+        }
+        history::save(self.ended.clone());
+        let mut all = self.forgotten.take().filter(|(_, at)| at.elapsed() < UNDO_FOR).map(|(v, _)| v).unwrap_or_default();
+        all.extend(taken);
+        self.forgotten = Some((all, std::time::Instant::now()));
+    }
+
+    /// "Took N off the list · Undo" at the foot of the window while Undo
+    /// can still put them back.
+    fn show_undo(&mut self, ctx: &egui::Context) {
+        let Some((taken, at)) = &self.forgotten else { return };
+        let left = UNDO_FOR.saturating_sub(at.elapsed());
+        if left.is_zero() {
+            self.forgotten = None;
+            return;
+        }
+        ctx.request_repaint_after(left);
+        let words = match taken.as_slice() {
+            [one] => format!("Took {} off the list", sort::display_title(&one.title, &one.command)),
+            many => format!("Took {} sessions off the list", many.len()),
+        };
+        let keyed = self.lists.is_some() && ctx.input_mut(|i| i.consume_key(egui::Modifiers::COMMAND, egui::Key::Z));
+        let c = crate::theme::colors();
+        let undo = egui::Area::new(egui::Id::new("undo-forget")).order(egui::Order::Tooltip).anchor(egui::Align2::CENTER_BOTTOM, egui::vec2(0.0, -44.0)).show(ctx, |ui| {
+            egui::Frame::NONE.fill(c.raised()).stroke(egui::Stroke::new(1.0, c.border)).corner_radius(6.0).inner_margin(egui::Margin::symmetric(12, 6)).show(ui, |ui| {
+                ui.horizontal(|ui| {
+                    ui.add(egui::Label::new(egui::RichText::new(words).size(12.5).color(c.strong())).wrap_mode(egui::TextWrapMode::Extend));
+                    ui.button(egui::RichText::new("Undo").strong()).on_hover_text(if cfg!(target_os = "macos") { "Cmd+Z while the list is open" } else { "Ctrl+Z while the list is open" }).clicked()
+                })
+                .inner
+            })
+            .inner
+        });
+        if undo.inner || keyed {
+            let Some((taken, _)) = self.forgotten.take() else { return };
+            history::restore(&mut self.ended, taken);
+            history::save(self.ended.clone());
+        }
+    }
+
     fn show_toast(&mut self, ctx: &egui::Context) {
         let Some((words, at, error)) = &self.toast else { return };
         let left = std::time::Duration::from_secs(if *error { 10 } else { 5 }).saturating_sub(at.elapsed());
@@ -4296,6 +4399,11 @@ impl App {
                     // Being recorded to a .cast file (Ctrl+Shift+R stops).
                     if !info.recording.is_empty() {
                         let r = p.text(egui::pos2(right_x, head.center().y), egui::Align2::RIGHT_CENTER, "● REC", egui::FontId::proportional(10.5), chrome::ink(chrome::red()));
+                        right_x = r.left() - 10.0;
+                    }
+                    // A work log being written (Ctrl+Shift+S finishes it).
+                    if !info.logging.is_empty() {
+                        let r = p.text(egui::pos2(right_x, head.center().y), egui::Align2::RIGHT_CENTER, "LOG", egui::FontId::proportional(10.5), chrome::ink(chrome::gold()));
                         right_x = r.left() - 10.0;
                     }
                     // A character set other than UTF-8, said where it applies.
@@ -4803,6 +4911,8 @@ struct Queued {
 
 /// How long something coming into view takes to fade in.
 const FADE: std::time::Duration = std::time::Duration::from_millis(150);
+/// How long Undo can put back closed sessions taken off the list.
+const UNDO_FOR: std::time::Duration = std::time::Duration::from_secs(8);
 
 /// How many lines a card's preview shows.
 const PEEK_LINES: usize = 12;
@@ -5001,6 +5111,18 @@ impl App {
             self.update = None;
             if let Some(v) = answer {
                 self.say(format!("tsumugi {v} is out (this is {}): github.com/uchmk/tsumugi/releases", env!("CARGO_PKG_VERSION")), false);
+            }
+        }
+        // This machine's server of an older build that speaks the same
+        // messages: no "tsumugi was updated" screen, so its fixes since would
+        // be missing without a word.
+        if !self.build_told && self.on.is_none() {
+            let build = client.server_build();
+            if !build.is_empty() {
+                self.build_told = true;
+                if build != env!("CARGO_PKG_VERSION") {
+                    self.say(format!("The server is still tsumugi {build} (this is {}): Settings → Advanced → Restart the server to use this one", env!("CARGO_PKG_VERSION")), false);
+                }
             }
         }
         let mut facts_again = false;
@@ -5498,31 +5620,10 @@ impl App {
         self.first_shown = false;
         self.send_queued(&client, &sessions);
         self.show_toast(&ctx);
+        self.show_undo(&ctx);
 
         let answer = match &mut self.search {
-            Some(view) => {
-                // The scrollbacks are asked once typing pauses, for three
-                // letters or more; their answer comes a frame or two later.
-                let q = view.query.trim().to_owned();
-                if q.chars().count() >= 3 && q != view.asked && view.changed.elapsed() > std::time::Duration::from_millis(250) {
-                    client.search_all(q.clone());
-                    view.asked = q.clone();
-                } else if q != view.asked {
-                    ctx.request_repaint_after(std::time::Duration::from_millis(260));
-                }
-                let lines: Vec<palette::Entry> = match client.found_all() {
-                    Some((asked, hits)) if asked == q && q.chars().count() >= 3 => hits
-                        .into_iter()
-                        .map(|h| {
-                            let name = sessions.iter().find(|i| i.id == h.id).map(|i| sort::display_title(&i.title, &i.command)).unwrap_or_default();
-                            let len = q.chars().count();
-                            palette::Entry { title: h.text.trim().to_owned(), detail: name, pick: palette::Pick::Line { id: h.id, line: h.line, col: h.col, len } }
-                        })
-                        .collect(),
-                    _ => Vec::new(),
-                };
-                chrome::search_box(&ctx, &self.palette, view, &Self::search_entries(&workspaces, &sessions, &self.input.prompts, &self.layouts), &lines)
-            }
+            Some(view) => chrome::search_box(&ctx, &self.palette, view, &Self::search_entries(&sessions, &self.input.prompts, &self.layouts)),
             None => None,
         };
         match answer {
@@ -5755,9 +5856,35 @@ impl App {
                 });
             }
         }
+        // The scrollbacks, asked once typing in All sessions' field pauses,
+        // for three letters or more; their answer comes a frame or two later.
+        let mut found = Vec::new();
+        if view.page == lists::Page::All {
+            let q = view.query.trim().to_owned();
+            let enough = q.chars().count() >= 3;
+            if enough && q != view.asked && view.changed.elapsed() > std::time::Duration::from_millis(250) {
+                client.search_all(q.clone());
+                view.asked = q.clone();
+            } else if enough && q != view.asked {
+                ctx.request_repaint_after(std::time::Duration::from_millis(260));
+            }
+            if let Some((asked, hits)) = client.found_all() {
+                if enough && asked == q {
+                    let len = q.chars().count();
+                    found = hits
+                        .into_iter()
+                        .take(30)
+                        .map(|h| {
+                            let name = sessions.iter().find(|i| i.id == h.id).map(|i| sort::display_title(&i.title, &i.command)).unwrap_or_default();
+                            lists::Found { id: h.id, name, text: h.text, line: h.line, col: h.col, len }
+                        })
+                        .collect();
+                }
+            }
+        }
         let colors = theme::colors();
         let mut keep = true;
-        for d in lists::show(ctx, &mut view, &all, sessions.len(), &rows, &self.ended, &colors) {
+        for d in lists::show(ctx, &mut view, &all, &found, sessions.len(), &rows, &self.ended, &colors) {
             match d {
                 lists::Do::Type(id, key) => {
                     if let Some(pane) = self.panes.get(&id) {
@@ -5779,6 +5906,11 @@ impl App {
                 }
                 lists::Do::Go(id) => {
                     self.go_to(client, workspaces, id);
+                    keep = false;
+                }
+                lists::Do::Reveal(f) => {
+                    self.go_to(client, workspaces, f.id);
+                    client.reveal(f.id, f.line, f.col, f.len);
                     keep = false;
                 }
                 lists::Do::StartAgain(k) => {
@@ -5807,13 +5939,13 @@ impl App {
                 }
                 lists::Do::Forget(k) => {
                     if k < self.ended.len() {
-                        self.ended.remove(k);
-                        history::save(self.ended.clone());
+                        let c = self.ended.remove(k);
+                        self.forget(vec![c]);
                     }
                 }
                 lists::Do::ForgetAll => {
-                    self.ended.clear();
-                    history::save(Vec::new());
+                    let all = std::mem::take(&mut self.ended);
+                    self.forget(all);
                 }
                 lists::Do::Close => keep = false,
             }

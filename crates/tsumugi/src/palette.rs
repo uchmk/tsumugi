@@ -1,22 +1,19 @@
-//! The search box at the top of the window (the design's 1c,
-//! `Ctrl+Shift+P`): sessions, folders and commands in one list, narrowed by
-//! what is typed. Only finds; the window does what was picked.
+//! The command palette at the top of the window (the design's 1c,
+//! `Ctrl+Shift+P`): commands, saved prompts and layouts, then a new session
+//! in a known folder, in one list narrowed by what is typed. Only finds; the
+//! window does what was picked. Sessions, and the lines in their
+//! scrollbacks, are found on All sessions (`Ctrl+Shift+O`) instead: with
+//! many sessions they filled this list (the owner, 2026-10-10).
 
 use std::path::PathBuf;
-
-use tsumugi_mux::SessionId;
 
 use crate::sort::Sort;
 
 /// What an entry does when picked.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Pick {
-    /// Go to the session.
-    Session(SessionId),
     /// Start a session in the folder.
     Folder(PathBuf),
-    /// A line found in a session's scrollback: go there and show it.
-    Line { id: SessionId, line: i32, col: usize, len: usize },
     Command(Command),
     /// Send the saved prompt (by its place in the list) to the pane with
     /// the keys, or to every pane of the tab while typing into all.
@@ -59,10 +56,12 @@ pub enum Command {
     SwapPane,
     /// Give every pane of the tab the same room.
     Equalize,
+    /// Write a work log of the pane to a file as it goes, or finish it.
+    WorkLog,
 }
 
 impl Command {
-    pub const ALL: [Command; 24] = [
+    pub const ALL: [Command; 25] = [
         Command::NewSession,
         Command::SplitRight,
         Command::SplitDown,
@@ -76,6 +75,7 @@ impl Command {
         Command::Changes,
         Command::TypeAll,
         Command::SaveOutput,
+        Command::WorkLog,
         Command::Parallel,
         Command::SaveLayout,
         Command::CloseTab,
@@ -111,6 +111,7 @@ impl Command {
             Command::Help => "Keys: every key and what it does".into(),
             Command::SwapPane => "Swap the pane with the next one".into(),
             Command::Equalize => "Give the panes the same size".into(),
+            Command::WorkLog => "Work log: write the pane's text to Downloads as it goes (or finish)".into(),
         }
     }
 
@@ -133,6 +134,7 @@ impl Command {
             Command::Help => Action::Help,
             Command::SwapPane => Action::SwapPane,
             Command::Equalize => Action::Equalize,
+            Command::WorkLog => Action::WorkLog,
             Command::Sort(_) | Command::Closed | Command::Changes | Command::SaveOutput | Command::Parallel | Command::SaveLayout => return String::new(),
         };
         label(action)
@@ -146,15 +148,11 @@ pub struct View {
     pub selected: usize,
     /// Opened this frame: the click that opened it is not a click outside.
     pub opening: bool,
-    /// What the scrollbacks were last asked for, and when the query last
-    /// changed (asked once typing pauses).
-    pub asked: String,
-    pub changed: std::time::Instant,
 }
 
 impl View {
     pub fn new() -> Self {
-        Self { query: String::new(), selected: 0, opening: true, asked: String::new(), changed: std::time::Instant::now() }
+        Self { query: String::new(), selected: 0, opening: true }
     }
 }
 
@@ -204,8 +202,8 @@ pub fn score(query: &str, text: &str) -> Option<i32> {
     Some(score)
 }
 
-/// The entries that match, best first; ties keep their order (sessions,
-/// then folders, then commands). Each entry is matched on its title and its
+/// The entries that match, best first; ties keep their order (commands,
+/// prompts and layouts, then folders). Each entry is matched on its title and its
 /// detail together.
 pub fn search(query: &str, entries: &[Entry]) -> Vec<Entry> {
     let mut found: Vec<(i32, usize, &Entry)> =

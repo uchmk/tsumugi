@@ -260,7 +260,7 @@ fn serve(shared: Arc<Shared>, client: ClientId, conn: Conn) {
         return;
     }
     let (tx, rx) = crossbeam_channel::unbounded::<ToClient>();
-    let _ = tx.send(ToClient::Started { at_ms: shared.started_ms });
+    let _ = tx.send(ToClient::Started { at_ms: shared.started_ms, build: env!("CARGO_PKG_VERSION").into() });
     let _ = tx.send(ToClient::Notices(lock(&shared.notices).1.iter().cloned().collect()));
     let _ = tx.send(ToClient::MutedTags(lock(&shared.muted_tags).iter().cloned().collect()));
     lock(&shared.clients).insert(client, tx.clone());
@@ -328,6 +328,27 @@ fn handle(shared: &Arc<Shared>, client: ClientId, tx: &Sender<ToClient>, msg: To
                     None => {
                         s.term.stop_recording();
                         s.info.recording.clear();
+                    }
+                }
+                broadcast(shared, &sessions);
+            }
+        }
+        ToServer::Log { id, path } => {
+            if let Some(s) = sessions.get_mut(&id) {
+                match path {
+                    Some(path) => {
+                        let path = unused(&path);
+                        let made = path.parent().map_or(Ok(()), std::fs::create_dir_all).and_then(|()| s.term.log_text(&path));
+                        match made {
+                            Ok(()) => s.info.logging = path.to_string_lossy().into_owned(),
+                            Err(e) => {
+                                let _ = tx.send(ToClient::Error(format!("the work log did not start: {}: {e}", path.display())));
+                            }
+                        }
+                    }
+                    None => {
+                        s.term.stop_log();
+                        s.info.logging.clear();
                     }
                 }
                 broadcast(shared, &sessions);
@@ -899,7 +920,7 @@ fn spawn_session(
     shared.ever.store(true, Ordering::Relaxed);
     let (branch, project) = git(&cwd);
     let branch = branch.unwrap_or_default();
-    let mut info = Info { id, cwd, title: String::new(), command, state: State::Running, note: String::new(), since_ms: now_ms(), branch, project, muted: false, tags: Vec::new(), claude: false, conversation: String::new(), charset: "UTF-8".into(), agent: String::new(), ports: Vec::new(), recording: String::new() };
+    let mut info = Info { id, cwd, title: String::new(), command, state: State::Running, note: String::new(), since_ms: now_ms(), branch, project, muted: false, tags: Vec::new(), claude: false, conversation: String::new(), charset: "UTF-8".into(), agent: String::new(), ports: Vec::new(), recording: String::new(), logging: String::new() };
     lock(&shared.rules).apply(&mut info);
     let watchers: BTreeSet<ClientId> = client.into_iter().collect();
     sessions.insert(
@@ -1122,6 +1143,17 @@ fn broadcast_workspaces(shared: &Shared, workspaces: &BTreeMap<WorkspaceId, Work
 /// A session is over: tell its watchers and every sidebar, then let the
 /// session go -- outside the lock, since ending a shell can take a moment --
 /// and stop the server after the last.
+/// `path`, or when a file is there, the first of `<stem>-2.<ext>`,
+/// `<stem>-3.<ext>` that is not.
+fn unused(path: &Path) -> PathBuf {
+    if !path.exists() {
+        return path.to_owned();
+    }
+    let stem = path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+    let ext = path.extension().map(|e| format!(".{}", e.to_string_lossy())).unwrap_or_default();
+    (2..).map(|n| path.with_file_name(format!("{stem}-{n}{ext}"))).find(|p| !p.exists()).expect("some number is free")
+}
+
 fn end(shared: &Shared, mut sessions: std::sync::MutexGuard<'_, BTreeMap<SessionId, Session>>, id: SessionId) {
     let Some(s) = sessions.remove(&id) else { return };
     // Its pane goes, and its sibling takes the room; a tab with no pane left goes too.
@@ -1526,6 +1558,7 @@ fn run_pump(shared: Arc<Shared>, dirty: Receiver<SessionId>) {
             }
             drop(rules);
             for s in sessions.values_mut() {
+                s.term.log_step();
                 if let Some(before) = settle(s, quiet_of(&shared)) {
                     record_notice(&shared, s, before);
                     changed = true;
@@ -1582,6 +1615,7 @@ fn run_pump(shared: Arc<Shared>, dirty: Receiver<SessionId>) {
         for id in ids {
             let Some(s) = sessions.get_mut(&id) else { continue };
             let clipboard = s.term.drain();
+            s.term.log_step();
             let noticed = s.term.take_notices().pop().map(|note| {
                 s.notice = Some((State::Waiting, std::time::Instant::now()));
                 s.info.note = note;
@@ -1774,7 +1808,7 @@ mod tags {
     }
 
     fn info(cwd: &str, tags: &[&str]) -> Info {
-        Info { id: 1, cwd: PathBuf::from(cwd), title: String::new(), command: String::new(), state: State::Running, note: String::new(), since_ms: 0, branch: String::new(), project: PathBuf::new(), muted: false, tags: tags.iter().map(|t| t.to_string()).collect(), claude: false, conversation: String::new(), charset: String::new(), agent: String::new(), ports: Vec::new(), recording: String::new() }
+        Info { id: 1, cwd: PathBuf::from(cwd), title: String::new(), command: String::new(), state: State::Running, note: String::new(), since_ms: 0, branch: String::new(), project: PathBuf::new(), muted: false, tags: tags.iter().map(|t| t.to_string()).collect(), claude: false, conversation: String::new(), charset: String::new(), agent: String::new(), ports: Vec::new(), recording: String::new(), logging: String::new() }
     }
 
     /// Going back and forth between two folders with a rule each swaps the

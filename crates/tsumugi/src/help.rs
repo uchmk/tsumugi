@@ -1,6 +1,8 @@
 //! The help (F1, as filer's): every key the window has and what it does, by
-//! kind, in two or three columns on one screen. The changeable keys as the
-//! settings have them now; the fixed ones from `keys::FIXED`.
+//! kind, in the middle of the window. It fits without scrolling: when it runs
+//! over, it takes another column, then smaller letters (down to `SMALLEST`),
+//! and only scrolls below that. The changeable keys as the settings have them
+//! now; the fixed ones from `keys::FIXED`.
 
 use egui::{FontId, RichText};
 
@@ -17,7 +19,7 @@ pub struct Group {
 /// The changeable keys, by kind, in the order they read.
 const KINDS: [(&str, &[Action]); 4] = [
     ("Sessions and tabs", &[Action::NewTab, Action::CloseTab, Action::Rename, Action::Duplicate, Action::NextTab, Action::PrevTab, Action::NextWaiting]),
-    ("Panes", &[Action::SplitRight, Action::SplitDown, Action::Zoom, Action::TypeAll, Action::CopyMode, Action::QuickSelect, Action::Find, Action::PrevPrompt, Action::NextPrompt, Action::SwapPane, Action::Equalize, Action::PaneToTab, Action::Record, Action::CopyOutput]),
+    ("Panes", &[Action::SplitRight, Action::SplitDown, Action::Zoom, Action::TypeAll, Action::CopyMode, Action::QuickSelect, Action::Find, Action::PrevPrompt, Action::NextPrompt, Action::SwapPane, Action::Equalize, Action::PaneToTab, Action::Record, Action::WorkLog, Action::CopyOutput]),
     ("Lists and boxes", &[Action::Search, Action::Waiting, Action::Overview, Action::Notices, Action::Input, Action::Settings, Action::Help]),
     ("The view", &[Action::Rail, Action::FontBigger, Action::FontSmaller, Action::FontReset]),
 ];
@@ -76,10 +78,51 @@ pub fn deal(groups: &[Group], n: usize) -> Vec<Vec<usize>> {
     out
 }
 
+/// The smallest the letters get before it scrolls instead.
+pub const SMALLEST: f32 = 0.7;
+
+/// How many columns a width can take at most when it has to (300 each).
+pub fn most_columns(width: f32) -> usize {
+    ((width / 300.0) as usize).clamp(1, 4)
+}
+
 /// The help while it is open.
 pub struct View {
     /// Opened this frame: the click or key that opened it does not close it.
     pub opening: bool,
+    /// The columns and the letters' scale it is drawn with.
+    cols: usize,
+    scale: f32,
+    /// The window's size the fit was found for.
+    screen: egui::Vec2,
+    /// It fits (or can get no smaller): shown, and left as it is.
+    settled: bool,
+}
+
+impl View {
+    pub fn new() -> Self {
+        Self { opening: true, cols: 0, scale: 1.0, screen: egui::Vec2::ZERO, settled: false }
+    }
+
+    /// The next try after the content came out `tall` for `room`.
+    fn refit(&mut self, tall: f32, room: f32, most: usize) {
+        if tall <= room + 0.5 {
+            self.settled = true;
+        } else if self.cols < most {
+            self.cols += 1;
+        } else if self.scale > SMALLEST {
+            // About as much smaller as it is over, at least a step.
+            self.scale = (self.scale * room / tall).min(self.scale - 0.02).max(SMALLEST);
+        } else {
+            self.settled = true;
+        }
+    }
+}
+
+impl Default for View {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 /// Draw it: false when it closes (Esc, its own key, × or a click outside).
@@ -106,10 +149,23 @@ pub fn show(ctx: &egui::Context, view: &mut View, c: &Colors) -> bool {
     }
     view.opening = false;
     let all = groups(keys::label, keys::mac());
-    let width = (screen.width() - 48.0).clamp(280.0, 1240.0);
-    let n = columns_for(width);
+    let width = (screen.width() - 48.0).clamp(280.0, 1600.0);
+    if view.screen != screen.size() {
+        // A new window size: start again from the columns it holds as is.
+        view.screen = screen.size();
+        view.cols = columns_for(width);
+        view.scale = 1.0;
+        view.settled = false;
+    }
+    let (n, s) = (view.cols, view.scale);
     let dealt = deal(&all, n);
-    egui::Area::new(egui::Id::new("help")).order(egui::Order::Foreground).anchor(egui::Align2::CENTER_TOP, egui::vec2(0.0, 24.0)).show(ctx, |ui| {
+    let room = (screen.height() - 110.0).max(160.0);
+    let mut tall = 0.0;
+    egui::Area::new(egui::Id::new("help")).order(egui::Order::Foreground).anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO).show(ctx, |ui| {
+        // Not shown until it fits, so it does not jump about while it settles.
+        if !view.settled {
+            ui.set_invisible();
+        }
         egui::Frame::NONE.fill(c.panel).stroke(egui::Stroke::new(1.0, c.border_strong())).corner_radius(12.0).inner_margin(egui::Margin::symmetric(20, 14)).show(ui, |ui| {
             ui.set_width(width);
             ui.horizontal(|ui| {
@@ -122,40 +178,53 @@ pub fn show(ctx: &egui::Context, view: &mut View, c: &Colors) -> bool {
                 });
             });
             ui.separator();
-            // On a screen too short for it all, it scrolls rather than run off.
-            egui::ScrollArea::vertical().max_height((screen.height() - 110.0).max(160.0)).auto_shrink([false, true]).show(ui, |ui| {
-                ui.columns(n, |cols| {
-                    for (col, ui) in dealt.iter().zip(cols.iter_mut()) {
-                        for &g in col {
-                            group(ui, &all[g], c, g);
-                        }
-                    }
-                });
+            // Even at the smallest letters too short a screen scrolls rather
+            // than run off. As tall as it needs: the area alone would keep the
+            // height of its first frame, and scroll under it.
+            egui::ScrollArea::vertical().max_height(room).min_scrolled_height(room).auto_shrink([false, true]).show(ui, |ui| {
+                tall = ui
+                    .scope(|ui| {
+                        ui.columns(n, |cols| {
+                            for (col, ui) in dealt.iter().zip(cols.iter_mut()) {
+                                for &g in col {
+                                    group(ui, &all[g], c, g, s);
+                                }
+                            }
+                        });
+                    })
+                    .response
+                    .rect
+                    .height();
             });
         });
     });
+    if !view.settled {
+        view.refit(tall, room, most_columns(width));
+        ctx.request_repaint();
+    }
     keep
 }
 
-fn group(ui: &mut egui::Ui, g: &Group, c: &Colors, id: usize) {
-    ui.add_space(6.0);
-    ui.label(RichText::new(g.title.to_uppercase()).size(11.0).strong().color(c.dim));
-    ui.add_space(2.0);
+/// One group, its letters and spaces times `s`.
+fn group(ui: &mut egui::Ui, g: &Group, c: &Colors, id: usize, s: f32) {
+    ui.add_space(6.0 * s);
+    ui.label(RichText::new(g.title.to_uppercase()).size(11.0 * s).strong().color(c.dim));
+    ui.add_space(2.0 * s);
     // The keys in a column as wide as the widest of the group's, the words
     // wrapping in what is left.
-    let font = FontId::monospace(11.5);
+    let font = FontId::monospace(11.5 * s);
     let key_w = g.rows.iter().map(|(k, _)| ui.fonts_mut(|f| f.layout_no_wrap(k.clone(), font.clone(), c.fg).size().x)).fold(0.0_f32, f32::max).min(ui.available_width() * 0.45);
-    egui::Grid::new(("help-group", id)).num_columns(2).spacing(egui::vec2(10.0, 3.0)).show(ui, |ui| {
+    egui::Grid::new(("help-group", id)).num_columns(2).spacing(egui::vec2(10.0, 3.0) * s).show(ui, |ui| {
         for (k, what) in &g.rows {
-            ui.allocate_ui_with_layout(egui::vec2(key_w, 16.0), egui::Layout::left_to_right(egui::Align::Center), |ui| {
+            ui.allocate_ui_with_layout(egui::vec2(key_w, 16.0 * s), egui::Layout::left_to_right(egui::Align::Center), |ui| {
                 ui.set_min_width(key_w);
                 ui.label(RichText::new(k).font(font.clone()).color(c.wait_text()));
             });
-            ui.add(egui::Label::new(RichText::new(what).size(12.0).color(c.fg)).wrap());
+            ui.add(egui::Label::new(RichText::new(what).size(12.0 * s).color(c.fg)).wrap());
             ui.end_row();
         }
     });
-    ui.add_space(6.0);
+    ui.add_space(6.0 * s);
 }
 
 #[cfg(test)]
@@ -182,7 +251,7 @@ mod tests {
     #[test]
     fn the_groups_are_dealt_in_order_and_about_even() {
         let all = all();
-        for n in 1..=3 {
+        for n in 1..=4 {
             let dealt = deal(&all, n);
             assert_eq!(dealt.len(), n);
             let order: Vec<usize> = dealt.iter().flatten().copied().collect();
@@ -194,15 +263,13 @@ mod tests {
         assert_eq!((columns_for(1200.0), columns_for(900.0), columns_for(500.0)), (3, 2, 1));
     }
 
-    /// On a 1280 × 800 window it is all there without scrolling, in three
-    /// columns side by side.
-    #[test]
-    fn it_fits_one_screen() {
+    /// Draws it on a `w` × `h` window until it settles: the texts and where.
+    fn draw(w: f32, h: f32) -> (View, Vec<(String, egui::Rect)>) {
         let ctx = egui::Context::default();
-        let mut view = View { opening: true };
+        let mut view = View::new();
         let mut texts = Vec::new();
-        for _ in 0..3 {
-            let input = egui::RawInput { screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1280.0, 800.0))), ..Default::default() };
+        for _ in 0..12 {
+            let input = egui::RawInput { screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(w, h))), ..Default::default() };
             let mut out = ctx.run_ui(input, |ui| {
                 assert!(show(ui.ctx(), &mut view, &crate::theme::colors()));
             });
@@ -219,13 +286,54 @@ mod tests {
                 walk(&c.shape, &mut texts);
             }
         }
+        (view, texts)
+    }
+
+    /// On a 1280 × 800 window it is all there without scrolling, in three
+    /// columns or more side by side, in the middle.
+    #[test]
+    fn it_fits_one_screen() {
+        let (view, texts) = draw(1280.0, 800.0);
+        assert!(view.settled);
+        let top = texts.iter().map(|(_, r)| r.top()).fold(f32::MAX, f32::min);
         let bottom = texts.iter().map(|(_, r)| r.bottom()).fold(0.0_f32, f32::max);
         assert!(bottom < 800.0, "runs to {bottom}");
+        assert!(((800.0 - bottom) - top).abs() < 60.0, "not in the middle: {top} to {bottom}");
         let heads: Vec<f32> = all().iter().filter_map(|g| texts.iter().find(|(t, _)| *t == g.title.to_uppercase()).map(|(_, r)| r.left())).collect();
         let mut xs = heads.clone();
-        xs.dedup_by(|a, b| (*a - *b).abs() < 1.0);
         xs.sort_by(f32::total_cmp);
         xs.dedup_by(|a, b| (*a - *b).abs() < 1.0);
-        assert_eq!(xs.len(), 3, "{heads:?}");
+        assert!(xs.len() >= 3, "{heads:?}");
+    }
+
+    /// A shorter or narrower window takes more columns or smaller letters
+    /// instead of scrolling.
+    #[test]
+    fn a_small_window_still_holds_it_all() {
+        for (w, h) in [(1280.0, 600.0), (1000.0, 700.0), (1366.0, 640.0)] {
+            let (view, texts) = draw(w, h);
+            assert!(view.settled, "{w}x{h}");
+            let bottom = texts.iter().map(|(_, r)| r.bottom()).fold(0.0_f32, f32::max);
+            assert!(bottom < h, "{w}x{h}: runs to {bottom} (cols {}, scale {})", view.cols, view.scale);
+            for g in all() {
+                assert!(texts.iter().any(|(t, _)| *t == g.title.to_uppercase()), "{w}x{h}: {} is not drawn (cols {}, scale {})", g.title, view.cols, view.scale);
+            }
+        }
+    }
+
+    #[test]
+    fn it_takes_columns_before_smaller_letters() {
+        let mut v = View::new();
+        v.cols = 2;
+        v.refit(900.0, 600.0, 3);
+        assert_eq!((v.cols, v.scale, v.settled), (3, 1.0, false));
+        v.refit(900.0, 600.0, 3);
+        assert!(v.scale < 0.7 + 0.01 && !v.settled);
+        v.refit(650.0, 600.0, 3);
+        assert!(v.settled);
+        let mut v = View::new();
+        v.cols = 3;
+        v.refit(610.0, 600.0, 3);
+        assert!(v.scale < 1.0 && v.scale > 0.95);
     }
 }

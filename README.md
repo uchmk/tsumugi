@@ -50,7 +50,10 @@ program or tag. On Windows the server runs from a copy of the exe kept in
 version says tsumugi was updated and offers, on Enter, to restart the
 server -- the tabs are written down first -- and brings every one back.
 `restart_after_update = true` under `[general]` (Settings, General) does it
-without asking. The sidebar rings each one in its state's
+without asking. A server of an older build that still speaks the same
+version goes on as it is -- its sessions keep running -- and the window says
+so once, with the way to restart it (Settings, Advanced, which also shows
+the server's version). The sidebar rings each one in its state's
 colour, with a mark that says it without the colour: cyan and a turning arc
 while an agent works, yellow, breathing, and a clock when it wants you, a
 thin yellow ring and a dotted circle when its output has stopped for 10
@@ -75,9 +78,13 @@ confirmed, writes it and says yes: Claude Code runs that exact command without
 asking from then on. The same
 panel's other page, **Recently closed** (also in the search box), keeps the
 last 30 sessions that ended -- when, how, the tokens its conversation used,
-and the last 12 lines on its screen -- with **Resume** (Claude Code's
-conversation again, in a new tab in its folder) or **Start again**. The list
-is `closed-sessions.json` beside the state file.
+and the last lines on its screen, all 12 for the one picked and two for the
+rest. `Up` / `Down` pick one, `Enter` (or a double click) resumes it (Claude
+Code's conversation again, in a new tab in its folder) or starts it again,
+and `Delete` takes it off the list -- for eight seconds a note at the bottom
+offers **Undo** (`Ctrl+Z` while the panel is open; `Cmd+Z` on macOS), which
+puts back what was taken off, **Clear the list** included. The list is `closed-sessions.json` beside
+the state file.
 
 A tab's right-click menu has **Note…**: a line of your own (what the tab is
 for), shown in quotation marks on its card and kept across restarts.
@@ -295,10 +302,11 @@ notify = true
 
 `Ctrl+Shift+F` (`Cmd+F`) **finds in the pane**: a bar at its top right finds
 what is typed as plain text, from the newest line back, and selects it on
-screen (ignoring case unless the text has a capital). `Enter` or **↑** goes on
-to the older match, `Shift+Enter` or **↓** to the newer; it says when it ran
-off the end and started again, or that nothing matched. `Esc` or **×** closes
-it; no key typed in it reaches the shell.
+screen (ignoring case unless the text has a capital). `Enter` or **↓** goes
+down to the newer match, `Shift+Enter` or **↑** up to the older; it says when
+it ran off the end and started again, or that nothing matched. The match stays
+selected: `Ctrl+Shift+C` copies it. `Esc` or **×** closes it; no key typed in
+it reaches the shell.
 
 A **paste is asked about** before it goes when it could run more than was
 meant: several lines into a program that did not ask for bracketed paste
@@ -311,7 +319,16 @@ are switches in Settings → General → Copy and paste (`warn_multiline_paste`,
 `Ctrl+Shift+O` (`Cmd+Shift+O`) shows **All sessions**: every session on one
 page, those waiting for you first, then errors, running and done, each with
 its state, folder and branch, tags, tokens and its last two lines. The arrows
-and `Enter`, or a click, go to one.
+and `Enter`, or a click, go to one. It takes most of the window. `Ctrl+Tab` /
+`Ctrl+Shift+Tab` (or `Ctrl+PageDown` / `Ctrl+PageUp`, or `Right` / `Left`) turn
+to **Waiting** and **Recently closed** and back.
+
+Typing filters the cards there -- a few letters in order, from the name,
+folder, `#tags` or last lines -- and three letters or more also search every
+session's scrollback: the lines found come under the cards, under IN THE
+SCROLLBACK, and picking one goes to its session and scrolls to it, the match
+selected. While something is typed, `Left` and `Right` move in the box rather
+than turning the page.
 
 ### The status bar
 
@@ -359,6 +376,17 @@ run, the pull request opened in the browser.
 every pane of the tab -- **TYPING INTO ALL** on each heading -- until it is
 pressed again. **Save the output to a file** in the tab's menu (or the search
 box) writes the pane's whole scrollback as text to Downloads.
+
+`Ctrl+Shift+S` (`Cmd+Shift+S` on macOS), or **Write a work log** in the
+tab's menu, keeps writing the pane's text as it goes to
+`Downloads/tsumugi-<name>-<date>-<time>.txt` (`-2` and on when that file is
+there), like a terminal's log (Tera Term's): open it at any time and it has
+everything up to now -- the lines that have scrolled off, then the screen as
+it is, refreshed twice a second -- until the same key finishes the log or the
+session ends. Running a command twice or resizing the pane leaves nothing out
+and writes nothing twice. The heading says LOG meanwhile. A full-screen
+program's screen (vim, less) is left out. The server writes it, so it goes on
+with the window closed.
 
 When a waiting session has a menu of numbered choices on its screen --
 Claude Code's "Do you want to proceed? 1. Yes 2. … 3. No" -- its card shows
@@ -426,20 +454,19 @@ editable in Settings → Sessions & profiles).
 ### Searching
 
 `Ctrl+Shift+P` (`Cmd+Shift+P` on macOS), or the box in the band along the
-top, searches the sessions (by title, folder, branch and tags), the folders
-they are in (to start a new session there) and the window's commands. Type
+top, is the command palette: the window's commands, saved prompts and
+layouts, and the folders of the sessions (to start a new session there).
+Sessions themselves are found in All sessions (`Ctrl+Shift+O`). Type
 a few letters in order, move with the arrows, `Enter` to go, `Esc` to close.
 The box and the bell beside it stay in the middle of the window; the band
 also shows the tags of the session with the keys at its right, `[tags]
 shown` of them (3) and `+N` for the rest, fewer when the window narrows.
 
-`F1` (or **Keys** in the search) shows every key and what it does on one
-screen, by kind in two or three columns, the keys as the settings have
-them now; `F1` or `Esc` closes it.
-
-Three letters or more also search every session's scrollback: the lines
-found come last, under IN THE SCROLLBACK, and picking one goes to its
-session and scrolls to it, the match selected.
+`F1` (or **Keys** in the search) shows every key and what it does in the
+middle of the window, by kind in columns, the keys as the settings have
+them now. It fits without scrolling: when it would run over, it takes another
+column, then smaller letters, and only scrolls on a very small window. `F1` or
+`Esc` closes it.
 
 The input box's saved prompts are there too, as **Send prompt: name**: picked,
 the prompt goes to the pane with the keys (to every pane of the tab while
@@ -679,7 +706,7 @@ Editor's menus do), **Copy the folder path**; your own items from
 `[[menu.session]]`; and **Close the session**, which asks a second click
 while something is running in it. `[menu] hide` leaves out any of rename,
 note, tags, mute, pin, restart, duplicate, new-window, filer, editor, copy-path,
-save-output, pr, close.
+save-output, work-log, pr, close.
 
 Themes: tsumugi Dark (the default) and Light, Tokyo Night, Catppuccin Mocha
 and Latte, Dracula, Nord, Gruvbox Dark and Light, Solarized Dark and Light,

@@ -24,7 +24,8 @@ pub enum Action {
     Resize(Toward),
     /// Show the pane with the keys alone, or all of them again.
     Zoom,
-    /// The search box: sessions, folders and commands (the design's 1c).
+    /// The command palette: commands, prompts, layouts and folders (the
+    /// design's 1c). Sessions are on All sessions (`Overview`).
     Search,
     /// The sidebar as a narrow rail, or back (the design's 1i A). Not the
     /// design's `Ctrl+B`: Claude Code sends a running command to the
@@ -74,6 +75,9 @@ pub enum Action {
     PaneToTab,
     /// Record the pane with the keys to an asciinema `.cast` file, or stop.
     Record,
+    /// Write the pane with the keys to a text file in Downloads as it goes
+    /// (a work log), or finish it.
+    WorkLog,
     /// The last command's output on the clipboard (the shell's OSC 133
     /// marks; Warp's and iTerm2's).
     CopyOutput,
@@ -112,7 +116,7 @@ fn action_with(key: Key, m: Modifiers, mac: bool, bound: &[(Action, Option<Chord
 
 /// The actions the settings can give another key, by the name `[keys]`
 /// uses, with their own keys (elsewhere, then on macOS).
-pub const NAMED: [(Action, &str, &str, &str); 32] = [
+pub const NAMED: [(Action, &str, &str, &str); 33] = [
     (Action::NewTab, "new_tab", "Ctrl+Shift+T", "Cmd+T"),
     (Action::CloseTab, "close_tab", "Ctrl+Shift+W", "Cmd+W"),
     (Action::NextTab, "next_tab", "Ctrl+Tab", "Ctrl+Tab"),
@@ -157,6 +161,8 @@ pub const NAMED: [(Action, &str, &str, &str); 32] = [
     (Action::PaneToTab, "pane_to_tab", "Ctrl+Shift+J", "Cmd+Shift+J"),
     // R for record. Ctrl+R alone stays the shell's history search.
     (Action::Record, "record", "Ctrl+Shift+R", "Cmd+Shift+R"),
+    // S for save, as the menu's "Save the output to a file".
+    (Action::WorkLog, "work_log", "Ctrl+Shift+S", "Cmd+Shift+S"),
     // L for last output.
     (Action::CopyOutput, "copy_output", "Ctrl+Shift+L", "Cmd+Shift+L"),
     // WezTerm's. Ctrl+Space alone stays the shell's (and an IME's).
@@ -190,9 +196,14 @@ pub const FIXED: &[(&str, &str, &str, &str)] = &[
     ("The input box", "Enter", "Enter", "A new line, not sent"),
     ("The input box", "Up / Down", "Up / Down", "The prompts sent before (in an empty box, or one showing a sent one)"),
     ("The input box", "Esc", "Esc", "Close the box, the keys back to the pane, the draft kept"),
-    ("The search box", "Up / Down", "Up / Down", "Walk the entries"),
-    ("The search box", "Enter", "Enter", "Do the entry picked"),
-    ("The search box", "Esc", "Esc", "Close it"),
+    ("The command palette", "Up / Down", "Up / Down", "Walk the entries"),
+    ("The command palette", "Enter", "Enter", "Do the entry picked"),
+    ("The command palette", "Esc", "Esc", "Close it"),
+    ("All sessions", "Letters", "Letters", "Narrow the sessions; 3 letters or more also list the lines of every scrollback that hold them"),
+    ("All sessions", "Up / Down", "Up / Down", "Walk the sessions, then the scrollback lines"),
+    ("All sessions", "Enter", "Enter", "Go to the session (a line: go there and show it)"),
+    ("All sessions", "Left / Right", "Left / Right", "The page beside it, while nothing is typed"),
+    ("All sessions", "Esc", "Esc", "Close it"),
     ("Copy mode", "Arrows / h j k l", "Arrows / h j k l", "Move the cursor; past the top or bottom, the output moves"),
     ("Copy mode", "PageUp / PageDown", "PageUp / PageDown", "A page through the scrollback"),
     ("Copy mode", "g / G", "g / G", "The oldest line / the newest"),
@@ -226,7 +237,7 @@ pub fn title(a: Action) -> &'static str {
         Action::SplitRight => "Split right",
         Action::SplitDown => "Split down",
         Action::Zoom => "Zoom one pane",
-        Action::Search => "Search",
+        Action::Search => "Command palette: commands, prompts, layouts, folders",
         Action::Rail => "Narrow rail",
         Action::Settings => "Settings",
         Action::Input => "Input box",
@@ -238,7 +249,7 @@ pub fn title(a: Action) -> &'static str {
         Action::FontBigger => "Bigger letters",
         Action::FontSmaller => "Smaller letters",
         Action::FontReset => "Letters as the settings have them",
-        Action::Overview => "Every session on one screen",
+        Action::Overview => "All sessions: find a session or a line in any scrollback",
         Action::CopyMode => "Copy mode: select the output with the keys",
         Action::PrevPrompt => "To the prompt above",
         Action::NextPrompt => "To the prompt below",
@@ -248,6 +259,7 @@ pub fn title(a: Action) -> &'static str {
         Action::Equalize => "Give every pane the same room",
         Action::PaneToTab => "The pane to a tab of its own",
         Action::Record => "Record the pane (asciinema .cast)",
+        Action::WorkLog => "Write a work log of the pane (text in Downloads)",
         Action::CopyOutput => "Copy the last command's output",
         Action::QuickSelect => "Quick select: copy a link, hash or number by its letters",
         Action::Tab(_) => "The Nth tab",
@@ -489,6 +501,7 @@ fn action_on(key: Key, m: Modifiers, mac: bool) -> Option<Action> {
             Key::E if cmd && m.shift => Some(Action::Equalize),
             Key::J if cmd && m.shift => Some(Action::PaneToTab),
             Key::R if cmd && m.shift => Some(Action::Record),
+            Key::S if cmd && m.shift => Some(Action::WorkLog),
             Key::L if cmd && m.shift => Some(Action::CopyOutput),
             Key::Space if cmd && m.shift && !m.alt && !m.ctrl => Some(Action::QuickSelect),
             Key::Equals | Key::Plus if cmd && !m.alt && !m.ctrl => Some(Action::FontBigger),
@@ -523,6 +536,7 @@ fn action_on(key: Key, m: Modifiers, mac: bool) -> Option<Action> {
         Key::E if ctrl_shift => Some(Action::Equalize),
         Key::J if ctrl_shift => Some(Action::PaneToTab),
         Key::R if ctrl_shift => Some(Action::Record),
+        Key::S if ctrl_shift => Some(Action::WorkLog),
         Key::L if ctrl_shift => Some(Action::CopyOutput),
         Key::Space if ctrl_shift => Some(Action::QuickSelect),
         // `+` is Shift and `=` on a US keyboard, Shift and `;` on a JIS one:
@@ -619,6 +633,9 @@ mod tests {
         assert_eq!(action_on(Key::Num3, CTRL, false), None);
         assert_eq!(action_on(Key::R, CTRL, false), None, "readline's history search");
         assert_eq!(action_on(Key::R, CTRL_SHIFT, false), Some(Action::Record));
+        assert_eq!(action_on(Key::S, CTRL, false), None, "Ctrl+S is the terminal's stop (XOFF) and some editors' save");
+        assert_eq!(action_on(Key::S, CTRL_SHIFT, false), Some(Action::WorkLog));
+        assert_eq!(action_on(Key::S, Modifiers { shift: true, command: true, mac_cmd: true, ..Default::default() }, true), Some(Action::WorkLog));
         assert_eq!(action_on(Key::L, CTRL, false), None, "the shell's clear screen");
         assert_eq!(action_on(Key::L, CTRL_SHIFT, false), Some(Action::CopyOutput));
         assert_eq!(action_on(Key::Space, CTRL, false), None, "Ctrl+Space is the shell's (and an IME's)");

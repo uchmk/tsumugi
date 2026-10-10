@@ -53,6 +53,8 @@ struct State {
     saved: Option<Option<crate::state::Saved>>,
     notices: Vec<Notice>,
     started_ms: u64,
+    /// The server's tsumugi version, once it has said.
+    server_build: String,
     clipboard: Vec<String>,
     /// The latest selection for Linux's primary selection.
     primary: Option<String>,
@@ -356,6 +358,12 @@ impl Client {
         self.0.send(ToServer::Record { id, path });
     }
 
+    /// Write a session's work log to `path` as it goes; `None` finishes it.
+    /// Where it went is the session's `logging`.
+    pub fn log(&self, id: SessionId, path: Option<PathBuf>) {
+        self.0.send(ToServer::Log { id, path });
+    }
+
     /// Put a tab at `to` in the sidebar's order.
     pub fn move_workspace(&self, id: WorkspaceId, to: usize) {
         self.0.send(ToServer::MoveWorkspace { id, to });
@@ -431,6 +439,11 @@ impl Client {
         self.0.lock().started_ms
     }
 
+    /// The server's tsumugi version; empty until it has said.
+    pub fn server_build(&self) -> String {
+        self.0.lock().server_build.clone()
+    }
+
     /// The tabs and their splits, as the server last told them.
     pub fn workspaces(&self) -> Vec<Workspace> {
         self.0.lock().workspaces.clone()
@@ -499,7 +512,10 @@ fn receive(inner: &Inner, msg: ToClient) {
         ToClient::FoundAll { query, hits } => st.found_all = Some((query, hits)),
         ToClient::Saved(s) => st.saved = Some(s),
         ToClient::Notices(list) => st.notices = list,
-        ToClient::Started { at_ms } => st.started_ms = at_ms,
+        ToClient::Started { at_ms, build } => {
+            st.started_ms = at_ms;
+            st.server_build = build;
+        }
         ToClient::Screen { id, update } => {
             let r = st.screens.entry(id).or_default();
             let mut extra = crate::diff::Extra::default();
