@@ -61,7 +61,7 @@ a look, and gets `[~]` with the screenshot, never `[x]`.
 
 ## How to report
 
-One file per run in `qa-reports/<date>-<branch>.md`: the rows ticked, each
+One file per run, named by the prompt (`qa-reports/<date>-<branch>-<HHmm>.md`): the rows ticked, each
 with what was seen (a value read, a file's contents, a screenshot's path),
 and anything that surprised. A row that failed gets what was expected,
 what happened, and the steps.

@@ -380,6 +380,60 @@ function Note-Dirty([string[]]$changes) {
     Set-Content -Path $dirtyFile -Value $body
 }
 
+# A run takes an hour and main moves under it: a row reworded, another lane's
+# ticks, a re-test list changed. The run's marks then sit beside lines main
+# changed, and its pull request opens in conflict. When only the checklists
+# conflict, merge main into the run's branch with main's checklists and the
+# run's marks made again on them (Set-LaneMarks), and push, so the pull
+# request is mergeable from the start. A row main reworded or took out keeps
+# no mark, and the pull request says so. Anything else that conflicts is left
+# as it is for the Merge lanes workflow and a person. Never throws.
+function Sync-LaneBranch([string]$Branch) {
+    $lists = @('TESTING-CHECKS.md', 'TESTING-KEYS.md')
+    Push-Location $Work
+    try {
+        if ((git rev-parse --abbrev-ref HEAD).Trim() -ne $Branch) { Say "Sync: $Work is not on $Branch; left as it is."; return }
+        git fetch -q origin main $Branch
+        if ($LASTEXITCODE -ne 0) { Say 'Sync: git fetch failed; left as it is.'; return }
+        # Only what the run pushed: an unpushed commit stays the run's.
+        if ((git rev-parse HEAD).Trim() -ne (git rev-parse "origin/$Branch").Trim()) { Say "Sync: $Branch is not what was pushed; left as it is."; return }
+        git merge-base --is-ancestor origin/main HEAD
+        if ($LASTEXITCODE -eq 0) { return }
+        $base = (git merge-base origin/main HEAD).Trim()
+        git merge -q --no-ff --no-commit origin/main *> $null
+        $conflicted = @(git diff --name-only --diff-filter=U)
+        if (-not $conflicted) { git merge --abort; return }   # GitHub merges it as it is
+        $others = @($conflicted | Where-Object { $_ -notin $lists })
+        if ($others) { git merge --abort; Say "Sync: $Branch conflicts with main in $($others -join ', '); left for a person."; return }
+        $dropped = @()
+        foreach ($path in $conflicted) {
+            $marks = Get-LaneMarks -Base ((git show "${base}:$path") -join "`n") -Branch ((git show "HEAD:$path") -join "`n")
+            git checkout -q --theirs -- $path
+            $file = Join-Path $Work $path
+            $r = Set-LaneMarks -Main ([IO.File]::ReadAllText($file)) -Marks $marks
+            [IO.File]::WriteAllText($file, $r.Text, $utf8)
+            git add -- $path
+            $dropped += $r.Dropped
+        }
+        git commit -q --no-edit
+        if ($LASTEXITCODE -ne 0) { throw 'git commit failed' }
+        git push -q origin "HEAD:refs/heads/$Branch"
+        if ($LASTEXITCODE -ne 0) { Say "Sync: git push failed; $Branch stays in conflict for the Merge lanes workflow."; return }
+        Say "Sync: merged main into $Branch with the run's marks made again ($($conflicted -join ', '))."
+        if ($dropped) {
+            $body = "Merged main into this branch: main changed these rows while the run was going, so their marks were not kept (what the run checked is not what the rows say now): $($dropped -join ', ')."
+            gh pr comment $Branch --repo $repo --body $body *> $null
+            Say "Sync: marks dropped for $($dropped -join ', ')."
+        }
+    } catch {
+        Say "Sync: $_; left as it is."
+    } finally {
+        git rev-parse -q --verify MERGE_HEAD *> $null
+        if ($LASTEXITCODE -eq 0) { git merge --abort }
+        Pop-Location
+    }
+}
+
 # claude writes UTF-8 and so does git, and PowerShell decodes a native
 # command's output with the console's code page (CP932 on a Japanese
 # Windows): decoded as UTF-8 here, Japanese stays as it was.
@@ -486,7 +540,12 @@ try {
             Sort-Object Name -Descending | Select-Object -Skip 2 |
             ForEach-Object { Remove-Item -Recurse -Force -LiteralPath $_.FullName -ErrorAction SilentlyContinue }
     }
-    $stamp = '{0:yyyyMMdd-HHmmss}' -f (Get-Date)
+    $started = Get-Date
+    $stamp = '{0:yyyyMMdd-HHmmss}' -f $started
+    # The report's own name. A chunk's branch comes back (a re-test list that
+    # starts with the same row), and a second run's report under the same
+    # name was a changed file, which the Merge lanes workflow refuses.
+    $report = 'qa-reports/{0:yyyy-MM-dd}-{1}-{0:HHmm}.md' -f $started, ($branch -replace '^test/', '')
     $Scratch = Join-Path $Scratch "run-$stamp"
     $kit = Join-Path $Scratch 'kit'
 
@@ -499,6 +558,7 @@ try {
 $chunkText
 
 - レーンは $Lane です。ブランチは ``git checkout -B $branch origin/main`` で作ります。
+- 報告は ``$report`` に書きます（新しいファイル。既にある報告は直しません）。
 - チェックアウトは $Work です（役割定義の C:\dev\tsumugi は、すべてここに読み替えてください）。
 - ビルド（--release）、``cargo test``、ConPTY の取得は、このスクリプトが済ませました。exe は $exe で、テストは緑です。cargo build / cargo test はしないでください。表の確かめは ``cargo run --release -q -p tsumugi --example make-testcheck -- --check``（make-keycheck も同じ）で、ビルド済みのものを使います。
 - 道具は scripts\wintest-kit.ps1 にあります。PowerShell を呼ぶたびに、先頭で ``. .\scripts\wintest-kit.ps1`` を読み込んでください（関数の一覧はファイルの先頭）。SendInput・PrintWindow・バックアップを自分で書き直さないでください。
@@ -626,6 +686,7 @@ $chunkText
         Add-Attempted $attemptedFile $chunk
         Remove-Item -LiteralPath $failFile -ErrorAction SilentlyContinue
         Say "Done: $tail"
+        if ($tail -match '^WINTEST_DONE\b') { Sync-LaneBranch $branch }
     } elseif ($code -ne 0 -and $out -match 'limit') {
         Say 'Hit a usage limit. Trying again next time.'
     } else {

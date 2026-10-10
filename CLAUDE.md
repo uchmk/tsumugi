@@ -64,7 +64,8 @@ kura と同じ。`Cargo.toml` の `version` が正、版の繰り上げと CHANG
   （x64 と ARM64 の `-Lane arm`）。スクリプトが先に `cargo build` / `cargo test` / ConPTY の取得を済ませ、TESTING-CHECKS.md と TESTING-KEYS.md から
   1 回分の塊（再テスト → キー（x64 だけ）→ 節の順、最大 15 行）を選び、その行だけをプロンプトに入れて Claude（既定は Sonnet 5.5）を起動する。
   塊が無い・自分の PR が開いている・ビルドが落ちたときは Claude を起動しない。道具は `scripts/wintest-kit.ps1`、塊の選び方は `scripts/wintest-queue.ps1`
-  （`scripts/check-ps1.ps1` が CI で確かめる）。報告は `qa-reports/<日付>-<ブランチ>.md`。
+  （`scripts/check-ps1.ps1` が CI で確かめる）。報告は `qa-reports/<日付>-<ブランチ>-<時刻>.md`（名前はプロンプトが渡す）。
+  実行の後、main とチェック表だけがぶつかるならスクリプトが main を取り込み、印を入れ直して push する（v0.84.1 から）。
 - 同じ机で kura のレーンとキーがぶつからないよう、両方のスクリプトが `Local\wintest-desktop` のロックを取る（最大 20 分待って次回へ）。
 - 実機の PR（`test/win-*`・`test/arm-*`）は、ワークフロー `Merge lanes`（`.github/workflows/merge-lanes.yml`、中身は kura と同じ `scripts/merge-lanes.py`）が
   規則（触ってよいファイル・印の変わり方・印ごとの証拠の行）と `check` の緑を確かめて、head を固定した merge コミットでマージする（v0.76.4 から）。
