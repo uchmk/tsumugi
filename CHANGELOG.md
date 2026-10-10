@@ -5,6 +5,16 @@
 
 ## [未リリース]
 
+## [0.87.1] - 2026-10-11
+
+実機のレーンが、起動のたびに自分の様子を GitHub の issue（「Lane status: win」「Lane status: arm」、ラベル `lane-status`）に書くようにした（kura 0.100.2 と同じ仕組み）。
+
+### 追加
+
+- `scripts/lane-status.ps1`（kura と同じファイル）: `auto-wintest.ps1` が起動のたびと実行の始めに、レーンの issue の本文を書き直す（最初の起動で issue を作る）。最後の起動の時刻・スクリプトの版・その起動の結末・作業フォルダの汚れ・続けて失敗した回数・その起動のログ・それまでの 24 回の結末が載る。本文の書き直しは通知を出さない。ユーザーのフォルダは `~` に変え、`@` はメンションにしない。書けなくてもログに 1 行出すだけで、ほかは変わらない。`-DryRun` では書かない。
+- `scripts/check-ps1.ps1` が本文の作り方（`~` への置き換え・メンション・汚れの一覧・履歴の長さ）も確かめる。
+- CLAUDE.md と `.claude/merge-routine.md` に読み方を書いた（クラウドからは `gh api 'repos/uchmk/tsumugi/issues?labels=lane-status&state=all'`）。
+
 ## [0.87.0] - 2026-10-11
 
 ### 追加

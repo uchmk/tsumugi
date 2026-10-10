@@ -55,6 +55,15 @@
 # The ARM64 laptop: C:\dev\tsumugi-armtest, `& $w\scripts\auto-wintest.ps1 -Lane arm`,
 # and the task name tsumugi-auto-wintest-arm.
 #
+# Status on GitHub. Every firing writes the lane's issue, "Lane status: win"
+# or "Lane status: arm" (label lane-status, opened by the first firing), again:
+# when it fired, which copy of this script, what the firing came to, whether
+# the worktree is dirty, the failed runs in a row and this firing's log lines
+# (scripts/lane-status.ps1, the same file as kura's). A run also writes it
+# when it starts. A cloud session reads it with
+#   gh api 'repos/uchmk/tsumugi/issues?labels=lane-status&state=all'
+# A failure to write it is logged and changes nothing else.
+#
 # By hand:
 #
 #   pwsh -File scripts\auto-wintest.ps1 -DryRun   # the chunk and the prompt it would give; builds nothing
@@ -91,6 +100,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'wintest-queue.ps1')
+. (Join-Path $PSScriptRoot 'lane-status.ps1')
 
 $repo = 'uchmk/tsumugi'
 $Tools = 'Bash,PowerShell,Read,Edit,Write,Glob,Grep,TodoWrite'
@@ -152,10 +162,39 @@ function Set-BuildTarget {
     return $dir
 }
 
+# This firing's lines, for the lane's status issue (Publish-Status).
+$said = [Collections.Generic.List[string]]::new()
 function Say([string]$line) {
     $stamped = '[{0:yyyy-MM-dd HH:mm:ss}] {1}' -f (Get-Date), $line
     $stamped
     Add-Content -Path $log -Value $stamped
+    [void]$script:said.Add($stamped)
+}
+
+# This firing, written into the lane's status issue on GitHub (lane-status.ps1)
+# at the start of a run and at the end of every firing, so a cloud session can
+# tell why a lane is not making pull requests. $outcome says what the firing
+# came to; when it is not set, the last line it logged does. Never throws.
+$outcome = $null
+function Publish-Status {
+    if ($DryRun) { return }
+    try {
+        $what = if ($script:outcome) { $script:outcome } elseif ($said.Count) { $said[-1] -replace '^\[[^\]]*\] ', '' } else { 'Nothing to do.' }
+        $now = Get-Date
+        $history = @(Add-LaneHistory (Join-Path $state "status-history$suffix.txt") ('{0:yyyy-MM-dd HH:mm} {1}' -f $now, $what))
+        $toml = Get-Content -Raw -LiteralPath (Join-Path (Split-Path -Parent $PSScriptRoot) 'Cargo.toml') -ErrorAction SilentlyContinue
+        $version = if ($toml -match '(?m)^version = "([^"]+)"') { "v$($Matches[1])" } else { '?' }
+        $copy = "$version ($((git -C $PSScriptRoot rev-parse --short HEAD 2>$null) -join ''))"
+        $dirty = if (Test-Path $Work) { @(git -C $Work status --porcelain 2>$null) } else { @() }
+        $fails = if (Test-Path $failFile) { [int](Get-Content -Raw -LiteralPath $failFile | ConvertFrom-Json).Total } else { 0 }
+        $task = if ($Lane -eq 'win') { 'tsumugi-auto-wintest' } else { "tsumugi-auto-wintest-$Lane" }
+        $body = Format-LaneStatus -Lane $Lane -When $now -Script $copy -Outcome $what -Task $task `
+            -Said @($said) -Dirty $dirty -Failures $fails -History @($history | Select-Object -Skip 1)
+        $err = Publish-LaneStatus -Repo $repo -Lane $Lane -Body $body -StateDir $state
+        if ($err) { Say "Could not write the lane's status issue: $err" }
+    } catch {
+        Say "Could not write the lane's status issue: $_"
+    }
 }
 
 # The screen saver, held off while a run drives the window (see the top).
@@ -343,6 +382,7 @@ function Add-Failure([string]$Branch, [string]$Why) {
     $total = $f.Total + 1
     @{ Branch = $Branch; Count = $count; Total = $total } | ConvertTo-Json | Set-Content -Path $failFile
     Say "The run failed ($Why). See the log."
+    $script:outcome = "The run failed ($Why), $total in a row."
     if ($Branch -ne 'build' -and $count -ge 2 -and $chunk) {
         Add-Attempted $attemptedFile $chunk
         Say "$Branch failed $count times: set aside; the next firing takes the next chunk."
@@ -492,6 +532,8 @@ try {
         -Role (& $show '.claude/windows-role.md') -Attempted (Read-Attempted $attemptedFile) -Rows $Rows -KeyCount $KeyCount
     if (-not $chunk) {
         if ($DryRun) { 'Nothing left for this lane: every open row has been tried.' }
+        $outcome = 'Nothing left for this lane: every open row has been tried.'
+        if ($changes.Count) { $outcome += ' The worktree is dirty, so new work would not start either.' }
         exit 0   # quiet: nothing left until a row changes or a re-test is named
     }
     $chunkText = Format-Chunk $chunk
@@ -526,6 +568,7 @@ try {
     if ($changes.Count -and -not $DryRun) {
         $names = @($changes | Select-Object -First 5 | ForEach-Object { $_.Trim() }) -join ', '
         Say "$Work has uncommitted changes ($names; all in $dirtyFile), left by a run that was cut off. Look at them, then clean it (git -C $Work stash -u, or git restore/clean) and run again."
+        $outcome = "Stopped: $Work has uncommitted changes, left by a run that was cut off. A person has to look at them and clean the worktree."
         exit 1
     }
     if (-not $DryRun) { git -C $Work checkout -q --detach origin/main }
@@ -581,6 +624,9 @@ $chunkText
     $self = (git -C $PSScriptRoot log -1 --format='%h %s' -- auto-wintest.ps1 2>$null) -join ''
     Say "Script: $PSCommandPath ($self)"
     Say "Model: $Model"
+    $outcome = "A run is going (started $('{0:yyyy-MM-dd HH:mm}' -f (Get-Date)): $branch on $head, $(@($chunk.Rows).Count) rows, model $Model)."
+    Publish-Status
+    $outcome = $null
     $inWork = [IO.Path]::GetFullPath($PSScriptRoot).StartsWith([IO.Path]::GetFullPath($Work), [StringComparison]::OrdinalIgnoreCase)
     if (-not $inWork) {
         Say "This script is not the worktree's copy, so it does not follow origin/main. Point the task at $Work\scripts\auto-wintest.ps1 (see the top of the script)."
@@ -690,6 +736,7 @@ $chunkText
         Add-Attempted $attemptedFile $chunk
         Remove-Item -LiteralPath $failFile -ErrorAction SilentlyContinue
         Say "Done: $tail"
+        $outcome = "Done ($branch): $tail"
         if ($tail -match '^WINTEST_DONE\b') { Sync-LaneBranch $branch }
     } elseif ($code -ne 0 -and $out -match 'limit') {
         Say 'Hit a usage limit. Trying again next time.'
@@ -697,7 +744,12 @@ $chunkText
         Add-Failure $branch "exit $code; last line: $tail"
         exit 1
     }
+} catch {
+    $outcome = "The script stopped with an error at line $($_.InvocationInfo.ScriptLineNumber): $_"
+    Say $outcome
+    throw
 } finally {
+    Publish-Status
     if ($desktop) { $desktop.ReleaseMutex() }
     $mutex.ReleaseMutex()
 }

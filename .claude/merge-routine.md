@@ -63,6 +63,10 @@ role file in English (CHANGELOG.md itself is Japanese). Read
   `git fetch origin main && git checkout -B claude/merge-run origin/main`.
 - GitHub from here: the GitHub tools the session has, or `gh api` (GraphQL
   may be unavailable).
+- A lane that has made no pull request for hours says why in its status
+  issue (`gh api 'repos/uchmk/tsumugi/issues?labels=lane-status&state=all'`,
+  CLAUDE.md). Asking the owner about it in QUESTIONS.md is fine; it is not
+  the routine's to fix.
 
 ## 1. What the workflow merges, and what to do when it stops
 
