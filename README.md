@@ -551,7 +551,7 @@ set once for every uchmk app, and a change there reaches them all within a
 couple of seconds. `auto` follows the OS. tsumugi's own menus are English
 for now. An older `settings.toml` with `theme` or `[clock]` still counts
 until `common.toml` has its own. What the apps share, and the crates that
-do it, are in [docs/common-spec.md](docs/common-spec.md).
+do it, are in ito's [docs/common-spec.md](https://github.com/uchmk/ito/blob/main/docs/common-spec.md).
 
 ```toml
 # common.toml
@@ -887,14 +887,17 @@ with none running, the tools say tsumugi is not running. What they return
 Claude Code reads. Typing into a session from Claude Code will come later,
 behind a confirmation in the window.
 
-The terminal pane is the crate `tsumugi-pane` (`crates/tsumugi-pane`), shared
-with [filer](https://github.com/uchmk/filer). So are the local channel to a
-running app (`tsumugi-ipc`, the socket or named pipe the server listens on)
-and the MCP server (`tsumugi-mcp`), which filer's `filer mcp` uses too. The rule a search query matches by (a regular expression with smart case, or fzf-style fuzzy letters, with the places to highlight) is `tsumugi-match`.
-
-[mimamori](https://github.com/uchmk/mimamori) uses three more from this
-workspace: the column sizes (`tsumugi-layout`), the language tables
-(`tsumugi-i18n`) and yazi's key notation (`tsumugi-keys`: `<C-a>`,
+The terminal pane is the crate `ito-pane`, in [ito](https://github.com/uchmk/ito),
+the crates uchmk's apps share: [kura](https://github.com/uchmk/kura) (the
+file manager, formerly filer) has the same pane. So are the local channel to
+a running app (`ito-ipc`, the socket or named pipe the server listens on), the
+MCP server (`ito-mcp`), which kura's MCP server uses too, the rule a search
+query matches by (`ito-match`: a regular expression with smart case, or
+fzf-style fuzzy letters, with the places to highlight), the splits
+(`ito-layout`), the language tables (`ito-i18n`), and the settings screen,
+themes and clock every app shares (`ito-common`, `ito-theme`, `ito-prefs`).
+[yagura](https://github.com/uchmk/yagura) (the system monitor, formerly
+mimamori) uses them too, and yazi's key notation (`ito-keys`: `<C-a>`,
 `<A-S-Up>`, `<P-e>` with `P` meaning Cmd on macOS and Ctrl elsewhere, and
 egui's key events in the same terms).
 

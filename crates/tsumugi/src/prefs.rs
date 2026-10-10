@@ -7,10 +7,10 @@
 //! sign-in) comes in [`Seen::facts`].
 
 use eframe::egui::{self, Color32, FontId, RichText};
-use tsumugi_common::{Clock, CommonChange};
+use ito_common::{Clock, CommonChange};
 use tsumugi_mux::settings::{self as cfg, MenuItem, Profile, Settings, TagRule};
-use tsumugi_pane::Palette;
-use tsumugi_prefs::{button, field, keycap, row, section, select, sep, status, switch, Drafts, Look, EN};
+use ito_pane::Palette;
+use ito_prefs::{button, field, keycap, row, section, select, sep, status, switch, Drafts, Look, EN};
 
 use crate::facts::Facts;
 use crate::sort::Sort;
@@ -316,14 +316,14 @@ pub fn show(ui: &mut egui::Ui, pal: &Palette, screen: &mut Screen, seen: &Seen) 
     let mut out = Vec::new();
     let pages: Vec<(&str, &str)> = Page::ALL.iter().map(|p| (p.title(), p.lead())).collect();
     let index: Vec<(usize, &str)> = INDEX.iter().map(|(p, words)| (Page::ALL.iter().position(|q| q == p).unwrap_or(0), *words)).collect();
-    let nav = tsumugi_prefs::Nav { pages: &pages, index: &index, words: &EN, file: "settings.toml" };
+    let nav = ito_prefs::Nav { pages: &pages, index: &index, words: &EN, file: "settings.toml" };
     let page = Page::ALL.iter().position(|p| *p == screen.page).unwrap_or(0);
-    let mut state = tsumugi_prefs::State { page, query: std::mem::take(&mut screen.query), held: screen.held };
+    let mut state = ito_prefs::State { page, query: std::mem::take(&mut screen.query), held: screen.held };
     // Esc leaves the screen, unless a control or a key being changed has it.
     let busy = state.busy(ui) || screen.edit.capturing.is_some();
-    let pressed = tsumugi_prefs::Keys::standard(ui, busy);
+    let pressed = ito_prefs::Keys::standard(ui, busy);
     let edit = &mut screen.edit;
-    let done = tsumugi_prefs::show(ui, seen.current, &mut state, &nav, pressed, |ui, page, l| match Page::ALL[page] {
+    let done = ito_prefs::show(ui, seen.current, &mut state, &nav, pressed, |ui, page, l| match Page::ALL[page] {
         Page::General => general(ui, l, seen, edit, &mut out),
         Page::Appearance => appearance(ui, l, seen, edit, &mut out),
         Page::Keys => keys(ui, l, seen, edit, &mut out),
@@ -365,7 +365,7 @@ fn general(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut V
     let set = |key: &'static str, v: bool| Change::Set(Some("general"), key, v.to_string());
     section(ui, l, "STARTUP", |ui| {
         let note = "Shared with filer and mimamori (common.toml); tsumugi's own menus are English for now";
-        out.extend(tsumugi_prefs::language_row(ui, l, &EN, seen.language, note).map(Change::Common));
+        out.extend(ito_prefs::language_row(ui, l, &EN, seen.language, note).map(Change::Common));
         sep(ui, l);
         let starts = [(true, "Restore the last sessions"), (false, "Ask (Welcome back)")];
         if let Some(on) = row(ui, l, "On start", "What the window shows first after a restart", |ui| select(ui, "on-start", seen.always_restore, &starts)) {
@@ -419,7 +419,7 @@ fn general(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut V
             out.push(set("warn_large_paste", !g.warn_large_paste));
         }
     });
-    out.extend(tsumugi_prefs::clock_card(ui, l, &EN, seen.clock).into_iter().map(Change::Common));
+    out.extend(ito_prefs::clock_card(ui, l, &EN, seen.clock).into_iter().map(Change::Common));
 }
 
 fn appearance(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut Vec<Change>) {
@@ -1248,7 +1248,7 @@ fn shell(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut Vec
     let c = l.c;
     let sh = &seen.settings.shell;
     section(ui, l, "SHELL", |ui| {
-        let auto = format!("Automatic ({})", tsumugi_pane::shell_label(None));
+        let auto = format!("Automatic ({})", ito_pane::shell_label(None));
         let mut shells: Vec<(&str, &str)> = vec![("", auto.as_str())];
         if let Some(f) = seen.facts {
             shells.extend(f.shells.iter().map(|(label, program)| (program.as_str(), label.as_str())));
@@ -1467,7 +1467,7 @@ fn theme(ui: &mut egui::Ui, l: Look, pal: &Palette, seen: &Seen, out: &mut Vec<C
     let s = seen.settings;
     let note = "Themes in themes/ beside the settings or in uchmk/themes/ show here too.";
     let mut more = None;
-    let changes = tsumugi_prefs::theme_page(ui, l, &EN, seen.themes, seen.choice, note, |ui| {
+    let changes = ito_prefs::theme_page(ui, l, &EN, seen.themes, seen.choice, note, |ui| {
         preview(ui, pal);
         // What else the window looks like, a click away on its page.
         let f = &s.font;

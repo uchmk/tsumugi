@@ -4,6 +4,8 @@
 
 ## 今どこか
 
+- **v0.82.0（2026-10-11）で、共有のクレートを [ito](https://github.com/uchmk/ito) に移した**（`tsumugi-pane` → `ito-pane` など 10 個）。
+  filer は kura、mimamori は yagura に名前が変わり、どちらも ito に切り替える。下の項目は移す前のもの。
 - 版は **v0.76.1**（`main`）。最後に出たリリースは **v0.52.0**（2026-10-07）。v0.76.0 の `release.yml` は Windows の Test で落ちた
   （下の CI の赤）。v0.76.1 で直したので、CI が緑になったら `tag` に `v0.76.1` を渡して投げ直す。
 - **Windows の CI は v0.55.0（run #97）から赤だった。**`tsumugi-mux` の `a_restart_brings_the_tabs_back` と `folder_rules_tag_sessions` の 2 件だけ。

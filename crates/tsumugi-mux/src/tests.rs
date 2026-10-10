@@ -4,7 +4,7 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::{Duration, Instant};
 
-use tsumugi_pane::{Pane, Size};
+use ito_pane::{Pane, Size};
 
 use crate::transport::Address;
 use crate::{server, Client, RemotePane};
@@ -652,7 +652,7 @@ fn no_server_no_connection() {
 /// program's name, a build of it (`codex-x86_64-…`), or a script node runs.
 #[test]
 fn an_ai_program_is_told_by_its_process() {
-    use tsumugi_pane::Proc;
+    use ito_pane::Proc;
     let names: Vec<String> = crate::settings::AGENTS.iter().map(|s| s.to_string()).collect();
     let p = |name: &str, args: &[&str]| Proc { pid: 1, ppid: 0, name: name.into(), args: args.iter().map(|a| a.to_string()).collect() };
     let codex = p("codex-x86_64-unknown-linux-musl", &[]);

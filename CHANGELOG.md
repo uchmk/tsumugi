@@ -5,6 +5,15 @@
 
 ## [未リリース]
 
+## [0.82.0] - 2026-10-11
+
+### 変更
+
+- **共有のクレートを新しいリポジトリ [ito](https://github.com/uchmk/ito)（糸）に移した。**名前は `tsumugi-*` から `ito-*` になった
+  （pane・layout・i18n・keys・match・ipc・mcp・common・theme・prefs の 10 個）。tsumugi は git の依存で、`rev` を固定して読む。
+  使う側は tsumugi・kura（旧 filer）・yagura（旧 mimamori）。動きは変えていない。
+- uchmk のアプリの共通仕様（`docs/common-spec.md`）も ito に移した（[ito の docs/common-spec.md](https://github.com/uchmk/ito/blob/main/docs/common-spec.md)）。
+
 ## [0.81.0] - 2026-10-10
 
 ### 追加

@@ -4,7 +4,7 @@
 use std::path::PathBuf;
 
 use tsumugi_mux::{Client, Info, Place, SessionId};
-use tsumugi_pane::Size;
+use ito_pane::Size;
 
 use crate::sort;
 

@@ -23,15 +23,15 @@ tsumugi のやること。`【人】` は持ち主の作業、`【金】` は 20
 
 ## uchmk の共通仕様（2026-10-10、持ち主の依頼）
 
-設定の画面・テーマ・時計を uchmk のアプリで揃え、common.toml を変えれば全部のアプリが変わるようにする。仕様は [docs/common-spec.md](docs/common-spec.md)。
+設定の画面・テーマ・時計を uchmk のアプリで揃え、common.toml を変えれば全部のアプリが変わるようにする。仕様は ito の [docs/common-spec.md](https://github.com/uchmk/ito/blob/main/docs/common-spec.md)（v0.82.0 で ito に移した）。
 
 - [x] （v0.81.0）共有のクレート `tsumugi-common`（common.toml・設定の 1 キーの書き換え・見張り・時計の文字）、`tsumugi-theme`（テーマ）、
       `tsumugi-prefs`（設定の画面の枠と部品、Language・CLOCK・Theme の共通のページ）を切り出し、tsumugi の設定の画面をその上に作り直した。
       テーマと時計は common.toml を読み書きする（settings.toml の古い値は common.toml に無ければ使う）。`uchmk/themes/` も読む。
 - [ ] （mimamori v0.32.0 で）mimamori に設定の画面・テーマ・時計を足す。
-- [ ] filer に持ち帰る: Ctrl+, の設定の画面を `tsumugi-prefs` で作り、ステータスバーの右端に時計を出し、common.toml のテーマと時計を読む。
+- [ ] filer に持ち帰る: Ctrl+, の設定の画面を `ito-prefs` で作り、ステータスバーの右端に時計を出し、common.toml のテーマと時計を読む。
       yazi の `theme.toml` との関係は filer の QUESTIONS.md で持ち主に聞く。filer の TODO.md の「設定の画面（uchmk の共通仕様）」で進める。
-- [ ] tsumugi 自身のメニューを `tsumugi-i18n` の表に載せ、設定の画面の文字を `Words::of(language)` で日本語にも出す（今は英語だけ、TESTING.md 17.38）。
+- [ ] tsumugi 自身のメニューを `ito-i18n` の表に載せ、設定の画面の文字を `Words::of(language)` で日本語にも出す（今は英語だけ、TESTING.md 17.38）。
 
 ## 実機のレーンから
 
@@ -106,7 +106,7 @@ tsumugi のやること。`【人】` は持ち主の作業、`【金】` は 20
 
 ## ほかのターミナルにあるもの・その 2（2026-10-09、持ち主の依頼。上から順に）
 
-ペインの直しは `tsumugi-pane` に入れるので、filer のターミナルペインにも `rev` を上げれば届く。
+ペインの直しは ito の `ito-pane` に入れるので、kura（旧 filer）のターミナルペインにも `rev` を上げれば届く。
 
 - [x] 下線と取り消し線を描く（SGR 4・4:2〜4:5 の二重・波線・点線・破線、58 の下線の色、9 の取り消し線、8 の隠し文字）。今は太字・斜体・薄字・反転しか描いていない。
 - [x] （v0.70.0）フォーカスの通知（DECSET 1004）。ペインがキーを持つ・離すときに `ESC[I` / `ESC[O` を送る。

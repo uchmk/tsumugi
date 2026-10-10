@@ -13,7 +13,7 @@
 
 use std::path::PathBuf;
 
-use tsumugi_layout::{Dir, MIN_RATIO, Node};
+use ito_layout::{Dir, MIN_RATIO, Node};
 
 use crate::newsession::Start;
 

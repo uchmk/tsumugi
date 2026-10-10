@@ -3,7 +3,7 @@
 //! these is a key Claude Code uses (`Ctrl+C`, `Esc`, `Shift+Tab`, `Ctrl+R`).
 
 use eframe::egui::{Key, Modifiers};
-use tsumugi_layout::Toward;
+use ito_layout::Toward;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Action {

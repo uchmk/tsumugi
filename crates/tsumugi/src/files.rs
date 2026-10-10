@@ -4,8 +4,8 @@
 //! never left half written.
 
 // The same two are what every uchmk app writes its settings with, so they
-// live in `tsumugi-common`.
-pub use tsumugi_common::{read_or_empty, write_atomic};
+// live in `ito-common`.
+pub use ito_common::{read_or_empty, write_atomic};
 
 #[cfg(test)]
 mod tests {

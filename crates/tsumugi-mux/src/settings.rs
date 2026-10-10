@@ -235,27 +235,27 @@ pub struct Trigger {
 impl Settings {
     /// The triggers that colour, made ready to draw; the settings are
     /// checked, so a bad one is not there to leave out.
-    pub fn highlights(&self) -> Vec<tsumugi_pane::Highlight> {
+    pub fn highlights(&self) -> Vec<ito_pane::Highlight> {
         self.triggers
             .iter()
             .filter_map(|t| {
-                let (fg, bg) = (tsumugi_pane::rgb(&t.color), tsumugi_pane::rgb(&t.background));
+                let (fg, bg) = (ito_pane::rgb(&t.color), ito_pane::rgb(&t.background));
                 if fg.is_none() && bg.is_none() {
                     return None;
                 }
-                Some(tsumugi_pane::Highlight { regex: tsumugi_pane::regex::Regex::new(&t.regex).ok()?, fg, bg })
+                Some(ito_pane::Highlight { regex: ito_pane::regex::Regex::new(&t.regex).ok()?, fg, bg })
             })
             .collect()
     }
 
     /// The triggers that tell, as one set for the panes to match lines
     /// against; `None` when there are none.
-    pub fn notify_triggers(&self) -> Option<tsumugi_pane::regex::RegexSet> {
+    pub fn notify_triggers(&self) -> Option<ito_pane::regex::RegexSet> {
         let told: Vec<&str> = self.triggers.iter().filter(|t| t.notify).map(|t| t.regex.as_str()).collect();
         if told.is_empty() {
             return None;
         }
-        tsumugi_pane::regex::RegexSet::new(told).ok()
+        ito_pane::regex::RegexSet::new(told).ok()
     }
 }
 
@@ -440,7 +440,7 @@ impl Remote {
 // The status bar's clock (the design's 1n) is common.toml's now, shared by
 // every uchmk app; settings.toml's `[clock]` is still read for a person who
 // has not moved it.
-pub use tsumugi_common::{Clock, DATE_FORMATS};
+pub use ito_common::{Clock, DATE_FORMATS};
 
 #[derive(Clone, Debug, PartialEq, Deserialize)]
 #[serde(default, deny_unknown_fields)]
@@ -895,12 +895,12 @@ pub fn parse(text: &str) -> Result<Settings, String> {
     }
     for (i, t) in s.triggers.iter().enumerate() {
         let at = format!("triggers[{}]", i + 1);
-        let r = tsumugi_pane::regex::Regex::new(&t.regex).map_err(|e| format!("{at}: regex `{}` does not read: {}", t.regex, e.to_string().lines().last().unwrap_or("")))?;
+        let r = ito_pane::regex::Regex::new(&t.regex).map_err(|e| format!("{at}: regex `{}` does not read: {}", t.regex, e.to_string().lines().last().unwrap_or("")))?;
         if r.is_match("") {
             return Err(format!("{at}: regex `{}` matches an empty line, so it would match every line", t.regex));
         }
         for (key, v) in [("color", &t.color), ("background", &t.background)] {
-            if !v.trim().is_empty() && tsumugi_pane::rgb(v).is_none() {
+            if !v.trim().is_empty() && ito_pane::rgb(v).is_none() {
                 return Err(format!("{at}.{key}: `{v}` is not #rrggbb"));
             }
         }
@@ -913,7 +913,7 @@ pub fn parse(text: &str) -> Result<Settings, String> {
 
 // Editing a TOML file one key at a time, its comments kept, is the same for
 // every uchmk app's settings.
-pub use tsumugi_common::{quote, quote_list, remove_key, set_key, set_tables, stamp};
+pub use ito_common::{quote, quote_list, remove_key, set_key, set_tables, stamp};
 
 /// A new session's choices kept under a name (the design's 1g): the window
 /// writes these to `profiles.toml` beside the settings, whole, so the

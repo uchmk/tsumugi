@@ -8,8 +8,8 @@
 
 use std::time::Duration;
 
-use tsumugi_mcp::serde_json::{json, Value};
-use tsumugi_mcp::{Answer, Server, Tool};
+use ito_mcp::serde_json::{json, Value};
+use ito_mcp::{Answer, Server, Tool};
 use tsumugi_mux::Client;
 
 use crate::cli;
@@ -105,6 +105,6 @@ mod tests {
     }
 
     fn serde_json_from(s: &str) -> Value {
-        tsumugi_mcp::serde_json::from_str(s).unwrap()
+        ito_mcp::serde_json::from_str(s).unwrap()
     }
 }

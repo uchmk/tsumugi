@@ -3,7 +3,7 @@
 use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
-use tsumugi_pane::Size;
+use ito_pane::Size;
 
 /// Bumped whenever a message changes shape: a client and a server that
 /// disagree say so at `Hello` instead of misreading each other.
@@ -19,7 +19,7 @@ pub const STOP: u32 = 0;
 pub type SessionId = u64;
 pub type WorkspaceId = u64;
 
-pub use tsumugi_layout::{Dir, Node};
+pub use ito_layout::{Dir, Node};
 
 /// A tab of the sidebar: panes, each a session, split in a tree. The server
 /// keeps it, so closing the window loses no split.
@@ -255,7 +255,7 @@ pub enum ToServer {
     /// The session's whole buffer as text; answered with `Text`.
     AllText { id: SessionId },
     /// Read and write the session's bytes in this character set (one of
-    /// `tsumugi_pane::CHARSETS`).
+    /// `ito_pane::CHARSETS`).
     SetCharset { id: SessionId, name: String },
     /// Find `needle` (plain text, case aside) in the session's buffer from
     /// the last match on, and put the match on screen, selected; answered
@@ -333,7 +333,7 @@ pub enum ToClient {
     Found { id: SessionId, wrapped: Option<bool> },
     /// The answer to `ToServer::Picture`: `None` when the session has let
     /// the picture go.
-    Picture { id: SessionId, key: u64, picture: Option<tsumugi_pane::Picture> },
+    Picture { id: SessionId, key: u64, picture: Option<ito_pane::Picture> },
     /// The selection, for Linux's primary selection (`Copy` with `primary`).
     Primary(String),
 }

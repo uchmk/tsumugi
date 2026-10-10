@@ -443,27 +443,12 @@ checksum = "72b3254f16251a8381aa12e40e3c4d2f0199f8c6508fbecb9d91f575e0fbb8c6"
 
 [[package]]
 name = "bit-set"
-version = "0.8.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "08807e080ed7f9d5433fa9b275196cfc35414f66a0c79d864dc51a0d825231a3"
-dependencies = [
- "bit-vec 0.8.0",
-]
-
-[[package]]
-name = "bit-set"
 version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "09ec2f926cc3060f09db9ebc5b52823d85268d24bb917e472c0c4bea35780a7d"
 dependencies = [
- "bit-vec 0.9.1",
+ "bit-vec",
 ]
-
-[[package]]
-name = "bit-vec"
-version = "0.8.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5e764a1d40d510daf35e07be9eb06e75770908c27d411ee6c92109c9840eaaf7"
 
 [[package]]
 name = "bit-vec"
@@ -1123,17 +1108,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "fancy-regex"
-version = "0.16.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "998b056554fbe42e03ae0e152895cd1a7e1002aec800fdc6635d20270260c46f"
-dependencies = [
- "bit-set 0.8.0",
- "regex-automata",
- "regex-syntax",
-]
-
-[[package]]
 name = "fastrand"
 version = "2.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1702,6 +1676,97 @@ dependencies = [
 ]
 
 [[package]]
+name = "ito-common"
+version = "0.2.0"
+source = "git+https://github.com/uchmk/ito?rev=90314f94820ed2b1c08b8610c0cf7bad59b07f7f#90314f94820ed2b1c08b8610c0cf7bad59b07f7f"
+dependencies = [
+ "chrono",
+ "serde",
+ "sys-locale",
+ "toml",
+ "toml_edit 0.23.10+spec-1.0.0",
+]
+
+[[package]]
+name = "ito-i18n"
+version = "0.2.0"
+source = "git+https://github.com/uchmk/ito?rev=90314f94820ed2b1c08b8610c0cf7bad59b07f7f#90314f94820ed2b1c08b8610c0cf7bad59b07f7f"
+dependencies = [
+ "ito-common",
+ "toml",
+ "toml_edit 0.23.10+spec-1.0.0",
+]
+
+[[package]]
+name = "ito-ipc"
+version = "0.2.0"
+source = "git+https://github.com/uchmk/ito?rev=90314f94820ed2b1c08b8610c0cf7bad59b07f7f#90314f94820ed2b1c08b8610c0cf7bad59b07f7f"
+dependencies = [
+ "postcard",
+ "serde",
+ "windows",
+]
+
+[[package]]
+name = "ito-layout"
+version = "0.2.0"
+source = "git+https://github.com/uchmk/ito?rev=90314f94820ed2b1c08b8610c0cf7bad59b07f7f#90314f94820ed2b1c08b8610c0cf7bad59b07f7f"
+dependencies = [
+ "egui",
+ "serde",
+]
+
+[[package]]
+name = "ito-mcp"
+version = "0.2.0"
+source = "git+https://github.com/uchmk/ito?rev=90314f94820ed2b1c08b8610c0cf7bad59b07f7f#90314f94820ed2b1c08b8610c0cf7bad59b07f7f"
+dependencies = [
+ "serde_json",
+]
+
+[[package]]
+name = "ito-pane"
+version = "0.2.0"
+source = "git+https://github.com/uchmk/ito?rev=90314f94820ed2b1c08b8610c0cf7bad59b07f7f#90314f94820ed2b1c08b8610c0cf7bad59b07f7f"
+dependencies = [
+ "alacritty_terminal",
+ "crossbeam-channel",
+ "egui",
+ "egui-wgpu",
+ "encoding_rs",
+ "harfrust",
+ "image",
+ "miniz_oxide 0.8.9",
+ "polling",
+ "regex",
+ "serde",
+ "skrifa",
+ "vello_cpu",
+ "windows",
+]
+
+[[package]]
+name = "ito-prefs"
+version = "0.2.0"
+source = "git+https://github.com/uchmk/ito?rev=90314f94820ed2b1c08b8610c0cf7bad59b07f7f#90314f94820ed2b1c08b8610c0cf7bad59b07f7f"
+dependencies = [
+ "egui",
+ "ito-common",
+ "ito-i18n",
+ "ito-theme",
+]
+
+[[package]]
+name = "ito-theme"
+version = "0.2.0"
+source = "git+https://github.com/uchmk/ito?rev=90314f94820ed2b1c08b8610c0cf7bad59b07f7f#90314f94820ed2b1c08b8610c0cf7bad59b07f7f"
+dependencies = [
+ "egui",
+ "ito-pane",
+ "toml",
+]
+
+[[package]]
 name = "itoa"
 version = "1.0.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1981,7 +2046,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a616d2fb8c89516ac2723a581f69d6c18576046bed761bd6b305e5618e6ae130"
 dependencies = [
  "arrayvec",
- "bit-set 0.10.0",
+ "bit-set",
  "bitflags 2.13.2",
  "cfg-if",
  "cfg_aliases",
@@ -3437,7 +3502,7 @@ dependencies = [
 
 [[package]]
 name = "tsumugi"
-version = "0.81.0"
+version = "0.82.0"
 dependencies = [
  "arboard",
  "chrono",
@@ -3445,131 +3510,34 @@ dependencies = [
  "egui",
  "global-hotkey",
  "image",
+ "ito-common",
+ "ito-i18n",
+ "ito-layout",
+ "ito-mcp",
+ "ito-pane",
+ "ito-prefs",
+ "ito-theme",
  "raw-window-handle",
  "toml",
- "tsumugi-common",
- "tsumugi-i18n",
- "tsumugi-layout",
- "tsumugi-mcp",
  "tsumugi-mux",
- "tsumugi-pane",
- "tsumugi-prefs",
- "tsumugi-theme",
  "window-vibrancy",
  "windows",
  "winit",
 ]
 
 [[package]]
-name = "tsumugi-common"
-version = "0.81.0"
-dependencies = [
- "chrono",
- "serde",
- "sys-locale",
- "toml",
- "toml_edit 0.23.10+spec-1.0.0",
-]
-
-[[package]]
-name = "tsumugi-i18n"
-version = "0.81.0"
-dependencies = [
- "toml",
- "toml_edit 0.23.10+spec-1.0.0",
- "tsumugi-common",
-]
-
-[[package]]
-name = "tsumugi-ipc"
-version = "0.81.0"
-dependencies = [
- "postcard",
- "serde",
- "windows",
-]
-
-[[package]]
-name = "tsumugi-keys"
-version = "0.81.0"
-dependencies = [
- "egui",
-]
-
-[[package]]
-name = "tsumugi-layout"
-version = "0.81.0"
-dependencies = [
- "egui",
- "serde",
-]
-
-[[package]]
-name = "tsumugi-match"
-version = "0.81.0"
-dependencies = [
- "fancy-regex",
-]
-
-[[package]]
-name = "tsumugi-mcp"
-version = "0.81.0"
-dependencies = [
- "serde_json",
-]
-
-[[package]]
 name = "tsumugi-mux"
-version = "0.81.0"
+version = "0.82.0"
 dependencies = [
  "crossbeam-channel",
+ "ito-common",
+ "ito-ipc",
+ "ito-layout",
+ "ito-pane",
  "postcard",
  "serde",
  "toml",
- "tsumugi-common",
- "tsumugi-ipc",
- "tsumugi-layout",
- "tsumugi-pane",
  "windows",
-]
-
-[[package]]
-name = "tsumugi-pane"
-version = "0.81.0"
-dependencies = [
- "alacritty_terminal",
- "crossbeam-channel",
- "egui",
- "egui-wgpu",
- "encoding_rs",
- "harfrust",
- "image",
- "miniz_oxide 0.8.9",
- "polling",
- "regex",
- "serde",
- "skrifa",
- "vello_cpu",
- "windows",
-]
-
-[[package]]
-name = "tsumugi-prefs"
-version = "0.81.0"
-dependencies = [
- "egui",
- "tsumugi-common",
- "tsumugi-i18n",
- "tsumugi-theme",
-]
-
-[[package]]
-name = "tsumugi-theme"
-version = "0.81.0"
-dependencies = [
- "egui",
- "toml",
- "tsumugi-pane",
 ]
 
 [[package]]
@@ -3981,8 +3949,8 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "14c018fce9b6270aa203c2fdd56f3cce996713534bd757e4ea58c8560b121f14"
 dependencies = [
  "arrayvec",
- "bit-set 0.10.0",
- "bit-vec 0.9.1",
+ "bit-set",
+ "bit-vec",
  "bitflags 2.13.2",
  "bytemuck",
  "cfg_aliases",
@@ -4054,7 +4022,7 @@ dependencies = [
  "android_system_properties",
  "arrayvec",
  "ash",
- "bit-set 0.10.0",
+ "bit-set",
  "bitflags 2.13.2",
  "block2 0.6.2",
  "bytemuck",

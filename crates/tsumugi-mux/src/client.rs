@@ -8,8 +8,8 @@ use std::sync::{Arc, Condvar, Mutex};
 use std::time::Duration;
 
 use crossbeam_channel::Sender;
-use tsumugi_pane::alacritty_terminal::grid::Scroll;
-use tsumugi_pane::{Pane, Screen, Size};
+use ito_pane::alacritty_terminal::grid::Scroll;
+use ito_pane::{Pane, Screen, Size};
 
 use crate::frame;
 use crate::proto::{self, Info, Node, Notice, Place, ScrollBy, SessionId, ToClient, ToServer, Workspace, WorkspaceId, VERSION};
@@ -25,12 +25,12 @@ struct Remote {
     win32_input: bool,
     bracketed_paste: bool,
     title: String,
-    links: Vec<tsumugi_pane::Hyperlink>,
-    blocks: Vec<tsumugi_pane::Block>,
-    pictures: Vec<tsumugi_pane::Placement>,
+    links: Vec<ito_pane::Hyperlink>,
+    blocks: Vec<ito_pane::Block>,
+    pictures: Vec<ito_pane::Placement>,
     /// Pictures' pixels by key, as they came; `None` while asked for and
     /// not come, or let go by the server.
-    pixels: HashMap<u64, Option<Arc<tsumugi_pane::Picture>>>,
+    pixels: HashMap<u64, Option<Arc<ito_pane::Picture>>>,
     exited: bool,
     /// Something is selected in the server's pane, on the screen or not.
     selected: bool,
@@ -693,21 +693,21 @@ impl Pane for RemotePane {
         self.with(|r| r.screen.kitty)
     }
 
-    fn hyperlinks(&self) -> Vec<tsumugi_pane::Hyperlink> {
+    fn hyperlinks(&self) -> Vec<ito_pane::Hyperlink> {
         self.with(|r| r.links.clone())
     }
 
-    fn blocks(&self) -> Vec<tsumugi_pane::Block> {
+    fn blocks(&self) -> Vec<ito_pane::Block> {
         self.with(|r| r.blocks.clone())
     }
 
-    fn pictures(&self) -> Vec<tsumugi_pane::Placement> {
+    fn pictures(&self) -> Vec<ito_pane::Placement> {
         self.with(|r| r.pictures.clone())
     }
 
     /// Asked for the first time it is wanted; the answer wakes the window,
     /// which draws it then.
-    fn picture(&self, key: u64) -> Option<Arc<tsumugi_pane::Picture>> {
+    fn picture(&self, key: u64) -> Option<Arc<ito_pane::Picture>> {
         let mut st = self.inner.lock();
         let r = st.screens.entry(self.id).or_default();
         match r.pixels.get(&key) {

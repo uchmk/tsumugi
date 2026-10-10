@@ -46,8 +46,8 @@ pub fn branch(stamp: &str, k: usize) -> String {
 /// the shell, its lines run into one. Free text, not a path: nothing in it
 /// may end the quotes and run as a command (the source review, 2026-10-07).
 /// `--` before a prompt that starts with `-`, so it is not read as a flag.
-pub fn typed(claude: &str, task: &str, how: tsumugi_pane::Quoting) -> String {
-    use tsumugi_pane::Quoting;
+pub fn typed(claude: &str, task: &str, how: ito_pane::Quoting) -> String {
+    use ito_pane::Quoting;
     let one: String = task.split_whitespace().collect::<Vec<_>>().join(" ");
     let quoted = match how {
         // Inside '…' nothing is special but the quote itself, closed,
@@ -136,7 +136,7 @@ mod tests {
     #[test]
     fn work_is_named_and_typed_safely() {
         assert_eq!(branch("tsumugi/1007-1432", 0), "tsumugi/1007-1432-1");
-        use tsumugi_pane::Quoting;
+        use ito_pane::Quoting;
         let line = typed("claude", "Fix the 'login'\n  bug", Quoting::Posix);
         assert_eq!(line, "claude 'Fix the '\\''login'\\'' bug'");
         // Nothing ends the quotes: PowerShell's curly quotes, cmd's " and %.
