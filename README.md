@@ -884,6 +884,12 @@ with [filer](https://github.com/uchmk/filer). So are the local channel to a
 running app (`tsumugi-ipc`, the socket or named pipe the server listens on)
 and the MCP server (`tsumugi-mcp`), which filer's `filer mcp` uses too. The rule a search query matches by (a regular expression with smart case, or fzf-style fuzzy letters, with the places to highlight) is `tsumugi-match`.
 
+[mimamori](https://github.com/uchmk/mimamori) uses three more from this
+workspace: the column sizes (`tsumugi-layout`), the language tables
+(`tsumugi-i18n`) and yazi's key notation (`tsumugi-keys`: `<C-a>`,
+`<A-S-Up>`, `<P-e>` with `P` meaning Cmd on macOS and Ctrl elsewhere, and
+egui's key events in the same terms).
+
 ## Why
 
 [cmux](https://github.com/manaflow-ai/cmux) showed what a terminal for coding
