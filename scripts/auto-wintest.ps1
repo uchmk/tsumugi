@@ -23,6 +23,9 @@
 #      TSUMUGI_SETTINGS, TSUMUGI_PTY_LOG and TSUMUGI_KEYLOG are set for the
 #      whole run, so even a bare `tsumugi ls` reaches the run's server, never
 #      the owner's; scripts/wintest-kit.ps1 has the tools the run uses.
+#   6. The older build: for a chunk with a row that names WINTEST_OLD_EXE,
+#      the newest release below the version built (gh release download, kept
+#      in %LOCALAPPDATA%\tsumugi-wintest\old), copied into the run's kit.
 #
 # Register it with Task Scheduler every hour at :50 (filer's runs at :20), as
 # you, "only when the user is logged on" (the run drives a real window). The
@@ -280,6 +283,41 @@ function Invoke-BuildStep([string]$Name, [scriptblock]$Do) {
     $false
 }
 
+# The build of an older release, for the rows about a server older than the
+# window (1.7, 1.11, 1.12): the newest release below the version built here,
+# downloaded once into $state\old and copied into the kit, so Stop-RunTsumugi
+# stops whatever it starts. Its path, or $null (said in the log) when there is
+# none; a run without it leaves those rows, it does not fail.
+function Get-OldBuild([string]$Arch) {
+    try {
+        $toml = Get-Content -Raw -LiteralPath (Join-Path $Work 'Cargo.toml')
+        if ($toml -notmatch '(?m)^version = "(\d+\.\d+\.\d+)"') { throw 'no version in Cargo.toml' }
+        $built = [version]$Matches[1]
+        $tags = @(gh api "repos/$repo/releases?per_page=30" --jq '.[] | select(.draft | not) | select(.prerelease | not) | .tag_name')
+        if ($LASTEXITCODE -ne 0) { throw 'gh api failed' }
+        $tag = $tags | Where-Object { $_ -match '^v(\d+\.\d+\.\d+)$' -and [version]$Matches[1] -lt $built } |
+            Sort-Object { [version]$_.Substring(1) } -Descending | Select-Object -First 1
+        if (-not $tag) { throw "no release below $built" }
+        $name = "tsumugi-$tag-windows-$Arch"
+        $cache = Join-Path $state 'old'
+        if (-not (Test-Path (Join-Path $cache "$name\tsumugi.exe"))) {
+            New-Item -ItemType Directory -Force -Path $cache | Out-Null
+            Remove-Item -Recurse -Force -LiteralPath (Join-Path $cache $name) -ErrorAction SilentlyContinue
+            gh release download $tag --repo $repo --pattern "$name.zip" --dir $cache --clobber
+            if ($LASTEXITCODE -ne 0) { throw "gh release download $tag failed" }
+            Expand-Archive -LiteralPath (Join-Path $cache "$name.zip") -DestinationPath $cache -Force
+            Remove-Item -LiteralPath (Join-Path $cache "$name.zip")
+        }
+        $dest = Join-Path $kit 'old'
+        Copy-Item -Recurse -LiteralPath (Join-Path $cache $name) -Destination $dest
+        Say "Older build: $tag ($Arch), in $dest."
+        Join-Path $dest 'tsumugi.exe'
+    } catch {
+        Say "No older build for this run: $_"
+        $null
+    }
+}
+
 # Every tsumugi this run started: the window from the worktree's build (by
 # its path through the junction and the path it points at), and
 # the server, which runs from a copy under the run's kit folder. The owner's
@@ -517,6 +555,18 @@ $chunkText
     $env:TSUMUGI_PTY_LOG = Join-Path $kit 'pty.log'
     $env:TSUMUGI_KEYLOG = '1'
     Remove-Item Env:TSUMUGI_SESSION -ErrorAction SilentlyContinue
+
+    # The older build, only for a chunk with a row that asks for it.
+    Remove-Item Env:WINTEST_OLD_EXE -ErrorAction SilentlyContinue
+    if (@($chunk.Rows | Where-Object { $_.Text -match 'WINTEST_OLD_EXE' }).Count) {
+        $old = Get-OldBuild $(if ($Lane -eq 'arm') { 'arm64' } else { 'x64' })
+        if ($old) {
+            $env:WINTEST_OLD_EXE = $old
+            $prompt += "- 古いリリースのビルドが ``$old``（WINTEST_OLD_EXE）にあります。``Start-OldTsumugi`` でこの実行の環境のまま起動すると、そのサーバがこの実行のパイプで動きます。窓を閉じてから ``Start-Tsumugi`` で新しい窓を開きます。`n"
+        } else {
+            $prompt += "- 古いリリースのビルドは取れませんでした。WINTEST_OLD_EXE の要る行は、理由を書いて ``[ ]`` のまま残してください。`n"
+        }
+    }
 
     # 4. The desktop, shared with filer's lane.
     $desktop = [Threading.Mutex]::new($false, 'Local\wintest-desktop')

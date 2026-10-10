@@ -937,9 +937,10 @@ fn spawn_session(
 /// from the system, and without it a folder's tag rules never saw a `cd`.
 /// It calls whatever handler was there before (a profile's own tsumugi hook,
 /// `mise activate pwsh`), and says the folder it starts in. It also marks
-/// each prompt (OSC 133;A), with how the command before it ended (`D`), by
-/// wrapping the `prompt` the profile left, once only: a profile's own
-/// tsumugi hook may have done it already.
+/// each prompt (OSC 133;A), with how the command before it ended (`D`) and
+/// where it ends (`B`), by wrapping the `prompt` the profile left, once only:
+/// a profile's own tsumugi hook may have done it already (one from before
+/// `B` is replaced, around the prompt it kept).
 #[cfg(any(windows, test))]
 const PWSH_CWD_HOOK: &str = r#"$__tsumugi_prev = $ExecutionContext.SessionState.InvokeCommand.LocationChangedAction
 function global:__tsumugi_osc7($p) { [Console]::Write("$([char]27)]7;file://$(($p -replace '\\', '/') -replace '^(?!/)', '/')$([char]27)\") }
@@ -949,12 +950,13 @@ $ExecutionContext.SessionState.InvokeCommand.LocationChangedAction = {
     __tsumugi_osc7 $e.NewPath.ProviderPath
 }.GetNewClosure()
 __tsumugi_osc7 (Get-Location).ProviderPath
-if (-not $global:__tsumugi_marked) {
-    $global:__tsumugi_marked = $true
-    $global:__tsumugi_prompt = $function:prompt
+if (-not $global:__tsumugi_marks_input) {
+    $global:__tsumugi_marks_input = $global:__tsumugi_marked = $true
+    # An older hook's wrapper is replaced, around the prompt it kept.
+    if ("$function:prompt" -notmatch '__tsumugi_prompt') { $global:__tsumugi_prompt = $function:prompt }
     function global:prompt {
         $c = if ($?) { 0 } elseif ($LASTEXITCODE) { $LASTEXITCODE } else { 1 }
-        "$([char]27)]133;D;$c$([char]27)\$([char]27)]133;A$([char]27)\" + (& $global:__tsumugi_prompt)
+        "$([char]27)]133;D;$c$([char]27)\$([char]27)]133;A$([char]27)\" + (& $global:__tsumugi_prompt) + "$([char]27)]133;B$([char]27)\"
     }
 }
 "#;
