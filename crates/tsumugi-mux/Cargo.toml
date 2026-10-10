@@ -8,9 +8,9 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
-tsumugi-ipc = { path = "../tsumugi-ipc" }
-tsumugi-pane = { path = "../tsumugi-pane", features = ["serde"] }
-tsumugi-layout = { path = "../tsumugi-layout", features = ["serde"] }
+ito-ipc = { git = "https://github.com/uchmk/ito", rev = "893dd77d42f6e1670bb68e2ba67edcd651419f3f" }
+ito-pane = { git = "https://github.com/uchmk/ito", rev = "893dd77d42f6e1670bb68e2ba67edcd651419f3f", features = ["serde"] }
+ito-layout = { git = "https://github.com/uchmk/ito", rev = "893dd77d42f6e1670bb68e2ba67edcd651419f3f", features = ["serde"] }
 serde = { version = "1", features = ["derive"] }
 # Pure Rust, with a documented and stable wire format (1.0). bincode was the
 # first choice and is unmaintained since 2025 (its 3.0.0 is only a notice);
@@ -21,9 +21,8 @@ crossbeam-channel = "0.5"
 # settings with.
 toml = "1.1"
 # Editing settings.toml in place -- one key, its comments and layout kept --
-# without a hand-written line editor (the source review, 2026-10-07: brackets
-# in strings and multi-line strings broke it). Pure Rust, the toml crate's own.
-toml_edit = "0.23"
+# and the clock, both shared with every uchmk app.
+ito-common = { git = "https://github.com/uchmk/ito", rev = "893dd77d42f6e1670bb68e2ba67edcd651419f3f" }
 
 [target."cfg(windows)".dependencies]
 windows = { version = "0.62", features = ["Win32_Foundation", "Win32_Security", "Win32_Security_Authorization", "Win32_Storage_FileSystem", "Win32_System_IO", "Win32_System_Pipes", "Win32_System_Threading"] }

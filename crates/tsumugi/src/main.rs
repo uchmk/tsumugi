@@ -12,7 +12,7 @@
 //!   tsumugi shell-hook make a shell say its folder (pwsh, bash, zsh)
 //!
 //! The sidebar lists the server's workspaces (tabs); the one picked is drawn
-//! beside it, its panes split as the server keeps them (`tsumugi-layout`).
+//! beside it, its panes split as the server keeps them (`ito-layout`).
 
 // No console window behind the GUI on Windows, in a release build.
 #![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
@@ -74,13 +74,13 @@ use std::time::Duration;
 use eframe::egui;
 use std::collections::HashMap;
 
-use tsumugi_layout::{Node, Rect};
+use ito_layout::{Node, Rect};
 use tsumugi_mux::{Client, Dir, Info, Place, RemotePane, SessionId, State, Workspace, WorkspaceId};
-use tsumugi_pane::{Palette, Size, ViewOptions, ViewState};
+use ito_pane::{Palette, Size, ViewOptions, ViewState};
 
 fn main() -> std::process::ExitCode {
     // Before anything loads a DLL: `conpty.dll` only from beside the exe.
-    tsumugi_pane::restrict_dll_search();
+    ito_pane::restrict_dll_search();
     let args: Vec<String> = std::env::args().skip(1).collect();
     // The server and the proxy speak to no one through a console; the proxy's
     // stdout is the line to ssh, and `mcp`'s the line to the LLM client.
@@ -93,7 +93,7 @@ fn main() -> std::process::ExitCode {
         Some("proxy") => proxy(),
         Some("ls") => ls(&args[1..]),
         Some("mcp") => mcp::run(),
-        Some("send" | "read" | "split" | "close" | "wait") => remote(&args[0], &args[1..]),
+        Some("send" | "read" | "split" | "close" | "log" | "wait") => remote(&args[0], &args[1..]),
         Some("help" | "--help" | "-h") => {
             println!("tsumugi: the window, or one of\n{}\n{}\ntsumugi attach N|NAME\ntsumugi proxy                            (what --host runs on the other machine)\ntsumugi notify [--state S] [--session N] [MESSAGE]\ntsumugi tag [--session N] [--remove] TAG...\ntsumugi shell-hook bash|zsh|pwsh\ntsumugi mcp                              an MCP server on stdin/stdout, for Claude Code (see the README)", cli::NEW_USAGE, cli::REMOTE_USAGE);
             std::process::ExitCode::SUCCESS
@@ -285,8 +285,8 @@ fn ls(args: &[String]) -> std::process::ExitCode {
     }
 }
 
-/// The remote control (`cli::REMOTE_USAGE`): send, read, split, close and
-/// wait on a session from another program, or an AI in another pane.
+/// The remote control (`cli::REMOTE_USAGE`): send, read, split, close, log
+/// and wait on a session from another program, or an AI in another pane.
 fn remote(what: &str, args: &[String]) -> std::process::ExitCode {
     use std::process::ExitCode;
     let fail = |e: String| {
@@ -357,6 +357,13 @@ fn remote(what: &str, args: &[String]) -> std::process::ExitCode {
         "split" => match cli::parse_split(args).and_then(|s| cli::split(&client, &list, id, &s)) {
             Ok(new) => {
                 println!("{new}");
+                ExitCode::SUCCESS
+            }
+            Err(e) => fail(e),
+        },
+        "log" => match cli::parse_log(args).and_then(|l| cli::log(&client, &list, id, l, host.is_some())) {
+            Ok(path) => {
+                println!("{path}");
                 ExitCode::SUCCESS
             }
             Err(e) => fail(e),
@@ -585,7 +592,7 @@ fn wgpu_options(backend: &str) -> eframe::WgpuConfiguration {
         return options;
     }
     let named = (backend != "auto").then_some(backend);
-    let picked = match tsumugi_pane::gpu::pick_backends(named, cfg!(windows), tsumugi_pane::gpu::has_adapter) {
+    let picked = match ito_pane::gpu::pick_backends(named, cfg!(windows), ito_pane::gpu::has_adapter) {
         Ok(b) => b,
         Err(auto) => {
             eprintln!("tsumugi: no `{backend}` adapter on this machine; drawing with the automatic choice");
@@ -1087,7 +1094,7 @@ struct App {
     font_family: String,
     font_file: Option<std::path::PathBuf>,
     /// The font file's ligatures, when it has a file (Q8).
-    shaper: Option<std::sync::Arc<tsumugi_pane::Shaper>>,
+    shaper: Option<std::sync::Arc<ito_pane::Shaper>>,
     /// Bold, italic and bold italic faces in use; and as installed for the
     /// next frame (egui takes new fonts a frame late, and a face named
     /// before it has them is a panic).
@@ -1129,8 +1136,11 @@ struct App {
     settings_now: tsumugi_mux::settings::Settings,
     /// `language` in common.toml, for the settings screen.
     language: String,
+    /// common.toml as last read: the language, the theme and the clock every
+    /// uchmk app shares (docs/common-spec.md in ito).
+    common: ito_common::Common,
     /// Its triggers that colour, made once when they are read.
-    highlights: Vec<tsumugi_pane::Highlight>,
+    highlights: Vec<ito_pane::Highlight>,
     /// The settings screen, while it is open (the design's 1m).
     prefs: Option<prefs::Screen>,
     /// The input box below the panes (the design's 12, 1l).
@@ -1148,7 +1158,11 @@ struct App {
     key_log: bool,
     /// What the key log last said had the keys.
     focus_logged: Option<egui::Id>,
+    /// The divider the key log last said the pointer was over.
+    divider_logged: Option<String>,
     settings_error: Option<String>,
+    /// What is wrong with common.toml, or not known in it.
+    common_warning: Option<String>,
     /// From the settings and `profiles.toml`, for the new-session dialog.
     tag_rules: Vec<tsumugi_mux::settings::TagRule>,
     profiles: Vec<tsumugi_mux::settings::Profile>,
@@ -1464,15 +1478,18 @@ impl App {
             settings_tx: settings_tx.clone(),
             settings_now: tsumugi_mux::settings::Settings::default(),
             language: "auto".into(),
+            common: ito_common::Common::default(),
             highlights: Vec::new(),
             prefs: None,
             input: inputbox::InputBox::with_history(load_history(), prompts::load()),
             key_log: std::env::var_os("TSUMUGI_KEYLOG").is_some(),
             focus_logged: None,
+            divider_logged: None,
             replacing: None,
             replaced_unasked: false,
             animated: false,
             settings_error: None,
+            common_warning: None,
             tag_rules: Vec::new(),
             profiles: Vec::new(),
             new_session: None,
@@ -1686,18 +1703,18 @@ impl App {
                 self.copy_mode = match self.copy_mode {
                     Some(_) => {
                         if let Some(pane) = self.panes.get(&w.focus) {
-                            tsumugi_pane::Pane::clear_selection(pane);
+                            ito_pane::Pane::clear_selection(pane);
                         }
                         None
                     }
-                    None => self.panes.get(&w.focus).map(|pane| (w.focus, copymode::CopyMode::new(tsumugi_pane::Pane::screen(pane).cursor))),
+                    None => self.panes.get(&w.focus).map(|pane| (w.focus, copymode::CopyMode::new(ito_pane::Pane::screen(pane).cursor))),
                 };
             }
             // Pressed again, the labels go.
             keys::Action::QuickSelect => {
                 self.quick = match self.quick {
                     Some(_) => None,
-                    None => self.panes.get(&w.focus).map(|pane| (w.focus, quickselect::QuickSelect::new(&tsumugi_pane::Pane::screen(pane).rows))),
+                    None => self.panes.get(&w.focus).map(|pane| (w.focus, quickselect::QuickSelect::new(&ito_pane::Pane::screen(pane).rows))),
                 };
             }
             keys::Action::CopyOutput => {
@@ -1725,7 +1742,7 @@ impl App {
             keys::Action::Duplicate => {
                 if let Some(focus) = sessions.iter().find(|i| i.id == w.focus) {
                     let typed = focus.claude.then(|| newsession::Start::Claude.typed(&self.settings_now.sessions.claude)).flatten();
-                    if let Ok(pane) = client.spawn_typing(focus.cwd.clone(), None, Size::new(80, 24), (8, 16), Place::NewWorkspace, typed) {
+                    if let Ok(pane) = client.spawn_typing(focus.cwd.clone(), None, Size::new(80, 24), (8, 16), Place::NewWorkspace, typed.into_iter().collect()) {
                         self.pending = Some(pane.id());
                     }
                 }
@@ -1832,6 +1849,7 @@ impl App {
         let (themes, _) = self.themes();
         let shown = |p: Option<std::path::PathBuf>| p.map(|p| p.display().to_string()).unwrap_or_default();
         let muted_tags = client.muted_tags();
+        let clock = self.clock();
         let seen = prefs::Seen {
             settings: &self.settings_now,
             themes: &themes,
@@ -1851,6 +1869,8 @@ impl App {
             address: tsumugi_mux::address().0.display().to_string(),
             facts: self.facts.as_ref(),
             language: &self.language,
+            choice: (&self.theme_choice.0, &self.theme_choice.1, &self.theme_choice.2),
+            clock: &clock,
         };
         let Some(screen) = &mut self.prefs else { return };
         let changes = prefs::show(ui, &self.palette, screen, &seen);
@@ -1911,7 +1931,7 @@ impl App {
                     self.view.save();
                 }
                 prefs::Change::AlwaysRestore(on) => set_always_restore(on),
-                prefs::Change::Language(code) => set_language(self.settings_tx.clone(), code),
+                prefs::Change::Common(change) => edit_common(self.settings_tx.clone(), change),
                 prefs::Change::OpenFolder => {
                     if let Some(dir) = tsumugi_mux::settings::default_path().and_then(|p| p.parent().map(std::path::Path::to_path_buf)) {
                         let _ = std::fs::create_dir_all(&dir);
@@ -2024,7 +2044,7 @@ impl App {
             _ => Place::NewWorkspace,
         };
         let shell = c.on.shell();
-        match client.spawn_typing(c.folder.clone(), shell, Size::new(80, 24), (8, 16), place, c.start.typed(&self.settings_now.sessions.claude)) {
+        match client.spawn_typing(c.folder.clone(), shell, Size::new(80, 24), (8, 16), place, c.start.typed(&self.settings_now.sessions.claude).into_iter().collect()) {
             Ok(pane) => {
                 let id = pane.id();
                 self.pending = Some(id);
@@ -2041,7 +2061,7 @@ impl App {
                 for (k, s) in c.more.iter().enumerate() {
                     let (beside, dir) = newsession::more_place(k, id, &made);
                     let shell = c.on.shell();
-                    match client.spawn_typing(c.folder.clone(), shell, Size::new(80, 24), (8, 16), Place::Split { beside, dir }, s.typed(&self.settings_now.sessions.claude)) {
+                    match client.spawn_typing(c.folder.clone(), shell, Size::new(80, 24), (8, 16), Place::Split { beside, dir }, s.typed(&self.settings_now.sessions.claude).into_iter().collect()) {
                         Ok(pane) => {
                             made.push(pane.id());
                             for t in c.tags.iter().cloned() {
@@ -2103,7 +2123,7 @@ impl App {
                 None => Place::NewWorkspace,
                 Some(first) => Place::Split { beside: *first, dir: Dir::Right },
             };
-            match client.spawn_typing(folder.clone(), None, Size::new(80, 24), (8, 16), place, s.typed(&claude)) {
+            match client.spawn_typing(folder.clone(), None, Size::new(80, 24), (8, 16), place, s.typed(&claude).into_iter().collect()) {
                 Ok(pane) => made.push(pane.id()),
                 Err(e) if k == 0 => {
                     self.failed = Some(format!("the shell did not start: {e}"));
@@ -2775,7 +2795,7 @@ impl App {
                         painter.galley(egui::pos2(r.left() + 6.0, r.center().y - g.size().y / 2.0), g, color);
                         if b.clicked() {
                             if let Some(pane) = self.panes.get(&urgent.id) {
-                                tsumugi_pane::Pane::send(pane, vec![c.key as u8]);
+                                ito_pane::Pane::send(pane, vec![c.key as u8]);
                             }
                         }
                         x = r.left() - 4.0;
@@ -3038,7 +3058,7 @@ impl App {
                                     ui.close();
                                 }
                             }
-                            "filer" => open_with(ui, "Open the folder in filer", &self.open.filer, focus),
+                            "filer" => open_with(ui, "Open the folder in kura", &self.open.filer, focus),
                             "editor" => open_with(ui, "Open in the editor", &self.open.editor, focus),
                             "copy-path" => {
                                 if ui.button("Copy the folder path").clicked() {
@@ -3150,7 +3170,7 @@ impl App {
                     SideOp::Duplicate(cwd, claude) => {
                         let shell = None;
                         let typed = claude.then(|| newsession::Start::Claude.typed(&self.settings_now.sessions.claude)).flatten();
-                        if let Ok(pane) = client.spawn_typing(cwd, shell, Size::new(80, 24), (8, 16), Place::NewWorkspace, typed) {
+                        if let Ok(pane) = client.spawn_typing(cwd, shell, Size::new(80, 24), (8, 16), Place::NewWorkspace, typed.into_iter().collect()) {
                             self.pending = Some(pane.id());
                         }
                     }
@@ -3708,13 +3728,13 @@ impl App {
         }
         let Some(rx) = &self.parallel_made else { return };
         let made: Vec<Result<(std::path::PathBuf, String), String>> = rx.try_iter().collect();
-        let program = self.settings_now.shell.command().map(|(p, _)| p).unwrap_or_else(tsumugi_pane::default_program);
-        let how = tsumugi_pane::Quoting::for_shell(Some(&program));
+        let program = self.settings_now.shell.command().map(|(p, _)| p).unwrap_or_else(ito_pane::default_program);
+        let how = ito_pane::Quoting::for_shell(Some(&program));
         let claude = newsession::Start::Claude.typed(&self.settings_now.sessions.claude).unwrap_or_else(|| "claude".into());
         for m in made {
             match m {
                 Ok((path, task)) => {
-                    if let Err(e) = client.spawn_typing(path, None, Size::new(80, 24), (8, 16), Place::NewWorkspace, Some(parallel::typed(&claude, &task, how))) {
+                    if let Err(e) = client.spawn_typing(path, None, Size::new(80, 24), (8, 16), Place::NewWorkspace, vec![parallel::typed(&claude, &task, how)]) {
                         self.say(format!("A parallel session did not start: {e}"), true);
                     }
                 }
@@ -4076,9 +4096,9 @@ impl App {
 
     /// Show `words` under the band for a while.
     /// A Ctrl+click on an address or a file's path a pane printed.
-    fn open_link(&mut self, link: tsumugi_pane::Link, cwd: &std::path::Path) {
+    fn open_link(&mut self, link: ito_pane::Link, cwd: &std::path::Path) {
         let (path, line, column) = match link {
-            tsumugi_pane::Link::Url(url) => match menu::file_uri(&url) {
+            ito_pane::Link::Url(url) => match menu::file_uri(&url) {
                 Some(path) => (path, None, None),
                 None => {
                     if !menu::open_url(&url) {
@@ -4087,7 +4107,7 @@ impl App {
                     return;
                 }
             },
-            tsumugi_pane::Link::Path { path, line, column } => (path, line, column),
+            ito_pane::Link::Path { path, line, column } => (path, line, column),
         };
         let home = std::env::var_os(if cfg!(windows) { "USERPROFILE" } else { "HOME" }).map(std::path::PathBuf::from);
         let path = menu::resolve(&path, cwd, home.as_deref());
@@ -4173,7 +4193,7 @@ impl App {
             self.panes.entry(id).or_insert_with(|| client.attach(id));
         }
         let Some(pane) = self.panes.get(&id) else { return Vec::new() };
-        last_lines(&tsumugi_pane::Pane::screen(pane).rows, PEEK_LINES)
+        last_lines(&ito_pane::Pane::screen(pane).rows, PEEK_LINES)
     }
 
     /// The last lines of a waiting session's screen, to find a question
@@ -4184,15 +4204,15 @@ impl App {
             self.panes.entry(id).or_insert_with(|| client.attach(id));
         }
         let Some(pane) = self.panes.get(&id) else { return Vec::new() };
-        last_lines(&tsumugi_pane::Pane::screen(pane).rows, 20)
+        last_lines(&ito_pane::Pane::screen(pane).rows, 20)
     }
 
     /// The panes' faces: the regular one, and bold and italic where found.
-    fn faces(&self) -> tsumugi_pane::Faces {
+    fn faces(&self) -> ito_pane::Faces {
         let size = self.font.size;
         let face = |k: usize, name: &str| self.faces_found[k].then(|| egui::FontId::new(size, egui::FontFamily::Name(name.into())));
         let shaper = self.shaper.clone().filter(|_| self.settings_now.font.ligatures);
-        tsumugi_pane::Faces { regular: self.font.clone(), bold: face(0, fonts::BOLD), italic: face(1, fonts::ITALIC), bold_italic: face(2, fonts::BOLD_ITALIC), shaper, cursor: tsumugi_pane::CursorStyle::from_word(&self.settings_now.appearance.cursor) }
+        ito_pane::Faces { regular: self.font.clone(), bold: face(0, fonts::BOLD), italic: face(1, fonts::ITALIC), bold_italic: face(2, fonts::BOLD_ITALIC), shaper, cursor: ito_pane::CursorStyle::from_word(&self.settings_now.appearance.cursor) }
     }
 
     /// A pane too small for a terminal: its state's dot and its name, along
@@ -4464,7 +4484,7 @@ impl App {
                 if let Some(t) = &image {
                     backdrop::paint(&ui.painter_at(rect), rect, t, alpha);
                 }
-                let shown = ui.push_id(id, |ui| tsumugi_pane::show_faces(ui, Some(pane), view, rect, &faces, row_h, &pal, opts)).inner;
+                let shown = ui.push_id(id, |ui| ito_pane::show_faces(ui, Some(pane), view, rect, &faces, row_h, &pal, opts)).inner;
                 if !focused {
                     // The panes without the keys sit back; their marks do not (1e).
                     let dim = f32::from(self.settings_now.appearance.dim) / 100.0;
@@ -4527,11 +4547,11 @@ impl App {
                             find::Ask::Find { needle, back } => pane.find(&needle, back),
                             find::Ask::Restart => {
                                 pane.find("", true);
-                                tsumugi_pane::Pane::clear_selection(pane);
+                                ito_pane::Pane::clear_selection(pane);
                             }
                             find::Ask::Close => {
                                 pane.find("", true);
-                                tsumugi_pane::Pane::clear_selection(pane);
+                                ito_pane::Pane::clear_selection(pane);
                                 self.find = None;
                                 break;
                             }
@@ -4633,23 +4653,39 @@ impl App {
             return;
         }
 
-        // The dividers (tsumugi-layout's, shared with filer): only a gap
+        // The dividers (ito-layout's, shared with filer): only a gap
         // until the pointer comes near; dragged, the split follows;
         // double-clicked, it halves.
-        let look = tsumugi_layout::ui::Look { gap: GAP, grab: GRAB, line: self.palette.cursor };
-        match tsumugi_layout::ui::dividers(ui, ui.id(), &layout, area, look) {
-            Some(tsumugi_layout::ui::Moved::Dragging(l)) => self.dragging = Some((w.id, l)),
-            Some(tsumugi_layout::ui::Moved::Halved(l)) => {
+        let look = ito_layout::ui::Look { gap: GAP, grab: GRAB, line: self.palette.cursor };
+        match ito_layout::ui::dividers(ui, ui.id(), &layout, area, look) {
+            Some(ito_layout::ui::Moved::Dragging(l)) => self.dragging = Some((w.id, l)),
+            Some(ito_layout::ui::Moved::Halved(l)) => {
                 if let Some(client) = &self.client {
                     client.set_layout(w.id, l, w.focus);
                 }
             }
-            Some(tsumugi_layout::ui::Moved::Released) => {
+            Some(ito_layout::ui::Moved::Released) => {
                 if let (Some((_, l)), Some(client)) = (self.dragging.take(), &self.client) {
                     client.set_layout(w.id, l, w.focus);
                 }
             }
             None => {}
+        }
+        // `TSUMUGI_KEYLOG=1` also says which divider the pointer is over
+        // (its gap, in points) when that changes, so a drag is started
+        // where the log says instead of where a picture looked (2.3, 2.15).
+        if self.key_log {
+            let pointer = ui.ctx().pointer_hover_pos();
+            let more = (GRAB - GAP) / 2.0;
+            let over = layout.dividers(area, GAP).into_iter().map(|d| (from_rect(d.gap), d.dir)).find(|(g, dir)| {
+                let grab = if *dir == ito_layout::Dir::Right { g.expand2(egui::vec2(more, 0.0)) } else { g.expand2(egui::vec2(0.0, more)) };
+                pointer.is_some_and(|p| grab.contains(p))
+            });
+            let now = over.map(|(g, _)| format!("divider {:.0},{:.0} {:.0}x{:.0}", g.left(), g.top(), g.width(), g.height()));
+            if now != self.divider_logged {
+                eprintln!("{}", now.as_deref().unwrap_or("divider none"));
+                self.divider_logged = now;
+            }
         }
         if !held {
             self.dragging = None;
@@ -4657,7 +4693,7 @@ impl App {
     }
 }
 
-use tsumugi_layout::ui::{from_egui as to_rect, to_egui as from_rect};
+use ito_layout::ui::{from_egui as to_rect, to_egui as from_rect};
 
 use chrome::state_color;
 
@@ -4685,8 +4721,9 @@ enum Read {
     /// Themes of one's own (`themes/*.toml`) and the changes to the theme
     /// in force (`theme.toml`), as their files' tables.
     Themes(Result<ThemeFiles, String>),
-    /// `language` in the common.toml uchmk's apps share.
-    Language(Result<Option<String>, String>),
+    /// The common.toml uchmk's apps share (the language, the theme, the
+    /// clock), and what in it is not known.
+    Common(Result<(ito_common::Common, Vec<String>), String>),
 }
 
 #[derive(Default)]
@@ -4695,9 +4732,10 @@ struct ThemeFiles {
     changes: Option<std::collections::BTreeMap<String, toml::Value>>,
 }
 
-/// `theme.toml` and `themes/*.toml` beside the settings; a theme's name is
-/// its `name`, else its file's.
-fn read_themes(dir: &std::path::Path) -> Result<ThemeFiles, String> {
+/// `theme.toml` and `themes/*.toml` beside the settings, and the themes
+/// every uchmk app shares (`uchmk/themes/`, `common`); a theme's name is its
+/// `name`, else its file's.
+fn read_themes(dir: &std::path::Path, common: Option<&std::path::Path>) -> Result<ThemeFiles, String> {
     let table = |p: &std::path::Path| -> Result<std::collections::BTreeMap<String, toml::Value>, String> {
         let text = std::fs::read_to_string(p).map_err(|e| format!("{}: {e}", p.display()))?;
         toml::from_str(&text).map_err(|e| format!("{}: {}", p.display(), e.message()))
@@ -4707,7 +4745,8 @@ fn read_themes(dir: &std::path::Path) -> Result<ThemeFiles, String> {
     if changes.exists() {
         out.changes = Some(table(&changes)?);
     }
-    if let Ok(entries) = std::fs::read_dir(dir.join("themes")) {
+    let folders = std::iter::once(dir.join("themes")).chain(common.map(ito_common::themes_dir));
+    for entries in folders.filter_map(|d| std::fs::read_dir(d).ok()) {
         let mut files: Vec<std::path::PathBuf> = entries.filter_map(|e| e.ok().map(|e| e.path())).filter(|p| p.extension().is_some_and(|x| x == "toml" || x == "json" || x == "itermcolors")).collect();
         files.sort();
         for f in files {
@@ -4756,7 +4795,7 @@ fn watch_settings(ctx: egui::Context, tx: std::sync::mpsc::Sender<Read>) {
     let _ = std::thread::Builder::new().name("settings".into()).spawn(move || {
         let (Some(path), Some(profiles)) = (settings::default_path(), settings::profiles_path()) else { return };
         let (mut seen, mut seen_profiles, mut seen_themes, mut seen_common) = (None, None, None, None);
-        let common = tsumugi_i18n::base_dir();
+        let common = ito_i18n::base_dir();
         loop {
             let stamp = settings::stamp(&path);
             let mut sent = false;
@@ -4776,21 +4815,24 @@ fn watch_settings(ctx: egui::Context, tx: std::sync::mpsc::Sender<Read>) {
                 }
             }
             if let Some(dir) = path.parent() {
-                let stamp = themes_stamp(dir);
+                let mut stamp = themes_stamp(dir);
+                if let Some(base) = &common {
+                    stamp.extend(themes_stamp(base));
+                }
                 if seen_themes.as_ref() != Some(&stamp) {
                     seen_themes = Some(stamp);
                     sent = true;
-                    if tx.send(Read::Themes(read_themes(dir))).is_err() {
+                    if tx.send(Read::Themes(read_themes(dir, common.as_deref()))).is_err() {
                         return;
                     }
                 }
             }
             if let Some(base) = &common {
-                let stamp = settings::stamp(&tsumugi_i18n::common_path(base));
+                let stamp = settings::stamp(&ito_i18n::common_path(base));
                 if seen_common != Some(stamp) {
                     seen_common = Some(stamp);
                     sent = true;
-                    if tx.send(Read::Language(tsumugi_i18n::read_common_language(base))).is_err() {
+                    if tx.send(Read::Common(ito_common::Common::read(base))).is_err() {
                         return;
                     }
                 }
@@ -4823,15 +4865,14 @@ fn edit_settings(tx: std::sync::mpsc::Sender<Read>, change: impl FnOnce(&str) ->
     });
 }
 
-/// Set `language` in the common.toml uchmk's apps share, on a thread of its
-/// own, keeping the rest of the file; and say what it now holds.
-fn set_language(tx: std::sync::mpsc::Sender<Read>, code: &'static str) {
-    let _ = std::thread::Builder::new().name("write-language".into()).spawn(move || {
-        let Some(base) = tsumugi_i18n::base_dir() else { return };
-        let path = tsumugi_i18n::common_path(&base);
-        let written = files::read_or_empty(&path).and_then(|text| tsumugi_i18n::set_common_language(&text, code)).and_then(|next| files::write_atomic(&path, next));
-        let read = written.and_then(|()| tsumugi_i18n::read_common_language(&base));
-        let _ = tx.send(Read::Language(read));
+/// Make a change to the common.toml uchmk's apps share (the language, the
+/// theme, the clock), on a thread of its own, keeping the rest of the file;
+/// and say what it now holds.
+fn edit_common(tx: std::sync::mpsc::Sender<Read>, change: ito_common::CommonChange) {
+    let _ = std::thread::Builder::new().name("write-common".into()).spawn(move || {
+        let Some(base) = ito_common::base_dir() else { return };
+        let read = ito_common::edit_common(&base, |t| change.apply(t)).and_then(|()| ito_common::Common::read(&base));
+        let _ = tx.send(Read::Common(read));
     });
 }
 
@@ -4994,7 +5035,7 @@ fn copy_key(key: egui::Key, m: egui::Modifiers) -> Option<copymode::Key> {
 
 /// The last `n` lines of a screen with anything on them, their trailing
 /// blanks cut.
-fn last_lines(rows: &[Vec<tsumugi_pane::CellView>], n: usize) -> Vec<String> {
+fn last_lines(rows: &[Vec<ito_pane::CellView>], n: usize) -> Vec<String> {
     let mut lines: Vec<String> = rows.iter().map(|r| r.iter().map(|c| if c.c == '\0' { ' ' } else { c.c }).collect::<String>().trim_end().to_owned()).collect();
     while lines.last().is_some_and(String::is_empty) {
         lines.pop();
@@ -5061,6 +5102,12 @@ impl App {
     /// the settings did not turn it off.
     fn nerd(&self) -> bool {
         self.nerd && self.settings_now.appearance.nerd_icons
+    }
+
+    /// The clock's settings: common.toml's, else the older `[clock]` in
+    /// settings.toml.
+    fn clock(&self) -> ito_common::Clock {
+        self.common.clock_or(Some(&self.settings_now.clock))
     }
 
     /// The clock for something that moves, when the animations are on; and
@@ -5194,7 +5241,7 @@ impl App {
                         facts_again |= shell_changed && self.prefs.is_some();
                         self.alerts.rules = alert::Rules::from(&s.notify);
                         self.tag_rules = s.tags.rule;
-                        self.theme_choice = (s.theme, s.dark_theme, s.light_theme);
+                        self.theme_choice = self.common.theme_choice(Some((&s.theme, &s.dark_theme, &s.light_theme)));
                         self.open = s.open;
                         self.menu = s.menu;
                         self.settings_error = None;
@@ -5207,8 +5254,14 @@ impl App {
                     self.theme_file_error = None;
                 }
                 Read::Themes(Err(e)) => self.theme_file_error = Some(e),
-                Read::Language(Ok(code)) => self.language = code.unwrap_or_else(|| "auto".into()),
-                Read::Language(Err(e)) => self.settings_error = Some(e),
+                Read::Common(Ok((common, warnings))) => {
+                    self.language = common.language.clone().unwrap_or_else(|| "auto".into());
+                    let s = &self.settings_now;
+                    self.theme_choice = common.theme_choice(Some((&s.theme, &s.dark_theme, &s.light_theme)));
+                    self.common = common;
+                    self.common_warning = warnings.into_iter().next();
+                }
+                Read::Common(Err(e)) => self.common_warning = Some(e),
                 Read::Profiles(Err(e)) => self.settings_error = Some(e),
             }
         }
@@ -5216,7 +5269,7 @@ impl App {
             self.read_facts();
         }
         self.apply_theme(&ctx);
-        if let Some(e) = self.settings_error.as_ref().or(self.theme_error.as_ref()) {
+        if let Some(e) = self.settings_error.as_ref().or(self.common_warning.as_ref()).or(self.theme_error.as_ref()) {
             // Above the status bar until the file is fixed; the server keeps
             // its tag rules from before too.
             egui::Area::new(egui::Id::new("settings-error")).anchor(egui::Align2::CENTER_BOTTOM, egui::vec2(0.0, -32.0)).show(&ctx, |ui| {
@@ -5279,10 +5332,10 @@ impl App {
         let keyed = current.as_ref().filter(|_| here).map(|w| w.focus);
         if keyed != self.keyed {
             if let Some(pane) = self.keyed.and_then(|id| self.panes.get(&id)) {
-                tsumugi_pane::Pane::focus(pane, false);
+                ito_pane::Pane::focus(pane, false);
             }
             if let Some(pane) = keyed.and_then(|id| self.panes.get(&id)) {
-                tsumugi_pane::Pane::focus(pane, true);
+                ito_pane::Pane::focus(pane, true);
             }
             self.keyed = keyed;
         }
@@ -5327,9 +5380,22 @@ impl App {
                 // `TSUMUGI_KEYLOG=1`: every key press as the window gets it,
                 // to see on a real machine why a key does nothing.
                 for ev in ctx.input(|i| i.events.clone()) {
-                    if let egui::Event::Key { key, pressed: true, modifiers, .. } = ev {
-                        let held = ctx.memory(|m| m.focused());
-                        eprintln!("key {key:?} {modifiers:?} -> {:?}; a widget has the keys: {held:?}", keys::action(key, modifiers));
+                    let held = ctx.memory(|m| m.focused());
+                    match ev {
+                        egui::Event::Key { key, pressed: true, modifiers, .. } => eprintln!("key {key:?} {modifiers:?} -> {:?}; a widget has the keys: {held:?}", keys::action(key, modifiers)),
+                        // egui gives Ctrl+X, C and V (Shift held or not) as
+                        // these and no key, so Ctrl+Shift+X was never in the
+                        // log (the real machine, 2.37).
+                        egui::Event::Cut | egui::Event::Copy | egui::Event::Paste(_) => {
+                            let (name, key) = match ev {
+                                egui::Event::Cut => ("Cut", egui::Key::X),
+                                egui::Event::Copy => ("Copy", egui::Key::C),
+                                _ => ("Paste", egui::Key::V),
+                            };
+                            let modifiers = ctx.input(|i| i.modifiers);
+                            eprintln!("event {name} {modifiers:?} -> {:?}; a widget has the keys: {held:?}", keys::action(key, modifiers));
+                        }
+                        _ => {}
                     }
                 }
             }
@@ -5381,7 +5447,7 @@ impl App {
                 // Quick select has the keys: letters pick, the rest wait.
                 let events = ctx.input(|i| i.events.clone());
                 if let Some((_, q)) = self.quick.as_mut() {
-                    q.follow(&tsumugi_pane::Pane::screen(pane).rows);
+                    q.follow(&ito_pane::Pane::screen(pane).rows);
                 }
                 for e in &events {
                     let egui::Event::Key { key, pressed: true, modifiers, .. } = e else { continue };
@@ -5406,7 +5472,7 @@ impl App {
                 }
             } else if let Some(pane) = self.panes.get(&w.focus).filter(|_| copying && !field && !prefs_were_open) {
                 let events = ctx.input(|i| i.events.clone());
-                let screen = tsumugi_pane::Pane::screen(pane);
+                let screen = ito_pane::Pane::screen(pane);
                 let (cols, rows) = (screen.rows.first().map_or(0, Vec::len), screen.rows.len());
                 for e in &events {
                     let egui::Event::Key { key, pressed: true, modifiers, .. } = e else { continue };
@@ -5417,18 +5483,18 @@ impl App {
                     let Some(k) = copy_key(*key, *modifiers) else { continue };
                     let Some((_, mode)) = self.copy_mode.as_mut() else { break };
                     for step in mode.press(k, cols, rows) {
-                        use tsumugi_pane::alacritty_terminal::grid::Scroll;
+                        use ito_pane::alacritty_terminal::grid::Scroll;
                         match step {
-                            copymode::Step::Lines(n) => tsumugi_pane::Pane::scroll(pane, Scroll::Delta(n)),
-                            copymode::Step::PageUp => tsumugi_pane::Pane::scroll(pane, Scroll::PageUp),
-                            copymode::Step::PageDown => tsumugi_pane::Pane::scroll(pane, Scroll::PageDown),
-                            copymode::Step::Top => tsumugi_pane::Pane::scroll(pane, Scroll::Top),
-                            copymode::Step::Bottom => tsumugi_pane::Pane::scroll(pane, Scroll::Bottom),
-                            copymode::Step::Select { cell, start, right } => tsumugi_pane::Pane::select(pane, cell, right, start),
-                            copymode::Step::Unselect => tsumugi_pane::Pane::clear_selection(pane),
+                            copymode::Step::Lines(n) => ito_pane::Pane::scroll(pane, Scroll::Delta(n)),
+                            copymode::Step::PageUp => ito_pane::Pane::scroll(pane, Scroll::PageUp),
+                            copymode::Step::PageDown => ito_pane::Pane::scroll(pane, Scroll::PageDown),
+                            copymode::Step::Top => ito_pane::Pane::scroll(pane, Scroll::Top),
+                            copymode::Step::Bottom => ito_pane::Pane::scroll(pane, Scroll::Bottom),
+                            copymode::Step::Select { cell, start, right } => ito_pane::Pane::select(pane, cell, right, start),
+                            copymode::Step::Unselect => ito_pane::Pane::clear_selection(pane),
                             // A server's pane answers through take_clipboard.
                             copymode::Step::Copy => {
-                                if let Some(text) = tsumugi_pane::Pane::selection(pane) {
+                                if let Some(text) = ito_pane::Pane::selection(pane) {
                                     ctx.copy_text(text);
                                 }
                             }
@@ -5441,21 +5507,21 @@ impl App {
                 // A paste that could run more than was meant waits for an
                 // answer instead (`paste`); the rest of the frame goes on.
                 let to: Vec<SessionId> = if self.typing_all.contains(&w.id) { w.layout.leaves() } else { vec![w.focus] };
-                let bracketed = to.iter().filter_map(|id| self.panes.get(id)).all(tsumugi_pane::Pane::bracketed_paste);
+                let bracketed = to.iter().filter_map(|id| self.panes.get(id)).all(ito_pane::Pane::bracketed_paste);
                 let general = &self.settings_now.general;
                 // Ctrl+Shift+C (Cmd+C on a Mac) copies what is selected (on
                 // the screen or scrolled off it); with nothing selected it
                 // goes on as Ctrl+C. egui turns both into
                 // `Copy`, so the modifiers held tell them apart.
                 let copy_chord = ctx.input(|i| if cfg!(target_os = "macos") { i.modifiers.mac_cmd } else { i.modifiers.shift });
-                if copy_chord && events.iter().any(|e| matches!(e, egui::Event::Copy)) && tsumugi_pane::Pane::has_selection(pane) {
+                if copy_chord && events.iter().any(|e| matches!(e, egui::Event::Copy)) && ito_pane::Pane::has_selection(pane) {
                     events.retain(|e| !matches!(e, egui::Event::Copy));
                     // A server's pane answers through take_clipboard.
-                    if let Some(text) = tsumugi_pane::Pane::selection(pane) {
+                    if let Some(text) = ito_pane::Pane::selection(pane) {
                         ctx.copy_text(text);
                     }
                 }
-                tsumugi_pane::input::chords_back(&mut events, ctx.input(|i| i.modifiers));
+                ito_pane::input::chords_back(&mut events, ctx.input(|i| i.modifiers));
                 let mut held = None;
                 events.retain(|e| match e {
                     egui::Event::Paste(text) => match paste::why(text, bracketed, general) {
@@ -5471,7 +5537,7 @@ impl App {
                     self.paste_ask = held;
                 }
                 fed = to.clone();
-                tsumugi_pane::input::feed_as(pane, w.focus, &events, |key, m| match keys::action(key, m) {
+                ito_pane::input::feed_as(pane, w.focus, &events, |key, m| match keys::action(key, m) {
                     Some(a) => {
                         actions.push(a);
                         true
@@ -5483,7 +5549,7 @@ impl App {
                 if self.typing_all.contains(&w.id) {
                     for other in w.layout.leaves().into_iter().filter(|o| *o != w.focus) {
                         if let Some(p) = self.panes.get(&other) {
-                            tsumugi_pane::input::feed_as(p, other, &events, |key, m| keys::action(key, m).is_some());
+                            ito_pane::input::feed_as(p, other, &events, |key, m| keys::action(key, m).is_some());
                         }
                     }
                 }
@@ -5496,8 +5562,8 @@ impl App {
             for id in std::mem::replace(&mut self.fed, fed) {
                 if !self.fed.contains(&id) {
                     match self.panes.get(&id) {
-                        Some(p) => tsumugi_pane::input::let_go(p, id),
-                        None => drop(tsumugi_pane::input::forget(id)),
+                        Some(p) => ito_pane::input::let_go(p, id),
+                        None => drop(ito_pane::input::forget(id)),
                     }
                 }
             }
@@ -5514,7 +5580,7 @@ impl App {
         // The status bar along the bottom (the design's 1d).
         let focus_info = current.as_ref().and_then(|w| sessions.iter().find(|i| i.id == w.focus)).cloned();
         let size = current.as_ref().and_then(|w| self.panes.get(&w.focus)).map(|p| {
-            let rows = tsumugi_pane::Pane::screen(p).rows;
+            let rows = ito_pane::Pane::screen(p).rows;
             (rows.first().map_or(0, Vec::len), rows.len())
         });
         let up = chrome::now_ms().saturating_sub(client.started_ms());
@@ -5526,7 +5592,7 @@ impl App {
             .exact_size(28.0)
             .frame(egui::Frame::NONE.fill(self.chrome_fill(crate::theme::colors().side)))
             .show(ui, |ui| {
-                let clock = &self.settings_now.clock;
+                let clock = self.clock();
                 let git = focus_info.as_ref().and_then(|i| self.git.get(&i.cwd, &i.branch));
                 let used = self.usage.get();
                 let conversation = focus_info.as_ref().filter(|i| !i.conversation.is_empty()).and_then(|i| used.conversations.get(&i.conversation).copied());
@@ -5641,7 +5707,7 @@ impl App {
                 let held = self.paste_ask.take().expect("shown");
                 if yes {
                     for p in held.to.iter().filter_map(|id| self.panes.get(id)) {
-                        tsumugi_pane::Pane::paste(p, &held.text);
+                        ito_pane::Pane::paste(p, &held.text);
                     }
                 }
             }
@@ -5920,7 +5986,7 @@ impl App {
             match d {
                 lists::Do::Type(id, key) => {
                     if let Some(pane) = self.panes.get(&id) {
-                        tsumugi_pane::Pane::send(pane, vec![key as u8]);
+                        ito_pane::Pane::send(pane, vec![key as u8]);
                     }
                 }
                 lists::Do::Allow(id, rule) => {
@@ -5933,7 +5999,7 @@ impl App {
                         ctx2.request_repaint();
                     });
                     if let (Some(key), Some(pane)) = (yes, self.panes.get(&id)) {
-                        tsumugi_pane::Pane::send(pane, vec![key as u8]);
+                        ito_pane::Pane::send(pane, vec![key as u8]);
                     }
                 }
                 lists::Do::Go(id) => {
@@ -5955,7 +6021,7 @@ impl App {
                     } else {
                         None
                     };
-                    match client.spawn_typing(c.cwd.clone(), None, Size::new(80, 24), (8, 16), Place::NewWorkspace, typed) {
+                    match client.spawn_typing(c.cwd.clone(), None, Size::new(80, 24), (8, 16), Place::NewWorkspace, typed.into_iter().collect()) {
                         Ok(pane) => self.pending = Some(pane.id()),
                         Err(e) => self.failed = Some(e.to_string()),
                     }

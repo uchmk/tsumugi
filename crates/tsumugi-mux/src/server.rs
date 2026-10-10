@@ -14,7 +14,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use crossbeam_channel::{Receiver, Sender};
-use tsumugi_pane::{Pane, Terminal};
+use ito_pane::{Pane, Terminal};
 
 use crate::frame;
 use crate::proto::{Info, Notice, Place, ScrollBy, SessionId, State, ToClient, ToServer, Workspace, WorkspaceId, VERSION};
@@ -33,7 +33,7 @@ struct Session {
     /// Those of them that have nothing yet and get every row next.
     fresh: BTreeSet<ClientId>,
     /// The screen the watchers have, which the next update is the change from.
-    sent: Option<(tsumugi_pane::Screen, crate::diff::Extra)>,
+    sent: Option<(ito_pane::Screen, crate::diff::Extra)>,
     /// What was started, for starting it again after a restart.
     shell: Option<(String, Vec<String>)>,
     /// The Claude Code conversation its hooks last named.
@@ -58,7 +58,7 @@ struct Session {
 /// A slow watcher's copy of a session's screen.
 #[derive(Default)]
 struct Slow {
-    sent: Option<(tsumugi_pane::Screen, crate::diff::Extra)>,
+    sent: Option<(ito_pane::Screen, crate::diff::Extra)>,
     at: Option<std::time::Instant>,
 }
 
@@ -447,7 +447,7 @@ fn handle(shared: &Arc<Shared>, client: ClientId, tx: &Sender<ToClient>, msg: To
                     workspaces.insert(wid, Workspace { layout, focus, ..w });
                 }
                 let ws = shared.next.fetch_add(1, Ordering::Relaxed);
-                workspaces.insert(ws, Workspace::new(ws, tsumugi_layout::Node::Leaf(id), id));
+                workspaces.insert(ws, Workspace::new(ws, ito_layout::Node::Leaf(id), id));
                 // Right after the tab it came from.
                 let mut now: Vec<WorkspaceId> = ordered(shared, &workspaces).iter().map(|w| w.id).filter(|w| *w != ws).collect();
                 let at = now.iter().position(|w| *w == wid).map_or(now.len(), |k| k + 1);
@@ -550,8 +550,10 @@ fn handle(shared: &Arc<Shared>, client: ClientId, tx: &Sender<ToClient>, msg: To
         ToServer::Spawn { cwd, shell, size, cell, place, typed } => {
             match spawn_session(shared, &mut sessions, Some(client), cwd, shell, size, cell) {
                 Ok(id) => {
-                    if let (Some(line), Some(s)) = (typed, sessions.get_mut(&id)) {
-                        s.pending = Some(format!("{line}\r").into_bytes());
+                    if let Some(s) = sessions.get_mut(&id) {
+                        if let Some(line) = crate::quote::typed_line(&s.info.command, &typed) {
+                            s.pending = Some(format!("{line}\r").into_bytes());
+                        }
                     }
                     let mut workspaces = lock(&shared.workspaces);
                     place_session(shared, &mut workspaces, id, place);
@@ -639,7 +641,7 @@ fn handle(shared: &Arc<Shared>, client: ClientId, tx: &Sender<ToClient>, msg: To
                     if needle.is_empty() {
                         term.end_search();
                     } else {
-                        let wrapped = term.search(&tsumugi_pane::plain_pattern(&needle), back);
+                        let wrapped = term.search(&ito_pane::plain_pattern(&needle), back);
                         let _ = tx.send(ToClient::Found { id, wrapped });
                     }
                 }
@@ -683,8 +685,8 @@ fn target(msg: &ToServer) -> Option<SessionId> {
     })
 }
 
-fn scroll(by: ScrollBy) -> tsumugi_pane::alacritty_terminal::grid::Scroll {
-    use tsumugi_pane::alacritty_terminal::grid::Scroll;
+fn scroll(by: ScrollBy) -> ito_pane::alacritty_terminal::grid::Scroll {
+    use ito_pane::alacritty_terminal::grid::Scroll;
     match by {
         ScrollBy::Lines(n) => Scroll::Delta(n),
         ScrollBy::PageUp => Scroll::PageUp,
@@ -728,7 +730,7 @@ struct Rules {
     agent_names: Vec<String>,
     settings: crate::settings::Settings,
     /// `[[triggers]]` with `notify`, for every session's output.
-    triggers: Option<tsumugi_pane::regex::RegexSet>,
+    triggers: Option<ito_pane::regex::RegexSet>,
 }
 
 impl Rules {
@@ -908,14 +910,14 @@ fn spawn_session(
     client: Option<ClientId>,
     cwd: PathBuf,
     shell: Option<(String, Vec<String>)>,
-    size: tsumugi_pane::Size,
+    size: ito_pane::Size,
     cell: (u16, u16),
 ) -> io::Result<SessionId> {
     let id = shared.next.fetch_add(1, Ordering::Relaxed);
     let cwd = here(cwd, crate::settings::home());
     // No shell asked for: the settings' `[shell]`, else the system's.
     let shell = shell.or_else(|| lock(&shared.rules).shell.command());
-    let command = shell.as_ref().map_or_else(tsumugi_pane::default_program, |(p, _)| p.clone());
+    let command = shell.as_ref().map_or_else(ito_pane::default_program, |(p, _)| p.clone());
     let term = start_terminal(shared, id, &cwd, size, cell, shell.clone())?;
     shared.ever.store(true, Ordering::Relaxed);
     let (branch, project) = git(&cwd);
@@ -935,9 +937,10 @@ fn spawn_session(
 /// from the system, and without it a folder's tag rules never saw a `cd`.
 /// It calls whatever handler was there before (a profile's own tsumugi hook,
 /// `mise activate pwsh`), and says the folder it starts in. It also marks
-/// each prompt (OSC 133;A), with how the command before it ended (`D`), by
-/// wrapping the `prompt` the profile left, once only: a profile's own
-/// tsumugi hook may have done it already.
+/// each prompt (OSC 133;A), with how the command before it ended (`D`) and
+/// where it ends (`B`), by wrapping the `prompt` the profile left, once only:
+/// a profile's own tsumugi hook may have done it already (one from before
+/// `B` is replaced, around the prompt it kept).
 #[cfg(any(windows, test))]
 const PWSH_CWD_HOOK: &str = r#"$__tsumugi_prev = $ExecutionContext.SessionState.InvokeCommand.LocationChangedAction
 function global:__tsumugi_osc7($p) { [Console]::Write("$([char]27)]7;file://$(($p -replace '\\', '/') -replace '^(?!/)', '/')$([char]27)\") }
@@ -947,12 +950,13 @@ $ExecutionContext.SessionState.InvokeCommand.LocationChangedAction = {
     __tsumugi_osc7 $e.NewPath.ProviderPath
 }.GetNewClosure()
 __tsumugi_osc7 (Get-Location).ProviderPath
-if (-not $global:__tsumugi_marked) {
-    $global:__tsumugi_marked = $true
-    $global:__tsumugi_prompt = $function:prompt
+if (-not $global:__tsumugi_marks_input) {
+    $global:__tsumugi_marks_input = $global:__tsumugi_marked = $true
+    # An older hook's wrapper is replaced, around the prompt it kept.
+    if ("$function:prompt" -notmatch '__tsumugi_prompt') { $global:__tsumugi_prompt = $function:prompt }
     function global:prompt {
         $c = if ($?) { 0 } elseif ($LASTEXITCODE) { $LASTEXITCODE } else { 1 }
-        "$([char]27)]133;D;$c$([char]27)\$([char]27)]133;A$([char]27)\" + (& $global:__tsumugi_prompt)
+        "$([char]27)]133;D;$c$([char]27)\$([char]27)]133;A$([char]27)\" + (& $global:__tsumugi_prompt) + "$([char]27)]133;B$([char]27)\"
     }
 }
 "#;
@@ -1025,7 +1029,7 @@ fn start_terminal(
     shared: &Shared,
     id: SessionId,
     cwd: &Path,
-    size: tsumugi_pane::Size,
+    size: ito_pane::Size,
     cell: (u16, u16),
     shell: Option<(String, Vec<String>)>,
 ) -> io::Result<Terminal> {
@@ -1047,7 +1051,7 @@ fn start_terminal(
     // No shell asked for: the settings' `[shell]`, else the system's.
     let shell = shell.or_else(|| own.command());
     #[cfg(windows)]
-    let shell = with_cwd_hook(shell.or_else(|| tsumugi_pane::default_shell().map(|p| (p, Vec::new()))));
+    let shell = with_cwd_hook(shell.or_else(|| ito_pane::default_shell().map(|p| (p, Vec::new()))));
     let mut term = Terminal::spawn_with_env(cwd, size, cell, shell, log.as_deref(), env, move || {
         let _ = dirty.send(id);
     })?;
@@ -1079,7 +1083,7 @@ fn restore(shared: &Arc<Shared>, sessions: &mut BTreeMap<SessionId, Session>, on
         let mut ids = BTreeMap::new();
         for p in w.panes.iter().filter(|p| only.is_none_or(|o| o.contains(&p.id))) {
             let cwd = if p.cwd.is_dir() { p.cwd.clone() } else { home.clone().unwrap_or_else(|| p.cwd.clone()) };
-            let Ok(id) = spawn_session(shared, sessions, None, cwd, p.shell.clone(), tsumugi_pane::Size::new(80, 24), (8, 16)) else {
+            let Ok(id) = spawn_session(shared, sessions, None, cwd, p.shell.clone(), ito_pane::Size::new(80, 24), (8, 16)) else {
                 continue;
             };
             let s = sessions.get_mut(&id).expect("just started");
@@ -1121,7 +1125,7 @@ fn place_session(shared: &Shared, workspaces: &mut BTreeMap<WorkspaceId, Workspa
         }
     }
     let ws = shared.next.fetch_add(1, Ordering::Relaxed);
-    workspaces.insert(ws, Workspace::new(ws, tsumugi_layout::Node::Leaf(id), id));
+    workspaces.insert(ws, Workspace::new(ws, ito_layout::Node::Leaf(id), id));
 }
 
 /// Tell every client the workspaces as they are now.
@@ -1429,9 +1433,9 @@ fn send_webhooks(shared: &Shared, sessions: &mut BTreeMap<SessionId, Session>) {
 
 /// The AI program among `procs` (a session's processes): the first whose
 /// program, or a script it runs, is one of `names`. Empty for none.
-pub fn agent_of(procs: &[&tsumugi_pane::Proc], names: &[String]) -> String {
+pub fn agent_of(procs: &[&ito_pane::Proc], names: &[String]) -> String {
     let is = |word: &str| {
-        let s = tsumugi_pane::stem(word);
+        let s = ito_pane::stem(word);
         names.iter().find(|n| s == **n || s.starts_with(&format!("{n}-"))).cloned()
     };
     procs.iter().find_map(|p| is(&p.name).or_else(|| p.args.iter().take(3).find_map(|a| is(a)))).unwrap_or_default()
@@ -1443,12 +1447,12 @@ pub fn agent_of(procs: &[&tsumugi_pane::Proc], names: &[String]) -> String {
 /// and the ports (`lsof` on macOS) takes a while (the source review,
 /// 2026-10-07).
 fn look_at_processes(shared: &Shared, shells: &[(SessionId, u32, bool)]) -> Vec<(SessionId, String, Vec<u16>)> {
-    let table = tsumugi_pane::process_table();
+    let table = ito_pane::process_table();
     let names = lock(&shared.rules).agent_names.clone();
     shells
         .iter()
         .map(|&(id, pid, claude)| {
-            let under = tsumugi_pane::descendants(&table, pid);
+            let under = ito_pane::descendants(&table, pid);
             let mut agent = agent_of(&under, &names);
             // Claude Code's hooks know it even where its process does not say.
             if agent.is_empty() && claude && !under.is_empty() {
@@ -1456,7 +1460,7 @@ fn look_at_processes(shared: &Shared, shells: &[(SessionId, u32, bool)]) -> Vec<
             }
             let mut pids: Vec<u32> = under.iter().map(|p| p.pid).collect();
             pids.push(pid);
-            (id, agent, tsumugi_pane::listening_ports(&pids))
+            (id, agent, ito_pane::listening_ports(&pids))
         })
         .collect()
 }
@@ -1495,7 +1499,7 @@ const SLOW_BACKLOG: usize = 64;
 
 /// `p`, scaled down (nearest pixel, the same shape) to at most `most`
 /// bytes of RGBA; as it is when it fits, or `most` is 0.
-fn shrink(p: &tsumugi_pane::Picture, most: usize) -> tsumugi_pane::Picture {
+fn shrink(p: &ito_pane::Picture, most: usize) -> ito_pane::Picture {
     let (w, h) = (p.width as usize, p.height as usize);
     if most == 0 || w * h * 4 <= most || w == 0 || h == 0 || p.rgba.len() != w * h * 4 {
         return p.clone();
@@ -1510,7 +1514,7 @@ fn shrink(p: &tsumugi_pane::Picture, most: usize) -> tsumugi_pane::Picture {
             rgba.extend_from_slice(&p.rgba[at..at + 4]);
         }
     }
-    tsumugi_pane::Picture { width: nw as u32, height: nh as u32, rgba }
+    ito_pane::Picture { width: nw as u32, height: nh as u32, rgba }
 }
 
 fn run_pump(shared: Arc<Shared>, dirty: Receiver<SessionId>) {
@@ -1749,7 +1753,7 @@ mod names {
 
 #[cfg(test)]
 mod slow {
-    use tsumugi_pane::Picture;
+    use ito_pane::Picture;
 
     /// A slow line gets a smaller picture of the same shape; a small one,
     /// or no limit, as it is.

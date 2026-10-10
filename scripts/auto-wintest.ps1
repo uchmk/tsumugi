@@ -23,6 +23,9 @@
 #      TSUMUGI_SETTINGS, TSUMUGI_PTY_LOG and TSUMUGI_KEYLOG are set for the
 #      whole run, so even a bare `tsumugi ls` reaches the run's server, never
 #      the owner's; scripts/wintest-kit.ps1 has the tools the run uses.
+#   6. The older build: for a chunk with a row that names WINTEST_OLD_EXE,
+#      the newest release below the version built (gh release download, kept
+#      in %LOCALAPPDATA%\tsumugi-wintest\old), copied into the run's kit.
 #
 # Register it with Task Scheduler every hour at :50 (filer's runs at :20), as
 # you, "only when the user is logged on" (the run drives a real window). The
@@ -280,6 +283,41 @@ function Invoke-BuildStep([string]$Name, [scriptblock]$Do) {
     $false
 }
 
+# The build of an older release, for the rows about a server older than the
+# window (1.7, 1.11, 1.12): the newest release below the version built here,
+# downloaded once into $state\old and copied into the kit, so Stop-RunTsumugi
+# stops whatever it starts. Its path, or $null (said in the log) when there is
+# none; a run without it leaves those rows, it does not fail.
+function Get-OldBuild([string]$Arch) {
+    try {
+        $toml = Get-Content -Raw -LiteralPath (Join-Path $Work 'Cargo.toml')
+        if ($toml -notmatch '(?m)^version = "(\d+\.\d+\.\d+)"') { throw 'no version in Cargo.toml' }
+        $built = [version]$Matches[1]
+        $tags = @(gh api "repos/$repo/releases?per_page=30" --jq '.[] | select(.draft | not) | select(.prerelease | not) | .tag_name')
+        if ($LASTEXITCODE -ne 0) { throw 'gh api failed' }
+        $tag = $tags | Where-Object { $_ -match '^v(\d+\.\d+\.\d+)$' -and [version]$Matches[1] -lt $built } |
+            Sort-Object { [version]$_.Substring(1) } -Descending | Select-Object -First 1
+        if (-not $tag) { throw "no release below $built" }
+        $name = "tsumugi-$tag-windows-$Arch"
+        $cache = Join-Path $state 'old'
+        if (-not (Test-Path (Join-Path $cache "$name\tsumugi.exe"))) {
+            New-Item -ItemType Directory -Force -Path $cache | Out-Null
+            Remove-Item -Recurse -Force -LiteralPath (Join-Path $cache $name) -ErrorAction SilentlyContinue
+            gh release download $tag --repo $repo --pattern "$name.zip" --dir $cache --clobber
+            if ($LASTEXITCODE -ne 0) { throw "gh release download $tag failed" }
+            Expand-Archive -LiteralPath (Join-Path $cache "$name.zip") -DestinationPath $cache -Force
+            Remove-Item -LiteralPath (Join-Path $cache "$name.zip")
+        }
+        $dest = Join-Path $kit 'old'
+        Copy-Item -Recurse -LiteralPath (Join-Path $cache $name) -Destination $dest
+        Say "Older build: $tag ($Arch), in $dest."
+        Join-Path $dest 'tsumugi.exe'
+    } catch {
+        Say "No older build for this run: $_"
+        $null
+    }
+}
+
 # Every tsumugi this run started: the window from the worktree's build (by
 # its path through the junction and the path it points at), and
 # the server, which runs from a copy under the run's kit folder. The owner's
@@ -340,6 +378,60 @@ function Note-Dirty([string[]]$changes) {
         'git status --porcelain:'
     ) + @($changes | Select-Object -First 40)
     Set-Content -Path $dirtyFile -Value $body
+}
+
+# A run takes an hour and main moves under it: a row reworded, another lane's
+# ticks, a re-test list changed. The run's marks then sit beside lines main
+# changed, and its pull request opens in conflict. When only the checklists
+# conflict, merge main into the run's branch with main's checklists and the
+# run's marks made again on them (Set-LaneMarks), and push, so the pull
+# request is mergeable from the start. A row main reworded or took out keeps
+# no mark, and the pull request says so. Anything else that conflicts is left
+# as it is for the Merge lanes workflow and a person. Never throws.
+function Sync-LaneBranch([string]$Branch) {
+    $lists = @('TESTING-CHECKS.md', 'TESTING-KEYS.md')
+    Push-Location $Work
+    try {
+        if ((git rev-parse --abbrev-ref HEAD).Trim() -ne $Branch) { Say "Sync: $Work is not on $Branch; left as it is."; return }
+        git fetch -q origin main $Branch
+        if ($LASTEXITCODE -ne 0) { Say 'Sync: git fetch failed; left as it is.'; return }
+        # Only what the run pushed: an unpushed commit stays the run's.
+        if ((git rev-parse HEAD).Trim() -ne (git rev-parse "origin/$Branch").Trim()) { Say "Sync: $Branch is not what was pushed; left as it is."; return }
+        git merge-base --is-ancestor origin/main HEAD
+        if ($LASTEXITCODE -eq 0) { return }
+        $base = (git merge-base origin/main HEAD).Trim()
+        git merge -q --no-ff --no-commit origin/main *> $null
+        $conflicted = @(git diff --name-only --diff-filter=U)
+        if (-not $conflicted) { git merge --abort; return }   # GitHub merges it as it is
+        $others = @($conflicted | Where-Object { $_ -notin $lists })
+        if ($others) { git merge --abort; Say "Sync: $Branch conflicts with main in $($others -join ', '); left for a person."; return }
+        $dropped = @()
+        foreach ($path in $conflicted) {
+            $marks = Get-LaneMarks -Base ((git show "${base}:$path") -join "`n") -Branch ((git show "HEAD:$path") -join "`n")
+            git checkout -q --theirs -- $path
+            $file = Join-Path $Work $path
+            $r = Set-LaneMarks -Main ([IO.File]::ReadAllText($file)) -Marks $marks
+            [IO.File]::WriteAllText($file, $r.Text, $utf8)
+            git add -- $path
+            $dropped += $r.Dropped
+        }
+        git commit -q --no-edit
+        if ($LASTEXITCODE -ne 0) { throw 'git commit failed' }
+        git push -q origin "HEAD:refs/heads/$Branch"
+        if ($LASTEXITCODE -ne 0) { Say "Sync: git push failed; $Branch stays in conflict for the Merge lanes workflow."; return }
+        Say "Sync: merged main into $Branch with the run's marks made again ($($conflicted -join ', '))."
+        if ($dropped) {
+            $body = "Merged main into this branch: main changed these rows while the run was going, so their marks were not kept (what the run checked is not what the rows say now): $($dropped -join ', ')."
+            gh pr comment $Branch --repo $repo --body $body *> $null
+            Say "Sync: marks dropped for $($dropped -join ', ')."
+        }
+    } catch {
+        Say "Sync: $_; left as it is."
+    } finally {
+        git rev-parse -q --verify MERGE_HEAD *> $null
+        if ($LASTEXITCODE -eq 0) { git merge --abort }
+        Pop-Location
+    }
 }
 
 # claude writes UTF-8 and so does git, and PowerShell decodes a native
@@ -448,7 +540,12 @@ try {
             Sort-Object Name -Descending | Select-Object -Skip 2 |
             ForEach-Object { Remove-Item -Recurse -Force -LiteralPath $_.FullName -ErrorAction SilentlyContinue }
     }
-    $stamp = '{0:yyyyMMdd-HHmmss}' -f (Get-Date)
+    $started = Get-Date
+    $stamp = '{0:yyyyMMdd-HHmmss}' -f $started
+    # The report's own name. A chunk's branch comes back (a re-test list that
+    # starts with the same row), and a second run's report under the same
+    # name was a changed file, which the Merge lanes workflow refuses.
+    $report = 'qa-reports/{0:yyyy-MM-dd}-{1}-{0:HHmm}.md' -f $started, ($branch -replace '^test/', '')
     $Scratch = Join-Path $Scratch "run-$stamp"
     $kit = Join-Path $Scratch 'kit'
 
@@ -461,6 +558,7 @@ try {
 $chunkText
 
 - レーンは $Lane です。ブランチは ``git checkout -B $branch origin/main`` で作ります。
+- 報告は ``$report`` に書きます（新しいファイル。既にある報告は直しません）。
 - チェックアウトは $Work です（役割定義の C:\dev\tsumugi は、すべてここに読み替えてください）。
 - ビルド（--release）、``cargo test``、ConPTY の取得は、このスクリプトが済ませました。exe は $exe で、テストは緑です。cargo build / cargo test はしないでください。表の確かめは ``cargo run --release -q -p tsumugi --example make-testcheck -- --check``（make-keycheck も同じ）で、ビルド済みのものを使います。
 - 道具は scripts\wintest-kit.ps1 にあります。PowerShell を呼ぶたびに、先頭で ``. .\scripts\wintest-kit.ps1`` を読み込んでください（関数の一覧はファイルの先頭）。SendInput・PrintWindow・バックアップを自分で書き直さないでください。
@@ -517,6 +615,18 @@ $chunkText
     $env:TSUMUGI_PTY_LOG = Join-Path $kit 'pty.log'
     $env:TSUMUGI_KEYLOG = '1'
     Remove-Item Env:TSUMUGI_SESSION -ErrorAction SilentlyContinue
+
+    # The older build, only for a chunk with a row that asks for it.
+    Remove-Item Env:WINTEST_OLD_EXE -ErrorAction SilentlyContinue
+    if (@($chunk.Rows | Where-Object { $_.Text -match 'WINTEST_OLD_EXE' }).Count) {
+        $old = Get-OldBuild $(if ($Lane -eq 'arm') { 'arm64' } else { 'x64' })
+        if ($old) {
+            $env:WINTEST_OLD_EXE = $old
+            $prompt += "- 古いリリースのビルドが ``$old``（WINTEST_OLD_EXE）にあります。``Start-OldTsumugi`` でこの実行の環境のまま起動すると、そのサーバがこの実行のパイプで動きます。窓を閉じてから ``Start-Tsumugi`` で新しい窓を開きます。`n"
+        } else {
+            $prompt += "- 古いリリースのビルドは取れませんでした。WINTEST_OLD_EXE の要る行は、理由を書いて ``[ ]`` のまま残してください。`n"
+        }
+    }
 
     # 4. The desktop, shared with filer's lane.
     $desktop = [Threading.Mutex]::new($false, 'Local\wintest-desktop')
@@ -576,6 +686,7 @@ $chunkText
         Add-Attempted $attemptedFile $chunk
         Remove-Item -LiteralPath $failFile -ErrorAction SilentlyContinue
         Say "Done: $tail"
+        if ($tail -match '^WINTEST_DONE\b') { Sync-LaneBranch $branch }
     } elseif ($code -ne 0 -and $out -match 'limit') {
         Say 'Hit a usage limit. Trying again next time.'
     } else {

@@ -1,9 +1,16 @@
-# 引き継ぎ（2026-10-10 時点）
+# 引き継ぎ（2026-10-11 時点）
 
 会話を `/clear` する前に書いた、進み具合と次の手順。細かいやることは [TODO.md](../TODO.md)、変わったことは [CHANGELOG.md](../CHANGELOG.md)。
 
 ## 今どこか
 
+- **v0.82.0（2026-10-11）で、共有のクレートを [ito](https://github.com/uchmk/ito) に移した**（`tsumugi-pane` → `ito-pane` など 10 個）。
+  filer は kura（v0.95.0）、mimamori は yagura（v0.33.0）に名前が変わり、どちらも ito に切り替えた。下の項目は移す前のもの。
+- v0.83.0 で実機 #7・#9・#10 の提案を片付けた（`tsumugi new` の語の引用、`tsumugi log`、キーのログの `event`・`divider` の行）。
+- v0.84.0 で残りも片付けた。複数行のプロンプト（ito 0.4.0 と pwsh のフックの `133;B`）、OSC 1337 の遅さ（ito 0.4.0）、道具の補助
+  （`Send-DoubleClick`・`Get-KitCursor`・`Set-KitWindow`・`Send-KeysAtOnce`、前面の取り返し）、古いサーバーの版（`auto-wintest.ps1` が
+  ひとつ前のリリースを取り、`Start-OldTsumugi` で起こす。1.7・1.11 が回るようになった。1.12 は渡さないまま）、JIS の `Ctrl+=`。
+  2.27・2.44・2.52・2.73 を再テストに積んだので、次のレーンの報告で結果を見る。
 - 版は **v0.76.1**（`main`）。最後に出たリリースは **v0.52.0**（2026-10-07）。v0.76.0 の `release.yml` は Windows の Test で落ちた
   （下の CI の赤）。v0.76.1 で直したので、CI が緑になったら `tag` に `v0.76.1` を渡して投げ直す。
 - **Windows の CI は v0.55.0（run #97）から赤だった。**`tsumugi-mux` の `a_restart_brings_the_tabs_back` と `folder_rules_tag_sessions` の 2 件だけ。
@@ -13,7 +20,7 @@
 - v1 の範囲（[v1-scope.md](v1-scope.md)）の機能は出そろい、TODO.md の「ほかのターミナルにあるもの」も「後で」の 3 行を除いて済み。
 - **実機のレーンは x64（2026-10-09）と ARM64（2026-10-10）の両方が回っている。**v0.76.0 で最初の実行の不具合を直した
   （仕切りのドラッグが戻る、ConPTY で Ctrl+C が止めない、Shift+Enter の CSI-u、CSI 16 t、pwsh / Starship のプロンプトの印、MSYS のパス、Ctrl+Shift+- など）。
-  直した行は `.claude/windows-role.md` の「Re-tests of changed behaviour」に積んである。残りは TODO.md の `【実機】` 2 行（2.52 の PTY ログ、JIS の `Ctrl+=`）。
+  直した行は `.claude/windows-role.md` の「Re-tests of changed behaviour」に積んである。
 - **filer は v0.86.0 で `tsumugi-pane` / `tsumugi-layout` / `tsumugi-ipc` / `tsumugi-mcp` を全部 `085c421`（v0.76.0）に揃えた。**
   filer 側は `chords_back`（Ctrl+Shift+C / X）・素の `\x03`・Shift+Enter の CSI-u を合わせ、ペインの節（1・19・29・40・49）を両方のレーンの再テストに積んだ。
 - **LLM との連携**（計画は filer の `docs/llm-integration.md`）: 段 1〜4 は済み（filer の 50 節は x64 #303・ARM64 #302 で通った）。

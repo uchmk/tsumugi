@@ -8,7 +8,7 @@ use std::path::PathBuf;
 
 use eframe::egui::{self, Color32, FontId, RichText};
 use tsumugi_mux::settings::{Profile, TagRule};
-use tsumugi_pane::Palette;
+use ito_pane::Palette;
 
 use crate::chrome;
 use crate::remote::Where;
@@ -124,8 +124,8 @@ pub struct Create {
 /// Where the `k`th more pane goes (0 the first of them), given the first
 /// pane and those already made: right of the first, below that, below the
 /// first -- two, three or four panes in a square.
-pub fn more_place(k: usize, first: u64, made: &[u64]) -> (u64, tsumugi_layout::Dir) {
-    use tsumugi_layout::Dir;
+pub fn more_place(k: usize, first: u64, made: &[u64]) -> (u64, ito_layout::Dir) {
+    use ito_layout::Dir;
     match k {
         0 => (first, Dir::Right),
         1 => (made.first().copied().unwrap_or(first), Dir::Down),
@@ -633,7 +633,7 @@ mod tests {
 
     #[test]
     fn more_panes_make_a_square() {
-        use tsumugi_layout::Node;
+        use ito_layout::Node;
         let mut layout = Node::Leaf(1u64);
         let mut made = Vec::new();
         for k in 0..3 {
@@ -643,7 +643,7 @@ mod tests {
             made.push(id);
         }
         // 1 | 2 over 3, with 4 below 1: two by two.
-        let r = layout.layout(tsumugi_layout::Rect::new(0.0, 0.0, 100.0, 100.0), 0.0);
+        let r = layout.layout(ito_layout::Rect::new(0.0, 0.0, 100.0, 100.0), 0.0);
         let at = |id: u64| r.iter().find(|(x, _)| *x == id).unwrap().1;
         assert_eq!((at(1).x, at(1).y, at(4).x, at(4).y), (0.0, 0.0, 0.0, 50.0));
         assert_eq!((at(2).x, at(2).y, at(3).x, at(3).y), (50.0, 0.0, 50.0, 50.0));

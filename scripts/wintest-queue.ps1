@@ -20,10 +20,12 @@ $WintestOrder = @{
 }
 
 # Rows a lane never takes: the tools they need are not on that machine
-# (2.46-2.49 on the ARM64 one: img2sixel, chafa, kitten, imgcat, WSL).
+# (2.46-2.49 on the ARM64 one: img2sixel, chafa, kitten, imgcat, WSL), and
+# 1.12 on both: it needs the build just before, speaking the same protocol
+# version, and the older build a run fetches (1.7, 1.11) is a release.
 $WintestSkip = @{
-    win = @()
-    arm = @('2.46', '2.47', '2.48', '2.49')
+    win = @('1.12')
+    arm = @('1.12', '2.46', '2.47', '2.48', '2.49')
 }
 
 # A row an unattended Windows run can do: not one for Linux or macOS only
@@ -151,4 +153,39 @@ function Format-Chunk($Chunk) {
         if ($Chunk.Kind -eq 'keys') { "- $($r.Text)" } else { "- **$($r.Id)** $($r.Text)" }
     }
     "## $($Chunk.Title)`n`n" + ($lines -join "`n")
+}
+
+# The marks a run set in one checklist: each `- [x] …` or `- [~] …` line of
+# the run's copy whose line at the run's base was `- [ ] …` with the same
+# words, as @{ Mark; Rest }.
+function Get-LaneMarks([string]$Base, [string]$Branch) {
+    $open = [Collections.Generic.HashSet[string]]::new([string[]]@($Base -split "`r?`n"))
+    foreach ($line in $Branch -split "`r?`n") {
+        if ($line -match '^- \[([x~])\] (.*)$' -and $open.Contains("- [ ] $($Matches[2])")) {
+            [pscustomobject]@{ Mark = $Matches[1]; Rest = $Matches[2] }
+        }
+    }
+}
+
+# main's checklist with a run's marks made again (merge-lanes.py's
+# reapply_marks does the same on the workflow's side). A run takes an hour,
+# and main's copy moves under it: a row reworded and its mark taken back, a
+# row added, another lane's ticks. Git calls a mark beside such a line a
+# conflict, so instead each mark goes on main's line with the same words while
+# it is still `[ ]`. A row main reworded or took out keeps no mark: what the
+# run checked is not what the row says now. Returns @{ Text; Dropped } with
+# the dropped rows' ids (or a key's line).
+function Set-LaneMarks([string]$Main, $Marks) {
+    $lines = $Main -split "`n"
+    $where = @{}
+    for ($i = 0; $i -lt $lines.Count; $i++) { $where[$lines[$i].TrimEnd("`r")] = $i }
+    $dropped = foreach ($m in @($Marks)) {
+        $i = $where["- [ ] $($m.Rest)"]
+        if ($null -ne $i) {
+            $lines[$i] = "- [$($m.Mark)] $($m.Rest)" + $(if ($lines[$i].EndsWith("`r")) { "`r" })
+        } elseif ($null -eq $where["- [$($m.Mark)] $($m.Rest)"]) {
+            if ($m.Rest -match '^\*\*([^*]+)\*\*') { $Matches[1] } else { $m.Rest }
+        }
+    }
+    [pscustomobject]@{ Text = $lines -join "`n"; Dropped = @($dropped) }
 }

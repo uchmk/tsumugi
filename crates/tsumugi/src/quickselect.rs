@@ -4,7 +4,7 @@
 //! keys while it is on. Only the labels and the keys live here; the window
 //! draws them and carries out what is picked.
 
-use tsumugi_pane::{CellView, Link};
+use ito_pane::{CellView, Link};
 
 /// The letters labels are made of, the home row first.
 const LETTERS: &str = "asdfqwerzxcvjklmiuopghtybn";
@@ -54,9 +54,9 @@ impl QuickSelect {
     /// The screen's things, labelled from the bottom up: the newest output
     /// gets the first letters. The same text twice gets one label.
     pub fn new(rows: &[Vec<CellView>]) -> Self {
-        let mut found: Vec<(usize, tsumugi_pane::Hint)> = Vec::new();
+        let mut found: Vec<(usize, ito_pane::Hint)> = Vec::new();
         for (y, row) in rows.iter().enumerate().rev() {
-            for h in tsumugi_pane::hints(row).into_iter().rev() {
+            for h in ito_pane::hints(row).into_iter().rev() {
                 found.push((y, h));
             }
         }
@@ -78,7 +78,7 @@ impl QuickSelect {
     pub fn follow(&mut self, rows: &[Vec<CellView>]) {
         let mut hits = Vec::new();
         for (y, row) in rows.iter().enumerate() {
-            for h in tsumugi_pane::hints(row) {
+            for h in ito_pane::hints(row) {
                 if let Some(label) = self.hits.iter().find(|x| x.text == h.text).map(|x| x.label.clone()) {
                     hits.push(Hit { row: y, cells: h.cells, text: h.text, link: h.link, label });
                 }
@@ -135,9 +135,9 @@ mod tests {
     use super::*;
 
     fn screen(lines: &[&str]) -> Vec<Vec<CellView>> {
-        let mut t = tsumugi_pane::testing::term(60, lines.len());
-        tsumugi_pane::testing::feed(&mut t, &lines.join("\r\n"));
-        tsumugi_pane::snapshot(&t)
+        let mut t = ito_pane::testing::term(60, lines.len());
+        ito_pane::testing::feed(&mut t, &lines.join("\r\n"));
+        ito_pane::snapshot(&t)
     }
 
     #[test]

@@ -27,7 +27,7 @@ Windows and Linux keys first; the macOS key is after `·`.
 - [x] `Ctrl+Shift+Y` · `Cmd+Shift+Y` — The waiting sessions, answered together · `waiting_list`
 - [x] `Ctrl+Shift+I` · `Cmd+Shift+I` — Type into every pane of the tab · `type_into_all`
 - [x] `Ctrl+Shift+N` · `Cmd+Shift+N` — Notifications (the bell) · `notifications`
-- [ ] `Ctrl+=` · `Cmd+=` — Bigger letters · `font_bigger`
+- [ ] `Ctrl+=` · `Cmd+=` — Bigger letters (= or +) · `font_bigger`
 - [x] `Ctrl+-` · `Cmd+-` — Smaller letters · `font_smaller`
 - [x] `Ctrl+0` · `Cmd+0` — Letters as the settings have them · `font_reset`
 - [ ] `Ctrl+Shift+O` · `Cmd+Shift+O` — All sessions: find a session or a line in any scrollback · `overview`

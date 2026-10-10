@@ -24,7 +24,8 @@ row a look, find something that can be **read**:
 | what a pane shows | `tsumugi read N --lines 40`, `--all` for the scrollback |
 | a session waits / finishes / fails | `tsumugi notify --state waiting --session N "…"` to make it so, `tsumugi wait N --state done --timeout 30` to wait for it |
 | keys reached the shell, not the window | `TSUMUGI_PTY_LOG=<file>`: the bytes sent to each pane; or a command that **creates a file** |
-| the window got a key | `TSUMUGI_KEYLOG=1`, which prints each key press as the window sees it |
+| the window got a key | `TSUMUGI_KEYLOG=1`, which prints each key press as the window sees it (`Get-KeyLog`); egui turns Ctrl+X, C and V (Shift held or not) into an `event Cut` / `Copy` / `Paste` line instead, with the action it does |
+| the pointer is over a divider | `TSUMUGI_KEYLOG=1`: a `divider x,y wxh` line (the gap, in points) when the pointer comes over one, `divider none` when it leaves (`Get-DividerLog`). Drag from the middle of the gap it names |
 | a setting was written | `settings.toml` (`%APPDATA%\tsumugi\`) before and after, by hash and by the one line that changed |
 | the server kept running / the window closed | `Get-Process tsumugi` (the server runs from `%LOCALAPPDATA%\tsumugi\server\`) |
 | a toast, a notification, the taskbar number | a screenshot read as text; the toast's words are in the bell's list too (`Ctrl+Shift+N`) |
@@ -77,9 +78,9 @@ no others, and do not read TESTING.md's list of rows (its rules, up to
 
 | Chunk | Up to | Notes |
 | --- | --- | --- |
-| **Re-tests of changed behaviour** | 15 rows | The rows named here, still `[ ]`: 1.12, 1.7, 1.11, 17.26, 5.1, 5.4, 5.8, 2.70, 5.11, 5.12, 5.10, 2.37, 9.5 |
+| **Re-tests of changed behaviour** | 15 rows | The rows named here, still `[ ]`: 2.27, 2.44, 2.52, 2.73, 17.26, 5.1, 5.4, 5.8, 2.70, 5.11, 5.12, 5.10, 2.37, 9.5 |
 | **Unticked keys in TESTING-KEYS.md** | 20 keys | x64 only |
-| **The sections, in this order** | 15 rows of one section | 1, 18, 12, 19, 4, 2, 16, 17, 8, 13, 15, then the rest. ARM64: 2, 4, 12, 1 only. Never given: rows starting `Linux/macOS:` or `A person:`, and 2.46–2.49 on ARM64 (no tools there) |
+| **The sections, in this order** | 15 rows of one section | 1, 18, 12, 19, 4, 2, 16, 17, 8, 13, 15, then the rest. ARM64: 2, 4, 12, 1 only. Never given: rows starting `Linux/macOS:` or `A person:`, 2.46–2.49 on ARM64 (no tools there), and 1.12 (it needs the build just before, speaking the same protocol version; the older build a run fetches is a release) |
 
 What suits each section:
 
@@ -128,9 +129,23 @@ at the same time. **Nobody will answer a question**, so:
   to 10 s for the input desktop to be `Default` and the window in front to be
   tsumugi's, and throw when it does not come. Nothing measured after input
   stopped reaching the window counts.
+- **Closing the last session stops the server**, by design: the next window
+  opens on Welcome back, which takes the keys. `Esc` it (or read the screen)
+  before typing into a pane.
 - **Before writing a helper of your own**, look at the kit's list again: held
-  chords (`Send-Keys -Hold`), raw virtual keys (`'Ctrl+vk:0xBB'`), drags, the
-  wheel and the middle button are there.
+  chords (`Send-Keys -Hold`), raw virtual keys (`'Ctrl+vk:0xBB'`), several
+  chords in one SendInput (`Send-KeysAtOnce`), drags, double-clicks, the
+  wheel, the middle button, the cursor's shape (`Get-KitCursor`) and the
+  window's size (`Set-KitWindow`) are there. A send takes the foreground back
+  when another window (the owner's Claude desktop) took it.
+- **A JIS keyboard** types `;` and `+` with `vk:0xBB`, and `=` with Shift+-:
+  `Ctrl+=` there is `Send-Keys 'Ctrl+Shift+vk:0xBB'` (egui reads it as
+  `Ctrl++`, the same action), never `'Ctrl+='`, which goes as `Ctrl+Shift+-`.
+- **The older build**: for a row that names `WINTEST_OLD_EXE`, the script
+  fetches the newest release below the version built and the prompt says
+  where it is. `Start-OldTsumugi` starts it with the run's isolation (its
+  server is the run's); close that window, then `Start-Tsumugi` the new one.
+  Without it the prompt says so: leave the row `[ ]` with the reason.
 - **A person's files are not scratch.** Before touching `~/.claude/settings.json`,
   a profile or anything outside the scratch: `Backup-UserFile`; append, never
   overwrite; `Restore-UserFile` and show it says MATCH.
@@ -141,6 +156,8 @@ at the same time. **Nobody will answer a question**, so:
   started. Never the owner's.
 - **Finish the run yourself**: commit, `git push -u origin <branch>`,
   `gh pr create --base main`. Never merge, never push to `main`, never `--force`.
+  Do not merge main into the branch: when main changed the checklists while
+  you worked, the script does it after you finish and puts your marks back.
 - **The last line you print**, alone: `WINTEST_DONE <pull request URL>`,
   `WINTEST_NOTHING` (no row of the chunk could be done; nothing committed),
   or `WINTEST_FAILED <why>` (and commit nothing then).
@@ -179,7 +196,8 @@ pwsh -NoProfile -File scripts\fetch-conpty.ps1 -Dest target\release
 - **Never run `cargo fmt`.**
 - A bug, or a wrong row in TESTING.md, goes in the report. Do not fix it and
   do not reword the row.
-- The report is a file of its own: `qa-reports/<YYYY-MM-DD>-<branch without test/>.md`,
+- The report is a new file of its own, the name the prompt gives
+  (`qa-reports/<YYYY-MM-DD>-<branch without test/>-<HHmm>.md`); never change an earlier one,
   with a `### Proposals` section (what should work differently, from this run:
   what you ran into, what should change, why, how big). Do not implement them.
 

@@ -3,7 +3,7 @@
 //! nothing yet, or a grid that changed shape, gets every row.
 
 use serde::{Deserialize, Serialize};
-use tsumugi_pane::{Block, CellView, Hyperlink, MouseReport, Placement, Screen};
+use ito_pane::{Block, CellView, Hyperlink, MouseReport, Placement, Screen};
 
 /// What changed on a session's screen, and the state that goes with it.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -114,10 +114,10 @@ mod tests {
     use super::*;
 
     fn screen(text: &[&str]) -> Screen {
-        let mut t = tsumugi_pane::testing::term(20, text.len());
+        let mut t = ito_pane::testing::term(20, text.len());
         let joined: Vec<String> = text.iter().map(|l| l.to_string()).collect();
-        tsumugi_pane::testing::feed(&mut t, &joined.join("\r\n"));
-        Screen { rows: tsumugi_pane::snapshot(&t), cursor: tsumugi_pane::cursor_cell(&t), ..Default::default() }
+        ito_pane::testing::feed(&mut t, &joined.join("\r\n"));
+        Screen { rows: ito_pane::snapshot(&t), cursor: ito_pane::cursor_cell(&t), ..Default::default() }
     }
 
     /// The styles go over the wire as they are: the flags and the
@@ -125,9 +125,9 @@ mod tests {
     #[test]
     fn the_styles_come_back_from_the_wire() {
         let row = "a \x1b[4mu\x1b[0m \x1b[4:2mdd\x1b[0m \x1b[4:3;58;2;255;0;0mcurl\x1b[0m \x1b[4:4mdots\x1b[0m \x1b[4:5mdash\x1b[0m \x1b[9mstrike\x1b[0m [\x1b[8mhid\x1b[0m]";
-        let mut t = tsumugi_pane::testing::term(60, 2);
-        tsumugi_pane::testing::feed(&mut t, row);
-        let sent = Screen { rows: tsumugi_pane::snapshot(&t), ..Default::default() };
+        let mut t = ito_pane::testing::term(60, 2);
+        ito_pane::testing::feed(&mut t, row);
+        let sent = Screen { rows: ito_pane::snapshot(&t), ..Default::default() };
         let u = diff(None, &sent, &Extra::default()).unwrap();
         let mut buf = Vec::new();
         crate::frame::write(&mut buf, &u).unwrap();

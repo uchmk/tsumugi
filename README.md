@@ -543,21 +543,37 @@ elsewhere (`TSUMUGI_SETTINGS` names another file). Changes apply within a
 couple of seconds, without restarting; a mistake shows above the status bar
 with its line, and the last good settings stay in force.
 
-The language is not in `settings.toml`: it is `language` in the
-`common.toml` that filer and mimamori read too (`%APPDATA%\uchmk\`,
-`~/Library/Application Support/uchmk/`, `~/.config/uchmk/`;
-`UCHMK_CONFIG_DIR` names another folder), so it is set once for all three.
-`auto` follows the OS. tsumugi's own menus are English for now; the
-`tsumugi-i18n` crate that reads the setting and the apps' tables lives in
-this workspace.
+The language, the theme and the clock are not in `settings.toml`: they
+are in the `common.toml` that kura and yagura read too
+(`%APPDATA%\uchmk\`, `~/Library/Application Support/uchmk/`,
+`~/.config/uchmk/`; `UCHMK_CONFIG_DIR` names another folder), so they are
+set once for every uchmk app, and a change there reaches them all within a
+couple of seconds. `auto` follows the OS. tsumugi's own menus are English
+for now. An older `settings.toml` with `theme` or `[clock]` still counts
+until `common.toml` has its own. What the apps share, and the crates that
+do it, are in ito's [docs/common-spec.md](https://github.com/uchmk/ito/blob/main/docs/common-spec.md).
 
 ```toml
+# common.toml
+language = "auto"                       # auto, en or ja
 # A theme's name, or "dark", "light" or "system" (following the OS between
 # dark_theme and light_theme).
 theme = "dark"
 dark_theme = "tsumugi Dark"
 light_theme = "tsumugi Light"
 
+# The status bar's clock; date_format is YYYY/MM/DD, YYYY-MM-DD, MM/DD/YYYY
+# or DD/MM/YYYY.
+[clock]
+show = true
+hour24 = true
+date = true
+date_format = "YYYY/MM/DD"
+weekday = true
+```
+
+```toml
+# settings.toml
 # Tag a session by the folder it is in, or anywhere under it.
 [[tags.rule]]
 folder = "~/dev/filer"
@@ -620,15 +636,6 @@ sound_waiting = "chime"                 # chime, low, alert or default
 sound_error = "low"
 focus_mode = true                       # nothing while Windows' focus mode is on
 
-# The status bar's clock; date_format is YYYY/MM/DD, YYYY-MM-DD, MM/DD/YYYY
-# or DD/MM/YYYY.
-[clock]
-show = true
-hour24 = true
-date = true
-date_format = "YYYY/MM/DD"
-weekday = true
-
 # The window's frame: "tsumugi" makes the band the title bar (its own
 # buttons; on macOS under the traffic lights), "system" the OS's own.
 # material = "mica" or "acrylic" (Windows 11) or "vibrancy" (macOS) lets the
@@ -685,7 +692,7 @@ cursor = "block-blink"     # block, bar or underline, -blink to blink
 # open to its right.
 [open]
 editor = ["code {folder}", "sakura {folder}"]
-filer = "filer {folder}"
+filer = "kura {folder}"
 # A file Ctrl+clicked in a pane's output, at its line and column ("" opens
 # it with the system's own program).
 file = "code --goto {file}:{line}:{column}"
@@ -707,7 +714,7 @@ The tab's right-click menu: **Rename…** (`F2`, a field on the card),
 conversation), **Duplicate in the same folder** (`Ctrl+Shift+D`, `Cmd+Option+D`
 on macOS; Claude Code is started again in it if it ran there), **Move to a
 new window**;
-**Open the folder in filer**, **Open in the editor** (the commands in
+**Open the folder in kura**, **Open in the editor** (the commands in
 `[open]` above, set in Settings → Sessions → Open with; with several, a
 click runs the first and ▶ opens the rest by program name, as Sakura
 Editor's menus do), **Copy the folder path**; your own items from
@@ -722,7 +729,8 @@ One Dark and Rosé Pine. A theme is twelve colours -- `bg`, `side`, `panel`,
 `border`, `fg`, `dim`, the states' `wait`, `run`, `err` and `done`, and the
 terminal's `blue` and `magenta` -- written as `"#rrggbb"`, and `light`.
 `theme.toml` beside the settings changes any of them in the theme in force;
-a file in `themes/` there is a theme of one's own, named by its `name` or
+a file in `themes/` there, or in `themes/` in the uchmk folder (where
+every uchmk app finds it), is a theme of one's own, named by its `name` or
 its file, its missing colours taken from tsumugi Dark or Light. `ansi`, a
 list of sixteen, sets the terminal's colours outright (black to bright
 white). Other terminals' schemes go in `themes/` as they come: Windows
@@ -879,14 +887,17 @@ with none running, the tools say tsumugi is not running. What they return
 Claude Code reads. Typing into a session from Claude Code will come later,
 behind a confirmation in the window.
 
-The terminal pane is the crate `tsumugi-pane` (`crates/tsumugi-pane`), shared
-with [filer](https://github.com/uchmk/filer). So are the local channel to a
-running app (`tsumugi-ipc`, the socket or named pipe the server listens on)
-and the MCP server (`tsumugi-mcp`), which filer's `filer mcp` uses too. The rule a search query matches by (a regular expression with smart case, or fzf-style fuzzy letters, with the places to highlight) is `tsumugi-match`.
-
-[mimamori](https://github.com/uchmk/mimamori) uses three more from this
-workspace: the column sizes (`tsumugi-layout`), the language tables
-(`tsumugi-i18n`) and yazi's key notation (`tsumugi-keys`: `<C-a>`,
+The terminal pane is the crate `ito-pane`, in [ito](https://github.com/uchmk/ito),
+the crates uchmk's apps share: [kura](https://github.com/uchmk/kura) (the
+file manager, formerly filer) has the same pane. So are the local channel to
+a running app (`ito-ipc`, the socket or named pipe the server listens on), the
+MCP server (`ito-mcp`), which kura's MCP server uses too, the rule a search
+query matches by (`ito-match`: a regular expression with smart case, or
+fzf-style fuzzy letters, with the places to highlight), the splits
+(`ito-layout`), the language tables (`ito-i18n`), and the settings screen,
+themes and clock every app shares (`ito-common`, `ito-theme`, `ito-prefs`).
+[yagura](https://github.com/uchmk/yagura) (the system monitor, formerly
+mimamori) uses them too, and yazi's key notation (`ito-keys`: `<C-a>`,
 `<A-S-Up>`, `<P-e>` with `P` meaning Cmd on macOS and Ctrl elsewhere, and
 egui's key events in the same terms).
 
@@ -915,10 +926,10 @@ and then past it:
 
 ## Where it comes from
 
-The terminal pane of [filer](https://github.com/uchmk/filer), a yazi-style
-file manager, has been driven hard on real Windows machines: ConPTY with a
-newer bundled build, win32-input-mode, OSC 7, mouse reporting, a scripted test
-harness. That pane is being split out into a shared crate, and tsumugi is
+The terminal pane of [kura](https://github.com/uchmk/kura) (formerly filer),
+a yazi-style file manager, has been driven hard on real Windows machines:
+ConPTY with a newer bundled build, win32-input-mode, OSC 7, mouse reporting, a
+scripted test harness. That pane is being split out into a shared crate, and tsumugi is
 built on it.
 
 ## License

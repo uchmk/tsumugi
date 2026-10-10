@@ -4,7 +4,7 @@
 
 use eframe::egui::{self, Color32, FontId, RichText};
 use tsumugi_mux::{Info, Notice, SessionId, State};
-use tsumugi_pane::Palette;
+use ito_pane::Palette;
 
 /// The four state colours and the faintest text, from the theme in force
 /// (1k): waiting gold, running cyan, error red, done green.
@@ -398,7 +398,7 @@ pub fn status_bar(
                 let color = if charset == "UTF-8" { pal.fg_dim } else { ink(gold()) };
                 ui.menu_button(small(charset.into(), color), |ui| {
                     ui.label(RichText::new("The pane with the keys reads and writes").size(11.5).color(pal.fg_dim));
-                    for name in tsumugi_pane::CHARSETS {
+                    for name in ito_pane::CHARSETS {
                         if ui.selectable_label(name == charset, name).clicked() {
                             click = Some(StatusClick::Charset(name.to_owned()));
                             ui.close();
@@ -1259,7 +1259,7 @@ pub fn restore_screen(ui: &mut egui::Ui, pal: &Palette, view: &mut RestoreView) 
                         ui.checkbox(&mut slot.1, "");
                         let color = if p.claude.is_some() || p.state != State::Done { state_color(p.state) } else { grey() };
                         ui.label(RichText::new("●").color(color));
-                        let command = p.shell.as_ref().map_or_else(tsumugi_pane::default_program, |(c, _)| c.clone());
+                        let command = p.shell.as_ref().map_or_else(ito_pane::default_program, |(c, _)| c.clone());
                         let name = if p.title.is_empty() { crate::home_short(&p.cwd) } else { crate::sort::display_title(&p.title, &command) };
                         // What it will do on the right first; the name gets the
                         // room left and is cut short in it, never over it.

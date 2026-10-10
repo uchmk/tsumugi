@@ -3,7 +3,7 @@
 //! these is a key Claude Code uses (`Ctrl+C`, `Esc`, `Shift+Tab`, `Ctrl+R`).
 
 use eframe::egui::{Key, Modifiers};
-use tsumugi_layout::Toward;
+use ito_layout::Toward;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Action {
@@ -246,7 +246,7 @@ pub fn title(a: Action) -> &'static str {
         Action::Waiting => "The waiting sessions, answered together",
         Action::TypeAll => "Type into every pane of the tab",
         Action::Notices => "Notifications (the bell)",
-        Action::FontBigger => "Bigger letters",
+        Action::FontBigger => "Bigger letters (= or +)",
         Action::FontSmaller => "Smaller letters",
         Action::FontReset => "Letters as the settings have them",
         Action::Overview => "All sessions: find a session or a line in any scrollback",

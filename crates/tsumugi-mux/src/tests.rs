@@ -4,7 +4,7 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::{Duration, Instant};
 
-use tsumugi_pane::{Pane, Size};
+use ito_pane::{Pane, Size};
 
 use crate::transport::Address;
 use crate::{server, Client, RemotePane};
@@ -198,8 +198,15 @@ fn a_new_session_can_start_with_a_line_typed() {
     let at = address();
     let _srv = serve(&at).expect("the server starts");
     let c = Client::connect(&at, || {}).expect("a client connects");
-    let pane = c.spawn_typing(std::env::temp_dir(), None, Size::new(80, 24), (8, 16), Place::NewWorkspace, Some("echo typed-$((40+2))".into())).expect("a shell starts");
+    let pane = c.spawn_typing(std::env::temp_dir(), None, Size::new(80, 24), (8, 16), Place::NewWorkspace, vec!["echo typed-$((40+2))".into()]).expect("a shell starts");
     until(&pane, "the line and its answer", |t| t.contains("typed-42"));
+    pane.kill();
+    // Words reach the program as they were given, quoted for the shell:
+    // nothing expanded, the two spaces kept.
+    let words = vec!["echo".into(), "x$((40+2))y  z".into()];
+    let pane = c.spawn_typing(std::env::temp_dir(), None, Size::new(80, 24), (8, 16), Place::NewWorkspace, words).expect("a shell starts");
+    until(&pane, "the word as it was", |t| t.lines().any(|l| l.trim_end() == "x$((40+2))y  z"));
+    assert!(!text(&pane).contains("x42y"), "the shell expanded the word");
     pane.kill();
 }
 
@@ -652,7 +659,7 @@ fn no_server_no_connection() {
 /// program's name, a build of it (`codex-x86_64-…`), or a script node runs.
 #[test]
 fn an_ai_program_is_told_by_its_process() {
-    use tsumugi_pane::Proc;
+    use ito_pane::Proc;
     let names: Vec<String> = crate::settings::AGENTS.iter().map(|s| s.to_string()).collect();
     let p = |name: &str, args: &[&str]| Proc { pid: 1, ppid: 0, name: name.into(), args: args.iter().map(|a| a.to_string()).collect() };
     let codex = p("codex-x86_64-unknown-linux-musl", &[]);

@@ -8,7 +8,7 @@ use std::io;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
-use tsumugi_layout::Node;
+use ito_layout::Node;
 
 use crate::proto::SessionId;
 

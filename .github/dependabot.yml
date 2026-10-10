@@ -20,8 +20,8 @@ updates:
         patterns: ["*"]
     ignore:
       # egui and eframe move together, and a new minor version changes their
-      # API (0.36 renamed panels and `App::update`); tsumugi-pane is shared
-      # with filer, which pins the same version. Moved by hand, with filer.
+      # API (0.36 renamed panels and `App::update`); the ito crates are shared
+      # with kura and yagura, which pin the same version. Moved by hand, with ito.
       # Security updates still come through: this only stops the monthly bump.
       - dependency-name: "egui*"
         update-types: ["version-update:semver-minor", "version-update:semver-major"]

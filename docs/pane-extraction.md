@@ -2,6 +2,9 @@
 
 2026-10-05 に着手（持ち主の判断: filer の TODO が片付くのを待たずに始める）。v1-scope.md の「順番」の 1。
 
+> v0.82.0（2026-10-11）で、共有のクレートは全部 [ito](https://github.com/uchmk/ito) に移り、名前が `ito-*` になった（`tsumugi-pane` → `ito-pane` など）。
+> 下は移す前の記録なので、クレートの名前は古いまま。
+
 ## 目的
 
 filer のターミナルペイン（`src/terminal.rs` 約 2,400 行、`src/ui/term.rs` 約 430 行、`src/shellhook.rs`、`main.rs` の

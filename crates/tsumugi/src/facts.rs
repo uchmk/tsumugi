@@ -33,7 +33,7 @@ pub fn read(shell: Option<String>, wake: impl Fn() + Send + 'static) -> Receiver
 }
 
 fn gather(shell: Option<String>) -> Facts {
-    let shell = shell.filter(|s| !s.is_empty()).unwrap_or_else(tsumugi_pane::default_program);
+    let shell = shell.filter(|s| !s.is_empty()).unwrap_or_else(ito_pane::default_program);
     let shell_hook = crate::shellhook::profile(&shell).map(|p| std::fs::read_to_string(p).is_ok_and(|t| crate::shellhook::has_hook(&t)));
     let shell_hook = shell_hook.filter(|_| crate::shellhook::text(std::path::Path::new(&shell).file_stem().and_then(|s| s.to_str())).is_ok());
     let conpty = std::env::current_exe().ok().and_then(|e| e.parent().map(PathBuf::from)).is_some_and(|d| d.join("conpty.dll").is_file() && d.join("OpenConsole.exe").is_file());

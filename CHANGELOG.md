@@ -5,6 +5,107 @@
 
 ## [未リリース]
 
+## [0.84.1] - 2026-10-11
+
+### 修正
+
+- 実機のレーンの PR がチェック表のぶつかりで止まらないようにした（#11）。1 回の実行は 1 時間かかり、その間に main の行が書き換わる
+  （再テストの表・言い換え・ほかのレーンの印）。`auto-wintest.ps1` が実行の後に main をブランチに取り込み、ぶつかるのがチェック表だけなら
+  main の表に実行の印を入れ直して push する（`Sync-LaneBranch`）。main が言い換えた・消した行の印は残さず、PR にそう書く。
+  チェック表以外がぶつかったときは何もしない。
+- 報告のファイル名に時刻を入れた（`qa-reports/<日付>-<ブランチ>-<HHmm>.md`）。同じ日に同じブランチの塊がもう一度来ると前の報告を書き換えてしまい、
+  `Merge lanes` が「報告を変えた」としてマージも表のぶつかりの解決もしなかった。プロンプトがファイル名を渡す。
+
+## [0.84.0] - 2026-10-11
+
+### 修正
+
+- 2 行のプロンプト（Starship、狭いペインで折り返した pwsh のプロンプト）で、`Ctrl+Shift+L`（最後の出力のコピー）が空になり、
+  `Ctrl+Shift+Up` / `Down` が 2 行目にも止まっていた（実機 #9）。ito 0.4.0 の `ito-pane` が 2 行以上を 1 つのプロンプトとして数え、
+  pwsh のフック（`tsumugi shell-hook pwsh` とサーバーがペインの pwsh に足す行）がプロンプトの後ろに OSC 133;B を送る。
+  フックは 1 度だけプロンプトを包み、前の版のフックの包みは置き換える。
+- Windows で大きな OSC 1337 の画像（数十 KB）を出すと、次のプロンプトまで 10〜15 秒かかっていた（実機 #10）。ito 0.4.0 の直し
+  （空のパイプの 0 バイトの読みを、一度見たら次の通知まで止まる扱いにしていた）。
+
+### 追加
+
+- 実機の道具（`scripts/wintest-kit.ps1`）に `Send-DoubleClick`（2 回のクリックを 1 回の SendInput で）・`Get-KitCursor`（カーソルの形）・
+  `Set-KitWindow`（窓の大きさと位置）・`Send-KeysAtOnce`（いくつものキーを 1 回の SendInput で）・`Start-OldTsumugi` を足した（実機 #10）。
+  キーやクリックを送る前に、ほかの窓（持ち主の Claude のデスクトップ）が前面を取っていれば取り返す。
+- `scripts/auto-wintest.ps1` が、`WINTEST_OLD_EXE` を名指す行のある塊では、作った版より前の最新のリリースの Windows の `.zip` を `gh` で取り
+  （`%LOCALAPPDATA%\tsumugi-wintest\old` に置いておく）、実行のキットに写して `WINTEST_OLD_EXE` に入れる（実機 #9・#10）。
+  TESTING.md の 1.7・1.11 がそれを使い、両方のレーンが渡すようになった。1.12（直前のビルドで、取り決めの版が同じもの）は渡さないまま。
+
+### 変更
+
+- キーの一覧の文字の大きさを上げるキーを「Bigger letters (= or +)」と書いた。JIS 配列では `=` が Shift+- なので、実機の道具では
+  `Ctrl+=` を `'Ctrl+Shift+vk:0xBB'`（egui には `Ctrl++`）で送ることを役割に書いた。キーの行が変わったので、キーの塊でもう一度渡る。
+- TESTING.md: 2.27・2.44 に Starship の 2 行のプロンプトと折り返しを足し、2.52 を PowerShell 7 と Git Bash の両方で確かめ、落ちたら PTY ログの
+  `out` の行を報告に貼る形にした。2.73（100 KB 以上の OSC 1337 の画像が 2 秒以内に出る）を足した。この 4 行を再テストの表に積んだ。
+
+## [0.83.0] - 2026-10-11
+
+### 追加
+
+- `tsumugi log N|NAME [PATH] [--stop]`: スクリプトから作業ログを始めて終える。PATH を省くとダウンロードに書き、書いたファイルの名前を出す
+  （同じ名前があれば `-2`）。ログが動いている間にもう 1 つ始める・動いていないのに `--stop` するのは断る。`--host` では PATH が要る。
+- `TSUMUGI_KEYLOG=1` が、egui がキーでなく Cut・Copy・Paste として渡す Ctrl+X/C/V（Shift 付きも）を `event Cut … -> Some(SwapPane)` の行で出す。
+  `Ctrl+Shift+X` が届いたかを文字で読める。
+- `TSUMUGI_KEYLOG=1` が、ポインターが仕切りに乗ったとき `divider x,y wxh`、離れたとき `divider none` を出す。
+- 実機の道具に `Get-DividerLog` を足し、`Get-KeyLog` が `event` の行も拾うようにした。
+
+### 修正
+
+- `tsumugi new DIR -- PROGRAM ARGS` と `tsumugi split` が、語をセッションのシェル（pwsh・cmd・POSIX のシェル）に合わせて引用して打つ。
+  `Program Files` の中のプログラムを渡すと pwsh が `ParserError` になっていた（実機 #7）。1 語なら今までどおりそのまま 1 行として打つ。
+- mux の取り決めの版を 36 に上げた（新しいセッションの依頼に語の並び）。サーバーとクライアントは同じ版にそろえる。
+
+### 変更
+
+- TESTING.md の 2.70 の「同じ時刻なら `-2`」を CI のテスト（`log_starts_and_finishes_a_work_log_and_never_writes_over_one`）に移し、
+  `tsumugi new` の語の扱いもテストにした。2.45 にフック付きの bash のペインでも成り立つと書いた。
+- 実機のレーンは、古いサーバーの版を取れるようになるまで 1.7・1.11・1.12 を渡さない。再テストの表から確かめ終えた行を外した。
+  最後のセッションを閉じるとサーバーも止まり、次の Welcome back がキーを取ることを役割に書いた。
+
+## [0.82.1] - 2026-10-11
+
+### 変更
+
+- filer が kura（v0.95.0）に名前を変えたのに合わせた。右クリックの **Open the folder in filer** は **Open the folder in kura** になり、
+  設定の `[open] filer` の既定は `kura {folder}` になった（キーの名前 `filer` はそのまま。`settings.toml` に `filer {folder}` と書いてあれば
+  そのまま使われるので、kura に替えるときは書き直す）。設定の画面の欄の名前も **kura command** にした。
+- 設定の画面の言語の注記を「kura と yagura と共有」にした（mimamori は yagura に名前を変えた）。
+- `scripts/merge-lanes.py` を kura の同じファイルに合わせた（規則の鍵が `uchmk/filer` から `uchmk/kura` に）。
+- 間違えてコミットしていた `scripts/__pycache__` を消し、`.gitignore` に足した。
+
+## [0.82.0] - 2026-10-11
+
+### 変更
+
+- **共有のクレートを新しいリポジトリ [ito](https://github.com/uchmk/ito)（糸）に移した。**名前は `tsumugi-*` から `ito-*` になった
+  （pane・layout・i18n・keys・match・ipc・mcp・common・theme・prefs の 10 個）。tsumugi は git の依存で、`rev` を固定して読む。
+  使う側は tsumugi・kura（旧 filer）・yagura（旧 mimamori）。動きは変えていない。
+- uchmk のアプリの共通仕様（`docs/common-spec.md`）も ito に移した（[ito の docs/common-spec.md](https://github.com/uchmk/ito/blob/main/docs/common-spec.md)）。
+
+## [0.81.0] - 2026-10-10
+
+### 追加
+
+- uchmk のアプリの共通仕様（[docs/common-spec.md](docs/common-spec.md)）と、それを持つ共有のクレートを 3 つ足した。
+  - `tsumugi-common`: 設定のフォルダー、`common.toml`（言語・テーマ・時計）の読み書きと見張り、コメントを残して 1 キーを書き換える道具、時計の文字（機能 `clock`）。
+  - `tsumugi-theme`: 組み込みの 13 のテーマと、テーマのファイルの読み方・色の混ぜ方。
+  - `tsumugi-prefs`: 設定の画面の枠（検索・ページの一覧・「Open <file>」、Esc の 2 段、Ctrl+Tab と Ctrl+F）と部品、Language・CLOCK・Theme の共通のページ。
+    文字は英語と日本語の表を持つ。mimamori と filer も同じ画面を作る。
+- `uchmk/themes/` に置いたテーマも一覧に出る（どの uchmk のアプリにも出る）。
+
+### 変更
+
+- **テーマ（`theme`・`dark_theme`・`light_theme`）と時計（`[clock]`）は `common.toml` に移った。**設定の画面で選んだ値は `common.toml` に書かれ、
+  `common.toml` を手で書き換えると、開いている uchmk のアプリが 2 秒ほどで揃って変わる。
+  `settings.toml` に古い値があり、`common.toml` に無ければ、今までどおりその値を使う。
+- 設定の画面を共有のクレートの上に作り直した。見た目とキーは変えていない。
+- `common.toml` が読めない・知らないキーがあるときは、ステータスバーの上に理由を出す。
+
 ## [0.80.1] - 2026-10-10
 
 ### 変更

@@ -3,7 +3,7 @@
 //! pane goes to that side and the two share the room.
 
 use eframe::egui;
-use tsumugi_layout::Toward;
+use ito_layout::Toward;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Zone {

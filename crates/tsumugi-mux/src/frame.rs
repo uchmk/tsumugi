@@ -1,8 +1,8 @@
-//! One message on the wire, in `tsumugi_ipc::frame`: its length as a
+//! One message on the wire, in `ito_ipc::frame`: its length as a
 //! little-endian `u32`, then the message in postcard. Here are the tests that
 //! hold the tsumugi protocol's own messages to it.
 
-pub use tsumugi_ipc::frame::{read, write};
+pub use ito_ipc::frame::{read, write};
 
 #[cfg(test)]
 mod tests {
