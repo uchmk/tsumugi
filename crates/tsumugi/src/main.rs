@@ -1127,6 +1127,8 @@ struct App {
     settings_tx: std::sync::mpsc::Sender<Read>,
     /// The settings as last read, for the settings screen and the clock.
     settings_now: tsumugi_mux::settings::Settings,
+    /// `language` in common.toml, for the settings screen.
+    language: String,
     /// Its triggers that colour, made once when they are read.
     highlights: Vec<tsumugi_pane::Highlight>,
     /// The settings screen, while it is open (the design's 1m).
@@ -1461,6 +1463,7 @@ impl App {
             settings: settings_rx,
             settings_tx: settings_tx.clone(),
             settings_now: tsumugi_mux::settings::Settings::default(),
+            language: "auto".into(),
             highlights: Vec::new(),
             prefs: None,
             input: inputbox::InputBox::with_history(load_history(), prompts::load()),
@@ -1847,6 +1850,7 @@ impl App {
             state_path: shown(tsumugi_mux::state::default_path()),
             address: tsumugi_mux::address().0.display().to_string(),
             facts: self.facts.as_ref(),
+            language: &self.language,
         };
         let Some(screen) = &mut self.prefs else { return };
         let changes = prefs::show(ui, &self.palette, screen, &seen);
@@ -1907,6 +1911,7 @@ impl App {
                     self.view.save();
                 }
                 prefs::Change::AlwaysRestore(on) => set_always_restore(on),
+                prefs::Change::Language(code) => set_language(self.settings_tx.clone(), code),
                 prefs::Change::OpenFolder => {
                     if let Some(dir) = tsumugi_mux::settings::default_path().and_then(|p| p.parent().map(std::path::Path::to_path_buf)) {
                         let _ = std::fs::create_dir_all(&dir);
@@ -4680,6 +4685,8 @@ enum Read {
     /// Themes of one's own (`themes/*.toml`) and the changes to the theme
     /// in force (`theme.toml`), as their files' tables.
     Themes(Result<ThemeFiles, String>),
+    /// `language` in the common.toml uchmk's apps share.
+    Language(Result<Option<String>, String>),
 }
 
 #[derive(Default)]
@@ -4748,7 +4755,8 @@ fn watch_settings(ctx: egui::Context, tx: std::sync::mpsc::Sender<Read>) {
     use tsumugi_mux::settings;
     let _ = std::thread::Builder::new().name("settings".into()).spawn(move || {
         let (Some(path), Some(profiles)) = (settings::default_path(), settings::profiles_path()) else { return };
-        let (mut seen, mut seen_profiles, mut seen_themes) = (None, None, None);
+        let (mut seen, mut seen_profiles, mut seen_themes, mut seen_common) = (None, None, None, None);
+        let common = tsumugi_i18n::base_dir();
         loop {
             let stamp = settings::stamp(&path);
             let mut sent = false;
@@ -4773,6 +4781,16 @@ fn watch_settings(ctx: egui::Context, tx: std::sync::mpsc::Sender<Read>) {
                     seen_themes = Some(stamp);
                     sent = true;
                     if tx.send(Read::Themes(read_themes(dir))).is_err() {
+                        return;
+                    }
+                }
+            }
+            if let Some(base) = &common {
+                let stamp = settings::stamp(&tsumugi_i18n::common_path(base));
+                if seen_common != Some(stamp) {
+                    seen_common = Some(stamp);
+                    sent = true;
+                    if tx.send(Read::Language(tsumugi_i18n::read_common_language(base))).is_err() {
                         return;
                     }
                 }
@@ -4802,6 +4820,18 @@ fn edit_settings(tx: std::sync::mpsc::Sender<Read>, change: impl FnOnce(&str) ->
             Err(e) => Err(e),
         };
         let _ = tx.send(Read::Settings(Box::new(read)));
+    });
+}
+
+/// Set `language` in the common.toml uchmk's apps share, on a thread of its
+/// own, keeping the rest of the file; and say what it now holds.
+fn set_language(tx: std::sync::mpsc::Sender<Read>, code: &'static str) {
+    let _ = std::thread::Builder::new().name("write-language".into()).spawn(move || {
+        let Some(base) = tsumugi_i18n::base_dir() else { return };
+        let path = tsumugi_i18n::common_path(&base);
+        let written = files::read_or_empty(&path).and_then(|text| tsumugi_i18n::set_common_language(&text, code)).and_then(|next| files::write_atomic(&path, next));
+        let read = written.and_then(|()| tsumugi_i18n::read_common_language(&base));
+        let _ = tx.send(Read::Language(read));
     });
 }
 
@@ -5177,6 +5207,8 @@ impl App {
                     self.theme_file_error = None;
                 }
                 Read::Themes(Err(e)) => self.theme_file_error = Some(e),
+                Read::Language(Ok(code)) => self.language = code.unwrap_or_else(|| "auto".into()),
+                Read::Language(Err(e)) => self.settings_error = Some(e),
                 Read::Profiles(Err(e)) => self.settings_error = Some(e),
             }
         }

@@ -466,6 +466,7 @@ to `cli.rs` and a line to this table instead of a row.
 | 17.35 | Open with → take out every filer command; right-click a card | Open the folder in filer is greyed, its hover says where to set it |
 | 17.36 | Tags → Tags shown 1, then 5 | The band and the cards show one tag and `+N`, then all five |
 | 17.37 | Tags → a rule's Edit: change its folder, then add a branch, Save; Edit another and take it out | `settings.toml` has the rule changed in place (one rule with both, then neither); the sessions it tagged before lose the tag, those it now matches get it |
+| 17.38 | General → Language → 日本語; then start mimamori; then write `language = "en"` into `common.toml` by hand | `common.toml` in the uchmk folder (`%APPDATA%\uchmk`) has `language = "ja"`, its other lines kept; mimamori comes up in Japanese; tsumugi's menus stay English; the select shows English within a couple of seconds of the hand edit |
 
 ## 18. From a script
 

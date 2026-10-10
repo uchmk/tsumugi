@@ -5,6 +5,15 @@
 
 ## [未リリース]
 
+## [0.78.0] - 2026-10-10
+
+### 追加
+
+- 共有のクレート `tsumugi-i18n`。キーで引く言語の表（英語を下に敷く）、uchmk のアプリで共通の `common.toml` の `language` の読み書き、
+  OS の言語、表とソースの食い違いを見るテストの道具を持つ。mimamori が最初に使う。
+- 設定画面の General → Language が `common.toml` の `language`（Auto・English・日本語）を書くようになった。filer と mimamori も同じファイルを読む。
+  tsumugi 自身のメニューは今は英語のまま（TESTING.md 17.38）。
+
 ## [0.77.6] - 2026-10-10
 
 ### 修正
