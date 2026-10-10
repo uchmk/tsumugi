@@ -3402,7 +3402,7 @@ dependencies = [
 
 [[package]]
 name = "tsumugi"
-version = "0.77.4"
+version = "0.77.5"
 dependencies = [
  "arboard",
  "chrono",
@@ -3423,7 +3423,7 @@ dependencies = [
 
 [[package]]
 name = "tsumugi-ipc"
-version = "0.77.4"
+version = "0.77.5"
 dependencies = [
  "postcard",
  "serde",
@@ -3432,7 +3432,7 @@ dependencies = [
 
 [[package]]
 name = "tsumugi-layout"
-version = "0.77.4"
+version = "0.77.5"
 dependencies = [
  "egui",
  "serde",
@@ -3440,14 +3440,14 @@ dependencies = [
 
 [[package]]
 name = "tsumugi-mcp"
-version = "0.77.4"
+version = "0.77.5"
 dependencies = [
  "serde_json",
 ]
 
 [[package]]
 name = "tsumugi-mux"
-version = "0.77.4"
+version = "0.77.5"
 dependencies = [
  "crossbeam-channel",
  "postcard",
@@ -3462,7 +3462,7 @@ dependencies = [
 
 [[package]]
 name = "tsumugi-pane"
-version = "0.77.4"
+version = "0.77.5"
 dependencies = [
  "alacritty_terminal",
  "crossbeam-channel",

@@ -37,6 +37,15 @@ tsumugi のやること。`【人】` は持ち主の作業、`【金】` は 20
 - [ ] （実機 #7）TESTING.md 2.45 に「フック付きの bash のペインでも成り立つ」と書く（同レポート）。
 - [ ] （実機 #7）最後のセッションを閉じるとサーバーも止まり、次の起動の Welcome back ダイアログがキーを取る。入力が吸われた（同レポート。不具合ではない）。
 - [ ] 【実機】`Ctrl+=`（`font_bigger`）を `'Ctrl+vk:0xBB'` で確かめる（JIS 配列のレーン）。
+- [ ] （実機 #9）**Last-output copy and prompt jumps with multi-line prompts** (2.27, 2.44): start at the row after the *input* mark (OSC 133 `B`/`C`), or the row after the last prompt row, so a two-line prompt does not leak the command row into the copy. Small (one function in the OSC handling plus a test with a two-line prompt).（qa-reports/2026-10-10-arm-retest-1-7.md）
+- [ ] （実機 #9）**Log the keys egui turns into events** (Cut/Copy/Paste): add a `key X` line, or an `event Cut` line, to `TSUMUGI_KEYLOG`, so `Ctrl+Shift+X` and its siblings can be read as text. Small.（qa-reports/2026-10-10-arm-retest-1-7.md）
+- [ ] （実機 #9）**A CLI or log line for the divider under the pointer** (for example a `hover divider x,y` line in the key log): rows 2.3 and 2.15 are pictures now and could be read. Small.（qa-reports/2026-10-10-arm-retest-1-7.md）
+- [ ] （実機 #9）**Older-server fixture**: keep an older `tsumugi.exe` (0.46.x) in the repo's releases or the scratch cache so 1.7, 1.11 and 1.12 can be run by the unattended lane. Medium.（qa-reports/2026-10-10-arm-retest-1-7.md）
+- [ ] （実機 #9・キュー）Keep 1.7, 1.11, 1.12 in the re-tests, but they need the older build first (see the last proposal); until then the lane keeps offering rows it cannot do. Move them out of the ARM64 re-tests, or give them to a run with the old build.（qa-reports/2026-10-10-arm-retest-1-7.md）
+- [ ] （実機 #9・キュー）Keep 2.3, 2.15 in the re-tests (retry with the divider's exact coordinates, or after the hover log exists).（qa-reports/2026-10-10-arm-retest-1-7.md）
+- [ ] （実機 #9・キュー）Keep 2.27, 2.44, 2.37 in the re-tests; they are not done, and the first two will fail until the multi-line prompt is handled.（qa-reports/2026-10-10-arm-retest-1-7.md）
+- [ ] （実機 #9・キュー）Drop 2.24 from the ARM64 lane (the bash path is not available here).（qa-reports/2026-10-10-arm-retest-1-7.md）
+- [ ] （実機 #9・キュー）2.25, 2.26, 2.42, 2.53 can leave the re-tests (now `[x]`); 2.29 and 2.31 are `[~]`, the owner's to confirm.（qa-reports/2026-10-10-arm-retest-1-7.md）
 
 ## ほかのターミナルにあるもの（2026-10-08、持ち主の依頼で全部取り込む）
 
