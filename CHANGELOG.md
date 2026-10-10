@@ -5,6 +5,14 @@
 
 ## [未リリース]
 
+## [0.79.0] - 2026-10-10
+
+### 追加
+
+- 新しいクレート `tsumugi-match`: 検索の「一致の規則」を一つにまとめた。`Matcher::new` は正規表現（`fancy-regex`、大文字を 1 字でも打てば大小区別、無ければ区別しない）、
+  `Matcher::fuzzy` は fzf 風の曖昧一致。`is_match` / `ranges`（本文の強調用のバイト範囲）/ `positions`（一覧の名前の強調用の文字位置）/ `score` を持つ。
+  不正な式は 1 行の理由を返す。filer の `fuzzy.rs` をここへ移した（`tsumugi_match::fuzzy`）ので、filer と tsumugi が同じ規則で探せる。
+
 ## [0.78.0] - 2026-10-10
 
 ### 追加

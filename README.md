@@ -882,7 +882,7 @@ behind a confirmation in the window.
 The terminal pane is the crate `tsumugi-pane` (`crates/tsumugi-pane`), shared
 with [filer](https://github.com/uchmk/filer). So are the local channel to a
 running app (`tsumugi-ipc`, the socket or named pipe the server listens on)
-and the MCP server (`tsumugi-mcp`), which filer's `filer mcp` uses too.
+and the MCP server (`tsumugi-mcp`), which filer's `filer mcp` uses too. The rule a search query matches by (a regular expression with smart case, or fzf-style fuzzy letters, with the places to highlight) is `tsumugi-match`.
 
 ## Why
 
