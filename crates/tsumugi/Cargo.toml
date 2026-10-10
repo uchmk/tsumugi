@@ -21,6 +21,8 @@ tsumugi-pane = { path = "../tsumugi-pane", features = ["egui", "wgpu"] }
 tsumugi-mux = { path = "../tsumugi-mux" }
 tsumugi-mcp = { path = "../tsumugi-mcp" }
 tsumugi-layout = { path = "../tsumugi-layout", features = ["egui"] }
+# The language uchmk's apps share (common.toml), set from the settings screen.
+tsumugi-i18n = { path = "../tsumugi-i18n", features = ["edit"] }
 # eframe's own defaults, but for `winit/default`: that draws the title on
 # Wayland's window frame with ab_glyph, which brings the unmaintained
 # ttf-parser (RUSTSEC-2026-0192, QUESTIONS.md Q10). winit below keeps the

@@ -252,6 +252,8 @@ pub enum Change {
     /// One key of a table named at run time (`[tags.colors]`, `[shell.env]`),
     /// the key as TOML writes it; `None` takes it out.
     SetIn(String, String, Option<String>),
+    /// `language` in common.toml, which filer and mimamori read too.
+    Language(&'static str),
     /// Every `[[tags.rule]]`, in place of those there.
     Rules(Vec<TagRule>),
     /// Every `[[menu.session]]`, in place of those there.
@@ -308,6 +310,8 @@ pub struct Seen<'a> {
     pub state_path: String,
     /// `None` while they are being read.
     pub facts: Option<&'a Facts>,
+    /// `language` in the common.toml uchmk's apps share (`auto` when unset).
+    pub language: &'a str,
 }
 
 /// The colours and the search's words, for every row.
@@ -600,9 +604,12 @@ fn general(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut V
     let g = &seen.settings.general;
     let set = |key: &'static str, v: bool| Change::Set(Some("general"), key, v.to_string());
     section(ui, l, "STARTUP", |ui| {
-        row(ui, l, "Language", "Menus and messages; only English in this version", |ui| {
-            select(ui, "language", "en", &[("en", "English")]);
-        });
+        let note = "Shared with filer and mimamori (common.toml); tsumugi's own menus are English for now";
+        if let Some(code) = row(ui, l, "Language", note, |ui| select(ui, "language", seen.language, tsumugi_i18n::LANGUAGES)) {
+            if let Some((code, _)) = tsumugi_i18n::LANGUAGES.iter().find(|(c, _)| *c == code) {
+                out.push(Change::Language(code));
+            }
+        }
         sep(ui, l);
         let starts = [(true, "Restore the last sessions"), (false, "Ask (Welcome back)")];
         if let Some(on) = row(ui, l, "On start", "What the window shows first after a restart", |ui| select(ui, "on-start", seen.always_restore, &starts)) {
@@ -1943,6 +1950,7 @@ mod tests {
                 settings_path: "/home/u/.config/tsumugi".into(),
                 state_path: "/home/u/.local/state/tsumugi/state.toml".into(),
                 facts: Some(&self.facts),
+                language: "auto",
             };
             let input = egui::RawInput { screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(WIDE, 2600.0))), events, ..Default::default() };
             let mut changes = Vec::new();

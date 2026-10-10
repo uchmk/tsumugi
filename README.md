@@ -520,8 +520,8 @@ this works without editing the profile. In Settings → Tags each rule has
 ### Settings
 
 `Ctrl+,` (`Cmd+,` on macOS), or **Settings** in the search, opens the
-settings screen, nine pages under a search field: General (what the window
-shows first, the default folder, starting the server at sign-in, what
+settings screen, nine pages under a search field: General (the language,
+what the window shows first, the default folder, starting the server at sign-in, what
 closing the window does, checking for updates, the clock), Appearance (the
 font, the cursor, the title bar, the material, motion), Keys (click one,
 press the new one; a clash with another key or with Claude Code is named),
@@ -542,6 +542,14 @@ by hand stays; a field writes on Enter, and Esc leaves it as it was.
 elsewhere (`TSUMUGI_SETTINGS` names another file). Changes apply within a
 couple of seconds, without restarting; a mistake shows above the status bar
 with its line, and the last good settings stay in force.
+
+The language is not in `settings.toml`: it is `language` in the
+`common.toml` that filer and mimamori read too (`%APPDATA%\uchmk\`,
+`~/Library/Application Support/uchmk/`, `~/.config/uchmk/`;
+`UCHMK_CONFIG_DIR` names another folder), so it is set once for all three.
+`auto` follows the OS. tsumugi's own menus are English for now; the
+`tsumugi-i18n` crate that reads the setting and the apps' tables lives in
+this workspace.
 
 ```toml
 # A theme's name, or "dark", "light" or "system" (following the OS between
@@ -874,7 +882,13 @@ behind a confirmation in the window.
 The terminal pane is the crate `tsumugi-pane` (`crates/tsumugi-pane`), shared
 with [filer](https://github.com/uchmk/filer). So are the local channel to a
 running app (`tsumugi-ipc`, the socket or named pipe the server listens on)
-and the MCP server (`tsumugi-mcp`), which filer's `filer mcp` uses too.
+and the MCP server (`tsumugi-mcp`), which filer's `filer mcp` uses too. The rule a search query matches by (a regular expression with smart case, or fzf-style fuzzy letters, with the places to highlight) is `tsumugi-match`.
+
+[mimamori](https://github.com/uchmk/mimamori) uses three more from this
+workspace: the column sizes (`tsumugi-layout`), the language tables
+(`tsumugi-i18n`) and yazi's key notation (`tsumugi-keys`: `<C-a>`,
+`<A-S-Up>`, `<P-e>` with `P` meaning Cmd on macOS and Ctrl elsewhere, and
+egui's key events in the same terms).
 
 ## Why
 

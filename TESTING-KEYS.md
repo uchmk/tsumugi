@@ -30,7 +30,7 @@ Windows and Linux keys first; the macOS key is after `·`.
 - [ ] `Ctrl+=` · `Cmd+=` — Bigger letters · `font_bigger`
 - [x] `Ctrl+-` · `Cmd+-` — Smaller letters · `font_smaller`
 - [x] `Ctrl+0` · `Cmd+0` — Letters as the settings have them · `font_reset`
-- [~] `Ctrl+Shift+O` · `Cmd+Shift+O` — Every session on one screen · `overview`
+- [ ] `Ctrl+Shift+O` · `Cmd+Shift+O` — All sessions: find a session or a line in any scrollback · `overview`
 - [x] `Ctrl+Shift+M` · `Cmd+Shift+M` — Copy mode: select the output with the keys · `copy_mode`
 - [x] `Ctrl+Shift+Up` · `Cmd+Shift+Up` — To the prompt above · `prev_prompt`
 - [x] `Ctrl+Shift+Down` · `Cmd+Shift+Down` — To the prompt below · `next_prompt`
@@ -40,6 +40,7 @@ Windows and Linux keys first; the macOS key is after `·`.
 - [x] `Ctrl+Shift+E` · `Cmd+Shift+E` — Give every pane the same room · `equalize`
 - [x] `Ctrl+Shift+J` · `Cmd+Shift+J` — The pane to a tab of its own · `pane_to_tab`
 - [x] `Ctrl+Shift+R` · `Cmd+Shift+R` — Record the pane (asciinema .cast) · `record`
+- [ ] `Ctrl+Shift+S` · `Cmd+Shift+S` — Write a work log of the pane (text in Downloads) · `work_log`
 - [x] `Ctrl+Shift+L` · `Cmd+Shift+L` — Copy the last command's output · `copy_output`
 - [x] `Ctrl+Shift+Space` · `Cmd+Shift+Space` — Quick select: copy a link, hash or number by its letters · `quick_select`
 

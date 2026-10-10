@@ -95,6 +95,7 @@
 - [ ] **2.69** Settings → General → Copy and paste: **Copy a selection when the mouse lets go** off. `seq 200`, drag over `1` to `3` near the top of the scrollback, wheel down to the bottom so none of it shows, `Ctrl+Shift+C` (`Cmd+C`); paste in Notepad. Then click to clear it, `sleep 30`, `Ctrl+Shift+C` → `1` to `3` on the clipboard and the shell gets no `^C`; with nothing selected `Ctrl+Shift+C` stops `sleep`
 - [ ] **2.70** `Ctrl+Shift+S` in a shell pane; `seq 200`, `echo あいう`, a line longer than the pane; wait a second; `Ctrl+Shift+S` again. Then right-click the card → **Write a work log**, and again → A toast names `Downloads\tsumugi-<name>-<date>-<time>.txt` and the heading says LOG; while it runs, opening the file shows everything up to now, the screen included (open it again after typing: it has the new lines); `ls -l` twice, then make the window narrower and taller: nothing of the first listing is missing and nothing comes twice; the second press toasts "Saved …", LOG goes, and the file has every line once, in order, the long line whole, Japanese whole, ending with the screen; the menu does the same, a second file `-2` when the time is the same
 - [x] **2.71** Start a work log, close the window (the server keeps running), `seq 300` in that pane, open it again, `vim` something and quit it, finish the log; then close the session while another log runs → The heading still says LOG after reopening; the file has the lines printed while the window was closed, none of vim's screen; closing the session with a log running leaves a whole file with its last screen
+- [ ] **2.72** `seq 300`, then drag from a line in the middle of the pane up past the pane's top edge and hold the button there; then drag down past the bottom edge; let go and paste in Notepad → While the pointer is above the pane the view scrolls back through older output and the selection grows with it; the farther from the edge the faster; below the pane it scrolls toward the newest; held still inside the pane nothing scrolls; the pasted text is every line from the start to where it ended
 
 ## 3. The sidebar
 
@@ -354,6 +355,7 @@
 - [ ] **17.35** Open with → take out every filer command; right-click a card → Open the folder in filer is greyed, its hover says where to set it
 - [ ] **17.36** Tags → Tags shown 1, then 5 → The band and the cards show one tag and `+N`, then all five
 - [ ] **17.37** Tags → a rule's Edit: change its folder, then add a branch, Save; Edit another and take it out → `settings.toml` has the rule changed in place (one rule with both, then neither); the sessions it tagged before lose the tag, those it now matches get it
+- [ ] **17.38** General → Language → 日本語; then start mimamori; then write `language = "en"` into `common.toml` by hand → `common.toml` in the uchmk folder (`%APPDATA%\uchmk`) has `language = "ja"`, its other lines kept; mimamori comes up in Japanese; tsumugi's menus stay English; the select shows English within a couple of seconds of the hand edit
 
 ## 18. From a script
 
