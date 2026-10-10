@@ -23,6 +23,14 @@ tsumugi-mcp = { path = "../tsumugi-mcp" }
 tsumugi-layout = { path = "../tsumugi-layout", features = ["egui"] }
 # The language uchmk's apps share (common.toml), set from the settings screen.
 tsumugi-i18n = { path = "../tsumugi-i18n", features = ["edit"] }
+# What every uchmk app shares: common.toml (the theme and the clock too),
+# editing a settings file in place, watching it.
+tsumugi-common = { path = "../tsumugi-common", features = ["clock"] }
+# The themes, shared with every uchmk app; `pane` for the terminal's colours.
+tsumugi-theme = { path = "../tsumugi-theme", features = ["pane"] }
+# The settings screen, shared with every uchmk app: the nav, the rows and
+# their controls, and the pages for common.toml (language, clock, theme).
+tsumugi-prefs = { path = "../tsumugi-prefs" }
 # eframe's own defaults, but for `winit/default`: that draws the title on
 # Wayland's window frame with ab_glyph, which brings the unmaintained
 # ttf-parser (RUSTSEC-2026-0192, QUESTIONS.md Q10). winit below keeps the

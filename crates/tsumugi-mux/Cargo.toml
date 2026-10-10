@@ -21,9 +21,8 @@ crossbeam-channel = "0.5"
 # settings with.
 toml = "1.1"
 # Editing settings.toml in place -- one key, its comments and layout kept --
-# without a hand-written line editor (the source review, 2026-10-07: brackets
-# in strings and multi-line strings broke it). Pure Rust, the toml crate's own.
-toml_edit = "0.23"
+# and the clock, both shared with every uchmk app.
+tsumugi-common = { path = "../tsumugi-common" }
 
 [target."cfg(windows)".dependencies]
 windows = { version = "0.62", features = ["Win32_Foundation", "Win32_Security", "Win32_Security_Authorization", "Win32_Storage_FileSystem", "Win32_System_IO", "Win32_System_Pipes", "Win32_System_Threading"] }

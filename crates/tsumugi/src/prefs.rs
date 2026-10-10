@@ -6,11 +6,11 @@
 //! says rather than the file (the shells installed, the hooks, starting at
 //! sign-in) comes in [`Seen::facts`].
 
-use std::collections::HashMap;
-
 use eframe::egui::{self, Color32, FontId, RichText};
-use tsumugi_mux::settings::{self as cfg, MenuItem, Profile, Settings, TagRule, DATE_FORMATS};
+use tsumugi_common::{Clock, CommonChange};
+use tsumugi_mux::settings::{self as cfg, MenuItem, Profile, Settings, TagRule};
 use tsumugi_pane::Palette;
+use tsumugi_prefs::{button, field, keycap, row, section, select, sep, status, switch, Drafts, Look, EN};
 
 use crate::facts::Facts;
 use crate::sort::Sort;
@@ -189,7 +189,7 @@ pub struct Edit {
     /// chord, to use anyway.
     clash: Option<(&'static str, String, String)>,
     /// The text fields' words while they are typed in, and just after.
-    drafts: HashMap<String, Draft>,
+    drafts: Drafts,
     profile: Option<ProfileDraft>,
     /// The tag rule being written: a new one, or the one at `at` from "Edit".
     rule: RuleDraft,
@@ -212,13 +212,6 @@ struct RuleDraft {
     folder: String,
     branch: String,
     tag: String,
-}
-
-struct Draft {
-    text: String,
-    /// Sent to the file, and what the file said then: shown until the file
-    /// says something else, or for a moment.
-    sent: Option<(String, std::time::Instant)>,
 }
 
 struct ProfileDraft {
@@ -252,8 +245,9 @@ pub enum Change {
     /// One key of a table named at run time (`[tags.colors]`, `[shell.env]`),
     /// the key as TOML writes it; `None` takes it out.
     SetIn(String, String, Option<String>),
-    /// `language` in common.toml, which filer and mimamori read too.
-    Language(&'static str),
+    /// One key of common.toml, which filer and mimamori read too: the
+    /// language, the theme and the clock.
+    Common(CommonChange),
     /// Every `[[tags.rule]]`, in place of those there.
     Rules(Vec<TagRule>),
     /// Every `[[menu.session]]`, in place of those there.
@@ -312,137 +306,41 @@ pub struct Seen<'a> {
     pub facts: Option<&'a Facts>,
     /// `language` in the common.toml uchmk's apps share (`auto` when unset).
     pub language: &'a str,
-}
-
-/// The colours and the search's words, for every row.
-#[derive(Clone, Copy)]
-struct Look<'a> {
-    c: Colors,
-    pal: &'a Palette,
-    /// The search, lower case; empty for none.
-    q: &'a str,
+    /// The theme as common.toml picks it (`theme`, `dark_theme`,
+    /// `light_theme`), and its clock.
+    pub choice: (&'a str, &'a str, &'a str),
+    pub clock: &'a Clock,
 }
 
 pub fn show(ui: &mut egui::Ui, pal: &Palette, screen: &mut Screen, seen: &Seen) -> Vec<Change> {
-    let c = seen.current;
     let mut out = Vec::new();
+    let pages: Vec<(&str, &str)> = Page::ALL.iter().map(|p| (p.title(), p.lead())).collect();
+    let index: Vec<(usize, &str)> = INDEX.iter().map(|(p, words)| (Page::ALL.iter().position(|q| q == p).unwrap_or(0), *words)).collect();
+    let nav = tsumugi_prefs::Nav { pages: &pages, index: &index, words: &EN, file: "settings.toml" };
+    let page = Page::ALL.iter().position(|p| *p == screen.page).unwrap_or(0);
+    let mut state = tsumugi_prefs::State { page, query: std::mem::take(&mut screen.query), held: screen.held };
     // Esc leaves the screen, unless a control or a key being changed has it.
-    let busy = screen.held || ui.memory(|m| m.focused().is_some()) || screen.edit.capturing.is_some();
-    if !busy && ui.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape)) {
-        out.push(Change::Close);
-    }
-    // The pages by the keys, as tabs are elsewhere: Ctrl+Tab and
-    // Ctrl+PageDown the next, with Shift or PageUp the one before; Ctrl+F
-    // to the search.
-    let (next, back, find) = ui.input_mut(|i| {
-        let ctrl = egui::Modifiers::CTRL;
-        let back = i.consume_key(ctrl | egui::Modifiers::SHIFT, egui::Key::Tab) || i.consume_key(ctrl, egui::Key::PageUp);
-        let next = i.consume_key(ctrl, egui::Key::Tab) || i.consume_key(ctrl, egui::Key::PageDown);
-        (next, back, i.consume_key(egui::Modifiers::COMMAND, egui::Key::F))
-    });
-    if next || back {
-        let k = Page::ALL.iter().position(|p| *p == screen.page).unwrap_or(0);
-        let n = Page::ALL.len();
-        screen.page = Page::ALL[if next { (k + 1) % n } else { (k + n - 1) % n }];
-        screen.query.clear();
-        // The keys to the page's first control with the next Tab.
-        ui.memory_mut(|m| m.surrender_focus(m.focused().unwrap_or(egui::Id::NULL)));
-    }
-    let rect = ui.max_rect();
-    ui.painter().rect_filled(rect, 0.0, c.bg);
-    // The nav down the left: the search, the pages, and the file.
-    let nav = egui::Rect::from_min_max(rect.min, egui::pos2(rect.left() + 240.0, rect.bottom()));
-    ui.painter().rect_filled(nav, 0.0, c.side);
-    ui.painter().line_segment([nav.right_top(), nav.right_bottom()], egui::Stroke::new(1.0, c.border));
-    let mut nav_ui = ui.new_child(egui::UiBuilder::new().max_rect(nav.shrink2(egui::vec2(10.0, 16.0))));
-    let search = egui::TextEdit::singleline(&mut screen.query)
-        .id(egui::Id::new("prefs-search"))
-        .hint_text("🔍  Search settings")
-        .desired_width(f32::INFINITY)
-        .margin(egui::vec2(10.0, 8.0))
-        .font(FontId::proportional(12.5));
-    let searched = nav_ui.add(search);
-    if find {
-        searched.request_focus();
-    }
-    nav_ui.add_space(10.0);
-    let q = screen.query.trim().to_lowercase();
-    let hits = |p: Page| -> usize {
-        if q.is_empty() {
-            return 1;
-        }
-        INDEX.iter().filter(|(at, words)| *at == p && words.to_lowercase().contains(&q)).count() + usize::from(p.title().to_lowercase().contains(&q))
-    };
-    let shown: Vec<Page> = Page::ALL.into_iter().filter(|p| hits(*p) > 0).collect();
-    // The search moves to the first page that has it.
-    if !q.is_empty() && !shown.contains(&screen.page) {
-        if let Some(first) = shown.first() {
-            screen.page = *first;
-        }
-    }
-    if searched.lost_focus() && nav_ui.input(|i| i.key_pressed(egui::Key::Enter)) {
-        if let Some(first) = shown.first() {
-            screen.page = *first;
-        }
-    }
-    if shown.is_empty() {
-        nav_ui.label(RichText::new("Nothing matches").size(12.5).color(c.dim));
-    }
-    for p in shown {
-        let on = screen.page == p;
-        // Mouse only: the keys go page to page with Ctrl+Tab, and Tab goes
-        // from the search straight into the page.
-        let (r, resp) = nav_ui.allocate_exact_size(egui::vec2(nav_ui.available_width(), 32.0), egui::Sense::CLICK);
-        if on {
-            nav_ui.painter().rect_filled(r, 6.0, c.chosen());
-        } else if resp.hovered() {
-            nav_ui.painter().rect_filled(r, 6.0, c.hover());
-        }
-        let color = if on { c.strong() } else { c.dim };
-        nav_ui.painter().text(egui::pos2(r.left() + 10.0, r.center().y), egui::Align2::LEFT_CENTER, p.title(), FontId::proportional(13.0), color);
-        if !q.is_empty() {
-            nav_ui.painter().text(egui::pos2(r.right() - 10.0, r.center().y), egui::Align2::RIGHT_CENTER, hits(p).to_string(), FontId::proportional(11.0), c.faint());
-        }
-        if resp.clicked() {
-            screen.page = p;
-        }
-    }
-
-    // The page.
-    let l = Look { c, pal, q: &q };
-    let body = egui::Rect::from_min_max(egui::pos2(nav.right() + 1.0, rect.top()), rect.max);
-    let mut body_ui = ui.new_child(egui::UiBuilder::new().max_rect(body));
-    let page = screen.page;
+    let busy = state.busy(ui) || screen.edit.capturing.is_some();
+    let pressed = tsumugi_prefs::Keys::standard(ui, busy);
     let edit = &mut screen.edit;
-    egui::ScrollArea::vertical().id_salt(("prefs-page", page.title())).auto_shrink([false, false]).show(&mut body_ui, |ui| {
-        egui::Frame::NONE.inner_margin(egui::Margin { left: 48, right: 48, top: 28, bottom: 40 }).show(ui, |ui| {
-            ui.set_max_width(ui.available_width().min(820.0));
-            ui.label(RichText::new(page.title()).size(24.0).strong().color(c.strong()));
-            ui.add_space(2.0);
-            ui.label(RichText::new(page.lead()).size(13.5).color(c.dim));
-            ui.add_space(16.0);
-            match page {
-                Page::General => general(ui, l, seen, edit, &mut out),
-                Page::Appearance => appearance(ui, l, seen, edit, &mut out),
-                Page::Keys => keys(ui, l, seen, edit, &mut out),
-                Page::Notifications => notifications(ui, l, seen, edit, &mut out),
-                Page::Sessions => sessions(ui, l, seen, edit, &mut out),
-                Page::Tags => tags(ui, l, seen, edit, &mut out),
-                Page::Theme => theme(ui, l, seen, &mut out),
-                Page::Shell => shell(ui, l, seen, edit, &mut out),
-                Page::Advanced => advanced(ui, l, seen, edit, &mut out),
-            }
-        });
+    let done = tsumugi_prefs::show(ui, seen.current, &mut state, &nav, pressed, |ui, page, l| match Page::ALL[page] {
+        Page::General => general(ui, l, seen, edit, &mut out),
+        Page::Appearance => appearance(ui, l, seen, edit, &mut out),
+        Page::Keys => keys(ui, l, seen, edit, &mut out),
+        Page::Notifications => notifications(ui, l, seen, edit, &mut out),
+        Page::Sessions => sessions(ui, l, seen, edit, &mut out),
+        Page::Tags => tags(ui, l, seen, edit, &mut out),
+        Page::Theme => theme(ui, l, pal, seen, &mut out),
+        Page::Shell => shell(ui, l, seen, edit, &mut out),
+        Page::Advanced => advanced(ui, l, seen, edit, &mut out),
     });
-    // The file last, so Tab comes to it after the page.
-    let foot = egui::Rect::from_min_max(egui::pos2(nav.left() + 10.0, nav.bottom() - 48.0), egui::pos2(nav.right() - 10.0, nav.bottom() - 16.0));
-    let file = egui::Button::new(RichText::new("Open settings.toml").size(12.5).color(c.dim)).fill(Color32::TRANSPARENT).stroke(egui::Stroke::new(1.0, c.border_strong())).corner_radius(6.0);
-    let file = nav_ui.put(foot, file);
-    focus_ring(&nav_ui, &file);
-    if file.clicked() {
+    (screen.page, screen.query, screen.held) = (Page::ALL[state.page], state.query, state.held);
+    if done.close {
+        out.insert(0, Change::Close);
+    }
+    if done.open_file {
         out.push(Change::OpenFile);
     }
-    screen.held = ui.memory(|m| m.focused().is_some());
     out.retain(|change| match change {
         Change::GoTo(p) => {
             screen.page = *p;
@@ -451,144 +349,6 @@ pub fn show(ui: &mut egui::Ui, pal: &Palette, screen: &mut Screen, seen: &Seen) 
         _ => true,
     });
     out
-}
-
-/// A card of rows under a small heading.
-fn section(ui: &mut egui::Ui, l: Look, head: &str, rows: impl FnOnce(&mut egui::Ui)) {
-    let c = l.c;
-    let hit = !l.q.is_empty() && head.to_lowercase().contains(l.q);
-    ui.label(RichText::new(head).size(11.0).strong().color(if hit { c.wait } else { c.dim }));
-    ui.add_space(6.0);
-    egui::Frame::NONE.fill(c.panel).stroke(egui::Stroke::new(1.0, c.border)).corner_radius(10.0).inner_margin(egui::Margin::symmetric(18, 2)).show(ui, |ui| {
-        ui.set_width(ui.available_width());
-        rows(ui);
-    });
-    ui.add_space(22.0);
-}
-
-/// The line between two rows of a card, across the whole card.
-fn sep(ui: &mut egui::Ui, l: Look) {
-    let (r, _) = ui.allocate_exact_size(egui::vec2(ui.available_width(), 1.0), egui::Sense::hover());
-    ui.painter().hline(r.x_range().expand(18.0), r.center().y, egui::Stroke::new(1.0, l.c.border));
-}
-
-/// A row: its label and note on the left, its control on the right. Lit
-/// when the search's words are in it.
-fn row<R>(ui: &mut egui::Ui, l: Look, label: &str, note: &str, control: impl FnOnce(&mut egui::Ui) -> R) -> R {
-    let c = l.c;
-    let hit = !l.q.is_empty() && (label.to_lowercase().contains(l.q) || note.to_lowercase().contains(l.q));
-    let behind = ui.painter().add(egui::Shape::Noop);
-    let mut r = None;
-    let shown = ui.horizontal(|ui| {
-        ui.set_min_height(48.0);
-        // The control first, on the right; the words wrap in what is left,
-        // never under it.
-        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            r = Some(control(ui));
-            ui.add_space(16.0);
-            ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
-                ui.vertical(|ui| {
-                    ui.set_max_width(ui.available_width());
-                    // A label alone sits in the middle of the row, as the
-                    // control does.
-                    ui.add_space(if note.is_empty() { 15.0 } else { 8.0 });
-                    ui.label(RichText::new(label).size(13.0).color(c.strong()));
-                    if !note.is_empty() {
-                        ui.label(RichText::new(note).size(12.0).color(c.dim));
-                    }
-                    ui.add_space(6.0);
-                });
-            });
-        });
-    });
-    if hit {
-        let lit = egui::Shape::rect_filled(shown.response.rect.expand2(egui::vec2(10.0, 0.0)), 6.0, c.wait.gamma_multiply(0.14));
-        ui.painter().set(behind, lit);
-    }
-    r.expect("the control ran")
-}
-
-/// The design's switch: a pill with a knob, cyan when on.
-fn switch(ui: &mut egui::Ui, l: Look, on: bool) -> bool {
-    let c = l.c;
-    let (rect, resp) = ui.allocate_exact_size(egui::vec2(40.0, 22.0), egui::Sense::click());
-    let p = ui.painter();
-    p.rect_filled(rect, 11.0, if on { c.run } else { c.border_strong() });
-    let x = if on { rect.right() - 11.0 } else { rect.left() + 11.0 };
-    p.circle_filled(egui::pos2(x, rect.center().y), 8.0, if on { c.on_accent() } else { c.dim });
-    focus_ring(ui, &resp);
-    resp.clicked()
-}
-
-/// A ring round the control that has the keys, so Tab shows where it is.
-fn focus_ring(ui: &egui::Ui, r: &egui::Response) {
-    if r.has_focus() {
-        ui.painter().rect_stroke(r.rect.expand(3.0), 8.0, egui::Stroke::new(1.5, crate::chrome::cyan()), egui::StrokeKind::Outside);
-    }
-}
-
-/// A list to pick one of: the value picked, when it changed.
-fn select<T: PartialEq + Copy>(ui: &mut egui::Ui, id: &str, now: T, options: &[(T, &str)]) -> Option<T> {
-    let mut pick = now;
-    let shown = options.iter().find(|(v, _)| *v == now).map_or("", |(_, t)| *t).to_owned();
-    egui::ComboBox::from_id_salt(("prefs", id)).selected_text(shown).width(190.0).show_ui(ui, |ui| {
-        for (v, t) in options {
-            ui.selectable_value(&mut pick, *v, *t);
-        }
-    });
-    (pick != now).then_some(pick)
-}
-
-/// The design's plain button: an outline, words in the text colour.
-fn button(ui: &mut egui::Ui, l: Look, words: &str) -> bool {
-    let b = egui::Button::new(RichText::new(words).size(12.5).color(l.c.fg)).fill(Color32::TRANSPARENT).stroke(egui::Stroke::new(1.0, l.c.border_strong())).corner_radius(7.0).min_size(egui::vec2(0.0, 30.0));
-    let r = ui.add(b);
-    focus_ring(ui, &r);
-    r.clicked()
-}
-
-fn status(ui: &mut egui::Ui, words: &str, color: Color32) {
-    ui.label(RichText::new(words).size(12.5).color(color));
-}
-
-/// A one-line field that writes when Enter is pressed or it is left (Esc
-/// leaves it as it was): the new words, when they differ.
-fn field(ui: &mut egui::Ui, drafts: &mut HashMap<String, Draft>, id: &str, now: &str, hint: &str, width: f32) -> Option<String> {
-    let eid = egui::Id::new(("prefs-field", id));
-    let focused = ui.memory(|m| m.has_focus(eid));
-    if !focused {
-        let done = drafts.get(id).is_some_and(|d| match &d.sent {
-            Some((was, at)) => now != was || at.elapsed() > std::time::Duration::from_secs(2),
-            None => true,
-        });
-        if done {
-            drafts.remove(id);
-        }
-    }
-    let mut text = drafts.get(id).map_or_else(|| now.to_owned(), |d| d.text.clone());
-    let edit = egui::TextEdit::singleline(&mut text).id(eid).hint_text(hint).desired_width(width).font(FontId::monospace(12.5)).margin(egui::vec2(10.0, 6.0));
-    let resp = ui.add(edit);
-    if resp.has_focus() || resp.changed() {
-        drafts.insert(id.to_owned(), Draft { text: text.clone(), sent: None });
-    }
-    if resp.lost_focus() {
-        drafts.remove(id);
-        if ui.input(|i| i.key_pressed(egui::Key::Escape)) || text == now {
-            return None;
-        }
-        drafts.insert(id.to_owned(), Draft { text: text.clone(), sent: Some((now.to_owned(), std::time::Instant::now())) });
-        ui.ctx().request_repaint_after(std::time::Duration::from_secs(2));
-        return Some(text);
-    }
-    None
-}
-
-/// A key's cap, as the design draws one.
-fn keycap(ui: &mut egui::Ui, l: Look, words: &str, lit: bool) -> egui::Response {
-    let c = l.c;
-    let stroke = if lit { c.run } else { c.border_strong() };
-    let b = egui::Button::new(RichText::new(words).font(FontId::monospace(12.0)).color(c.strong())).fill(c.side).stroke(egui::Stroke::new(1.0, stroke)).corner_radius(6.0);
-    ui.add(b)
 }
 
 /// A table key as TOML writes it: bare when it can be.
@@ -605,11 +365,7 @@ fn general(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut V
     let set = |key: &'static str, v: bool| Change::Set(Some("general"), key, v.to_string());
     section(ui, l, "STARTUP", |ui| {
         let note = "Shared with filer and mimamori (common.toml); tsumugi's own menus are English for now";
-        if let Some(code) = row(ui, l, "Language", note, |ui| select(ui, "language", seen.language, tsumugi_i18n::LANGUAGES)) {
-            if let Some((code, _)) = tsumugi_i18n::LANGUAGES.iter().find(|(c, _)| *c == code) {
-                out.push(Change::Language(code));
-            }
-        }
+        out.extend(tsumugi_prefs::language_row(ui, l, &EN, seen.language, note).map(Change::Common));
         sep(ui, l);
         let starts = [(true, "Restore the last sessions"), (false, "Ask (Welcome back)")];
         if let Some(on) = row(ui, l, "On start", "What the window shows first after a restart", |ui| select(ui, "on-start", seen.always_restore, &starts)) {
@@ -663,30 +419,7 @@ fn general(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut V
             out.push(set("warn_large_paste", !g.warn_large_paste));
         }
     });
-    let k = &seen.settings.clock;
-    section(ui, l, "CLOCK", |ui| {
-        let set = |key: &'static str, v: bool| Change::Set(Some("clock"), key, v.to_string());
-        if row(ui, l, "Show the time in the status bar", "Stays visible when the window is maximized or full screen", |ui| switch(ui, l, k.show)) {
-            out.push(set("show", !k.show));
-        }
-        sep(ui, l);
-        if let Some(h) = row(ui, l, "Time format", "", |ui| select(ui, "clock-hours", k.hour24, &[(true, "14:32 (24-hour)"), (false, "2:32 PM (12-hour)")])) {
-            out.push(set("hour24", h));
-        }
-        sep(ui, l);
-        if row(ui, l, "Show the date", "Next to the time", |ui| switch(ui, l, k.date)) {
-            out.push(set("date", !k.date));
-        }
-        sep(ui, l);
-        let formats: Vec<(&str, &str)> = DATE_FORMATS.iter().map(|f| (*f, *f)).collect();
-        if let Some(f) = row(ui, l, "Date format", "", |ui| select(ui, "clock-date", k.date_format.as_str(), &formats)) {
-            out.push(Change::Set(Some("clock"), "date_format", cfg::quote(f)));
-        }
-        sep(ui, l);
-        if row(ui, l, "Show the weekday", "", |ui| switch(ui, l, k.weekday)) {
-            out.push(set("weekday", !k.weekday));
-        }
-    });
+    out.extend(tsumugi_prefs::clock_card(ui, l, &EN, seen.clock).into_iter().map(Change::Common));
 }
 
 fn appearance(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut Vec<Change>) {
@@ -1730,136 +1463,30 @@ fn advanced(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut 
     });
 }
 
-fn theme(ui: &mut egui::Ui, l: Look, seen: &Seen, out: &mut Vec<Change>) {
-    let (pal, c) = (l.pal, &l.c);
+fn theme(ui: &mut egui::Ui, l: Look, pal: &Palette, seen: &Seen, out: &mut Vec<Change>) {
     let s = seen.settings;
-    let mode = match s.theme.as_str() {
-        "system" => "system",
-        "light" => "light",
-        "dark" => "dark",
-        name => {
-            if seen.themes.iter().any(|t| t.name.eq_ignore_ascii_case(name) && t.colors.light) {
-                "light"
-            } else {
-                "dark"
-            }
+    let note = "Themes in themes/ beside the settings or in uchmk/themes/ show here too.";
+    let mut more = None;
+    let changes = tsumugi_prefs::theme_page(ui, l, &EN, seen.themes, seen.choice, note, |ui| {
+        preview(ui, pal);
+        // What else the window looks like, a click away on its page.
+        let f = &s.font;
+        let family = if f.family.is_empty() { "Automatic" } else { f.family.as_str() };
+        let material = match s.window.material.as_str() {
+            "none" => "None",
+            "mica" => "Mica",
+            "acrylic" => "Acrylic",
+            other => other,
+        };
+        let motion = if s.appearance.animations { "On" } else { "Off" };
+        ui.add_space(6.0);
+        let line = format!("Font {family} {} · Window {material} · Motion {motion}", f.size);
+        if ui.add(egui::Label::new(RichText::new(line).size(12.0).color(l.c.dim)).sense(egui::Sense::click())).on_hover_text("On the Appearance page").clicked() {
+            more = Some(Change::GoTo(Page::Appearance));
         }
-    };
-    // The mode as one segmented control at the left, under the heading, in
-    // a row of its own height.
-    ui.allocate_ui_with_layout(egui::vec2(ui.available_width(), 36.0), egui::Layout::left_to_right(egui::Align::Center), |ui| {
-        ui.label(RichText::new("Mode").size(12.0).color(c.dim));
-        ui.add_space(8.0);
-        egui::Frame::NONE.stroke(egui::Stroke::new(1.0, c.border_strong())).corner_radius(8.0).inner_margin(egui::Margin::same(3)).show(ui, |ui| {
-            ui.horizontal(|ui| {
-                ui.spacing_mut().item_spacing.x = 2.0;
-                for (k, label) in [("system", "Follow OS"), ("light", "Light"), ("dark", "Dark")] {
-                    let on = mode == k;
-                    let b = egui::Button::new(RichText::new(label).size(12.5).color(if on { c.strong() } else { c.dim }))
-                        .fill(if on { c.chosen() } else { Color32::TRANSPARENT })
-                        .stroke(egui::Stroke::NONE)
-                        .corner_radius(6.0)
-                        .min_size(egui::vec2(84.0, 26.0));
-                    let r = ui.add(b);
-                    focus_ring(ui, &r);
-                    if r.clicked() && !on {
-                        // A mode keeps the theme picked for it.
-                        let value = match k {
-                            "system" => "system".to_owned(),
-                            "light" => s.light_theme.clone(),
-                            _ => s.dark_theme.clone(),
-                        };
-                        out.push(Change::Set(None, "theme", tsumugi_mux::settings::quote(&value)));
-                    }
-                }
-            });
-        });
     });
-    ui.add_space(10.0);
-    let picked = |t: &Theme| {
-        let name = &t.name;
-        match s.theme.as_str() {
-            "system" => name == if t.colors.light { &s.light_theme } else { &s.dark_theme },
-            "dark" => name == "tsumugi Dark",
-            "light" => name == "tsumugi Light",
-            other => name.eq_ignore_ascii_case(other),
-        }
-    };
-    ui.horizontal_top(|ui| {
-        ui.vertical(|ui| {
-            ui.set_width(300.0);
-            let list: Vec<&Theme> = seen.themes.iter().filter(|t| mode == "system" || t.colors.light == (mode == "light")).collect();
-            ui.label(RichText::new(format!("THEME · {}", list.len())).size(11.0).strong().color(c.dim));
-            egui::Frame::NONE.fill(c.panel).stroke(egui::Stroke::new(1.0, c.border)).corner_radius(10.0).inner_margin(egui::Margin::same(6)).show(ui, |ui| {
-                for t in list {
-                    // Follow OS keeps one theme for each kind: the one shown
-                    // now is lit, the other only named as the other kind's.
-                    let chosen = picked(t);
-                    let on = chosen && (mode != "system" || t.colors == seen.current);
-                    let (r, resp) = ui.allocate_exact_size(egui::vec2(ui.available_width(), 34.0), egui::Sense::click());
-                    let p = ui.painter();
-                    if on {
-                        p.rect_filled(r, 7.0, c.chosen());
-                        p.rect_stroke(r, 7.0, egui::Stroke::new(1.0, c.run), egui::StrokeKind::Inside);
-                    } else if resp.hovered() {
-                        p.rect_filled(r, 7.0, c.hover());
-                    }
-                    // Its background and three of its states, side by side.
-                    // A small chip of four: its ground and three of its states.
-                    let chip = egui::Rect::from_min_size(egui::pos2(r.left() + 10.0, r.center().y - 9.0), egui::vec2(40.0, 18.0));
-                    for (k, sw) in [t.colors.bg, t.colors.wait, t.colors.run, t.colors.err].iter().enumerate() {
-                        let x = chip.left() + k as f32 * 10.0;
-                        let corner = match k {
-                            0 => egui::CornerRadius { nw: 4, sw: 4, ne: 0, se: 0 },
-                            3 => egui::CornerRadius { nw: 0, sw: 0, ne: 4, se: 4 },
-                            _ => egui::CornerRadius::ZERO,
-                        };
-                        p.rect_filled(egui::Rect::from_min_size(egui::pos2(x, chip.top()), egui::vec2(10.0, 18.0)), corner, *sw);
-                    }
-                    p.rect_stroke(chip, 4.0, egui::Stroke::new(1.0, c.border_strong()), egui::StrokeKind::Outside);
-                    p.text(egui::pos2(r.left() + 62.0, r.center().y), egui::Align2::LEFT_CENTER, &t.name, FontId::proportional(13.0), if on { c.strong() } else { c.fg });
-                    let tagged = chosen && mode == "system";
-                    let kind = match (tagged, t.colors.light) {
-                        (true, true) => "when light",
-                        (true, false) => "when dark",
-                        (false, true) => "light",
-                        (false, false) => "dark",
-                    };
-                    p.text(egui::pos2(r.right() - 10.0, r.center().y), egui::Align2::RIGHT_CENTER, kind, FontId::proportional(11.0), if tagged { c.run } else { c.faint() });
-                    if resp.clicked() {
-                        // In Follow OS, a theme becomes the one for its kind.
-                        let change = match mode {
-                            "system" => Change::Set(None, if t.colors.light { "light_theme" } else { "dark_theme" }, tsumugi_mux::settings::quote(&t.name)),
-                            _ => Change::Set(None, "theme", tsumugi_mux::settings::quote(&t.name)),
-                        };
-                        out.push(change);
-                    }
-                }
-            });
-            ui.label(RichText::new("Themes in themes/ beside the settings show here too.").size(12.0).color(c.dim));
-        });
-        ui.add_space(20.0);
-        ui.vertical(|ui| {
-            let name = seen.themes.iter().find(|t| t.colors == seen.current).map_or("", |t| t.name.as_str());
-            ui.label(RichText::new(format!("PREVIEW · {name}")).size(11.0).strong().color(c.dim));
-            preview(ui, pal);
-            // What else the window looks like, a click away on its page.
-            let f = &s.font;
-            let family = if f.family.is_empty() { "Automatic" } else { f.family.as_str() };
-            let material = match s.window.material.as_str() {
-                "none" => "None",
-                "mica" => "Mica",
-                "acrylic" => "Acrylic",
-                other => other,
-            };
-            let motion = if s.appearance.animations { "On" } else { "Off" };
-            ui.add_space(6.0);
-            let line = format!("Font {family} {} · Window {material} · Motion {motion}", f.size);
-            if ui.add(egui::Label::new(RichText::new(line).size(12.0).color(c.dim)).sense(egui::Sense::click())).on_hover_text("On the Appearance page").clicked() {
-                out.push(Change::GoTo(Page::Appearance));
-            }
-        });
-    });
+    out.extend(changes.into_iter().map(Change::Common));
+    out.extend(more);
 }
 
 /// A small window in the theme in force: the sidebar's three kinds of card
@@ -1905,7 +1532,6 @@ fn preview(ui: &mut egui::Ui, pal: &Palette) {
     }
 }
 
-
 /// The screen drawn without a window: each page's rows are there, and a
 /// click, a key or typing hands back the change it should.
 #[cfg(test)]
@@ -1919,12 +1545,13 @@ mod tests {
         settings: Settings,
         facts: Facts,
         themes: Vec<Theme>,
+        clock: Clock,
     }
 
     impl Run {
         fn new() -> Self {
             let facts = Facts { shells: vec![("bash".into(), "bash".into())], hooks: false, shell: "bash".into(), shell_hook: Some(false), autostart: false, conpty: true };
-            Self { ctx: egui::Context::default(), settings: Settings::default(), facts, themes: crate::theme::builtin() }
+            Self { ctx: egui::Context::default(), settings: Settings::default(), facts, themes: crate::theme::builtin(), clock: Clock::default() }
         }
 
         /// One frame with these events: what was changed, and every text
@@ -1951,6 +1578,8 @@ mod tests {
                 state_path: "/home/u/.local/state/tsumugi/state.toml".into(),
                 facts: Some(&self.facts),
                 language: "auto",
+                choice: ("dark", "tsumugi Dark", "tsumugi Light"),
+                clock: &self.clock,
             };
             let input = egui::RawInput { screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(WIDE, 2600.0))), events, ..Default::default() };
             let mut changes = Vec::new();
@@ -2114,6 +1743,18 @@ mod tests {
         let card_right = 48.0 + 241.0 + 820.0 - 18.0;
         let changes = run.click(&mut screen, egui::pos2(card_right - 20.0, label.top() + 16.0));
         assert_eq!(changes, vec![Change::Set(Some("general"), "check_updates", "false".into())]);
+    }
+
+    #[test]
+    fn the_clock_writes_the_common_file() {
+        let run = Run::new();
+        let mut screen = Screen::default();
+        run.frame(&mut screen, Vec::new());
+        let (_, texts) = run.frame(&mut screen, Vec::new());
+        let label = *find(&texts, "Show the date").unwrap();
+        let card_right = 48.0 + 241.0 + 820.0 - 18.0;
+        let changes = run.click(&mut screen, egui::pos2(card_right - 20.0, label.top() + 16.0));
+        assert_eq!(changes, vec![Change::Common(CommonChange { table: Some("clock"), key: "date", value: "false".into() })]);
     }
 
     #[test]

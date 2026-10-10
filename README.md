@@ -543,21 +543,37 @@ elsewhere (`TSUMUGI_SETTINGS` names another file). Changes apply within a
 couple of seconds, without restarting; a mistake shows above the status bar
 with its line, and the last good settings stay in force.
 
-The language is not in `settings.toml`: it is `language` in the
-`common.toml` that filer and mimamori read too (`%APPDATA%\uchmk\`,
-`~/Library/Application Support/uchmk/`, `~/.config/uchmk/`;
-`UCHMK_CONFIG_DIR` names another folder), so it is set once for all three.
-`auto` follows the OS. tsumugi's own menus are English for now; the
-`tsumugi-i18n` crate that reads the setting and the apps' tables lives in
-this workspace.
+The language, the theme and the clock are not in `settings.toml`: they
+are in the `common.toml` that filer and mimamori read too
+(`%APPDATA%\uchmk\`, `~/Library/Application Support/uchmk/`,
+`~/.config/uchmk/`; `UCHMK_CONFIG_DIR` names another folder), so they are
+set once for every uchmk app, and a change there reaches them all within a
+couple of seconds. `auto` follows the OS. tsumugi's own menus are English
+for now. An older `settings.toml` with `theme` or `[clock]` still counts
+until `common.toml` has its own. What the apps share, and the crates that
+do it, are in [docs/common-spec.md](docs/common-spec.md).
 
 ```toml
+# common.toml
+language = "auto"                       # auto, en or ja
 # A theme's name, or "dark", "light" or "system" (following the OS between
 # dark_theme and light_theme).
 theme = "dark"
 dark_theme = "tsumugi Dark"
 light_theme = "tsumugi Light"
 
+# The status bar's clock; date_format is YYYY/MM/DD, YYYY-MM-DD, MM/DD/YYYY
+# or DD/MM/YYYY.
+[clock]
+show = true
+hour24 = true
+date = true
+date_format = "YYYY/MM/DD"
+weekday = true
+```
+
+```toml
+# settings.toml
 # Tag a session by the folder it is in, or anywhere under it.
 [[tags.rule]]
 folder = "~/dev/filer"
@@ -619,15 +635,6 @@ long_run = 60                           # a finish counts after this many second
 sound_waiting = "chime"                 # chime, low, alert or default
 sound_error = "low"
 focus_mode = true                       # nothing while Windows' focus mode is on
-
-# The status bar's clock; date_format is YYYY/MM/DD, YYYY-MM-DD, MM/DD/YYYY
-# or DD/MM/YYYY.
-[clock]
-show = true
-hour24 = true
-date = true
-date_format = "YYYY/MM/DD"
-weekday = true
 
 # The window's frame: "tsumugi" makes the band the title bar (its own
 # buttons; on macOS under the traffic lights), "system" the OS's own.
@@ -722,7 +729,8 @@ One Dark and Rosé Pine. A theme is twelve colours -- `bg`, `side`, `panel`,
 `border`, `fg`, `dim`, the states' `wait`, `run`, `err` and `done`, and the
 terminal's `blue` and `magenta` -- written as `"#rrggbb"`, and `light`.
 `theme.toml` beside the settings changes any of them in the theme in force;
-a file in `themes/` there is a theme of one's own, named by its `name` or
+a file in `themes/` there, or in `themes/` in the uchmk folder (where
+every uchmk app finds it), is a theme of one's own, named by its `name` or
 its file, its missing colours taken from tsumugi Dark or Light. `ansi`, a
 list of sixteen, sets the terminal's colours outright (black to bright
 white). Other terminals' schemes go in `themes/` as they come: Windows

@@ -5,6 +5,25 @@
 
 ## [未リリース]
 
+## [0.81.0] - 2026-10-10
+
+### 追加
+
+- uchmk のアプリの共通仕様（[docs/common-spec.md](docs/common-spec.md)）と、それを持つ共有のクレートを 3 つ足した。
+  - `tsumugi-common`: 設定のフォルダー、`common.toml`（言語・テーマ・時計）の読み書きと見張り、コメントを残して 1 キーを書き換える道具、時計の文字（機能 `clock`）。
+  - `tsumugi-theme`: 組み込みの 13 のテーマと、テーマのファイルの読み方・色の混ぜ方。
+  - `tsumugi-prefs`: 設定の画面の枠（検索・ページの一覧・「Open <file>」、Esc の 2 段、Ctrl+Tab と Ctrl+F）と部品、Language・CLOCK・Theme の共通のページ。
+    文字は英語と日本語の表を持つ。mimamori と filer も同じ画面を作る。
+- `uchmk/themes/` に置いたテーマも一覧に出る（どの uchmk のアプリにも出る）。
+
+### 変更
+
+- **テーマ（`theme`・`dark_theme`・`light_theme`）と時計（`[clock]`）は `common.toml` に移った。**設定の画面で選んだ値は `common.toml` に書かれ、
+  `common.toml` を手で書き換えると、開いている uchmk のアプリが 2 秒ほどで揃って変わる。
+  `settings.toml` に古い値があり、`common.toml` に無ければ、今までどおりその値を使う。
+- 設定の画面を共有のクレートの上に作り直した。見た目とキーは変えていない。
+- `common.toml` が読めない・知らないキーがあるときは、ステータスバーの上に理由を出す。
+
 ## [0.80.1] - 2026-10-10
 
 ### 変更

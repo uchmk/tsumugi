@@ -437,48 +437,10 @@ impl Remote {
     }
 }
 
-/// The status bar's clock (the design's 1n).
-#[derive(Clone, Debug, PartialEq, Deserialize)]
-#[serde(default, deny_unknown_fields)]
-pub struct Clock {
-    pub show: bool,
-    pub hour24: bool,
-    pub date: bool,
-    pub date_format: String,
-    pub weekday: bool,
-}
-
-impl Default for Clock {
-    fn default() -> Self {
-        Self { show: true, hour24: true, date: true, date_format: "YYYY/MM/DD".into(), weekday: true }
-    }
-}
-
-/// The date formats the clock knows.
-pub const DATE_FORMATS: [&str; 4] = ["YYYY/MM/DD", "YYYY-MM-DD", "MM/DD/YYYY", "DD/MM/YYYY"];
-
-impl Clock {
-    /// A `chrono` format string: `2026/10/05 (Mon) 14:32`.
-    pub fn format(&self) -> String {
-        let mut out = Vec::new();
-        if self.date {
-            out.push(
-                match self.date_format.as_str() {
-                    "YYYY-MM-DD" => "%Y-%m-%d",
-                    "MM/DD/YYYY" => "%m/%d/%Y",
-                    "DD/MM/YYYY" => "%d/%m/%Y",
-                    _ => "%Y/%m/%d",
-                }
-                .to_owned(),
-            );
-            if self.weekday {
-                out.push("(%a)".into());
-            }
-        }
-        out.push(if self.hour24 { "%H:%M".into() } else { "%-I:%M %p".into() });
-        out.join(" ")
-    }
-}
+// The status bar's clock (the design's 1n) is common.toml's now, shared by
+// every uchmk app; settings.toml's `[clock]` is still read for a person who
+// has not moved it.
+pub use tsumugi_common::{Clock, DATE_FORMATS};
 
 #[derive(Clone, Debug, PartialEq, Deserialize)]
 #[serde(default, deny_unknown_fields)]
@@ -949,123 +911,9 @@ pub fn parse(text: &str) -> Result<Settings, String> {
     Ok(s)
 }
 
-/// The table at the dotted `path` (`None`: the top), made when it is not
-/// there; an error when the path is something else (an array of tables).
-fn table_at<'a>(doc: &'a mut toml_edit::DocumentMut, path: Option<&str>) -> Result<&'a mut toml_edit::Table, String> {
-    let mut t = doc.as_table_mut();
-    let Some(path) = path else { return Ok(t) };
-    for part in path.split('.') {
-        let item = t.entry(part).or_insert_with(|| {
-            let mut new = toml_edit::Table::new();
-            new.set_implicit(true);
-            toml_edit::Item::Table(new)
-        });
-        t = item.as_table_mut().ok_or_else(|| format!("[{path}] is not a table in the file"))?;
-    }
-    Ok(t)
-}
-
-fn document(text: &str) -> Result<toml_edit::DocumentMut, String> {
-    text.parse::<toml_edit::DocumentMut>().map_err(|e| format!("settings.toml does not read, so it is left as it is: {e}"))
-}
-
-/// A key as the settings write it (`A`, `"my tag"`), as the name it stands for.
-fn key_name(key: &str) -> Result<String, String> {
-    let parts = toml_edit::Key::parse(key).map_err(|e| format!("`{key}` is not a key: {e}"))?;
-    match parts.as_slice() {
-        [one] => Ok(one.get().to_owned()),
-        _ => Err(format!("`{key}` is not a single key")),
-    }
-}
-
-/// `text` with `key` in `table` (`None`: the top, before any table) set to
-/// `value`, already written as TOML. Only that key changes, so what a person
-/// wrote around it -- comments, order, blank lines -- stays. A key not there
-/// is added at the end of its table, and a table not there at the end of the
-/// file. An error, and nothing to write, when the file does not read as TOML
-/// or the value is not a TOML value.
-pub fn set_key(text: &str, table: Option<&str>, key: &str, value: &str) -> Result<String, String> {
-    let mut doc = document(text)?;
-    let mut new: toml_edit::Value = value.parse().map_err(|e| format!("`{value}` is not a TOML value: {e}"))?;
-    let name = key_name(key)?;
-    let t = table_at(&mut doc, table)?;
-    // A new table that only held tables before is shown now it has a key.
-    t.set_implicit(false);
-    match t.get_mut(&name).and_then(toml_edit::Item::as_value_mut) {
-        Some(old) => {
-            // The comment after the old value stays after the new one.
-            let suffix = old.decor().suffix().and_then(|s| s.as_str()).map(str::to_owned);
-            new.decor_mut().set_prefix(" ");
-            new.decor_mut().set_suffix(suffix.as_deref().filter(|s| s.contains('#')).unwrap_or(""));
-            *old = new;
-        }
-        None => {
-            t.insert(&name, toml_edit::Item::Value(new));
-        }
-    }
-    Ok(doc.to_string())
-}
-
-/// `text` without `key` in `table`; the same text when it is not there.
-pub fn remove_key(text: &str, table: Option<&str>, key: &str) -> Result<String, String> {
-    let mut doc = document(text)?;
-    let name = key_name(key)?;
-    let mut t = doc.as_table_mut();
-    if let Some(path) = table {
-        for part in path.split('.') {
-            match t.get_mut(part).and_then(toml_edit::Item::as_table_mut) {
-                Some(next) => t = next,
-                None => return Ok(text.to_owned()),
-            }
-        }
-    }
-    if t.remove(&name).is_none() {
-        return Ok(text.to_owned());
-    }
-    Ok(doc.to_string())
-}
-
-/// `text` with every `[[name]]` block taken out and `blocks` written at the
-/// end in their place, each a list of keys and their values as TOML.
-/// Comments inside the old blocks go with them; the rest stays.
-pub fn set_tables(text: &str, name: &str, blocks: &[Vec<(&str, String)>]) -> Result<String, String> {
-    let mut doc = document(text)?;
-    let (parent, last) = match name.rsplit_once('.') {
-        Some((p, l)) => (Some(p), l),
-        None => (None, name),
-    };
-    let mut list = toml_edit::ArrayOfTables::new();
-    for b in blocks {
-        let mut t = toml_edit::Table::new();
-        for (k, v) in b {
-            let v: toml_edit::Value = v.parse().map_err(|e| format!("`{v}` is not a TOML value: {e}"))?;
-            t.insert(&key_name(k)?, toml_edit::Item::Value(v));
-        }
-        list.push(t);
-    }
-    let t = table_at(&mut doc, parent)?;
-    t.remove(last);
-    if !list.is_empty() {
-        t.insert(last, toml_edit::Item::ArrayOfTables(list));
-    }
-    Ok(doc.to_string())
-}
-
-/// A string as TOML writes it, quoted and escaped.
-pub fn quote(s: &str) -> String {
-    toml::Value::String(s.to_owned()).to_string()
-}
-
-/// A list of strings as TOML writes it.
-pub fn quote_list(items: &[String]) -> String {
-    format!("[{}]", items.iter().map(|s| quote(s)).collect::<Vec<_>>().join(", "))
-}
-
-/// When the file was last changed, to read it again only then; `None` when
-/// there is none.
-pub fn stamp(path: &Path) -> Option<std::time::SystemTime> {
-    std::fs::metadata(path).and_then(|m| m.modified()).ok()
-}
+// Editing a TOML file one key at a time, its comments kept, is the same for
+// every uchmk app's settings.
+pub use tsumugi_common::{quote, quote_list, remove_key, set_key, set_tables, stamp};
 
 /// A new session's choices kept under a name (the design's 1g): the window
 /// writes these to `profiles.toml` beside the settings, whole, so the

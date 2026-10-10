@@ -1129,6 +1129,9 @@ struct App {
     settings_now: tsumugi_mux::settings::Settings,
     /// `language` in common.toml, for the settings screen.
     language: String,
+    /// common.toml as last read: the language, the theme and the clock every
+    /// uchmk app shares (docs/common-spec.md).
+    common: tsumugi_common::Common,
     /// Its triggers that colour, made once when they are read.
     highlights: Vec<tsumugi_pane::Highlight>,
     /// The settings screen, while it is open (the design's 1m).
@@ -1149,6 +1152,8 @@ struct App {
     /// What the key log last said had the keys.
     focus_logged: Option<egui::Id>,
     settings_error: Option<String>,
+    /// What is wrong with common.toml, or not known in it.
+    common_warning: Option<String>,
     /// From the settings and `profiles.toml`, for the new-session dialog.
     tag_rules: Vec<tsumugi_mux::settings::TagRule>,
     profiles: Vec<tsumugi_mux::settings::Profile>,
@@ -1464,6 +1469,7 @@ impl App {
             settings_tx: settings_tx.clone(),
             settings_now: tsumugi_mux::settings::Settings::default(),
             language: "auto".into(),
+            common: tsumugi_common::Common::default(),
             highlights: Vec::new(),
             prefs: None,
             input: inputbox::InputBox::with_history(load_history(), prompts::load()),
@@ -1473,6 +1479,7 @@ impl App {
             replaced_unasked: false,
             animated: false,
             settings_error: None,
+            common_warning: None,
             tag_rules: Vec::new(),
             profiles: Vec::new(),
             new_session: None,
@@ -1832,6 +1839,7 @@ impl App {
         let (themes, _) = self.themes();
         let shown = |p: Option<std::path::PathBuf>| p.map(|p| p.display().to_string()).unwrap_or_default();
         let muted_tags = client.muted_tags();
+        let clock = self.clock();
         let seen = prefs::Seen {
             settings: &self.settings_now,
             themes: &themes,
@@ -1851,6 +1859,8 @@ impl App {
             address: tsumugi_mux::address().0.display().to_string(),
             facts: self.facts.as_ref(),
             language: &self.language,
+            choice: (&self.theme_choice.0, &self.theme_choice.1, &self.theme_choice.2),
+            clock: &clock,
         };
         let Some(screen) = &mut self.prefs else { return };
         let changes = prefs::show(ui, &self.palette, screen, &seen);
@@ -1911,7 +1921,7 @@ impl App {
                     self.view.save();
                 }
                 prefs::Change::AlwaysRestore(on) => set_always_restore(on),
-                prefs::Change::Language(code) => set_language(self.settings_tx.clone(), code),
+                prefs::Change::Common(change) => edit_common(self.settings_tx.clone(), change),
                 prefs::Change::OpenFolder => {
                     if let Some(dir) = tsumugi_mux::settings::default_path().and_then(|p| p.parent().map(std::path::Path::to_path_buf)) {
                         let _ = std::fs::create_dir_all(&dir);
@@ -4685,8 +4695,9 @@ enum Read {
     /// Themes of one's own (`themes/*.toml`) and the changes to the theme
     /// in force (`theme.toml`), as their files' tables.
     Themes(Result<ThemeFiles, String>),
-    /// `language` in the common.toml uchmk's apps share.
-    Language(Result<Option<String>, String>),
+    /// The common.toml uchmk's apps share (the language, the theme, the
+    /// clock), and what in it is not known.
+    Common(Result<(tsumugi_common::Common, Vec<String>), String>),
 }
 
 #[derive(Default)]
@@ -4695,9 +4706,10 @@ struct ThemeFiles {
     changes: Option<std::collections::BTreeMap<String, toml::Value>>,
 }
 
-/// `theme.toml` and `themes/*.toml` beside the settings; a theme's name is
-/// its `name`, else its file's.
-fn read_themes(dir: &std::path::Path) -> Result<ThemeFiles, String> {
+/// `theme.toml` and `themes/*.toml` beside the settings, and the themes
+/// every uchmk app shares (`uchmk/themes/`, `common`); a theme's name is its
+/// `name`, else its file's.
+fn read_themes(dir: &std::path::Path, common: Option<&std::path::Path>) -> Result<ThemeFiles, String> {
     let table = |p: &std::path::Path| -> Result<std::collections::BTreeMap<String, toml::Value>, String> {
         let text = std::fs::read_to_string(p).map_err(|e| format!("{}: {e}", p.display()))?;
         toml::from_str(&text).map_err(|e| format!("{}: {}", p.display(), e.message()))
@@ -4707,7 +4719,8 @@ fn read_themes(dir: &std::path::Path) -> Result<ThemeFiles, String> {
     if changes.exists() {
         out.changes = Some(table(&changes)?);
     }
-    if let Ok(entries) = std::fs::read_dir(dir.join("themes")) {
+    let folders = std::iter::once(dir.join("themes")).chain(common.map(tsumugi_common::themes_dir));
+    for entries in folders.filter_map(|d| std::fs::read_dir(d).ok()) {
         let mut files: Vec<std::path::PathBuf> = entries.filter_map(|e| e.ok().map(|e| e.path())).filter(|p| p.extension().is_some_and(|x| x == "toml" || x == "json" || x == "itermcolors")).collect();
         files.sort();
         for f in files {
@@ -4776,11 +4789,14 @@ fn watch_settings(ctx: egui::Context, tx: std::sync::mpsc::Sender<Read>) {
                 }
             }
             if let Some(dir) = path.parent() {
-                let stamp = themes_stamp(dir);
+                let mut stamp = themes_stamp(dir);
+                if let Some(base) = &common {
+                    stamp.extend(themes_stamp(base));
+                }
                 if seen_themes.as_ref() != Some(&stamp) {
                     seen_themes = Some(stamp);
                     sent = true;
-                    if tx.send(Read::Themes(read_themes(dir))).is_err() {
+                    if tx.send(Read::Themes(read_themes(dir, common.as_deref()))).is_err() {
                         return;
                     }
                 }
@@ -4790,7 +4806,7 @@ fn watch_settings(ctx: egui::Context, tx: std::sync::mpsc::Sender<Read>) {
                 if seen_common != Some(stamp) {
                     seen_common = Some(stamp);
                     sent = true;
-                    if tx.send(Read::Language(tsumugi_i18n::read_common_language(base))).is_err() {
+                    if tx.send(Read::Common(tsumugi_common::Common::read(base))).is_err() {
                         return;
                     }
                 }
@@ -4823,15 +4839,14 @@ fn edit_settings(tx: std::sync::mpsc::Sender<Read>, change: impl FnOnce(&str) ->
     });
 }
 
-/// Set `language` in the common.toml uchmk's apps share, on a thread of its
-/// own, keeping the rest of the file; and say what it now holds.
-fn set_language(tx: std::sync::mpsc::Sender<Read>, code: &'static str) {
-    let _ = std::thread::Builder::new().name("write-language".into()).spawn(move || {
-        let Some(base) = tsumugi_i18n::base_dir() else { return };
-        let path = tsumugi_i18n::common_path(&base);
-        let written = files::read_or_empty(&path).and_then(|text| tsumugi_i18n::set_common_language(&text, code)).and_then(|next| files::write_atomic(&path, next));
-        let read = written.and_then(|()| tsumugi_i18n::read_common_language(&base));
-        let _ = tx.send(Read::Language(read));
+/// Make a change to the common.toml uchmk's apps share (the language, the
+/// theme, the clock), on a thread of its own, keeping the rest of the file;
+/// and say what it now holds.
+fn edit_common(tx: std::sync::mpsc::Sender<Read>, change: tsumugi_common::CommonChange) {
+    let _ = std::thread::Builder::new().name("write-common".into()).spawn(move || {
+        let Some(base) = tsumugi_common::base_dir() else { return };
+        let read = tsumugi_common::edit_common(&base, |t| change.apply(t)).and_then(|()| tsumugi_common::Common::read(&base));
+        let _ = tx.send(Read::Common(read));
     });
 }
 
@@ -5063,6 +5078,12 @@ impl App {
         self.nerd && self.settings_now.appearance.nerd_icons
     }
 
+    /// The clock's settings: common.toml's, else the older `[clock]` in
+    /// settings.toml.
+    fn clock(&self) -> tsumugi_common::Clock {
+        self.common.clock_or(Some(&self.settings_now.clock))
+    }
+
     /// The clock for something that moves, when the animations are on; and
     /// a note to draw the next frame soon.
     fn moving(&mut self, ui: &egui::Ui) -> Option<f64> {
@@ -5194,7 +5215,7 @@ impl App {
                         facts_again |= shell_changed && self.prefs.is_some();
                         self.alerts.rules = alert::Rules::from(&s.notify);
                         self.tag_rules = s.tags.rule;
-                        self.theme_choice = (s.theme, s.dark_theme, s.light_theme);
+                        self.theme_choice = self.common.theme_choice(Some((&s.theme, &s.dark_theme, &s.light_theme)));
                         self.open = s.open;
                         self.menu = s.menu;
                         self.settings_error = None;
@@ -5207,8 +5228,14 @@ impl App {
                     self.theme_file_error = None;
                 }
                 Read::Themes(Err(e)) => self.theme_file_error = Some(e),
-                Read::Language(Ok(code)) => self.language = code.unwrap_or_else(|| "auto".into()),
-                Read::Language(Err(e)) => self.settings_error = Some(e),
+                Read::Common(Ok((common, warnings))) => {
+                    self.language = common.language.clone().unwrap_or_else(|| "auto".into());
+                    let s = &self.settings_now;
+                    self.theme_choice = common.theme_choice(Some((&s.theme, &s.dark_theme, &s.light_theme)));
+                    self.common = common;
+                    self.common_warning = warnings.into_iter().next();
+                }
+                Read::Common(Err(e)) => self.common_warning = Some(e),
                 Read::Profiles(Err(e)) => self.settings_error = Some(e),
             }
         }
@@ -5216,7 +5243,7 @@ impl App {
             self.read_facts();
         }
         self.apply_theme(&ctx);
-        if let Some(e) = self.settings_error.as_ref().or(self.theme_error.as_ref()) {
+        if let Some(e) = self.settings_error.as_ref().or(self.common_warning.as_ref()).or(self.theme_error.as_ref()) {
             // Above the status bar until the file is fixed; the server keeps
             // its tag rules from before too.
             egui::Area::new(egui::Id::new("settings-error")).anchor(egui::Align2::CENTER_BOTTOM, egui::vec2(0.0, -32.0)).show(&ctx, |ui| {
@@ -5526,7 +5553,7 @@ impl App {
             .exact_size(28.0)
             .frame(egui::Frame::NONE.fill(self.chrome_fill(crate::theme::colors().side)))
             .show(ui, |ui| {
-                let clock = &self.settings_now.clock;
+                let clock = self.clock();
                 let git = focus_info.as_ref().and_then(|i| self.git.get(&i.cwd, &i.branch));
                 let used = self.usage.get();
                 let conversation = focus_info.as_ref().filter(|i| !i.conversation.is_empty()).and_then(|i| used.conversations.get(&i.conversation).copied());

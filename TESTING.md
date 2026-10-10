@@ -327,7 +327,7 @@ to `cli.rs` and a line to this table instead of a row.
 | # | Do | Expect |
 | --- | --- | --- |
 | 9.1 | `Ctrl+,` | The screen with its nine pages and the search field over them; the band says Settings in the middle with an X; no sidebar or status bar; `Esc` and the X close it |
-| 9.2 | Change something on each page | Only that line of `settings.toml` changes (diff the file); comments stay |
+| 9.2 | Change something on each page | Only that line of `settings.toml` changes (diff the file); comments stay. Language, the clock and the theme change that line of `common.toml` in the uchmk folder instead |
 | 9.3 | Write a mistake into `settings.toml` by hand | A red line above the status bar says what and where, until it is fixed; nothing else changes |
 | 9.4 | Open settings.toml / Open the settings folder | The system's editor / file manager opens |
 | 9.5 | Type `scroll` in Search settings | Only Advanced in the list, with a count; its Scrollback row lit; Enter goes there. `copy` lists General (**Copy a selection when the mouse lets go**) |
@@ -341,11 +341,15 @@ to `cli.rs` and a line to this table instead of a row.
 | # | Do | Expect |
 | --- | --- | --- |
 | 10.1 | Settings → Theme, walk the thirteen | The window and the panes recolour at once; states stay readable (gold, cyan, red, green) |
-| 10.2 | `theme = "system"`, then switch Windows between dark and light | tsumugi follows within seconds |
+| 10.2 | `theme = "system"` in `common.toml` (`%APPDATA%\uchmk`), then switch Windows between dark and light | tsumugi follows within seconds |
 | 10.3 | Save a Windows Terminal scheme `.json` in `themes\` | It is in the list under its name; chosen, `ls` colours match Windows Terminal's with that scheme |
 | 10.4 | The same with an iTerm2 `.itermcolors` | As 10.3 |
 | 10.5 | `theme.toml` with one colour | Only that colour changes in the theme in force |
 | 10.6 | Settings → Theme, in Follow OS | Mode (Follow OS, Light, Dark) at the left under the heading; only the theme shown now is lit, it and the other kind's pick are named `when dark` / `when light`; PREVIEW names the theme in force; a line with the font, the window and motion, a click goes to Appearance; each theme's swatches bordered and rounded |
+
+| 10.7 | With tsumugi and mimamori open, write `theme = "Nord"` into `common.toml` by hand; then pick Dracula in tsumugi's Settings → Theme | Both apps turn Nord within a couple of seconds, then both turn Dracula; `settings.toml` is unchanged |
+| 10.8 | An older `settings.toml` with `theme = "Nord"` and no `theme` in `common.toml`; start tsumugi | Nord, as before; Settings → Theme shows Nord lit. Picking another writes it to `common.toml` |
+| 10.9 | Save a theme `.toml` (with `name = "Mine"`) in `%APPDATA%\uchmk\themes\` | Mine is in Settings → Theme's list within a couple of seconds, in tsumugi and mimamori alike |
 
 ## 11. Fonts
 
@@ -415,6 +419,7 @@ to `cli.rs` and a line to this table instead of a row.
 | 15.7 | Linux or macOS: click `UTF-8` → Shift_JIS; `cat` a Shift_JIS file; type Japanese into `cat > x.txt`, then `nkf -g x.txt` (or `file`) | The menu of eight; the file reads right; `Shift_JIS` on the pane's heading and in gold in the status bar; what was typed is Shift_JIS in the file; restart the machine: still Shift_JIS |
 | 15.8 | Windows: the `UTF-8` in the status bar | Only a label with its tooltip: no menu |
 | 15.9 | Claude Code used today (Opus 5.5, say) | `≈$0.39` after the conversation's tokens and today's, and in the 5h window; the tooltip says it is the API's price; `[prices."claude-opus-5-5"] input = 8.0` doubles the input's share; a closed session's line in Recently closed has its own |
+| 15.10 | Settings → General → CLOCK: Show the date off, then 12-hour; with mimamori open | The status bar's clock drops the date, then reads `2:32 PM`; `common.toml` has `[clock] date = false` and `hour24 = false`; mimamori's clock does the same |
 
 ## 16. Keys
 

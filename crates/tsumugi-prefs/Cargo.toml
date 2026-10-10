@@ -1,0 +1,17 @@
+[package]
+name = "tsumugi-prefs"
+description = "uchmk's settings screen: the nav, the cards of rows and their controls, and the pages every app shares (language, clock, theme)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+egui = { version = "0.36", default-features = false }
+tsumugi-common = { path = "../tsumugi-common" }
+tsumugi-i18n = { path = "../tsumugi-i18n" }
+tsumugi-theme = { path = "../tsumugi-theme" }
+
+[dev-dependencies]
+egui = { version = "0.36", default-features = false, features = ["default_fonts"] }

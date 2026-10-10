@@ -21,6 +21,18 @@ tsumugi のやること。`【人】` は持ち主の作業、`【金】` は 20
       置いたら対話のセッションが README の冒頭に載せる。紹介画像 `docs/social-preview.png` は Settings → General → Social preview から上げる（API が無い）。
 - [x] 最初のリリースを切る。v0.52.0 を 2026-10-07 に出した（6 つの成果物と SHA-256 の表が揃った。run 37577264990）。
 
+## uchmk の共通仕様（2026-10-10、持ち主の依頼）
+
+設定の画面・テーマ・時計を uchmk のアプリで揃え、common.toml を変えれば全部のアプリが変わるようにする。仕様は [docs/common-spec.md](docs/common-spec.md)。
+
+- [x] （v0.81.0）共有のクレート `tsumugi-common`（common.toml・設定の 1 キーの書き換え・見張り・時計の文字）、`tsumugi-theme`（テーマ）、
+      `tsumugi-prefs`（設定の画面の枠と部品、Language・CLOCK・Theme の共通のページ）を切り出し、tsumugi の設定の画面をその上に作り直した。
+      テーマと時計は common.toml を読み書きする（settings.toml の古い値は common.toml に無ければ使う）。`uchmk/themes/` も読む。
+- [ ] （mimamori v0.32.0 で）mimamori に設定の画面・テーマ・時計を足す。
+- [ ] filer に持ち帰る: Ctrl+, の設定の画面を `tsumugi-prefs` で作り、ステータスバーの右端に時計を出し、common.toml のテーマと時計を読む。
+      yazi の `theme.toml` との関係は filer の QUESTIONS.md で持ち主に聞く。filer の TODO.md の「設定の画面（uchmk の共通仕様）」で進める。
+- [ ] tsumugi 自身のメニューを `tsumugi-i18n` の表に載せ、設定の画面の文字を `Words::of(language)` で日本語にも出す（今は英語だけ、TESTING.md 17.38）。
+
 ## 実機のレーンから
 
 マージの Routine（`.claude/merge-routine.md`）が、実機の PR の `### Proposals`・見つけた不具合・`## Queue` の頼みをここに積む。対話のセッションが拾う。

@@ -3437,7 +3437,7 @@ dependencies = [
 
 [[package]]
 name = "tsumugi"
-version = "0.80.1"
+version = "0.81.0"
 dependencies = [
  "arboard",
  "chrono",
@@ -3447,28 +3447,42 @@ dependencies = [
  "image",
  "raw-window-handle",
  "toml",
+ "tsumugi-common",
  "tsumugi-i18n",
  "tsumugi-layout",
  "tsumugi-mcp",
  "tsumugi-mux",
  "tsumugi-pane",
+ "tsumugi-prefs",
+ "tsumugi-theme",
  "window-vibrancy",
  "windows",
  "winit",
 ]
 
 [[package]]
-name = "tsumugi-i18n"
-version = "0.80.1"
+name = "tsumugi-common"
+version = "0.81.0"
 dependencies = [
+ "chrono",
+ "serde",
  "sys-locale",
  "toml",
  "toml_edit 0.23.10+spec-1.0.0",
 ]
 
 [[package]]
+name = "tsumugi-i18n"
+version = "0.81.0"
+dependencies = [
+ "toml",
+ "toml_edit 0.23.10+spec-1.0.0",
+ "tsumugi-common",
+]
+
+[[package]]
 name = "tsumugi-ipc"
-version = "0.80.1"
+version = "0.81.0"
 dependencies = [
  "postcard",
  "serde",
@@ -3477,14 +3491,14 @@ dependencies = [
 
 [[package]]
 name = "tsumugi-keys"
-version = "0.80.1"
+version = "0.81.0"
 dependencies = [
  "egui",
 ]
 
 [[package]]
 name = "tsumugi-layout"
-version = "0.80.1"
+version = "0.81.0"
 dependencies = [
  "egui",
  "serde",
@@ -3492,27 +3506,27 @@ dependencies = [
 
 [[package]]
 name = "tsumugi-match"
-version = "0.80.1"
+version = "0.81.0"
 dependencies = [
  "fancy-regex",
 ]
 
 [[package]]
 name = "tsumugi-mcp"
-version = "0.80.1"
+version = "0.81.0"
 dependencies = [
  "serde_json",
 ]
 
 [[package]]
 name = "tsumugi-mux"
-version = "0.80.1"
+version = "0.81.0"
 dependencies = [
  "crossbeam-channel",
  "postcard",
  "serde",
  "toml",
- "toml_edit 0.23.10+spec-1.0.0",
+ "tsumugi-common",
  "tsumugi-ipc",
  "tsumugi-layout",
  "tsumugi-pane",
@@ -3521,7 +3535,7 @@ dependencies = [
 
 [[package]]
 name = "tsumugi-pane"
-version = "0.80.1"
+version = "0.81.0"
 dependencies = [
  "alacritty_terminal",
  "crossbeam-channel",
@@ -3537,6 +3551,25 @@ dependencies = [
  "skrifa",
  "vello_cpu",
  "windows",
+]
+
+[[package]]
+name = "tsumugi-prefs"
+version = "0.81.0"
+dependencies = [
+ "egui",
+ "tsumugi-common",
+ "tsumugi-i18n",
+ "tsumugi-theme",
+]
+
+[[package]]
+name = "tsumugi-theme"
+version = "0.81.0"
+dependencies = [
+ "egui",
+ "toml",
+ "tsumugi-pane",
 ]
 
 [[package]]

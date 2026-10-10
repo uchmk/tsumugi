@@ -5,6 +5,8 @@ Claude Code などの AI CLI のセッションを何本も並べて動かすた
 
 前の会話からの引き継ぎ（今の版と次の手順）は [docs/handoff.md](docs/handoff.md)。最初の版の範囲は [docs/v1-scope.md](docs/v1-scope.md)。今は filer のターミナルペインを `crates/tsumugi-pane` に切り出している（[docs/pane-extraction.md](docs/pane-extraction.md)。段階と進み具合もそこ）。
 
+- **uchmk のアプリの共通仕様**（common.toml・設定の画面・テーマ・時計、共有のクレート `tsumugi-common`・`tsumugi-theme`・`tsumugi-prefs`）は
+  [docs/common-spec.md](docs/common-spec.md)。filer と mimamori もこれに従う。仕様を変えたらこの文書も直す。
 - Cargo の workspace。クレートは `crates/` の下に置く。版はルートの `Cargo.toml` の `[workspace.package]` で 1 つ。
 - **push の前に `scripts/verify.sh` を 1 回回す。**最後の行が `ALL OK: …` なら push してよい（test、clippy を Linux と `x86_64-pc-windows-msvc` の両方で `-D warnings`）。
 
