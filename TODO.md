@@ -46,6 +46,23 @@ tsumugi のやること。`【人】` は持ち主の作業、`【金】` は 20
 - [ ] （実機 #9・キュー）Keep 2.27, 2.44, 2.37 in the re-tests; they are not done, and the first two will fail until the multi-line prompt is handled.（qa-reports/2026-10-10-arm-retest-1-7.md）
 - [ ] （実機 #9・キュー）Drop 2.24 from the ARM64 lane (the bash path is not available here).（qa-reports/2026-10-10-arm-retest-1-7.md）
 - [ ] （実機 #9・キュー）2.25, 2.26, 2.42, 2.53 can leave the re-tests (now `[x]`); 2.29 and 2.31 are `[~]`, the owner's to confirm.（qa-reports/2026-10-10-arm-retest-1-7.md）
+- [ ] （実機 #10）**Kit: double-click, window resize, cursor-shape and "same-second" helpers.** I wrote `GetCursorInfo`, a double-click and `SetWindowPos` by hand for 2.3/2.15/2.70. A `Send-DoubleClick`, `Get-KitCursor` and `Set-KitWindow` in `wintest-kit.ps1` would stop every lane from doing it again. Small.（qa-reports/2026-10-10-win-retest-1-7.md）
+- [ ] （実機 #10）**Kit: keep the foreground.** The owner's Claude desktop takes it between two sends; for a two-input race (2.70's `-2`) the kit should send both inputs inside one `SendInput` batch or hold the desktop lock with `LockSetForegroundWindow`. Small–medium.（qa-reports/2026-10-10-win-retest-1-7.md）
+- [ ] （実機 #10）**Make 2.70's `-2` a test** in `crates/tsumugi/tests/cli.rs` (two `log` requests with the same path) instead of a real-machine row; it is server logic with a file as the result. Small.（qa-reports/2026-10-10-win-retest-1-7.md）
+- [ ] （実機 #10）**Read the log keys.** `Ctrl+Shift+X` (and Cut/Copy/Paste) never show in `TSUMUGI_KEYLOG`; a `key X` or `event Cut` line would let 2.37 be read as text. Small.（qa-reports/2026-10-10-win-retest-1-7.md）
+- [ ] （実機 #10）**Large OSC 1337 images are slow** (37–91 KB: 10–15 s before the prompt returns). Decoding or the escape parser looks quadratic. Medium; worth a profile.（qa-reports/2026-10-10-win-retest-1-7.md）
+- [ ] （実機 #10）**A `tsumugi log N [PATH]` CLI** would let a lane start and finish work logs without the key or the menu, and make 2.70/2.71 text rows. Small.（qa-reports/2026-10-10-win-retest-1-7.md）
+- [ ] （実機 #10）**Older-server fixture** for 1.7/1.11/1.12: keep one old `tsumugi.exe` (0.46.x) next to the scratch cache, or let `scripts/auto-wintest.ps1` fetch the previous release's `.zip` from GitHub into `kit\old\`. Medium.（qa-reports/2026-10-10-win-retest-1-7.md）
+- [ ] （実機 #10・キュー）Take 2.58, 2.24, 2.44, 2.27, 2.3, 2.15, 2.71, 4.16 out of the re-tests (now `[x]`), and 2.54, 2.48 (`[~]`, the owner's to confirm).（qa-reports/2026-10-10-win-retest-1-7.md）
+- [ ] （実機 #10・キュー）Keep 2.70 in the re-tests, but only for the `-2` file; it is better moved to `cli.rs` (see Proposals) and the row's last clause then lives in "Covered by tests". Everything else in it passed on the real exe, key and menu.（qa-reports/2026-10-10-win-retest-1-7.md）
+- [ ] （実機 #10・キュー）Keep 2.37 in the re-tests until `Ctrl+Shift+X` can be seen reaching tsumugi (key-log line, or a machine where the chord is not swallowed). Do not offer it to this machine's lane again before then.（qa-reports/2026-10-10-win-retest-1-7.md）
+- [ ] （実機 #10・キュー）Keep 1.7, 1.11, 1.12 out of the lanes until an older server build can be fetched (they were offered here and could not be done).（qa-reports/2026-10-10-win-retest-1-7.md）
+- [ ] （実機 #10・キュー）`TESTING-KEYS.md` needs regenerating on `main` (see Findings) before the keys chunk is offered again; `Ctrl+Shift+S` and `Ctrl+Shift+O` are then unticked keys for the next x64 run.（qa-reports/2026-10-10-win-retest-1-7.md）
+- [ ] （実機 #10・キュー）Keep 2.70 for the `-2` file only; better moved to `cli.rs` as a test, then "Covered by tests".（PR 本文）
+- [ ] （実機 #10・キュー）Keep 2.37 until `Ctrl+Shift+X` can be seen reaching tsumugi; do not offer it to this machine's lane before then.（PR 本文）
+- [ ] （実機 #10・キュー）Keep 1.7, 1.11, 1.12 out of the lanes until an older server build can be fetched.（PR 本文）
+- [ ] （実機 #10・キュー）Regenerate TESTING-KEYS.md on `main` before the keys chunk is offered again.（PR 本文）
+- [ ] （実機 #10・キュー）🤖 Generated with [Claude Code](https://claude.com/claude-code)（PR 本文）
 
 ## ほかのターミナルにあるもの（2026-10-08、持ち主の依頼で全部取り込む）
 
