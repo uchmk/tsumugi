@@ -156,6 +156,8 @@ at the same time. **Nobody will answer a question**, so:
   started. Never the owner's.
 - **Finish the run yourself**: commit, `git push -u origin <branch>`,
   `gh pr create --base main`. Never merge, never push to `main`, never `--force`.
+  Do not merge main into the branch: when main changed the checklists while
+  you worked, the script does it after you finish and puts your marks back.
 - **The last line you print**, alone: `WINTEST_DONE <pull request URL>`,
   `WINTEST_NOTHING` (no row of the chunk could be done; nothing committed),
   or `WINTEST_FAILED <why>` (and commit nothing then).
@@ -194,7 +196,8 @@ pwsh -NoProfile -File scripts\fetch-conpty.ps1 -Dest target\release
 - **Never run `cargo fmt`.**
 - A bug, or a wrong row in TESTING.md, goes in the report. Do not fix it and
   do not reword the row.
-- The report is a file of its own: `qa-reports/<YYYY-MM-DD>-<branch without test/>.md`,
+- The report is a new file of its own, the name the prompt gives
+  (`qa-reports/<YYYY-MM-DD>-<branch without test/>-<HHmm>.md`); never change an earlier one,
   with a `### Proposals` section (what should work differently, from this run:
   what you ran into, what should change, why, how big). Do not implement them.
 
