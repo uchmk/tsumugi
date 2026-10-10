@@ -229,6 +229,29 @@ fn a_restart_starts_the_shell_again_in_place() {
     pane.kill();
 }
 
+/// A recording begins with the screen as it was: started at a prompt and
+/// stopped with nothing new, it still plays back what was there.
+#[test]
+fn a_recording_begins_with_the_screen() {
+    let at = address();
+    let _srv = serve(&at).expect("the server starts");
+    let c = Client::connect(&at, || {}).expect("a client connects");
+    let pane = c.spawn(std::env::temp_dir(), None, Size::new(80, 24), (8, 16)).expect("a shell starts");
+    until(&pane, "a prompt", |t| !t.trim().is_empty());
+    pane.send(b"echo shown-$((2+3))\r".to_vec());
+    until(&pane, "the echo", |t| t.contains("shown-5"));
+    let path = std::env::temp_dir().join(format!("tsumugi-mux-cast-{}", std::process::id())).join("a.cast");
+    c.record(pane.id(), Some(path.clone()));
+    eventually("the recording to start", || c.sessions().iter().any(|i| !i.recording.is_empty()));
+    c.record(pane.id(), None);
+    eventually("the recording to stop", || c.sessions().iter().all(|i| i.recording.is_empty()));
+    let text = std::fs::read_to_string(&path).unwrap_or_default();
+    let first = text.lines().nth(1).unwrap_or_default();
+    assert!(first.starts_with("[0.000000, \"o\", ") && first.contains("shown-5"), "{text}");
+    let _ = std::fs::remove_dir_all(path.parent().unwrap());
+    pane.kill();
+}
+
 /// A tab's name and pin are the server's, for every window.
 #[test]
 fn tabs_can_be_named_and_pinned() {
