@@ -198,8 +198,15 @@ fn a_new_session_can_start_with_a_line_typed() {
     let at = address();
     let _srv = serve(&at).expect("the server starts");
     let c = Client::connect(&at, || {}).expect("a client connects");
-    let pane = c.spawn_typing(std::env::temp_dir(), None, Size::new(80, 24), (8, 16), Place::NewWorkspace, Some("echo typed-$((40+2))".into())).expect("a shell starts");
+    let pane = c.spawn_typing(std::env::temp_dir(), None, Size::new(80, 24), (8, 16), Place::NewWorkspace, vec!["echo typed-$((40+2))".into()]).expect("a shell starts");
     until(&pane, "the line and its answer", |t| t.contains("typed-42"));
+    pane.kill();
+    // Words reach the program as they were given, quoted for the shell:
+    // nothing expanded, the two spaces kept.
+    let words = vec!["echo".into(), "x$((40+2))y  z".into()];
+    let pane = c.spawn_typing(std::env::temp_dir(), None, Size::new(80, 24), (8, 16), Place::NewWorkspace, words).expect("a shell starts");
+    until(&pane, "the word as it was", |t| t.lines().any(|l| l.trim_end() == "x$((40+2))y  z"));
+    assert!(!text(&pane).contains("x42y"), "the shell expanded the word");
     pane.kill();
 }
 

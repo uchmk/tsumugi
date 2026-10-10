@@ -266,11 +266,12 @@ impl Client {
         cell: (u16, u16),
         place: Place,
     ) -> io::Result<RemotePane> {
-        self.spawn_typing(cwd, shell, size, cell, place, None)
+        self.spawn_typing(cwd, shell, size, cell, place, Vec::new())
     }
 
-    /// [`spawn_at`](Self::spawn_at), typing `typed` into the shell once its
-    /// prompt shows: how Claude Code starts in a new session.
+    /// [`spawn_at`](Self::spawn_at), typing the command `typed` (its words,
+    /// or one word that is a line) into the shell once its prompt shows:
+    /// how Claude Code starts in a new session.
     pub fn spawn_typing(
         &self,
         cwd: PathBuf,
@@ -278,7 +279,7 @@ impl Client {
         size: Size,
         cell: (u16, u16),
         place: Place,
-        typed: Option<String>,
+        typed: Vec<String>,
     ) -> io::Result<RemotePane> {
         self.0.send(ToServer::Spawn { cwd, shell, size, cell, place, typed });
         let id = self.0.wait(|st| st.spawned.pop_front())?.map_err(io::Error::other)?;

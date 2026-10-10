@@ -18,7 +18,8 @@
 #   Send-Click -X 120 -Y 40 [-Right|-Middle]  a click at egui points from the window's client corner
 #   Send-Drag -X 10 -Y 40 -ToX 200 -ToY 40     the left button down, moved in steps, up (a selection, a divider)
 #   Send-Wheel -X 120 -Y 200 -Notches -3       the wheel there; negative is towards you (down)
-#   Get-KeyLog / Get-FocusLog           TSUMUGI_KEYLOG's `key …` lines, its `focus x,y wxh` lines as objects
+#   Get-KeyLog / Get-FocusLog           TSUMUGI_KEYLOG's `key …` and `event Cut|Copy|Paste …` lines, its `focus x,y wxh` lines as objects
+#   Get-DividerLog                      its `divider x,y wxh` lines (the divider under the pointer) as objects
 #   Get-PtyLog                          the bytes the panes were sent (TSUMUGI_PTY_LOG)
 #   Save-Shot -Name before              PrintWindow of our window to <kit dir>\shots\before.png
 #   Backup-UserFile / Restore-UserFile  a person's file: copy and hash first, put back and compare
@@ -383,7 +384,7 @@ function Read-Shared([string]$Path) {
     try { [IO.StreamReader]::new($fs, [Text.Encoding]::UTF8).ReadToEnd() } finally { $fs.Dispose() }
 }
 
-function Get-KeyLog { (Read-Shared (Get-KitWindow).KeyLog) -split "`r?`n" | Where-Object { $_ -like 'key *' } }
+function Get-KeyLog { (Read-Shared (Get-KitWindow).KeyLog) -split "`r?`n" | Where-Object { $_ -like 'key *' -or $_ -like 'event *' } }
 
 # Each `focus x,y wxh` as {X, Y, W, H}; `focus none` as {None = $true}.
 function Get-FocusLog {
@@ -391,6 +392,18 @@ function Get-FocusLog {
         if ($line -match '^focus (-?\d+),(-?\d+) (\d+)x(\d+)$') {
             [pscustomobject]@{ None = $false; X = [int]$Matches[1]; Y = [int]$Matches[2]; W = [int]$Matches[3]; H = [int]$Matches[4] }
         } elseif ($line -eq 'focus none') {
+            [pscustomobject]@{ None = $true; X = $null; Y = $null; W = $null; H = $null }
+        }
+    }
+}
+
+# Each `divider x,y wxh` (the gap the pointer came over, in points) as
+# {X, Y, W, H}; `divider none` (the pointer left it) as {None = $true}.
+function Get-DividerLog {
+    foreach ($line in (Read-Shared (Get-KitWindow).KeyLog) -split "`r?`n") {
+        if ($line -match '^divider (-?\d+),(-?\d+) (\d+)x(\d+)$') {
+            [pscustomobject]@{ None = $false; X = [int]$Matches[1]; Y = [int]$Matches[2]; W = [int]$Matches[3]; H = [int]$Matches[4] }
+        } elseif ($line -eq 'divider none') {
             [pscustomobject]@{ None = $true; X = $null; Y = $null; W = $null; H = $null }
         }
     }

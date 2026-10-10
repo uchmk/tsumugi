@@ -5,6 +5,30 @@
 
 ## [未リリース]
 
+## [0.83.0] - 2026-10-11
+
+### 追加
+
+- `tsumugi log N|NAME [PATH] [--stop]`: スクリプトから作業ログを始めて終える。PATH を省くとダウンロードに書き、書いたファイルの名前を出す
+  （同じ名前があれば `-2`）。ログが動いている間にもう 1 つ始める・動いていないのに `--stop` するのは断る。`--host` では PATH が要る。
+- `TSUMUGI_KEYLOG=1` が、egui がキーでなく Cut・Copy・Paste として渡す Ctrl+X/C/V（Shift 付きも）を `event Cut … -> Some(SwapPane)` の行で出す。
+  `Ctrl+Shift+X` が届いたかを文字で読める。
+- `TSUMUGI_KEYLOG=1` が、ポインターが仕切りに乗ったとき `divider x,y wxh`、離れたとき `divider none` を出す。
+- 実機の道具に `Get-DividerLog` を足し、`Get-KeyLog` が `event` の行も拾うようにした。
+
+### 修正
+
+- `tsumugi new DIR -- PROGRAM ARGS` と `tsumugi split` が、語をセッションのシェル（pwsh・cmd・POSIX のシェル）に合わせて引用して打つ。
+  `Program Files` の中のプログラムを渡すと pwsh が `ParserError` になっていた（実機 #7）。1 語なら今までどおりそのまま 1 行として打つ。
+- mux の取り決めの版を 36 に上げた（新しいセッションの依頼に語の並び）。サーバーとクライアントは同じ版にそろえる。
+
+### 変更
+
+- TESTING.md の 2.70 の「同じ時刻なら `-2`」を CI のテスト（`log_starts_and_finishes_a_work_log_and_never_writes_over_one`）に移し、
+  `tsumugi new` の語の扱いもテストにした。2.45 にフック付きの bash のペインでも成り立つと書いた。
+- 実機のレーンは、古いサーバーの版を取れるようになるまで 1.7・1.11・1.12 を渡さない。再テストの表から確かめ終えた行を外した。
+  最後のセッションを閉じるとサーバーも止まり、次の Welcome back がキーを取ることを役割に書いた。
+
 ## [0.82.1] - 2026-10-11
 
 ### 変更
