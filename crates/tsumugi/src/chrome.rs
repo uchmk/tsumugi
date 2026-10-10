@@ -6,6 +6,8 @@ use eframe::egui::{self, Color32, FontId, RichText};
 use tsumugi_mux::{Info, Notice, SessionId, State};
 use ito_pane::Palette;
 
+use crate::i18n::tr;
+
 /// The four state colours and the faintest text, from the theme in force
 /// (1k): waiting gold, running cyan, error red, done green.
 pub fn gold() -> Color32 {
@@ -393,11 +395,11 @@ pub fn status_bar(
             // ConPTY hands over UTF-8 whatever the program wrote.
             let charset = focus.map_or("UTF-8", |i| if i.charset.is_empty() { "UTF-8" } else { i.charset.as_str() });
             if cfg!(windows) || focus.is_none() {
-                ui.label(small(charset.into(), pal.fg_dim)).on_hover_text("What the panes read and write. On Windows, ConPTY turns any console program's output into UTF-8, whatever its code page");
+                ui.label(small(charset.into(), pal.fg_dim)).on_hover_text(tr("charset.windows_hint"));
             } else {
                 let color = if charset == "UTF-8" { pal.fg_dim } else { ink(gold()) };
                 ui.menu_button(small(charset.into(), color), |ui| {
-                    ui.label(RichText::new("The pane with the keys reads and writes").size(11.5).color(pal.fg_dim));
+                    ui.label(RichText::new(tr("charset.title")).size(11.5).color(pal.fg_dim));
                     for name in ito_pane::CHARSETS {
                         if ui.selectable_label(name == charset, name).clicked() {
                             click = Some(StatusClick::Charset(name.to_owned()));
@@ -406,7 +408,7 @@ pub fn status_bar(
                     }
                 })
                 .response
-                .on_hover_text("The character set of the pane with the keys: Shift_JIS or EUC-JP for an old file or machine");
+                .on_hover_text(tr("charset.hint"));
             }
             if let Some((conversation, today)) = tokens {
                 use crate::usage::short;

@@ -67,6 +67,7 @@ mod help;
 mod find;
 mod paste;
 mod machine;
+mod i18n;
 mod mcp;
 
 use std::time::Duration;
@@ -77,6 +78,7 @@ use std::collections::HashMap;
 use ito_layout::{Node, Rect};
 use tsumugi_mux::{Client, Dir, Info, Place, RemotePane, SessionId, State, Workspace, WorkspaceId};
 use ito_pane::{Palette, Size, ViewOptions, ViewState};
+use i18n::{tr, trf};
 
 fn main() -> std::process::ExitCode {
     // Before anything loads a DLL: `conpty.dll` only from beside the exe.
@@ -572,6 +574,9 @@ fn window() -> std::process::ExitCode {
     if ((cfg!(windows) || cfg!(target_os = "macos")) && first.window.material != "none") || first.window.opacity < 100 {
         viewport = viewport.with_transparent(true);
     }
+    // The OS's language until common.toml is read (a moment after the
+    // window opens), so a machine without the file still follows it.
+    i18n::follow("auto");
     let options = eframe::NativeOptions { viewport, wgpu_options: wgpu_options(&first.advanced.backend), ..Default::default() };
     match eframe::run_native("tsumugi", options, Box::new(|cc| Ok(Box::new(App::new(cc))))) {
         Ok(()) => std::process::ExitCode::SUCCESS,
@@ -1198,7 +1203,7 @@ fn open_with(ui: &mut egui::Ui, words: &str, commands: &[String], focus: &Info) 
     let run = |c: &String| menu::run(tsumugi_mux::settings::fill(c, &focus.cwd, focus.id));
     match commands {
         [] => {
-            ui.add_enabled(false, egui::Button::new(words)).on_disabled_hover_text("None set: Settings → Sessions → Open with");
+            ui.add_enabled(false, egui::Button::new(words)).on_disabled_hover_text(tr("tab.open_none"));
         }
         [one] => {
             if ui.button(words).on_hover_text(one).clicked() {
@@ -2423,13 +2428,13 @@ impl App {
                     if on {
                         p.rect_stroke(rect.expand(1.5), 5.0, egui::Stroke::new(1.0, pal.fg), egui::StrokeKind::Outside);
                     }
-                    let hint = if faded { format!("Show only {t} (muted)") } else { format!("Show only {t}") };
+                    let hint = if faded { trf("tag.show_muted", &[t]) } else { trf("tag.show", &[t]) };
                     let resp = resp.on_hover_text(hint);
                     if resp.clicked() {
                         self.filter.tag = if on { None } else { Some(t.clone()) };
                     }
                     resp.context_menu(|ui| {
-                        let label = if faded { format!("Unmute notifications for {t}") } else { format!("Mute notifications for {t}") };
+                        let label = if faded { trf("tag.unmute", &[t]) } else { trf("tag.mute", &[t]) };
                         if ui.button(label).clicked() {
                             ops.push(SideOp::MuteTag(t.clone(), !faded));
                             ui.close();
@@ -2873,7 +2878,7 @@ impl App {
                     if *id == w.id {
                         self.fields_drawn.1 = true;
                         let at = egui::Rect::from_min_size(egui::pos2(left - 4.0, rect.top() + 3.0), egui::vec2(width - 10.0, 22.0));
-                        let field = ui.put(at, egui::TextEdit::singleline(text).id(egui::Id::new(("rename-card", w.id))).hint_text("The tab's name").font(egui::FontId::proportional(13.5)));
+                        let field = ui.put(at, egui::TextEdit::singleline(text).id(egui::Id::new(("rename-card", w.id))).hint_text(tr("tab.name_hint")).font(egui::FontId::proportional(13.5)));
                         keep_focus(&field);
                         let (enter, esc) = ui.input(|i| (i.key_pressed(egui::Key::Enter), i.key_pressed(egui::Key::Escape)));
                         if enter {
@@ -2983,7 +2988,7 @@ impl App {
                             "rename" => {
                                 match &mut self.renaming {
                                     Some((id, text)) if *id == w.id => {
-                                        let edit = ui.add(egui::TextEdit::singleline(text).id(egui::Id::new(("rename", w.id))).hint_text("The tab's name").desired_width(220.0));
+                                        let edit = ui.add(egui::TextEdit::singleline(text).id(egui::Id::new(("rename", w.id))).hint_text(tr("tab.name_hint")).desired_width(220.0));
                                         keep_focus(&edit);
                                         if ui.input(|i| i.key_pressed(egui::Key::Enter)) {
                                             ops.push(SideOp::Rename(w.id, text.clone()));
@@ -2992,15 +2997,15 @@ impl App {
                                         }
                                     }
                                     _ => {
-                                        if ui.add(egui::Button::new("Rename…").shortcut_text(keys::label(keys::Action::Rename))).clicked() {
+                                        if ui.add(egui::Button::new(tr("tab.rename")).shortcut_text(keys::label(keys::Action::Rename))).clicked() {
                                             self.renaming = Some((w.id, w.name.clone()));
                                         }
                                     }
                                 }
                             }
                             "note" => {
-                                let label = if w.note.is_empty() { "Note…" } else { "Edit the note…" };
-                                if ui.button(label).on_hover_text("A line of your own on the card: what the tab is for").clicked() {
+                                let label = if w.note.is_empty() { tr("tab.note") } else { tr("tab.edit_note") };
+                                if ui.button(label).on_hover_text(tr("tab.note_hint")).clicked() {
                                     self.noting_card = Some((w.id, w.note.clone()));
                                     self.fields_drawn.0 = true;
                                     ui.close();
@@ -3008,12 +3013,12 @@ impl App {
                             }
                             "tags" => {
                                 for t in &tags {
-                                    if ui.button(format!("Remove tag {t}")).clicked() {
+                                    if ui.button(trf("tab.remove_tag", &[t])).clicked() {
                                         ops.push(SideOp::Tag(ids.clone(), t.to_string(), false));
                                     }
                                 }
                                 if tags.len() < tsumugi_mux::proto::MAX_TAGS {
-                                    let edit = ui.add(egui::TextEdit::singleline(&mut self.tag_input).id(egui::Id::new(("tag-input", w.id))).hint_text("Add a tag").desired_width(220.0));
+                                    let edit = ui.add(egui::TextEdit::singleline(&mut self.tag_input).id(egui::Id::new(("tag-input", w.id))).hint_text(tr("tab.add_tag")).desired_width(220.0));
                                     if edit.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
                                         if let Some(t) = tsumugi_mux::proto::tag_name(&self.tag_input) {
                                             ops.push(SideOp::Tag(ids.clone(), t, true));
@@ -3022,55 +3027,55 @@ impl App {
                                         edit.request_focus();
                                     }
                                 } else {
-                                    ui.label(egui::RichText::new(format!("{} tags at most", tsumugi_mux::proto::MAX_TAGS)).color(pal.fg_dim));
+                                    ui.label(egui::RichText::new(trf("tab.tags_at_most", &[&tsumugi_mux::proto::MAX_TAGS.to_string()])).color(pal.fg_dim));
                                 }
                             }
                             "mute" => {
-                                let label = if muted { "Unmute notifications" } else { "Mute notifications" };
-                                if ui.button(label).on_hover_text("Muted: in the bell only, no system notification or taskbar number").clicked() {
+                                let label = if muted { tr("tab.unmute") } else { tr("tab.mute") };
+                                if ui.button(label).on_hover_text(tr("tab.mute_hint")).clicked() {
                                     ops.push(SideOp::Mute(ids.clone(), !muted));
                                     ui.close();
                                 }
                             }
                             "pin" => {
-                                let label = if w.pinned { "Unpin" } else { "Pin to top" };
+                                let label = if w.pinned { tr("tab.unpin") } else { tr("tab.pin") };
                                 if ui.button(label).clicked() {
                                     ops.push(SideOp::Pin(w.id, !w.pinned));
                                     ui.close();
                                 }
                             }
                             "restart" => {
-                                let label = if focus.claude { "Restart (resume the conversation)" } else { "Restart" };
+                                let label = if focus.claude { tr("tab.restart_resume") } else { tr("tab.restart") };
                                 if ui.button(label).clicked() {
                                     ops.push(SideOp::Restart(focus.id));
                                     ui.close();
                                 }
                             }
                             "duplicate" => {
-                                if ui.add(egui::Button::new("Duplicate in the same folder").shortcut_text(keys::label(keys::Action::Duplicate))).clicked() {
+                                if ui.add(egui::Button::new(tr("tab.duplicate")).shortcut_text(keys::label(keys::Action::Duplicate))).clicked() {
                                     ops.push(SideOp::Duplicate(focus.cwd.clone(), focus.claude));
                                     ui.close();
                                 }
                             }
                             "new-window" => {
-                                if ui.button("Move to a new window").clicked() {
+                                if ui.button(tr("tab.new_window")).clicked() {
                                     menu::new_window(w.id);
                                     ui.close();
                                 }
                             }
-                            "filer" => open_with(ui, "Open the folder in kura", &self.open.filer, focus),
-                            "editor" => open_with(ui, "Open in the editor", &self.open.editor, focus),
+                            "filer" => open_with(ui, tr("tab.open_filer"), &self.open.filer, focus),
+                            "editor" => open_with(ui, tr("tab.open_editor"), &self.open.editor, focus),
                             "copy-path" => {
-                                if ui.button("Copy the folder path").clicked() {
+                                if ui.button(tr("tab.copy_path")).clicked() {
                                     ui.ctx().copy_text(focus.cwd.display().to_string());
                                     ui.close();
                                 }
                             }
                             "work-log" => {
                                 let (label, hint) = if focus.logging.is_empty() {
-                                    ("Write a work log", "The pane with the keys to a text file in Downloads as it goes: the scrollback now, then each line as it scrolls off")
+                                    (tr("tab.work_log"), tr("tab.work_log_hint"))
                                 } else {
-                                    ("Finish the work log", "Write the screen and close the file")
+                                    (tr("tab.work_log_end"), tr("tab.work_log_end_hint"))
                                 };
                                 if ui.add(egui::Button::new(label).shortcut_text(keys::label(keys::Action::WorkLog))).on_hover_text(hint).clicked() {
                                     let tab = if w.name.is_empty() { sort::display_title(&focus.title, &focus.command) } else { w.name.clone() };
@@ -3080,13 +3085,13 @@ impl App {
                             }
                             "pr" => {
                                 let shown = !focus.branch.is_empty() && !matches!(focus.branch.as_str(), "main" | "master");
-                                if shown && ui.button("Create a pull request").on_hover_text(format!("Push {} and open a pull request with gh, titled from its commits", focus.branch)).clicked() {
+                                if shown && ui.button(tr("tab.pr")).on_hover_text(trf("tab.pr_hint", &[&focus.branch])).clicked() {
                                     ops.push(SideOp::CreatePr(focus.cwd.clone()));
                                     ui.close();
                                 }
                             }
                             "save-output" => {
-                                if ui.button("Save the output to a file").on_hover_text("The scrollback and the screen of the pane with the keys, as text in Downloads").clicked() {
+                                if ui.button(tr("tab.save_output")).on_hover_text(tr("tab.save_output_hint")).clicked() {
                                     ops.push(SideOp::SaveOutput(focus.id, sort::display_title(&focus.title, &focus.command)));
                                     ui.close();
                                 }
@@ -3095,7 +3100,7 @@ impl App {
                                 // Something running in it: a second click, to be sure.
                                 let busy = infos.iter().any(|i| matches!(i.state, State::Running | State::MaybeWaiting));
                                 let armed = self.close_armed == Some(w.id);
-                                let label = if armed { "Click again to close: it is running" } else { "Close the session" };
+                                let label = if armed { tr("tab.close_armed") } else { tr("tab.close") };
                                 if ui.add(egui::Button::new(egui::RichText::new(label).color(crate::theme::colors().err)).shortcut_text(keys::label(keys::Action::CloseTab))).clicked() {
                                     if busy && !armed {
                                         self.close_armed = Some(w.id);
@@ -3932,16 +3937,16 @@ impl App {
             }
             if let Some(h) = &host {
                 label.context_menu(|ui| {
-                    if ui.button("Reconnect").clicked() {
+                    if ui.button(tr("machine.reconnect")).clicked() {
                         did = Some(Do::Reach(h.clone()));
                         ui.close();
                     }
-                    let restart = ui.button("Restart its server").on_hover_text("Stop tsumugi's server there and start it again, as updated: its sessions end, its tabs come back");
+                    let restart = ui.button(tr("machine.restart")).on_hover_text(tr("machine.restart_hint"));
                     if restart.clicked() {
                         did = Some(Do::Restart(h.clone()));
                         ui.close();
                     }
-                    let forget = ui.add_enabled(!shown, egui::Button::new("Forget")).on_disabled_hover_text("Shown now: show this machine first");
+                    let forget = ui.add_enabled(!shown, egui::Button::new(tr("machine.forget"))).on_disabled_hover_text(tr("machine.forget_shown"));
                     if forget.clicked() {
                         did = Some(Do::Forget(h.clone()));
                         ui.close();
@@ -5256,6 +5261,7 @@ impl App {
                 Read::Themes(Err(e)) => self.theme_file_error = Some(e),
                 Read::Common(Ok((common, warnings))) => {
                     self.language = common.language.clone().unwrap_or_else(|| "auto".into());
+                    i18n::follow(&self.language);
                     let s = &self.settings_now;
                     self.theme_choice = common.theme_choice(Some((&s.theme, &s.dark_theme, &s.light_theme)));
                     self.common = common;

@@ -1,0 +1,72 @@
+# The words of tsumugi's own menus, in English. Another language is a file
+# beside this one (ja.toml) with the same keys; a key it lacks reads in
+# English. `{0}`, `{1}` … are filled in where the menu is drawn.
+
+# The tab's right-click menu (the design's 1j).
+[tab]
+name_hint = "The tab's name"
+rename = "Rename…"
+note = "Note…"
+edit_note = "Edit the note…"
+note_hint = "A line of your own on the card: what the tab is for"
+remove_tag = "Remove tag {0}"
+add_tag = "Add a tag"
+tags_at_most = "{0} tags at most"
+mute = "Mute notifications"
+unmute = "Unmute notifications"
+mute_hint = "Muted: in the bell only, no system notification or taskbar number"
+pin = "Pin to top"
+unpin = "Unpin"
+restart = "Restart"
+restart_resume = "Restart (resume the conversation)"
+duplicate = "Duplicate in the same folder"
+new_window = "Move to a new window"
+open_filer = "Open the folder in kura"
+open_editor = "Open in the editor"
+open_none = "None set: Settings → Sessions → Open with"
+copy_path = "Copy the folder path"
+work_log = "Write a work log"
+work_log_hint = "The pane with the keys to a text file in Downloads as it goes: the scrollback now, then each line as it scrolls off"
+work_log_end = "Finish the work log"
+work_log_end_hint = "Write the screen and close the file"
+pr = "Create a pull request"
+pr_hint = "Push {0} and open a pull request with gh, titled from its commits"
+save_output = "Save the output to a file"
+save_output_hint = "The scrollback and the screen of the pane with the keys, as text in Downloads"
+close = "Close the session"
+close_armed = "Click again to close: it is running"
+
+# A tag's chip in the sidebar, and its right-click menu.
+[tag]
+show = "Show only {0}"
+show_muted = "Show only {0} (muted)"
+mute = "Mute notifications for {0}"
+unmute = "Unmute notifications for {0}"
+
+# Another machine's right-click menu in the sidebar.
+[machine]
+reconnect = "Reconnect"
+restart = "Restart its server"
+restart_hint = "Stop tsumugi's server there and start it again, as updated: its sessions end, its tabs come back"
+forget = "Forget"
+forget_shown = "Shown now: show another machine first"
+
+# The character set at the status bar's right end.
+[charset]
+title = "The pane with the keys reads and writes"
+hint = "The character set of the pane with the keys: Shift_JIS or EUC-JP for an old file or machine"
+windows_hint = "What the panes read and write. On Windows, ConPTY turns any console program's output into UTF-8, whatever its code page"
+
+# The input box's menus: the sessions to send to, the prompts kept.
+[inputbox]
+sessions = "+ Sessions"
+sessions_hint = "Send the same prompt to other sessions as well"
+send_to = "Send the same prompt to"
+every = "Every session"
+only_this = "Only this pane"
+prompts = "Prompts…"
+none_kept = "None kept yet: write one and save it below"
+forget = "Forget it"
+placeholders = "{folder}, {project} and {branch} become each session's"
+name_hint = "Name this prompt"
+save = "Save"

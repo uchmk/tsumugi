@@ -11,6 +11,7 @@ use std::path::PathBuf;
 use eframe::egui::{self, FontId, RichText};
 use tsumugi_mux::SessionId;
 
+use crate::i18n::tr;
 use crate::theme::Colors;
 
 /// How many prompts the history keeps.
@@ -290,9 +291,9 @@ impl InputBox {
                 }
                 let rest: Vec<&(SessionId, String)> = others.iter().filter(|(o, _)| *o != to).collect();
                 if !rest.is_empty() {
-                    let menu = stay_open(RichText::new("+ Sessions").size(12.0).color(c.dim)).ui(ui, |ui| {
+                    let menu = stay_open(RichText::new(tr("inputbox.sessions")).size(12.0).color(c.dim)).ui(ui, |ui| {
                         ui.set_min_width(220.0);
-                        ui.label(RichText::new("Send the same prompt to").size(11.5).color(c.dim));
+                        ui.label(RichText::new(tr("inputbox.send_to")).size(11.5).color(c.dim));
                         for (o, n) in &rest {
                             let mut on = self.to_also.contains(o);
                             if ui.checkbox(&mut on, n.as_str()).changed() {
@@ -305,12 +306,12 @@ impl InputBox {
                             }
                         }
                         ui.separator();
-                        if ui.button("Every session").clicked() {
+                        if ui.button(tr("inputbox.every")).clicked() {
                             self.to_tags.clear();
                             self.to_also = rest.iter().map(|(o, _)| *o).collect();
                             ui.close();
                         }
-                        if !self.to_also.is_empty() && ui.button("Only this pane").clicked() {
+                        if !self.to_also.is_empty() && ui.button(tr("inputbox.only_this")).clicked() {
                             self.to_also.clear();
                             ui.close();
                         }
@@ -321,7 +322,7 @@ impl InputBox {
                         self.focus = true;
                     }
                     menus_open |= menu.1.is_some();
-                    menu.0.on_hover_text("Send the same prompt to other sessions as well");
+                    menu.0.on_hover_text(tr("inputbox.sessions_hint"));
                 }
                 if !tags.is_empty() {
                     ui.label(RichText::new("or").size(12.0).color(c.faint()));
@@ -345,15 +346,15 @@ impl InputBox {
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     // Prompts kept: one picked goes into the draft.
                     let mut picked = false;
-                    let menu = stay_open(RichText::new("Prompts…").size(12.0).color(c.dim)).ui(ui, |ui| {
+                    let menu = stay_open(RichText::new(tr("inputbox.prompts")).size(12.0).color(c.dim)).ui(ui, |ui| {
                         ui.set_min_width(260.0);
                         if self.prompts.is_empty() {
-                            ui.label(RichText::new("None kept yet: write one and save it below").size(11.5).color(c.dim));
+                            ui.label(RichText::new(tr("inputbox.none_kept")).size(11.5).color(c.dim));
                         }
                         let mut gone = None;
                         for (k, p) in self.prompts.iter().enumerate() {
                             ui.horizontal(|ui| {
-                                if ui.small_button("×").on_hover_text("Forget it").clicked() {
+                                if ui.small_button("×").on_hover_text(tr("inputbox.forget")).clicked() {
                                     gone = Some(k);
                                 }
                                 if ui.button(&p.name).on_hover_text(&p.text).clicked() {
@@ -373,11 +374,11 @@ impl InputBox {
                         }
                         ui.separator();
                         if draft.text.trim().is_empty() {
-                            ui.label(RichText::new("{folder}, {project} and {branch} become each session's").size(11.0).color(c.faint()));
+                            ui.label(RichText::new(tr("inputbox.placeholders")).size(11.0).color(c.faint()));
                         } else {
                             ui.horizontal(|ui| {
-                                ui.add(egui::TextEdit::singleline(&mut self.naming).hint_text("Name this prompt").desired_width(160.0));
-                                if ui.add_enabled(!self.naming.trim().is_empty(), egui::Button::new("Save")).clicked() {
+                                ui.add(egui::TextEdit::singleline(&mut self.naming).hint_text(tr("inputbox.name_hint")).desired_width(160.0));
+                                if ui.add_enabled(!self.naming.trim().is_empty(), egui::Button::new(tr("inputbox.save"))).clicked() {
                                     let name = std::mem::take(&mut self.naming).trim().to_owned();
                                     self.prompts.retain(|p| p.name != name);
                                     self.prompts.push(crate::prompts::Prompt { name, text: draft.text.trim_end().to_owned() });
