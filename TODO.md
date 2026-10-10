@@ -28,10 +28,13 @@ tsumugi のやること。`【人】` は持ち主の作業、`【金】` は 20
 - [x] （v0.81.0）共有のクレート `tsumugi-common`（common.toml・設定の 1 キーの書き換え・見張り・時計の文字）、`tsumugi-theme`（テーマ）、
       `tsumugi-prefs`（設定の画面の枠と部品、Language・CLOCK・Theme の共通のページ）を切り出し、tsumugi の設定の画面をその上に作り直した。
       テーマと時計は common.toml を読み書きする（settings.toml の古い値は common.toml に無ければ使う）。`uchmk/themes/` も読む。
-- [ ] （mimamori v0.32.0 で）mimamori に設定の画面・テーマ・時計を足す。
+- [x] （mimamori v0.32.0 で済んだ）mimamori に設定の画面・テーマ・時計を足す。
 - [ ] filer に持ち帰る: Ctrl+, の設定の画面を `ito-prefs` で作り、ステータスバーの右端に時計を出し、common.toml のテーマと時計を読む。
       yazi の `theme.toml` との関係は filer の QUESTIONS.md で持ち主に聞く。filer の TODO.md の「設定の画面（uchmk の共通仕様）」で進める。
-- [ ] tsumugi 自身のメニューを `ito-i18n` の表に載せ、設定の画面の文字を `Words::of(language)` で日本語にも出す（今は英語だけ、TESTING.md 17.38）。
+- [x] （v0.86.0）tsumugi 自身のメニューを `ito-i18n` の表に載せ、設定の画面の文字を `Words::of(language)` で日本語にも出す（今は英語だけ、TESTING.md 17.38）。
+      タブ・タグ・マシンの右クリックのメニュー、文字コードのメニュー、入力欄の `+ Sessions` と `Prompts…` を `src/lang/` の表にした。
+- [ ] 残りの画面の文字も表に載せる: 設定の画面の tsumugi のページ（`prefs.rs` の行と見出し）、パレット、ヘルプ（keys.rs の説明は `[keydesc]`）、
+      サイドバー、ステータスバー、トースト。
 
 ## 実機のレーンから
 
