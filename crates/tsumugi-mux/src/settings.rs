@@ -98,7 +98,7 @@
 //! # {column}); empty, the system opens it.
 //! [open]
 //! editor = ["code {folder}", "sakura {folder}"]
-//! filer = "filer {folder}"
+//! filer = "kura {folder}"
 //! file = "code --goto {file}:{line}:{column}"
 //!
 //! # The tab's menu (the design's 1j): items left out, and more of your own.
@@ -572,7 +572,7 @@ pub struct Open {
 
 impl Default for Open {
     fn default() -> Self {
-        Self { editor: vec!["code {folder}".into()], filer: vec!["filer {folder}".into()], file: "code --goto {file}:{line}:{column}".into() }
+        Self { editor: vec!["code {folder}".into()], filer: vec!["kura {folder}".into()], file: "code --goto {file}:{line}:{column}".into() }
     }
 }
 
@@ -636,7 +636,7 @@ pub fn menu_label(word: &str) -> &'static str {
         "restart" => "Restart",
         "duplicate" => "Duplicate in the same folder",
         "new-window" => "Move to a new window",
-        "filer" => "Open the folder in filer",
+        "filer" => "Open the folder in kura",
         "editor" => "Open in the editor",
         "copy-path" => "Copy the folder path",
         "save-output" => "Save the output to a file",

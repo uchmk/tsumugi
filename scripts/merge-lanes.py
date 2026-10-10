@@ -2,18 +2,18 @@
 """Merge the real-machine lanes' pull requests that keep to the rules.
 
 Run by .github/workflows/merge-lanes.yml. It merges a pull request from a lane
-branch (test/win-*, test/arm-*, and in filer test/linux-*) with a merge commit
+branch (test/win-*, test/arm-*, and in kura test/linux-*) with a merge commit
 pinned to its head, and only when all of these hold:
 
   1. it touches only the files a lane may write: the checklists and one new
-     report under qa-reports/ (filer), or the checklists and new files under
+     report under qa-reports/ (kura), or the checklists and new files under
      qa-reports/ (tsumugi);
   2. every changed checklist line is the same line with only its mark changed,
      from `[ ]` to a mark that lane may set;
   3. every new mark has its evidence: a line naming the row (or the key) in
      the pull request body -- in tsumugi the new report counts too -- and a
      `[~]` names its picture;
-  4. filer: TODO.md's "マージで止めている実機の PR" does not hold it;
+  4. kura: TODO.md's "マージで止めている実機の PR" does not hold it;
   5. every check run on its head has finished, none failed, and the
      checklist job is among them;
   6. GitHub says it merges without a conflict.
@@ -35,7 +35,7 @@ It also does the merger's share for lane pull requests merged in the last 7
 days whose `#N` is not in CHANGELOG.md: a PATCH bump (Cargo.toml and
 Cargo.lock), a CHANGELOG line per pull request, and the reports' proposals,
 queue notes and votes into TODO.md. In tsumugi it also takes the ticked rows
-out of the role's re-test list. In filer, whose lane queue is prose, the
+out of the role's re-test list. In kura, whose lane queue is prose, the
 TODO.md lines carry `【後】` and one more line per pull request asks for its
 report to be read: the merge routine sorts them once a day.
 
@@ -46,7 +46,7 @@ runs only main's copy of this script.
     MERGE_LANES_DRY_RUN=1 python3 scripts/merge-lanes.py
     python3 scripts/merge-lanes.py --self-test
 
-The same file lives in uchmk/filer and uchmk/tsumugi; keep the two copies
+The same file lives in uchmk/kura and uchmk/tsumugi; keep the two copies
 identical (the repository picks its rules from RULES).
 """
 
@@ -78,7 +78,7 @@ TSUMUGI_WINDOWS_MARKS = {
 }
 
 RULES = {
-    "uchmk/filer": {
+    "uchmk/kura": {
         "lanes": {
             "test/win-": WINDOWS_MARKS,
             "test/arm-": WINDOWS_MARKS,
@@ -799,7 +799,7 @@ def self_test():
     try:
         new_marks("TESTING-KEYS.md", "@@\n-- [ ] `q` — Quit\n+- [~] `q` — Quit\n",
                   WINDOWS_MARKS["TESTING-KEYS.md"])
-        raise AssertionError("accepted [~] in filer's TESTING-KEYS.md")
+        raise AssertionError("accepted [~] in kura's TESTING-KEYS.md")
     except RuleError:
         pass
     assert new_marks("TESTING-KEYS.md", "@@\n-- [ ] `F1` — Help\n+- [~] `F1` — Help\n",

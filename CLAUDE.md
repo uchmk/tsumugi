@@ -1,7 +1,7 @@
 # tsumugi — Claude 向けメモ
 
 Claude Code などの AI CLI のセッションを何本も並べて動かすためのターミナル。Rust + egui、Windows 優先。
-姉妹プロジェクトの [filer](https://github.com/uchmk/filer)（yazi 風のファイルマネージャー）のターミナルペインを土台にする。
+姉妹プロジェクトの [kura](https://github.com/uchmk/kura)（旧 filer、yazi 風のファイルマネージャー）のターミナルペインを土台にする。
 
 前の会話からの引き継ぎ（今の版と次の手順）は [docs/handoff.md](docs/handoff.md)。最初の版の範囲は [docs/v1-scope.md](docs/v1-scope.md)。共有のクレート（ペイン・分割・言語・設定の画面・テーマなど、`ito-*`）は [ito](https://github.com/uchmk/ito) にある（v0.82.0 で移した）。
 ペインを filer から切り出した経緯は [docs/pane-extraction.md](docs/pane-extraction.md)。
@@ -17,8 +17,8 @@ Claude Code などの AI CLI のセッションを何本も並べて動かすた
 - 頼まれるまでコミットしない。
 - 改行は LF。スクリプトで書き換えるときは改行を変えない（Python なら `newline=''`）。
 - やることは [TODO.md](TODO.md) に書く（`【人】` は持ち主の作業、`【金】` は 2026-10-09 以降に始めるもの）。
-- 人への確認事項は QUESTIONS.md に書く（形式は filer の CLAUDE.md の「確認事項」と同じ。選択肢に推奨を 1 つ付ける）。
-- **`cargo fmt` は走らせない。**filer と同じく手で整形する（`Self { a, b, c }` を 1 行に収める書き方）。整形の確認は `cargo fmt --check` で見るだけ。
+- 人への確認事項は QUESTIONS.md に書く（形式は kura の CLAUDE.md の「確認事項」と同じ。選択肢に推奨を 1 つ付ける）。
+- **`cargo fmt` は走らせない。**kura と同じく手で整形する（`Self { a, b, c }` を 1 行に収める書き方）。整形の確認は `cargo fmt --check` で見るだけ。
 - clippy は `--all-targets -- -D warnings` で警告ゼロを保つ。検証は CI と同じ stable で回す。
 
 ## 共有のクレート（ito）
@@ -48,7 +48,7 @@ Claude Code などの AI CLI のセッションを何本も並べて動かすた
 
 ## 版と変更ログ（コードが入ったら）
 
-filer と同じ。`Cargo.toml` の `version` が正、版の繰り上げと CHANGELOG.md（日本語、Keep a Changelog、日付は JST）はセットでコミットする。
+kura と同じ。`Cargo.toml` の `version` が正、版の繰り上げと CHANGELOG.md（日本語、Keep a Changelog、日付は JST）はセットでコミットする。
 `main` への直接の push を許す。マージは merge コミットで行う（rebase / squash を使わない）。
 
 ## リリース
@@ -65,8 +65,8 @@ filer と同じ。`Cargo.toml` の `version` が正、版の繰り上げと CHAN
   1 回分の塊（再テスト → キー（x64 だけ）→ 節の順、最大 15 行）を選び、その行だけをプロンプトに入れて Claude（既定は Sonnet 5.5）を起動する。
   塊が無い・自分の PR が開いている・ビルドが落ちたときは Claude を起動しない。道具は `scripts/wintest-kit.ps1`、塊の選び方は `scripts/wintest-queue.ps1`
   （`scripts/check-ps1.ps1` が CI で確かめる）。報告は `qa-reports/<日付>-<ブランチ>.md`。
-- 同じ机で filer のレーンとキーがぶつからないよう、両方のスクリプトが `Local\wintest-desktop` のロックを取る（最大 20 分待って次回へ）。
-- 実機の PR（`test/win-*`・`test/arm-*`）は、ワークフロー `Merge lanes`（`.github/workflows/merge-lanes.yml`、中身は filer と同じ `scripts/merge-lanes.py`）が
+- 同じ机で kura のレーンとキーがぶつからないよう、両方のスクリプトが `Local\wintest-desktop` のロックを取る（最大 20 分待って次回へ）。
+- 実機の PR（`test/win-*`・`test/arm-*`）は、ワークフロー `Merge lanes`（`.github/workflows/merge-lanes.yml`、中身は kura と同じ `scripts/merge-lanes.py`）が
   規則（触ってよいファイル・印の変わり方・印ごとの証拠の行）と `check` の緑を確かめて、head を固定した merge コミットでマージする（v0.76.4 から）。
   チェック表だけのぶつかりは main の表に PR の印を入れ直して自分でマージし、マージ済みの PR の分け前（PATCH・Cargo.lock・CHANGELOG・再テストの表・
   報告の Proposals と Queue を TODO.md へ）も main に push して CI を起こす（v0.76.6 から）。

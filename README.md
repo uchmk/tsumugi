@@ -544,7 +544,7 @@ couple of seconds, without restarting; a mistake shows above the status bar
 with its line, and the last good settings stay in force.
 
 The language, the theme and the clock are not in `settings.toml`: they
-are in the `common.toml` that filer and mimamori read too
+are in the `common.toml` that kura and yagura read too
 (`%APPDATA%\uchmk\`, `~/Library/Application Support/uchmk/`,
 `~/.config/uchmk/`; `UCHMK_CONFIG_DIR` names another folder), so they are
 set once for every uchmk app, and a change there reaches them all within a
@@ -692,7 +692,7 @@ cursor = "block-blink"     # block, bar or underline, -blink to blink
 # open to its right.
 [open]
 editor = ["code {folder}", "sakura {folder}"]
-filer = "filer {folder}"
+filer = "kura {folder}"
 # A file Ctrl+clicked in a pane's output, at its line and column ("" opens
 # it with the system's own program).
 file = "code --goto {file}:{line}:{column}"
@@ -714,7 +714,7 @@ The tab's right-click menu: **Rename…** (`F2`, a field on the card),
 conversation), **Duplicate in the same folder** (`Ctrl+Shift+D`, `Cmd+Option+D`
 on macOS; Claude Code is started again in it if it ran there), **Move to a
 new window**;
-**Open the folder in filer**, **Open in the editor** (the commands in
+**Open the folder in kura**, **Open in the editor** (the commands in
 `[open]` above, set in Settings → Sessions → Open with; with several, a
 click runs the first and ▶ opens the rest by program name, as Sakura
 Editor's menus do), **Copy the folder path**; your own items from
@@ -926,10 +926,10 @@ and then past it:
 
 ## Where it comes from
 
-The terminal pane of [filer](https://github.com/uchmk/filer), a yazi-style
-file manager, has been driven hard on real Windows machines: ConPTY with a
-newer bundled build, win32-input-mode, OSC 7, mouse reporting, a scripted test
-harness. That pane is being split out into a shared crate, and tsumugi is
+The terminal pane of [kura](https://github.com/uchmk/kura) (formerly filer),
+a yazi-style file manager, has been driven hard on real Windows machines:
+ConPTY with a newer bundled build, win32-input-mode, OSC 7, mouse reporting, a
+scripted test harness. That pane is being split out into a shared crate, and tsumugi is
 built on it.
 
 ## License

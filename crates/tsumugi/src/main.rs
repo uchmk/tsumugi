@@ -3048,7 +3048,7 @@ impl App {
                                     ui.close();
                                 }
                             }
-                            "filer" => open_with(ui, "Open the folder in filer", &self.open.filer, focus),
+                            "filer" => open_with(ui, "Open the folder in kura", &self.open.filer, focus),
                             "editor" => open_with(ui, "Open in the editor", &self.open.editor, focus),
                             "copy-path" => {
                                 if ui.button("Copy the folder path").clicked() {

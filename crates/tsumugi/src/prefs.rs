@@ -136,7 +136,7 @@ pub const INDEX: &[(Page, &str)] = &[
     (Page::Sessions, "Sort"),
     (Page::Sessions, "New profile"),
     (Page::Sessions, "Editor command"),
-    (Page::Sessions, "filer command"),
+    (Page::Sessions, "kura command"),
     (Page::Sessions, "TAB MENU"),
     (Page::Sessions, "File command"),
     (Page::Tags, "New rule"),
@@ -245,7 +245,7 @@ pub enum Change {
     /// One key of a table named at run time (`[tags.colors]`, `[shell.env]`),
     /// the key as TOML writes it; `None` takes it out.
     SetIn(String, String, Option<String>),
-    /// One key of common.toml, which filer and mimamori read too: the
+    /// One key of common.toml, which kura and yagura read too: the
     /// language, the theme and the clock.
     Common(CommonChange),
     /// Every `[[tags.rule]]`, in place of those there.
@@ -364,7 +364,7 @@ fn general(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut V
     let g = &seen.settings.general;
     let set = |key: &'static str, v: bool| Change::Set(Some("general"), key, v.to_string());
     section(ui, l, "STARTUP", |ui| {
-        let note = "Shared with filer and mimamori (common.toml); tsumugi's own menus are English for now";
+        let note = "Shared with kura and yagura (common.toml); tsumugi's own menus are English for now";
         out.extend(ito_prefs::language_row(ui, l, &EN, seen.language, note).map(Change::Common));
         sep(ui, l);
         let starts = [(true, "Restore the last sessions"), (false, "Ask (Welcome back)")];
@@ -1000,7 +1000,7 @@ fn sessions(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut 
     section(ui, l, "OPEN WITH", |ui| {
         commands(ui, l, edit, out, "editor", "Editor command", "The tab menu's \u{201c}Open in the editor\u{201d}; {folder} is the session's folder", &o.editor, "code {folder}");
         sep(ui, l);
-        commands(ui, l, edit, out, "filer", "filer command", "The tab menu's \u{201c}Open the folder in filer\u{201d}", &o.filer, "filer {folder}");
+        commands(ui, l, edit, out, "filer", "kura command", "The tab menu's \u{201c}Open the folder in kura\u{201d}", &o.filer, "kura {folder}");
         sep(ui, l);
         if let Some(t) = row(ui, l, "File command", "A Ctrl+click on a file's path in a pane; {file}, {line} and {column}. Empty: the system's way", |ui| field(ui, &mut edit.drafts, "file", &o.file, "code --goto {file}:{line}:{column}", 220.0)) {
             out.push(Change::Set(Some("open"), "file", cfg::quote(&t)));

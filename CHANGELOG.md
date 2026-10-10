@@ -5,6 +5,17 @@
 
 ## [未リリース]
 
+## [0.82.1] - 2026-10-11
+
+### 変更
+
+- filer が kura（v0.95.0）に名前を変えたのに合わせた。右クリックの **Open the folder in filer** は **Open the folder in kura** になり、
+  設定の `[open] filer` の既定は `kura {folder}` になった（キーの名前 `filer` はそのまま。`settings.toml` に `filer {folder}` と書いてあれば
+  そのまま使われるので、kura に替えるときは書き直す）。設定の画面の欄の名前も **kura command** にした。
+- 設定の画面の言語の注記を「kura と yagura と共有」にした（mimamori は yagura に名前を変えた）。
+- `scripts/merge-lanes.py` を kura の同じファイルに合わせた（規則の鍵が `uchmk/filer` から `uchmk/kura` に）。
+- 間違えてコミットしていた `scripts/__pycache__` を消し、`.gitignore` に足した。
+
 ## [0.82.0] - 2026-10-11
 
 ### 変更

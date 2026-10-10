@@ -468,7 +468,7 @@ to `cli.rs` and a line to this table instead of a row.
 | 17.32 | Put a mistake in `settings.toml` (`[broken`), then change anything in Settings | A toast says the file does not read and is left as it is; the file is unchanged |
 | 17.33 | `[[menu.session]] command = "\"C:\\Program Files\\Microsoft VS Code\\Code.exe\" {folder}"` (Windows), then the card menu item | VS Code opens on the tab's folder (cmd took the line whole) |
 | 17.34 | Open with → Editor: type `sakura {folder}` into Add another; right-click a card | `[open] editor = ["code {folder}", "sakura {folder}"]`; Open in the editor has ▶; a click on it opens VS Code, hovering opens `code` and `sakura` to its right and each opens its own; × on the second row (or emptying its field) leaves one again |
-| 17.35 | Open with → take out every filer command; right-click a card | Open the folder in filer is greyed, its hover says where to set it |
+| 17.35 | Open with → take out every kura command; right-click a card | Open the folder in kura is greyed, its hover says where to set it |
 | 17.36 | Tags → Tags shown 1, then 5 | The band and the cards show one tag and `+N`, then all five |
 | 17.37 | Tags → a rule's Edit: change its folder, then add a branch, Save; Edit another and take it out | `settings.toml` has the rule changed in place (one rule with both, then neither); the sessions it tagged before lose the tag, those it now matches get it |
 | 17.38 | General → Language → 日本語; then start mimamori; then write `language = "en"` into `common.toml` by hand | `common.toml` in the uchmk folder (`%APPDATA%\uchmk`) has `language = "ja"`, its other lines kept; mimamori comes up in Japanese; tsumugi's menus stay English; the select shows English within a couple of seconds of the hand edit |
