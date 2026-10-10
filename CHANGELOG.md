@@ -5,6 +5,33 @@
 
 ## [未リリース]
 
+## [0.84.0] - 2026-10-11
+
+### 修正
+
+- 2 行のプロンプト（Starship、狭いペインで折り返した pwsh のプロンプト）で、`Ctrl+Shift+L`（最後の出力のコピー）が空になり、
+  `Ctrl+Shift+Up` / `Down` が 2 行目にも止まっていた（実機 #9）。ito 0.4.0 の `ito-pane` が 2 行以上を 1 つのプロンプトとして数え、
+  pwsh のフック（`tsumugi shell-hook pwsh` とサーバーがペインの pwsh に足す行）がプロンプトの後ろに OSC 133;B を送る。
+  フックは 1 度だけプロンプトを包み、前の版のフックの包みは置き換える。
+- Windows で大きな OSC 1337 の画像（数十 KB）を出すと、次のプロンプトまで 10〜15 秒かかっていた（実機 #10）。ito 0.4.0 の直し
+  （空のパイプの 0 バイトの読みを、一度見たら次の通知まで止まる扱いにしていた）。
+
+### 追加
+
+- 実機の道具（`scripts/wintest-kit.ps1`）に `Send-DoubleClick`（2 回のクリックを 1 回の SendInput で）・`Get-KitCursor`（カーソルの形）・
+  `Set-KitWindow`（窓の大きさと位置）・`Send-KeysAtOnce`（いくつものキーを 1 回の SendInput で）・`Start-OldTsumugi` を足した（実機 #10）。
+  キーやクリックを送る前に、ほかの窓（持ち主の Claude のデスクトップ）が前面を取っていれば取り返す。
+- `scripts/auto-wintest.ps1` が、`WINTEST_OLD_EXE` を名指す行のある塊では、作った版より前の最新のリリースの Windows の `.zip` を `gh` で取り
+  （`%LOCALAPPDATA%\tsumugi-wintest\old` に置いておく）、実行のキットに写して `WINTEST_OLD_EXE` に入れる（実機 #9・#10）。
+  TESTING.md の 1.7・1.11 がそれを使い、両方のレーンが渡すようになった。1.12（直前のビルドで、取り決めの版が同じもの）は渡さないまま。
+
+### 変更
+
+- キーの一覧の文字の大きさを上げるキーを「Bigger letters (= or +)」と書いた。JIS 配列では `=` が Shift+- なので、実機の道具では
+  `Ctrl+=` を `'Ctrl+Shift+vk:0xBB'`（egui には `Ctrl++`）で送ることを役割に書いた。キーの行が変わったので、キーの塊でもう一度渡る。
+- TESTING.md: 2.27・2.44 に Starship の 2 行のプロンプトと折り返しを足し、2.52 を PowerShell 7 と Git Bash の両方で確かめ、落ちたら PTY ログの
+  `out` の行を報告に貼る形にした。2.73（100 KB 以上の OSC 1337 の画像が 2 秒以内に出る）を足した。この 4 行を再テストの表に積んだ。
+
 ## [0.83.0] - 2026-10-11
 
 ### 追加

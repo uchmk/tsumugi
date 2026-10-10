@@ -10,14 +10,21 @@
 #   Invoke-Tsumugi ls --json            the CLI against the same server: {Code, Out, Err}
 #                                       (every word goes to tsumugi; $env:WINTEST_CLI_TIMEOUT, default 60 s)
 #   Test-InputReady                     input reaches our window: the Default desktop, ours in front
-#   Set-Foreground                      brings our window to the front
+#   Set-Foreground                      brings our window to the front (every send takes it back
+#                                       itself when another window took it)
 #   Send-Keys 'Ctrl+Shift+Z'            one chord through SendInput ('Alt+Shift++' is the + key)
 #   Send-Keys -Hold 'Ctrl+Shift+C'      the same with 120 ms between steps (a chord egui missed when quick)
 #   Send-Keys 'Ctrl+vk:0xBB'            a raw virtual key, whatever the keyboard layout types with it
+#                                       (on JIS that key is `;`/`+`: `Ctrl+=` there is 'Ctrl+Shift+vk:0xBB')
 #   Send-Text '日本語'                  characters through SendInput (KEYEVENTF_UNICODE)
+#   Send-KeysAtOnce 'Ctrl+Shift+L' 'Esc'      the chords in one SendInput: nothing can come between them
 #   Send-Click -X 120 -Y 40 [-Right|-Middle]  a click at egui points from the window's client corner
+#   Send-DoubleClick -X 120 -Y 40              two clicks in one SendInput (a word, a divider's reset)
 #   Send-Drag -X 10 -Y 40 -ToX 200 -ToY 40     the left button down, moved in steps, up (a selection, a divider)
 #   Send-Wheel -X 120 -Y 200 -Notches -3       the wheel there; negative is towards you (down)
+#   Get-KitCursor [-X 120 -Y 40]        the cursor's shape (Arrow, IBeam, SizeWE, SizeNS, Hand, ...), there
+#   Set-KitWindow -Width 900 -Height 600 [-X 0 -Y 0]  the window's outer size (and place) in pixels; returns its client size
+#   Start-OldTsumugi                    the run's older release ($env:WINTEST_OLD_EXE) as Start-Tsumugi starts the new one
 #   Get-KeyLog / Get-FocusLog           TSUMUGI_KEYLOG's `key …` and `event Cut|Copy|Paste …` lines, its `focus x,y wxh` lines as objects
 #   Get-DividerLog                      its `divider x,y wxh` lines (the divider under the pointer) as objects
 #   Get-PtyLog                          the bytes the panes were sent (TSUMUGI_PTY_LOG)
@@ -48,6 +55,7 @@ public static class Native {
     [StructLayout(LayoutKind.Sequential)] public struct INPUT { public uint type; public InputUnion u; }
     [StructLayout(LayoutKind.Sequential)] public struct POINT { public int X, Y; }
     [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left, Top, Right, Bottom; }
+    [StructLayout(LayoutKind.Sequential)] public struct CURSORINFO { public int cbSize, flags; public IntPtr hCursor; public POINT ptScreenPos; }
 
     [DllImport("user32.dll", SetLastError = true)] static extern uint SendInput(uint n, INPUT[] inputs, int size);
     [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
@@ -61,6 +69,11 @@ public static class Native {
     [DllImport("user32.dll")] public static extern bool PrintWindow(IntPtr h, IntPtr hdc, uint flags);
     [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern short VkKeyScan(char c);
+    [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr h, IntPtr after, int x, int y, int cx, int cy, uint flags);
+    [DllImport("user32.dll")] public static extern bool GetClientRect(IntPtr h, out RECT r);
+    [DllImport("user32.dll")] static extern bool GetCursorInfo(ref CURSORINFO info);
+    [DllImport("user32.dll")] static extern IntPtr LoadCursor(IntPtr instance, IntPtr name);
+    [DllImport("user32.dll")] static extern uint GetDoubleClickTime();
     [DllImport("user32.dll")] public static extern IntPtr SetProcessDpiAwarenessContext(IntPtr value);
     [DllImport("user32.dll", SetLastError = true)] public static extern IntPtr OpenInputDesktop(uint flags, bool inherit, uint access);
     [DllImport("user32.dll")] public static extern bool CloseDesktop(IntPtr d);
@@ -93,6 +106,27 @@ public static class Native {
         all[n++] = Key(vk, 0, ext | 2u);   // KEYEVENTF_KEYUP
         for (int k = mods.Length - 1; k >= 0; k--) all[n++] = Key(mods[k], 0, (Extended(mods[k]) ? 1u : 0u) | 2u);
         return Send(all);
+    }
+
+    // Several chords in one SendInput, so no other window can take the
+    // foreground between them (the real machine, 2.70): `spec` is, for each,
+    // the number of modifiers, the modifiers, and the key.
+    public static uint ChordsAtOnce(ushort[] spec) {
+        System.Collections.Generic.List<INPUT> all = new System.Collections.Generic.List<INPUT>();
+        int at = 0;
+        while (at < spec.Length) {
+            int n = spec[at++];
+            ushort[] mods = new ushort[n];
+            Array.Copy(spec, at, mods, 0, n);
+            at += n;
+            ushort vk = spec[at++];
+            foreach (ushort m in mods) all.Add(Key(m, 0, Extended(m) ? 1u : 0u));
+            uint ext = Extended(vk) ? 1u : 0u;
+            all.Add(Key(vk, 0, ext));
+            all.Add(Key(vk, 0, ext | 2u));
+            for (int k = n - 1; k >= 0; k--) all.Add(Key(mods[k], 0, (Extended(mods[k]) ? 1u : 0u) | 2u));
+        }
+        return Send(all.ToArray());
     }
 
     public static uint Text(string s) {
@@ -130,6 +164,29 @@ public static class Native {
     public static uint Click(int button) {
         uint down = button == 1 ? 0x0008u : button == 2 ? 0x0020u : 0x0002u;
         return Send(new INPUT[] { Mouse(down, 0), Mouse(down << 1, 0) });
+    }
+
+    // Two left clicks in one SendInput: well inside the double-click time,
+    // which separate calls from PowerShell were not always.
+    public static uint DoubleClick() {
+        return Send(new INPUT[] { Mouse(0x0002u, 0), Mouse(0x0004u, 0), Mouse(0x0002u, 0), Mouse(0x0004u, 0) });
+    }
+
+    public static uint DoubleClickTime() { return GetDoubleClickTime(); }
+
+    // The cursor shown now, by the system cursor it is (winit and egui load
+    // the shared ones), or its handle when it is none of them.
+    public static string CursorName() {
+        CURSORINFO info = new CURSORINFO();
+        info.cbSize = Marshal.SizeOf(typeof(CURSORINFO));
+        if (!GetCursorInfo(ref info)) return "(unknown)";
+        if ((info.flags & 1) == 0) return "Hidden";   // CURSOR_SHOWING
+        string[] names = { "Arrow", "IBeam", "Wait", "Cross", "SizeNWSE", "SizeNESW", "SizeWE", "SizeNS", "SizeAll", "No", "Hand", "AppStarting", "Help" };
+        int[] ids = { 32512, 32513, 32514, 32515, 32642, 32643, 32644, 32645, 32646, 32648, 32649, 32650, 32651 };
+        for (int k = 0; k < ids.Length; k++) {
+            if (LoadCursor(IntPtr.Zero, new IntPtr(ids[k])) == info.hCursor) return names[k];
+        }
+        return "0x" + info.hCursor.ToString("X");
     }
 
     // The left button alone, down or up.
@@ -176,13 +233,13 @@ Use-Isolation
 # The window, with its key log going to <kit dir>\keylog-<n>.txt. Waits for
 # it to show and returns the process. The newest window is the one the other
 # functions act on, in this call and the later ones.
-function Start-Tsumugi([string[]]$ArgumentList = @(), [int]$TimeoutSec = 20) {
+function Start-Tsumugi([string[]]$ArgumentList = @(), [int]$TimeoutSec = 20, [string]$Exe = $env:WINTEST_EXE) {
     $n = @(Get-ChildItem -LiteralPath $script:KitDir -Filter 'keylog-*.txt' -ErrorAction SilentlyContinue).Count + 1
     $keyLog = Join-Path $script:KitDir "keylog-$n.txt"
     $p = if ($ArgumentList) {
-        Start-Process -FilePath $env:WINTEST_EXE -ArgumentList $ArgumentList -WorkingDirectory (Get-Location) -RedirectStandardError $keyLog -PassThru
+        Start-Process -FilePath $Exe -ArgumentList $ArgumentList -WorkingDirectory (Get-Location) -RedirectStandardError $keyLog -PassThru
     } else {
-        Start-Process -FilePath $env:WINTEST_EXE -WorkingDirectory (Get-Location) -RedirectStandardError $keyLog -PassThru
+        Start-Process -FilePath $Exe -WorkingDirectory (Get-Location) -RedirectStandardError $keyLog -PassThru
     }
     # With its start time: a process id can be reused.
     Add-Content -LiteralPath (Join-Path $script:KitDir 'windows.txt') -Value "$($p.Id)`t$($p.StartTime.Ticks)"
@@ -195,6 +252,14 @@ function Start-Tsumugi([string[]]$ArgumentList = @(), [int]$TimeoutSec = 20) {
         Start-Sleep -Milliseconds 100
     }
     throw "no window from tsumugi (pid $($p.Id)) in $TimeoutSec s"
+}
+
+# The run's older release (auto-wintest.ps1 fetches it for the rows that ask
+# for WINTEST_OLD_EXE), started with the same isolation: its server is the
+# run's. Close it before Start-Tsumugi opens the new window on that server.
+function Start-OldTsumugi([string[]]$ArgumentList = @(), [int]$TimeoutSec = 20) {
+    if (-not $env:WINTEST_OLD_EXE -or -not (Test-Path -LiteralPath $env:WINTEST_OLD_EXE)) { throw 'no older build in this run (WINTEST_OLD_EXE)' }
+    Start-Tsumugi -ArgumentList $ArgumentList -TimeoutSec $TimeoutSec -Exe $env:WINTEST_OLD_EXE
 }
 
 # The newest window Start-Tsumugi started: {Pid, KeyLog}.
@@ -313,6 +378,23 @@ function Send-Keys([switch]$Hold, [Parameter(ValueFromRemainingArguments)] [stri
     }
 }
 
+# The chords in one SendInput: Send-KeysAtOnce 'Ctrl+Shift+L' 'Esc'. For two
+# inputs that must reach tsumugi together, with no window taking the
+# foreground between them; egui may miss a chord sent this quickly, so use
+# Send-Keys for the rest.
+function Send-KeysAtOnce([Parameter(ValueFromRemainingArguments)] [string[]]$Chords) {
+    if (-not (Wait-InputReady)) { throw 'input does not reach tsumugi; nothing sent' }
+    $spec = [Collections.Generic.List[uint16]]::new()
+    foreach ($c in $Chords) {
+        $k = ConvertTo-Chord $c
+        $spec.Add([uint16]$k.Mods.Count)
+        foreach ($m in $k.Mods) { $spec.Add($m) }
+        $spec.Add($k.Vk)
+    }
+    if ([TsumugiKit.Native]::ChordsAtOnce($spec.ToArray()) -eq 0) { throw "SendInput sent nothing for $($Chords -join ', ')" }
+    Start-Sleep -Milliseconds 150
+}
+
 function Send-Text([string]$Text) {
     if (-not (Wait-InputReady)) { throw 'input does not reach tsumugi; text not sent' }
     if ([TsumugiKit.Native]::Text($Text) -eq 0) { throw 'SendInput sent nothing' }
@@ -321,11 +403,20 @@ function Send-Text([string]$Text) {
 
 # Test-InputReady, waiting up to -Seconds for it: a toast, the lock screen
 # going or another window in front for a moment no longer fails the step.
+# Another window that took the foreground and kept it (the owner's Claude
+# desktop, between two sends) is sent back once a second has passed.
 function Wait-InputReady([int]$Seconds = 10) {
     $until = (Get-Date).AddSeconds($Seconds)
+    $retake = (Get-Date).AddSeconds(1)
     while ($true) {
         if (Test-InputReady) { return $true }
         if ((Get-Date) -ge $until) { return $false }
+        if ((Get-Date) -ge $retake -and [TsumugiKit.Native]::InputDesktop() -eq 'Default') {
+            "Taking the foreground back" | Out-Host
+            [void](Set-Foreground)
+            $retake = (Get-Date).AddSeconds(2)
+            continue
+        }
         Start-Sleep -Milliseconds 500
     }
 }
@@ -375,6 +466,43 @@ function Send-Wheel([double]$X, [double]$Y, [int]$Notches = -1, [double]$Scale =
     Start-Sleep -Milliseconds 50
     if ([TsumugiKit.Native]::Wheel($Notches) -eq 0) { throw 'SendInput sent nothing for the wheel' }
     Start-Sleep -Milliseconds 150
+}
+
+# Two clicks at X, Y in one SendInput (see Send-Click for the points).
+function Send-DoubleClick([double]$X, [double]$Y, [double]$Scale = 1.0) {
+    if (-not (Wait-InputReady)) { throw 'input does not reach tsumugi; double-click not sent' }
+    Move-KitCursor $X $Y $Scale
+    Start-Sleep -Milliseconds 50
+    if ([TsumugiKit.Native]::DoubleClick() -eq 0) { throw 'SendInput sent nothing for the double-click' }
+    # Past the double-click time, so the next click is not a third.
+    Start-Sleep -Milliseconds ([TsumugiKit.Native]::DoubleClickTime() + 50)
+}
+
+# The cursor's shape: Arrow, IBeam, SizeWE (a divider between columns),
+# SizeNS (between rows), Hand (a link), ... With -X and -Y it is moved there
+# first and given a few frames to change.
+function Get-KitCursor([Nullable[double]]$X, [Nullable[double]]$Y, [double]$Scale = 1.0) {
+    if ($null -ne $X -and $null -ne $Y) {
+        Move-KitCursor $X $Y $Scale
+        Start-Sleep -Milliseconds 300
+    }
+    [TsumugiKit.Native]::CursorName()
+}
+
+# The window's outer size (and, with -X and -Y, its place) in physical
+# pixels, restored first when it is maximized. Returns the client area as
+# {Width, Height} in pixels and in egui points (100% zoom).
+function Set-KitWindow([int]$Width, [int]$Height, [Nullable[int]]$X, [Nullable[int]]$Y) {
+    $h = Get-KitHandle
+    [void][TsumugiKit.Native]::ShowWindow($h, 9)   # SW_RESTORE
+    $flags = 0x0004 -bor 0x0010   # SWP_NOZORDER, SWP_NOACTIVATE
+    if ($null -eq $X -or $null -eq $Y) { $flags = $flags -bor 0x0002; $X = 0; $Y = 0 }   # SWP_NOMOVE
+    if (-not [TsumugiKit.Native]::SetWindowPos($h, [IntPtr]::Zero, $X, $Y, $Width, $Height, $flags)) { throw 'SetWindowPos failed' }
+    Start-Sleep -Milliseconds 300
+    $r = [TsumugiKit.Native+RECT]::new()
+    [void][TsumugiKit.Native]::GetClientRect($h, [ref]$r)
+    $px = [TsumugiKit.Native]::GetDpiForWindow($h) / 96.0
+    [pscustomobject]@{ Width = $r.Right; Height = $r.Bottom; PointsWidth = [Math]::Round($r.Right / $px); PointsHeight = [Math]::Round($r.Bottom / $px) }
 }
 
 # A file another process is still writing.

@@ -78,9 +78,9 @@ no others, and do not read TESTING.md's list of rows (its rules, up to
 
 | Chunk | Up to | Notes |
 | --- | --- | --- |
-| **Re-tests of changed behaviour** | 15 rows | The rows named here, still `[ ]`: 17.26, 5.1, 5.4, 5.8, 2.70, 5.11, 5.12, 5.10, 2.37, 9.5 |
+| **Re-tests of changed behaviour** | 15 rows | The rows named here, still `[ ]`: 2.27, 2.44, 2.52, 2.73, 17.26, 5.1, 5.4, 5.8, 2.70, 5.11, 5.12, 5.10, 2.37, 9.5 |
 | **Unticked keys in TESTING-KEYS.md** | 20 keys | x64 only |
-| **The sections, in this order** | 15 rows of one section | 1, 18, 12, 19, 4, 2, 16, 17, 8, 13, 15, then the rest. ARM64: 2, 4, 12, 1 only. Never given: rows starting `Linux/macOS:` or `A person:`, 2.46–2.49 on ARM64 (no tools there), and 1.7, 1.11, 1.12 until a run can fetch an older server |
+| **The sections, in this order** | 15 rows of one section | 1, 18, 12, 19, 4, 2, 16, 17, 8, 13, 15, then the rest. ARM64: 2, 4, 12, 1 only. Never given: rows starting `Linux/macOS:` or `A person:`, 2.46–2.49 on ARM64 (no tools there), and 1.12 (it needs the build just before, speaking the same protocol version; the older build a run fetches is a release) |
 
 What suits each section:
 
@@ -133,8 +133,19 @@ at the same time. **Nobody will answer a question**, so:
   opens on Welcome back, which takes the keys. `Esc` it (or read the screen)
   before typing into a pane.
 - **Before writing a helper of your own**, look at the kit's list again: held
-  chords (`Send-Keys -Hold`), raw virtual keys (`'Ctrl+vk:0xBB'`), drags, the
-  wheel and the middle button are there.
+  chords (`Send-Keys -Hold`), raw virtual keys (`'Ctrl+vk:0xBB'`), several
+  chords in one SendInput (`Send-KeysAtOnce`), drags, double-clicks, the
+  wheel, the middle button, the cursor's shape (`Get-KitCursor`) and the
+  window's size (`Set-KitWindow`) are there. A send takes the foreground back
+  when another window (the owner's Claude desktop) took it.
+- **A JIS keyboard** types `;` and `+` with `vk:0xBB`, and `=` with Shift+-:
+  `Ctrl+=` there is `Send-Keys 'Ctrl+Shift+vk:0xBB'` (egui reads it as
+  `Ctrl++`, the same action), never `'Ctrl+='`, which goes as `Ctrl+Shift+-`.
+- **The older build**: for a row that names `WINTEST_OLD_EXE`, the script
+  fetches the newest release below the version built and the prompt says
+  where it is. `Start-OldTsumugi` starts it with the run's isolation (its
+  server is the run's); close that window, then `Start-Tsumugi` the new one.
+  Without it the prompt says so: leave the row `[ ]` with the reason.
 - **A person's files are not scratch.** Before touching `~/.claude/settings.json`,
   a profile or anything outside the scratch: `Backup-UserFile`; append, never
   overwrite; `Restore-UserFile` and show it says MATCH.

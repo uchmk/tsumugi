@@ -2,8 +2,8 @@
 //! in (OSC 7), as filer's `filer shell-hook` does for its pane, and mark
 //! where each prompt starts (OSC 133;A) for `Ctrl+Shift+Up` / `Down`, with
 //! how the command before it ended (`D;<code>`) and, where the shell can
-//! say it, where its output starts (`C`): the bars beside each command and
-//! `Ctrl+Shift+L`.
+//! say it, where its output starts (`C`) or where the prompt ends and the
+//! command is typed (`B`): the bars beside each command and `Ctrl+Shift+L`.
 //!
 //! On Linux and macOS the server can read a shell's folder from the system,
 //! so the hook only makes it quicker. On Windows it cannot, and without the
@@ -18,10 +18,12 @@
 /// calling whatever handler was there before (`mise activate pwsh` puts one
 /// there). The prompt mark wraps the `prompt` there is, as Windows Terminal's
 /// own lines do, so Starship's keeps working when it is set up first; and
-/// only once, though the server adds the same lines to a pane's pwsh.
+/// only once, though the server adds the same lines to a pane's pwsh. pwsh
+/// has no hook before a command runs, so the end of the prompt (`B`) is said
+/// instead of the start of the output: a prompt of two lines is then one.
 pub const PWSH: &str = r#"
 # tsumugi: say where the shell is (OSC 7), for the sidebar and for a restore,
-# and mark each prompt and how the command before it ended (OSC 133)
+# and mark each prompt, where it ends and how the command before it ended (OSC 133)
 $prev = $ExecutionContext.SessionState.InvokeCommand.LocationChangedAction
 $ExecutionContext.SessionState.InvokeCommand.LocationChangedAction = {
     param($sender, $e)
@@ -29,12 +31,13 @@ $ExecutionContext.SessionState.InvokeCommand.LocationChangedAction = {
     $p = $e.NewPath.ProviderPath -replace '\\', '/' -replace '^(?!/)', '/'
     [Console]::Write("$([char]27)]7;file://$p$([char]27)\")
 }.GetNewClosure()
-if (-not $global:__tsumugi_marked) {
-    $global:__tsumugi_marked = $true
-    $global:__tsumugi_prompt = $function:prompt
+if (-not $global:__tsumugi_marks_input) {
+    $global:__tsumugi_marks_input = $global:__tsumugi_marked = $true
+    # An older hook's wrapper is replaced, around the prompt it kept.
+    if ("$function:prompt" -notmatch '__tsumugi_prompt') { $global:__tsumugi_prompt = $function:prompt }
     function global:prompt {
         $c = if ($?) { 0 } elseif ($LASTEXITCODE) { $LASTEXITCODE } else { 1 }
-        "$([char]27)]133;D;$c$([char]27)\$([char]27)]133;A$([char]27)\" + (& $global:__tsumugi_prompt)
+        "$([char]27)]133;D;$c$([char]27)\$([char]27)]133;A$([char]27)\" + (& $global:__tsumugi_prompt) + "$([char]27)]133;B$([char]27)\"
     }
 }
 "#;
@@ -180,6 +183,8 @@ mod tests {
             assert!(hook.starts_with("\n#") && hook.ends_with('\n') && hook.contains("]7;file://") && hook.contains("]133;A"), "{hook:?}");
             assert!(!hook.contains("filer"), "{hook:?}");
         }
+        // pwsh says where its prompt ends, after whatever prompt there was.
+        assert!(PWSH.contains(r#"(& $global:__tsumugi_prompt) + "$([char]27)]133;B"#), "{PWSH}");
     }
 
     #[test]
