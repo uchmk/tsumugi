@@ -1677,8 +1677,8 @@ dependencies = [
 
 [[package]]
 name = "ito-common"
-version = "0.15.0"
-source = "git+https://github.com/uchmk/ito?rev=45a844f1e3d0b8f0c9eb08d48d908a07ccd35569#45a844f1e3d0b8f0c9eb08d48d908a07ccd35569"
+version = "0.15.1"
+source = "git+https://github.com/uchmk/ito?rev=c3b437781472ce514c95e59f7d1718a61cf5f2b8#c3b437781472ce514c95e59f7d1718a61cf5f2b8"
 dependencies = [
  "chrono",
  "serde",
@@ -1690,8 +1690,8 @@ dependencies = [
 
 [[package]]
 name = "ito-i18n"
-version = "0.15.0"
-source = "git+https://github.com/uchmk/ito?rev=45a844f1e3d0b8f0c9eb08d48d908a07ccd35569#45a844f1e3d0b8f0c9eb08d48d908a07ccd35569"
+version = "0.15.1"
+source = "git+https://github.com/uchmk/ito?rev=c3b437781472ce514c95e59f7d1718a61cf5f2b8#c3b437781472ce514c95e59f7d1718a61cf5f2b8"
 dependencies = [
  "ito-common",
  "toml",
@@ -1700,8 +1700,8 @@ dependencies = [
 
 [[package]]
 name = "ito-ipc"
-version = "0.15.0"
-source = "git+https://github.com/uchmk/ito?rev=45a844f1e3d0b8f0c9eb08d48d908a07ccd35569#45a844f1e3d0b8f0c9eb08d48d908a07ccd35569"
+version = "0.15.1"
+source = "git+https://github.com/uchmk/ito?rev=c3b437781472ce514c95e59f7d1718a61cf5f2b8#c3b437781472ce514c95e59f7d1718a61cf5f2b8"
 dependencies = [
  "postcard",
  "serde",
@@ -1710,16 +1710,16 @@ dependencies = [
 
 [[package]]
 name = "ito-keys"
-version = "0.15.0"
-source = "git+https://github.com/uchmk/ito?rev=45a844f1e3d0b8f0c9eb08d48d908a07ccd35569#45a844f1e3d0b8f0c9eb08d48d908a07ccd35569"
+version = "0.15.1"
+source = "git+https://github.com/uchmk/ito?rev=c3b437781472ce514c95e59f7d1718a61cf5f2b8#c3b437781472ce514c95e59f7d1718a61cf5f2b8"
 dependencies = [
  "egui",
 ]
 
 [[package]]
 name = "ito-layout"
-version = "0.15.0"
-source = "git+https://github.com/uchmk/ito?rev=45a844f1e3d0b8f0c9eb08d48d908a07ccd35569#45a844f1e3d0b8f0c9eb08d48d908a07ccd35569"
+version = "0.15.1"
+source = "git+https://github.com/uchmk/ito?rev=c3b437781472ce514c95e59f7d1718a61cf5f2b8#c3b437781472ce514c95e59f7d1718a61cf5f2b8"
 dependencies = [
  "egui",
  "serde",
@@ -1727,16 +1727,16 @@ dependencies = [
 
 [[package]]
 name = "ito-mcp"
-version = "0.15.0"
-source = "git+https://github.com/uchmk/ito?rev=45a844f1e3d0b8f0c9eb08d48d908a07ccd35569#45a844f1e3d0b8f0c9eb08d48d908a07ccd35569"
+version = "0.15.1"
+source = "git+https://github.com/uchmk/ito?rev=c3b437781472ce514c95e59f7d1718a61cf5f2b8#c3b437781472ce514c95e59f7d1718a61cf5f2b8"
 dependencies = [
  "serde_json",
 ]
 
 [[package]]
 name = "ito-pane"
-version = "0.15.0"
-source = "git+https://github.com/uchmk/ito?rev=45a844f1e3d0b8f0c9eb08d48d908a07ccd35569#45a844f1e3d0b8f0c9eb08d48d908a07ccd35569"
+version = "0.15.1"
+source = "git+https://github.com/uchmk/ito?rev=c3b437781472ce514c95e59f7d1718a61cf5f2b8#c3b437781472ce514c95e59f7d1718a61cf5f2b8"
 dependencies = [
  "alacritty_terminal",
  "crossbeam-channel",
@@ -1757,8 +1757,8 @@ dependencies = [
 
 [[package]]
 name = "ito-prefs"
-version = "0.15.0"
-source = "git+https://github.com/uchmk/ito?rev=45a844f1e3d0b8f0c9eb08d48d908a07ccd35569#45a844f1e3d0b8f0c9eb08d48d908a07ccd35569"
+version = "0.15.1"
+source = "git+https://github.com/uchmk/ito?rev=c3b437781472ce514c95e59f7d1718a61cf5f2b8#c3b437781472ce514c95e59f7d1718a61cf5f2b8"
 dependencies = [
  "egui",
  "ito-common",
@@ -1768,8 +1768,8 @@ dependencies = [
 
 [[package]]
 name = "ito-theme"
-version = "0.15.0"
-source = "git+https://github.com/uchmk/ito?rev=45a844f1e3d0b8f0c9eb08d48d908a07ccd35569#45a844f1e3d0b8f0c9eb08d48d908a07ccd35569"
+version = "0.15.1"
+source = "git+https://github.com/uchmk/ito?rev=c3b437781472ce514c95e59f7d1718a61cf5f2b8#c3b437781472ce514c95e59f7d1718a61cf5f2b8"
 dependencies = [
  "egui",
  "ito-pane",
@@ -3512,7 +3512,7 @@ dependencies = [
 
 [[package]]
 name = "tsumugi"
-version = "0.103.6"
+version = "0.103.7"
 dependencies = [
  "arboard",
  "chrono",
@@ -3539,7 +3539,7 @@ dependencies = [
 
 [[package]]
 name = "tsumugi-mux"
-version = "0.103.6"
+version = "0.103.7"
 dependencies = [
  "crossbeam-channel",
  "ito-common",
