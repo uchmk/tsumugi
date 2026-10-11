@@ -1969,7 +1969,7 @@ impl App {
         for (k, i) in by_time.into_iter().enumerate() {
             for f in [&i.cwd, &i.project] {
                 if !out.iter().any(|r| r.folder == *f) {
-                    let note = if k == 0 && current.is_some() { format!("{}  · now", i.branch) } else { i.branch.clone() };
+                    let note = if k == 0 && current.is_some() { trf("newsession.now", &[&i.branch]) } else { i.branch.clone() };
                     out.push(newsession::Recent { folder: f.clone(), note: note.trim().to_owned() });
                 }
             }
@@ -1977,7 +1977,7 @@ impl App {
         // Then where sessions ended, newest first.
         for f in closed {
             if !out.iter().any(|r| r.folder == *f) {
-                out.push(newsession::Recent { folder: f.clone(), note: "closed".into() });
+                out.push(newsession::Recent { folder: f.clone(), note: tr("newsession.closed").into() });
             }
         }
         out
@@ -3152,7 +3152,7 @@ impl App {
                     SideOp::Rename(id, name) => client.rename_workspace(id, name),
                     SideOp::Note(id, note) => client.note_workspace(id, note),
                     SideOp::CreatePr(cwd) => {
-                        let _ = self.jobs.0.send(Ok("Pushing and opening a pull request…".into()));
+                        let _ = self.jobs.0.send(Ok(tr("toast.pr_pushing").into()));
                         self.job(move || {
                             let url = gitinfo::create_pr(&cwd)?;
                             menu::open_url(&url);
@@ -5959,7 +5959,7 @@ impl App {
                     words: chrome::state_words(i, now),
                     folder,
                     tags: i.tags.clone(),
-                    tokens: if tokens > 0 { format!("{} tokens", usage::short(tokens)) } else { String::new() },
+                    tokens: if tokens > 0 { trf("lists.tokens", &[&usage::short(tokens)]) } else { String::new() },
                     last: lines.split_off(lines.len().saturating_sub(2)),
                 });
             }

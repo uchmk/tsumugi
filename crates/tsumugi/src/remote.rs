@@ -42,10 +42,10 @@ impl Where {
 
     pub fn label(&self) -> String {
         match self {
-            Where::Here => "This machine".into(),
-            Where::Wsl(d) => format!("WSL: {d}"),
-            Where::Ssh(h) => format!("SSH: {h}"),
-            Where::Mux(h) => format!("SSH: {h}, kept there"),
+            Where::Here => crate::i18n::tr("sidebar.this_machine").into(),
+            Where::Wsl(d) => crate::i18n::trf("newsession.wsl", &[d]),
+            Where::Ssh(h) => crate::i18n::trf("newsession.ssh", &[h]),
+            Where::Mux(h) => crate::i18n::trf("newsession.mux", &[h]),
         }
     }
 

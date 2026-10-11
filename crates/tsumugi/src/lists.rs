@@ -25,6 +25,7 @@ use tsumugi_mux::SessionId;
 
 use crate::answer::{self, Choice};
 use crate::history::Closed;
+use crate::i18n::{tr, trf};
 use crate::theme::Colors;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -203,16 +204,16 @@ pub fn show(ctx: &egui::Context, view: &mut View, all: &[Card], found: &[Found],
         egui::Frame::NONE.fill(c.panel).stroke(egui::Stroke::new(1.0, c.border_strong())).corner_radius(12.0).inner_margin(egui::Margin::symmetric(18, 14)).show(ui, |ui| {
             ui.set_width(width);
             ui.horizontal(|ui| {
-                for (page, title) in [(Page::All, format!("All sessions · {count}")), (Page::Waiting, format!("Waiting · {}", rows.len())), (Page::Closed, format!("Recently closed · {}", closed.len()))] {
-                    if ui.selectable_label(view.page == page, RichText::new(title).size(14.0).strong()).on_hover_text("Ctrl+Tab / Ctrl+Shift+Tab, or Left / Right: the page beside it").clicked() {
+                for (page, title) in [(Page::All, trf("lists.all", &[&count.to_string()])), (Page::Waiting, trf("lists.waiting", &[&rows.len().to_string()])), (Page::Closed, trf("lists.closed", &[&closed.len().to_string()]))] {
+                    if ui.selectable_label(view.page == page, RichText::new(title).size(14.0).strong()).on_hover_text(tr("lists.page_hover")).clicked() {
                         view.page = page;
                     }
                 }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if ui.button("×").on_hover_text("Close (Esc)").clicked() {
+                    if ui.button("×").on_hover_text(tr("help.close")).clicked() {
                         out.push(Do::Close);
                     }
-                    ui.label(RichText::new("Ctrl+Tab: next page").size(11.5).color(c.dim));
+                    ui.label(RichText::new(tr("lists.next_page")).size(11.5).color(c.dim));
                 });
             });
             ui.separator();
@@ -249,7 +250,7 @@ fn waiting(ui: &mut egui::Ui, view: &mut View, rows: &[Row], c: &Colors, max: f3
     view.off.retain(|id| rows.iter().any(|r| r.id == *id));
     if rows.is_empty() {
         ui.add_space(12.0);
-        ui.label(RichText::new("No session is waiting for you.").size(13.0).color(c.dim));
+        ui.label(RichText::new(tr("lists.none_waiting")).size(13.0).color(c.dim));
         ui.add_space(12.0);
         return;
     }
@@ -257,7 +258,7 @@ fn waiting(ui: &mut egui::Ui, view: &mut View, rows: &[Row], c: &Colors, max: f3
         for r in rows {
             ui.horizontal(|ui| {
                 let mut on = !view.off.contains(&r.id);
-                if ui.checkbox(&mut on, "").on_hover_text("Answered by Yes to all / No to all").changed() {
+                if ui.checkbox(&mut on, "").on_hover_text(tr("lists.tick_hover")).changed() {
                     if on {
                         view.off.remove(&r.id);
                     } else {
@@ -266,7 +267,7 @@ fn waiting(ui: &mut egui::Ui, view: &mut View, rows: &[Row], c: &Colors, max: f3
                 }
                 ui.vertical(|ui| {
                     ui.horizontal(|ui| {
-                        if ui.link(RichText::new(&r.name).size(13.5).strong().color(c.strong())).on_hover_text("Go to it").clicked() {
+                        if ui.link(RichText::new(&r.name).size(13.5).strong().color(c.strong())).on_hover_text(tr("lists.go")).clicked() {
                             out.push(Do::Go(r.id));
                         }
                         ui.label(RichText::new(format!("{} · {}", r.folder, r.waited)).size(11.5).color(c.dim));
@@ -287,9 +288,9 @@ fn waiting(ui: &mut egui::Ui, view: &mut View, rows: &[Row], c: &Colors, max: f3
                     // rule and file shown before anything is written.
                     if let Some(rule) = &r.rule {
                         if view.confirming == Some(r.id) {
-                            ui.label(RichText::new(format!("Adds {rule} to {}, then says yes", r.rule_file.display())).size(11.5).color(c.dim));
+                            ui.label(RichText::new(trf("lists.allow_lead", &[rule, &r.rule_file.display().to_string()])).size(11.5).color(c.dim));
                             ui.horizontal(|ui| {
-                                let (yes, cancel) = crate::chrome::foot(ui, egui::Button::new(RichText::new("Add and say yes").strong()), true, "Cancel");
+                                let (yes, cancel) = crate::chrome::foot(ui, egui::Button::new(RichText::new(tr("lists.allow_yes")).strong()), true, tr("dialog.cancel"));
                                 if yes.clicked() {
                                     out.push(Do::Allow(r.id, rule.clone()));
                                     view.confirming = None;
@@ -302,16 +303,16 @@ fn waiting(ui: &mut egui::Ui, view: &mut View, rows: &[Row], c: &Colors, max: f3
                     }
                     ui.horizontal_wrapped(|ui| {
                         if r.choices.is_empty() {
-                            ui.label(RichText::new("No menu on its screen: answer it there").size(11.5).color(c.faint()));
+                            ui.label(RichText::new(tr("lists.no_menu")).size(11.5).color(c.faint()));
                         }
                         for ch in &r.choices {
                             let label = format!("{} {}", ch.key, answer::short(&ch.text));
-                            if ui.button(RichText::new(label).size(12.0)).on_hover_text(format!("Type {}: {}", ch.key, ch.text)).clicked() {
+                            if ui.button(RichText::new(label).size(12.0)).on_hover_text(trf("sidebar.answer", &[&ch.key.to_string(), &ch.text])).clicked() {
                                 out.push(Do::Type(r.id, ch.key));
                             }
                         }
                         let offered = r.rule.is_some() && view.confirming != Some(r.id) && answer::yes(&r.choices).is_some();
-                        if offered && ui.button(RichText::new("Always allow…").size(12.0)).on_hover_text("Claude Code runs this exact command without asking from now on, in this project").clicked() {
+                        if offered && ui.button(RichText::new(tr("lists.always")).size(12.0)).on_hover_text(tr("lists.always_hover")).clicked() {
                             view.confirming = Some(r.id);
                         }
                     });
@@ -325,7 +326,7 @@ fn waiting(ui: &mut egui::Ui, view: &mut View, rows: &[Row], c: &Colors, max: f3
     let no = bulk(rows, &view.off, false);
     ui.horizontal(|ui| {
         let ticked = rows.iter().filter(|r| !view.off.contains(&r.id)).count();
-        if ui.small_button(if ticked == rows.len() { "Untick all" } else { "Tick all" }).clicked() {
+        if ui.small_button(if ticked == rows.len() { tr("lists.untick_all") } else { tr("lists.tick_all") }).clicked() {
             if ticked == rows.len() {
                 view.off = rows.iter().map(|r| r.id).collect();
             } else {
@@ -333,12 +334,12 @@ fn waiting(ui: &mut egui::Ui, view: &mut View, rows: &[Row], c: &Colors, max: f3
             }
         }
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            let no_button = egui::Button::new(RichText::new(format!("No to {}", no.len())).strong()).min_size(egui::vec2(90.0, 28.0));
-            if ui.add_enabled(!no.is_empty(), no_button).on_hover_text("Types each ticked menu's \"No\" choice").on_disabled_hover_text("No ticked menu has a \"No\" choice").clicked() {
+            let no_button = egui::Button::new(RichText::new(trf("lists.no_to", &[&no.len().to_string()])).strong()).min_size(egui::vec2(90.0, 28.0));
+            if ui.add_enabled(!no.is_empty(), no_button).on_hover_text(tr("lists.no_hover")).on_disabled_hover_text(tr("lists.no_none")).clicked() {
                 out.extend(no.iter().map(|(id, k)| Do::Type(*id, *k)));
             }
-            let yes_button = egui::Button::new(RichText::new(format!("Yes to {}", yes.len())).color(c.on_accent()).strong()).fill(c.run).min_size(egui::vec2(90.0, 28.0));
-            if ui.add_enabled(!yes.is_empty(), yes_button).on_hover_text("Types 1 (Yes, once) into each ticked menu").on_disabled_hover_text("No ticked menu starts with \"Yes\"").clicked() {
+            let yes_button = egui::Button::new(RichText::new(trf("lists.yes_to", &[&yes.len().to_string()])).color(c.on_accent()).strong()).fill(c.run).min_size(egui::vec2(90.0, 28.0));
+            if ui.add_enabled(!yes.is_empty(), yes_button).on_hover_text(tr("lists.yes_hover")).on_disabled_hover_text(tr("lists.yes_none")).clicked() {
                 out.extend(yes.iter().map(|(id, k)| Do::Type(*id, *k)));
             }
         });
@@ -348,7 +349,7 @@ fn waiting(ui: &mut egui::Ui, view: &mut View, rows: &[Row], c: &Colors, max: f3
 fn overview(ui: &mut egui::Ui, view: &mut View, all: &[Card], found: &[Found], c: &Colors, max: f32, out: &mut Vec<Do>) {
     if all.is_empty() {
         ui.add_space(12.0);
-        ui.label(RichText::new("No session is running.").size(13.0).color(c.dim));
+        ui.label(RichText::new(tr("lists.none_running")).size(13.0).color(c.dim));
         ui.add_space(12.0);
         return;
     }
@@ -358,7 +359,7 @@ fn overview(ui: &mut egui::Ui, view: &mut View, all: &[Card], found: &[Found], c
     let before = view.query.clone();
     let field = egui::TextEdit::singleline(&mut view.query)
         .id(egui::Id::new("all-sessions-filter"))
-        .hint_text("Filter by name, folder, tag or last lines; 3 letters or more also search every scrollback")
+        .hint_text(tr("lists.filter"))
         .desired_width(f32::INFINITY);
     crate::keep_focus(&ui.add(field));
     if view.query != before {
@@ -370,7 +371,7 @@ fn overview(ui: &mut egui::Ui, view: &mut View, all: &[Card], found: &[Found], c
     let shown = cards.len() + found.len();
     if shown == 0 {
         ui.add_space(8.0);
-        ui.label(RichText::new("Nothing matches").size(13.0).color(c.dim));
+        ui.label(RichText::new(tr("lists.nothing")).size(13.0).color(c.dim));
         ui.add_space(8.0);
         return;
     }
@@ -403,7 +404,7 @@ fn overview(ui: &mut egui::Ui, view: &mut View, all: &[Card], found: &[Found], c
                     ui.label(RichText::new(l).monospace().size(11.0).color(c.fg));
                 }
             });
-            let resp = ui.interact(shown.response.rect, egui::Id::new(("overview", s.id)), egui::Sense::click()).on_hover_text("Go to it (Enter)");
+            let resp = ui.interact(shown.response.rect, egui::Id::new(("overview", s.id)), egui::Sense::click()).on_hover_text(tr("lists.go_enter"));
             if picked && (up || down) {
                 resp.scroll_to_me(None);
             }
@@ -413,7 +414,7 @@ fn overview(ui: &mut egui::Ui, view: &mut View, all: &[Card], found: &[Found], c
         }
         if !found.is_empty() {
             ui.add_space(6.0);
-            ui.label(RichText::new("IN THE SCROLLBACK").size(10.5).strong().color(c.dim));
+            ui.label(RichText::new(tr("lists.in_scrollback")).size(10.5).strong().color(c.dim));
         }
         for (k, f) in found.iter().enumerate() {
             let picked = cards.len() + k == view.picked;
@@ -425,7 +426,7 @@ fn overview(ui: &mut egui::Ui, view: &mut View, all: &[Card], found: &[Found], c
                     ui.add(egui::Label::new(RichText::new(f.text.trim()).monospace().size(11.5).color(c.fg)).truncate());
                 });
             });
-            let resp = ui.interact(shown.response.rect, egui::Id::new(("overview-line", f.id, f.line, f.col)), egui::Sense::click()).on_hover_text("Go to it and show the line (Enter)");
+            let resp = ui.interact(shown.response.rect, egui::Id::new(("overview-line", f.id, f.line, f.col)), egui::Sense::click()).on_hover_text(tr("lists.go_line"));
             if picked && (up || down) {
                 resp.scroll_to_me(None);
             }
@@ -439,7 +440,7 @@ fn overview(ui: &mut egui::Ui, view: &mut View, all: &[Card], found: &[Found], c
 fn history(ui: &mut egui::Ui, view: &mut View, closed: &[Closed], c: &Colors, max: f32, out: &mut Vec<Do>) {
     if closed.is_empty() {
         ui.add_space(12.0);
-        ui.label(RichText::new("No session has ended yet.").size(13.0).color(c.dim));
+        ui.label(RichText::new(tr("lists.none_closed")).size(13.0).color(c.dim));
         ui.add_space(12.0);
         return;
     }
@@ -469,7 +470,7 @@ fn history(ui: &mut egui::Ui, view: &mut View, closed: &[Closed], c: &Colors, ma
                     facts.push(s.state.clone());
                 }
                 if s.tokens > 0 {
-                    facts.push(format!("{} tokens", crate::usage::short(s.tokens)));
+                    facts.push(trf("lists.tokens", &[&crate::usage::short(s.tokens)]));
                 }
                 if s.cost > 0.0 {
                     facts.push(format!("≈{}", crate::price::dollars(s.cost)));
@@ -487,8 +488,8 @@ fn history(ui: &mut egui::Ui, view: &mut View, closed: &[Closed], c: &Colors, ma
                     });
                 }
             });
-            let again = if s.claude && !s.conversation.is_empty() { "resume its conversation in a new tab" } else { "start it again in a new tab in its folder" };
-            let resp = ui.interact(shown.response.rect, egui::Id::new(("closed", k)), egui::Sense::click()).on_hover_text(format!("Enter or a double click: {again}. Delete: take it off the list"));
+            let again = if s.claude && !s.conversation.is_empty() { tr("lists.again_resume") } else { tr("lists.again_start") };
+            let resp = ui.interact(shown.response.rect, egui::Id::new(("closed", k)), egui::Sense::click()).on_hover_text(trf("lists.closed_hover", &[again]));
             if on && (up || down) {
                 resp.scroll_to_me(None);
             }
@@ -501,14 +502,14 @@ fn history(ui: &mut egui::Ui, view: &mut View, closed: &[Closed], c: &Colors, ma
             if on {
                 ui.horizontal(|ui| {
                     if !s.last.is_empty() {
-                        if ui.small_button("Copy the output").clicked() {
+                        if ui.small_button(tr("lists.copy")).clicked() {
                             out.push(Do::Copy(s.last.join("\n")));
                         }
-                        if ui.small_button("Save to a file").on_hover_text("These lines, as text in Downloads").clicked() {
+                        if ui.small_button(tr("lists.save")).on_hover_text(tr("lists.save_hover")).clicked() {
                             out.push(Do::Save(k));
                         }
                     }
-                    if ui.small_button("Take off the list").on_hover_text("Delete").clicked() {
+                    if ui.small_button(tr("lists.forget")).on_hover_text("Delete").clicked() {
                         out.push(Do::Forget(k));
                     }
                 });
@@ -516,10 +517,10 @@ fn history(ui: &mut egui::Ui, view: &mut View, closed: &[Closed], c: &Colors, ma
         }
     });
     ui.horizontal(|ui| {
-        let again = closed.get(picked).filter(|s| s.claude && !s.conversation.is_empty()).map_or("start again", |_| "resume");
-        ui.label(RichText::new(format!("↑↓ pick · Enter {again} · Delete take off the list")).size(11.5).color(c.dim));
+        let again = closed.get(picked).filter(|s| s.claude && !s.conversation.is_empty()).map_or(tr("lists.foot_start"), |_| tr("lists.foot_resume"));
+        ui.label(RichText::new(trf("lists.foot", &[again])).size(11.5).color(c.dim));
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            if ui.small_button("Clear the list").clicked() {
+            if ui.small_button(tr("lists.clear")).clicked() {
                 out.push(Do::ForgetAll);
             }
         });
@@ -554,18 +555,33 @@ fn ended_words(ms: u64) -> String {
     let today = chrono::Local::now().date_naive();
     let day = t.date_naive();
     let time = t.format("%H:%M");
+    let time = time.to_string();
     if day == today {
-        format!("today at {time}")
+        trf("restore.today", &[&time])
     } else if today.pred_opt() == Some(day) {
-        format!("yesterday at {time}")
+        trf("restore.yesterday", &[&time])
     } else {
-        format!("{} at {time}", t.format("%-d %b"))
+        trf("lists.on_day", &[&t.format(tr("lists.day")).to_string(), &time])
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Each language's day is a format chrono reads: a bad one would panic
+    /// on screen.
+    #[test]
+    fn each_language_writes_the_day() {
+        use chrono::TimeZone;
+        let t = chrono::Local.with_ymd_and_hms(2026, 10, 3, 18, 40, 0).unwrap();
+        for (l, want) in [("en", "3 Oct"), ("ja", "10月3日")] {
+            let table = ito_i18n::Table::new(crate::i18n::AVAILABLE, l).0;
+            let mut day = String::new();
+            assert!(std::fmt::Write::write_fmt(&mut day, format_args!("{}", t.format(table.tr("lists.day")))).is_ok(), "{l}");
+            assert_eq!(day, want);
+        }
+    }
 
     #[test]
     fn recently_closed_takes_the_arrows_enter_and_delete() {
