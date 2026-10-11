@@ -6412,10 +6412,11 @@ impl App {
         }
         // The saved layouts and scripts, listed under All sessions to open.
         let mut templates = Vec::new();
+        for (k, l) in self.layouts.iter().enumerate() {
+            let name = if view.page == lists::Page::All { trf("palette.open_layout", &[&l.name]) } else { l.name.clone() };
+            templates.push(lists::Template { name, detail: layouts::words(&l.tree), pick: palette::Pick::Layout(k) });
+        }
         if view.page == lists::Page::All {
-            for (k, l) in self.layouts.iter().enumerate() {
-                templates.push(lists::Template { name: trf("palette.open_layout", &[&l.name]), detail: layouts::words(&l.tree), pick: palette::Pick::Layout(k) });
-            }
             for (k, s) in self.settings_now.scripts.iter().enumerate() {
                 templates.push(lists::Template { name: trf("palette.run_script", &[&s.name]), detail: s.command.chars().take(60).collect(), pick: palette::Pick::Script(k) });
             }
@@ -6484,6 +6485,12 @@ impl App {
                     if k < self.ended.len() {
                         let c = self.ended.remove(k);
                         self.forget(vec![c]);
+                    }
+                }
+                lists::Do::DropLayout(k) => {
+                    if k < self.layouts.len() {
+                        self.layouts.remove(k);
+                        layouts::save(self.layouts.clone());
                     }
                 }
                 lists::Do::ForgetAll => {

@@ -33,6 +33,8 @@ pub enum Page {
     All,
     Waiting,
     Closed,
+    /// The saved layouts, to open again.
+    Layouts,
 }
 
 /// The panel while it is open.
@@ -175,6 +177,8 @@ pub enum Do {
     Forget(usize),
     /// Take every closed session off the list.
     ForgetAll,
+    /// Take a saved layout (by its place in the list) off it.
+    DropLayout(usize),
     Close,
 }
 
@@ -228,7 +232,7 @@ pub fn show(ctx: &egui::Context, view: &mut View, all: &[Card], found: &[Found],
         egui::Frame::NONE.fill(c.panel).stroke(egui::Stroke::new(1.0, c.border_strong())).corner_radius(12.0).inner_margin(egui::Margin::symmetric(18, 14)).show(ui, |ui| {
             ui.set_width(width);
             ui.horizontal(|ui| {
-                for (page, title) in [(Page::All, trf("lists.all", &[&count.to_string()])), (Page::Waiting, trf("lists.waiting", &[&rows.len().to_string()])), (Page::Closed, trf("lists.closed", &[&closed.len().to_string()]))] {
+                for (page, title) in [(Page::All, trf("lists.all", &[&count.to_string()])), (Page::Waiting, trf("lists.waiting", &[&rows.len().to_string()])), (Page::Closed, trf("lists.closed", &[&closed.len().to_string()])), (Page::Layouts, trf("lists.layouts", &[&templates.len().to_string()]))] {
                     if ui.selectable_label(view.page == page, RichText::new(title).size(14.0).strong()).on_hover_text(tr("lists.page_hover")).clicked() {
                         view.page = page;
                     }
@@ -248,6 +252,7 @@ pub fn show(ctx: &egui::Context, view: &mut View, all: &[Card], found: &[Found],
                 Page::All => overview(ui, view, all, found, templates, c, max, &mut out),
                 Page::Waiting => waiting(ui, view, rows, c, max, &mut out),
                 Page::Closed => history(ui, view, closed, c, max, &mut out),
+                Page::Layouts => layouts_page(ui, view, templates, c, max, &mut out),
             }
         });
     });
@@ -278,11 +283,11 @@ fn turn(i: &mut egui::InputState, arrows: bool) -> (bool, bool) {
     (next, back)
 }
 
-/// The page after `page` (or before it), round the three.
+/// The page after `page` (or before it), round the four.
 pub fn step(page: Page, next: bool) -> Page {
-    const ALL: [Page; 3] = [Page::All, Page::Waiting, Page::Closed];
+    const ALL: [Page; 4] = [Page::All, Page::Waiting, Page::Closed, Page::Layouts];
     let k = ALL.iter().position(|p| *p == page).unwrap_or(0);
-    ALL[if next { (k + 1) % 3 } else { (k + 2) % 3 }]
+    ALL[if next { (k + 1) % 4 } else { (k + 3) % 4 }]
 }
 
 fn waiting(ui: &mut egui::Ui, view: &mut View, rows: &[Row], c: &Colors, max: f32, out: &mut Vec<Do>) {
@@ -514,6 +519,48 @@ fn overview(ui: &mut egui::Ui, view: &mut View, all: &[Card], found: &[Found], t
     });
 }
 
+/// The saved layouts: Up and Down pick one, Enter or a click opens it,
+/// Delete takes it off the list.
+fn layouts_page(ui: &mut egui::Ui, view: &mut View, layouts: &[Template], c: &Colors, max: f32, out: &mut Vec<Do>) {
+    if layouts.is_empty() {
+        ui.add_space(12.0);
+        ui.label(RichText::new(tr("lists.none_layouts")).size(13.0).color(c.dim));
+        ui.add_space(12.0);
+        return;
+    }
+    let (up, down, enter, delete) = ui.input(|i| (i.key_pressed(egui::Key::ArrowUp), i.key_pressed(egui::Key::ArrowDown), i.key_pressed(egui::Key::Enter), i.key_pressed(egui::Key::Delete)));
+    let (k, act) = closed_keys(view.shown, layouts.len(), (up, down, enter, delete));
+    view.shown = Some(k);
+    match act {
+        Some(Do::StartAgain(k)) => out.push(Do::Open(layouts[k].pick.clone())),
+        Some(Do::Forget(k)) => {
+            if let crate::palette::Pick::Layout(at) = layouts[k].pick {
+                out.push(Do::DropLayout(at));
+            }
+        }
+        _ => {}
+    }
+    egui::ScrollArea::vertical().max_height(max).min_scrolled_height(max).auto_shrink([false, true]).show(ui, |ui| {
+        for (n, t) in layouts.iter().enumerate() {
+            let frame = egui::Frame::NONE.fill(if n == k { c.hover() } else { egui::Color32::TRANSPARENT }).corner_radius(6.0).inner_margin(egui::Margin::symmetric(8, 5));
+            let shown = frame.show(ui, |ui| {
+                ui.set_width(ui.available_width());
+                ui.horizontal(|ui| {
+                    ui.label(RichText::new(&t.name).size(13.0).strong().color(c.strong()));
+                    ui.add(egui::Label::new(RichText::new(&t.detail).monospace().size(11.5).color(c.dim)).truncate());
+                });
+            });
+            let resp = ui.interact(shown.response.rect, egui::Id::new(("layout-page", n)), egui::Sense::click()).on_hover_text(tr("lists.open_layout_enter"));
+            if n == k && (up || down) {
+                resp.scroll_to_me(None);
+            }
+            if resp.clicked() {
+                out.push(Do::Open(t.pick.clone()));
+            }
+        }
+    });
+}
+
 fn history(ui: &mut egui::Ui, view: &mut View, closed: &[Closed], c: &Colors, max: f32, out: &mut Vec<Do>) {
     if closed.is_empty() {
         ui.add_space(12.0);
@@ -711,8 +758,9 @@ mod tests {
     fn the_keys_turn_the_pages_round() {
         assert_eq!(step(Page::All, true), Page::Waiting);
         assert_eq!(step(Page::Waiting, true), Page::Closed);
-        assert_eq!(step(Page::Closed, true), Page::All);
-        assert_eq!(step(Page::All, false), Page::Closed);
+        assert_eq!(step(Page::Closed, true), Page::Layouts);
+        assert_eq!(step(Page::Layouts, true), Page::All);
+        assert_eq!(step(Page::All, false), Page::Layouts);
         assert_eq!(step(Page::Waiting, false), Page::All);
     }
 

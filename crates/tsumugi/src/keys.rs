@@ -178,6 +178,8 @@ pub const NAMED: [(Action, &str, &str, &str); 39] = [
     (Action::Record, "record", "Ctrl+Shift+R", "Cmd+Shift+R"),
     // S for save, as the menu's "Save the output to a file".
     (Action::WorkLog, "work_log", "Ctrl+Shift+S", "Cmd+Shift+S"),
+    // G for grid: the tab's layout, to open again from Ctrl+Shift+O.
+    (Action::SaveLayout, "save_layout", "Ctrl+Shift+G", "Cmd+Shift+G"),
     // L for last output.
     (Action::CopyOutput, "copy_output", "Ctrl+Shift+L", "Cmd+Shift+L"),
     // WezTerm's. Ctrl+Space alone stays the shell's (and an IME's).
@@ -186,7 +188,6 @@ pub const NAMED: [(Action, &str, &str, &str); 39] = [
     (Action::ClosedList, "closed_sessions", "", ""),
     (Action::Changes, "changes", "", ""),
     (Action::ReadOnly, "read_only", "", ""),
-    (Action::SaveLayout, "save_layout", "", ""),
     (Action::SaveOutput, "save_output", "", ""),
     (Action::RestartServer, "restart_server", "", ""),
 ];
@@ -539,6 +540,7 @@ fn action_on(key: Key, m: Modifiers, mac: bool) -> Option<Action> {
             Key::R if cmd && m.shift => Some(Action::Record),
             Key::S if cmd && m.shift => Some(Action::WorkLog),
             Key::L if cmd && m.shift => Some(Action::CopyOutput),
+            Key::G if cmd && m.shift => Some(Action::SaveLayout),
             Key::Space if cmd && m.shift && !m.alt && !m.ctrl => Some(Action::QuickSelect),
             Key::Equals | Key::Plus if cmd && !m.alt && !m.ctrl => Some(Action::FontBigger),
             Key::Minus if cmd && !m.shift && !m.alt && !m.ctrl => Some(Action::FontSmaller),
@@ -574,6 +576,7 @@ fn action_on(key: Key, m: Modifiers, mac: bool) -> Option<Action> {
         Key::R if ctrl_shift => Some(Action::Record),
         Key::S if ctrl_shift => Some(Action::WorkLog),
         Key::L if ctrl_shift => Some(Action::CopyOutput),
+        Key::G if ctrl_shift => Some(Action::SaveLayout),
         Key::Space if ctrl_shift => Some(Action::QuickSelect),
         // `+` is Shift and `=` on a US keyboard, Shift and `;` on a JIS one:
         // Shift may be held.

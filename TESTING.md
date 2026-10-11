@@ -301,6 +301,7 @@ to `cli.rs` and a line to this table instead of a row.
 | 5.12 | `Ctrl+Shift+P`, type part of a session's name, then `work` | No session or scrollback lines in the palette (its hint points to Ctrl+Shift+O); `work` shows **Work log …** with `Ctrl+Shift+S` beside it |
 | 5.13 | A saved layout (`Ctrl+Shift+S`) and a `[[scripts]]` entry exist; `Ctrl+Shift+O`; type part of the script's name; arrows and `Enter`, then again with a click | Under "OPEN FROM A LAYOUT OR SCRIPT" the layout and the script are listed after the sessions and scrollback lines, narrowed by what is typed; `Enter` or a click opens the layout / runs the script and closes the panel; with no session running the list still shows them |
 | 5.14 | Two sessions waiting (a permission prompt and a free-text question); `Ctrl+Shift+O`, `Ctrl+Tab` to Waiting; `Down`, `Up`, then `Enter` | The picked session has a lighter band and scrolls into view; `Enter` closes the panel and goes to it; `Left` and `Right` still turn the page |
+| 5.15 | A tab with two panes split (`claude` and a shell); `Ctrl+Shift+G`; close the tab; `Ctrl+Shift+O`, `Ctrl+Tab` to Layouts; `Down`, `Enter`; again, then `Delete` | A toast says the layout was saved under the tab's name; the Layouts page counts and lists it with its panes; `Enter` or a click opens it as a new tab in the same shape; `Delete` takes it off the list; with none saved the page says how to save one |
 
 ## 6. New sessions
 
