@@ -1188,6 +1188,8 @@ struct App {
     /// was last put in force.
     theme_choice: (String, String, String),
     theme_files: ThemeFiles,
+    /// The OS's light or dark, for `system` (egui's lags a switch on Windows).
+    os_light: ito_common::OsLight,
     /// What is wrong with the theme files as read, and with the theme as
     /// chosen (worked out each frame).
     theme_file_error: Option<String>,
@@ -1366,6 +1368,8 @@ impl App {
         let usage = usage::Watcher::start(move || usage_ctx.request_repaint());
         let changes_ctx = cc.egui_ctx.clone();
         let changes = gitinfo::Watcher::new(false, move || changes_ctx.request_repaint());
+        let os_ctx = cc.egui_ctx.clone();
+        let os_light = ito_common::OsLight::watch(Duration::from_secs(2), move || os_ctx.request_repaint());
         let ctx = cc.egui_ctx.clone();
         let (client, failed, restore) = match connect(move || ctx.request_repaint()) {
             Ok(client) => match first_session(&client) {
@@ -1511,6 +1515,7 @@ impl App {
             new_session: None,
             theme_choice: ("dark".into(), "tsumugi Dark".into(), "tsumugi Light".into()),
             theme_files: ThemeFiles::default(),
+            os_light,
             theme_file_error: None,
             theme_error: None,
             theme_applied: None,
@@ -1830,7 +1835,7 @@ impl App {
     /// Put the chosen theme in force when it changed: the drawing code's
     /// colours, the panes' palette and egui's own widgets.
     fn apply_theme(&mut self, ctx: &egui::Context) {
-        let os_light = ctx.system_theme() == Some(egui::Theme::Light);
+        let os_light = self.os_light.light_or(ctx.system_theme() == Some(egui::Theme::Light));
         let (all, problem) = self.themes();
         self.theme_error = self.theme_file_error.clone().or(problem);
         let (choice, dark, light) = &self.theme_choice;
@@ -5619,7 +5624,7 @@ impl App {
                 let conversation = focus_info.as_ref().filter(|i| !i.conversation.is_empty()).and_then(|i| used.conversations.get(&i.conversation).copied());
                 let tokens = (used.today.total() > 0 || conversation.is_some()).then_some((conversation, used.today));
                 let cost = (focus_info.as_ref().and_then(|i| used.costs.get(&i.conversation).copied()), used.today_cost);
-                let extra = chrome::StatusExtra { up_ms: up, nerd: self.nerd(), clock: clock.show.then(|| clock.format()), git, tokens, block: used.block, cost };
+                let extra = chrome::StatusExtra { up_ms: up, nerd: self.nerd(), clock: clock.show.then_some(clock), git, tokens, block: used.block, cost };
                 chrome::status_bar(ui, &self.palette, &sessions, focus_info.as_ref(), size, &extra)
             })
             .inner

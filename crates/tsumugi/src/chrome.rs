@@ -332,7 +332,7 @@ pub enum StatusClick {
 /// with the keys, its shell and size, and the clock (1n).
 ///
 /// `extra`: the server's uptime, whether a Nerd Font is there, and the
-/// clock's `chrono` format (`None`: no clock).
+/// clock's settings (`None`: no clock).
 pub fn status_bar(
     ui: &mut egui::Ui,
     pal: &Palette,
@@ -390,11 +390,13 @@ pub fn status_bar(
         }
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             ui.add_space(10.0);
-            if let Some(format) = clock {
+            if let Some(clock) = clock {
                 // The design's: in the terminal's font and the strongest
-                // colour; the whole date on the pointer.
-                let now = chrono::Local::now();
-                ui.label(RichText::new(now.format(format).to_string()).font(FontId::monospace(11.5)).color(crate::theme::colors().strong())).on_hover_text(now.format("%A, %-d %B %Y").to_string());
+                // colour; the whole date on the pointer. Both in the
+                // screen's language, as the other apps' clocks.
+                let now = chrono::Local::now().naive_local();
+                let lang = crate::i18n::current_language();
+                ui.label(RichText::new(clock.text(&now, lang)).font(FontId::monospace(11.5)).color(crate::theme::colors().strong())).on_hover_text(ito_common::Clock::full(&now, lang));
                 ui.add_space(12.0);
             }
             // The pane's character set; a menu of others off Windows, where
@@ -1095,7 +1097,7 @@ pub fn muted_mark(p: &egui::Painter, c: egui::Pos2, color: Color32) {
 pub struct StatusExtra {
     pub up_ms: u64,
     pub nerd: bool,
-    pub clock: Option<String>,
+    pub clock: Option<ito_common::Clock>,
     pub git: Option<crate::gitinfo::Git>,
     /// Claude Code's tokens: the focused session's conversation, if it is
     /// one, and today's in all.

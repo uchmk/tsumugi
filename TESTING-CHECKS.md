@@ -252,7 +252,7 @@
 ## 10. Themes
 
 - [ ] **10.1** Settings → Theme, walk the thirteen → The window and the panes recolour at once; states stay readable (gold, cyan, red, green)
-- [ ] **10.2** `theme = "system"` in `common.toml` (`%APPDATA%\uchmk`), then switch Windows between dark and light → tsumugi follows within seconds
+- [ ] **10.2** `theme = "system"` in `common.toml` (`%APPDATA%\uchmk`), then switch Windows between dark and light several times → tsumugi follows within seconds each time, not a switch behind
 - [ ] **10.3** Save a Windows Terminal scheme `.json` in `themes\` → It is in the list under its name; chosen, `ls` colours match Windows Terminal's with that scheme
 - [ ] **10.4** The same with an iTerm2 `.itermcolors` → As 10.3
 - [ ] **10.5** `theme.toml` with one colour → Only that colour changes in the theme in force
@@ -321,6 +321,7 @@
 - [ ] **15.8** Windows: the `UTF-8` in the status bar → Only a label with its tooltip: no menu
 - [ ] **15.9** Claude Code used today (Opus 5.5, say) → `≈$0.39` after the conversation's tokens and today's, and in the 5h window; the tooltip says it is the API's price; `[prices."claude-opus-5-5"] input = 8.0` doubles the input's share; a closed session's line in Recently closed has its own
 - [ ] **15.10** Settings → General → CLOCK: Show the date off, then 12-hour; with mimamori open → The status bar's clock drops the date, then reads `2:32 PM`; `common.toml` has `[clock] date = false` and `hour24 = false`; mimamori's clock does the same
+- [ ] **15.11** `language = "ja"` in `common.toml`, the weekday on; rest the pointer on the clock → The clock reads `2026/10/11 (日) 14:32`; the tooltip `2026年10月11日 日曜日`; with yagura open, both clocks read the same
 
 ## 16. Keys
 
