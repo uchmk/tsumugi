@@ -63,6 +63,7 @@ mod copymode;
 mod primary;
 mod quickselect;
 mod secure;
+mod serial;
 mod remote;
 mod layouts;
 mod help;
@@ -100,13 +101,14 @@ fn main() -> std::process::ExitCode {
         Some("mcp") => mcp::run(),
         Some("send" | "read" | "split" | "close" | "log" | "wait") => remote(&args[0], &args[1..]),
         Some("help" | "--help" | "-h") => {
-            println!("tsumugi: the window, or one of\n{}\n{}\ntsumugi attach N|NAME\ntsumugi proxy                            (what --host runs on the other machine)\ntsumugi notify [--state S] [--session N] [MESSAGE]\ntsumugi tag [--session N] [--remove] TAG...\ntsumugi shell-hook bash|zsh|pwsh\ntsumugi mcp                              an MCP server on stdin/stdout, for Claude Code (see the README)\ntsumugi --keys SCRIPT                    the window, pressing the script's keys (`<C-S-t><Wait:500><Shot:tab><Quit>`); TSUMUGI_KEYS_DONE names the file for its state\n\nTSUMUGI_CONFIG_HOME and TSUMUGI_STATE_HOME name other folders for the settings (config.toml) and the state.", cli::NEW_USAGE, cli::REMOTE_USAGE);
+            println!("tsumugi: the window, or one of\n{}\n{}\ntsumugi attach N|NAME\ntsumugi proxy                            (what --host runs on the other machine)\ntsumugi notify [--state S] [--session N] [MESSAGE]\ntsumugi tag [--session N] [--remove] TAG...\n{}\ntsumugi shell-hook bash|zsh|pwsh\ntsumugi mcp                              an MCP server on stdin/stdout, for Claude Code (see the README)\ntsumugi --keys SCRIPT                    the window, pressing the script's keys (`<C-S-t><Wait:500><Shot:tab><Quit>`); TSUMUGI_KEYS_DONE names the file for its state\n\nTSUMUGI_CONFIG_HOME and TSUMUGI_STATE_HOME name other folders for the settings (config.toml) and the state.", cli::NEW_USAGE, cli::REMOTE_USAGE, serial::USAGE);
             std::process::ExitCode::SUCCESS
         }
         Some("notify") => notify(&args[1..]),
         Some("tag") => tag(&args[1..]),
         Some("new") => new_cli(&args[1..]),
         Some("attach") => attach(&args[1..]),
+        Some("serial") => serial::run(&args[1..]),
         Some("shell-hook") => match shellhook::text(args.get(1).map(String::as_str)) {
             Ok(text) => {
                 print!("{text}");
@@ -136,7 +138,7 @@ fn main() -> std::process::ExitCode {
             std::process::ExitCode::SUCCESS
         }
         Some(other) => {
-            eprintln!("tsumugi: unknown command `{other}` (server, proxy, ls, new, attach, send, read, split, close, wait, notify, tag, shell-hook, mcp, help, --keys, --version)");
+            eprintln!("tsumugi: unknown command `{other}` (server, proxy, ls, new, attach, send, read, split, close, wait, notify, tag, serial, shell-hook, mcp, help, --keys, --version)");
             std::process::ExitCode::from(2)
         }
     }
@@ -2133,7 +2135,7 @@ impl App {
         };
         let shell = c.on.shell();
         self.keep_profile(&mut c);
-        match client.spawn_typing(c.folder.clone(), shell, Size::new(80, 24), (8, 16), place, c.start.typed(&self.settings_now.sessions.claude).into_iter().collect()) {
+        match client.spawn_typing(c.folder.clone(), shell, Size::new(80, 24), (8, 16), place, c.start.typed(&self.settings_now.sessions.claude).filter(|_| c.on.takes_typing()).into_iter().collect()) {
             Ok(pane) => {
                 let id = pane.id();
                 self.pending = Some(id);
@@ -2153,7 +2155,7 @@ impl App {
                 for (k, s) in c.more.iter().enumerate() {
                     let (beside, dir) = newsession::more_place(k, id, &made);
                     let shell = c.on.shell();
-                    match client.spawn_typing(c.folder.clone(), shell, Size::new(80, 24), (8, 16), Place::Split { beside, dir }, s.typed(&self.settings_now.sessions.claude).into_iter().collect()) {
+                    match client.spawn_typing(c.folder.clone(), shell, Size::new(80, 24), (8, 16), Place::Split { beside, dir }, s.typed(&self.settings_now.sessions.claude).filter(|_| c.on.takes_typing()).into_iter().collect()) {
                         Ok(pane) => {
                             made.push(pane.id());
                             for t in c.tags.iter().cloned() {

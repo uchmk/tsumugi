@@ -1008,8 +1008,33 @@ fn with_cwd_hook(shell: Option<(String, Vec<String>)>) -> Option<(String, Vec<St
     })
 }
 
+/// A serial port as a place (`serial:COM3@9600`, `Where::Serial`):
+/// `tsumugi serial` on it, by this executable (the window's word names no
+/// path).
+fn serial_bridge(program: &str, args: &[String]) -> Option<(String, Vec<String>)> {
+    let spec: String = program.strip_prefix("serial:").filter(|_| args.is_empty())?.split_whitespace().collect();
+    if spec.is_empty() {
+        return None;
+    }
+    let exe = std::env::current_exe().ok()?;
+    Some(serial_command(&exe.to_string_lossy(), &spec, cfg!(windows)))
+}
+
+/// The command for `serial_bridge`, `--hold` so the pane says why before
+/// it goes. A release build on Windows is a GUI program, which ConPTY gives
+/// no console: PowerShell starts it on its own and waits, and it attaches
+/// to that.
+fn serial_command(exe: &str, spec: &str, windows: bool) -> (String, Vec<String>) {
+    if !windows {
+        return (exe.to_owned(), vec!["serial".into(), "--hold".into(), spec.to_owned()]);
+    }
+    let quote = |s: &str| format!("'{}'", s.replace('\'', "''"));
+    let script = format!("Start-Process -FilePath {} -ArgumentList 'serial','--hold',{} -NoNewWindow -Wait", quote(exe), quote(spec));
+    let utf16: Vec<u8> = script.encode_utf16().flat_map(u16::to_le_bytes).collect();
+    ("powershell.exe".into(), vec!["-NoProfile".into(), "-NonInteractive".into(), "-EncodedCommand".into(), base64(&utf16)])
+}
+
 /// Standard base64, padded (what `-EncodedCommand` reads).
-#[cfg(any(windows, test))]
 fn base64(bytes: &[u8]) -> String {
     const ABC: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let mut out = String::with_capacity(bytes.len().div_ceil(3) * 4);
@@ -1068,7 +1093,7 @@ fn start_terminal(
     env.push(("TSUMUGI_SESSION".to_owned(), id.to_string()));
     env.push(("TSUMUGI_ADDRESS".to_owned(), shared.address.to_string_lossy().into_owned()));
     // No shell asked for: the settings' `[shell]`, else the system's.
-    let shell = shell.or_else(|| own.command());
+    let shell = shell.or_else(|| own.command()).map(|(p, a)| serial_bridge(&p, &a).unwrap_or((p, a)));
     #[cfg(windows)]
     let shell = with_cwd_hook(shell.or_else(|| ito_pane::default_shell().map(|p| (p, Vec::new()))));
     let mut term = Terminal::spawn_with_env(cwd, size, cell, shell, log.as_deref(), env, move || {
@@ -1873,5 +1898,24 @@ mod tags {
         assert_eq!(base64(b"Ma"), "TWE=");
         assert_eq!(base64(b"M"), "TQ==");
         assert_eq!(base64(b""), "");
+    }
+
+    #[test]
+    fn a_serial_place_runs_this_program() {
+        let (p, a) = serial_command("/opt/tsumugi", "ttyUSB0@9600", false);
+        assert_eq!(p, "/opt/tsumugi");
+        assert_eq!(a, ["serial", "--hold", "ttyUSB0@9600"]);
+        let (p, a) = serial_command(r"C:\it's\tsumugi.exe", "COM3", true);
+        assert_eq!(p, "powershell.exe");
+        assert_eq!(a[2], "-EncodedCommand");
+        let want = r"Start-Process -FilePath 'C:\it''s\tsumugi.exe' -ArgumentList 'serial','--hold','COM3' -NoNewWindow -Wait";
+        let utf16: Vec<u8> = want.encode_utf16().flat_map(u16::to_le_bytes).collect();
+        assert_eq!(a[3], base64(&utf16));
+        assert!(serial_bridge("serial:", &[]).is_none());
+        assert!(serial_bridge("serial:COM3", &["x".into()]).is_none());
+        assert!(serial_bridge("bash", &[]).is_none());
+        if !cfg!(windows) {
+            assert_eq!(serial_bridge("serial: COM3 ", &[]).unwrap().1, ["serial", "--hold", "COM3"], "the spaces go");
+        }
     }
 }

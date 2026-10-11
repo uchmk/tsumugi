@@ -5,6 +5,20 @@
 
 ## [未リリース]
 
+## [0.100.0] - 2026-10-11
+
+TODO の「後で」から、シリアル接続を足した（#31、持ち主の指示で今入れた）。
+
+### 追加
+
+- シリアル接続: 新しいセッションの **Runs on** に、挿さっているシリアルのポートが並ぶ（Windows は `COM3` など、Linux は `ttyUSB*`・`ttyACM*`、
+  macOS は `cu.*`）。選ぶとペインがポートと 115200 8N1 で話し、Claude Code は打ち込まない。`Ctrl+]` のあと `q` で抜ける
+  （`Ctrl+]` を 2 回でその文字を 1 つ送る）。ポートが抜かれたり、ほかのプログラムが持っていたりすれば、理由を出してキーを待つ。
+- プロファイルの場所に `serial:COM3@9600,7E1`（速さと、データビット・パリティ・ストップビット）。
+- `tsumugi serial [--hold] PORT[@BAUD[,FRAME]]`: ほかの端末でも同じことをする。ポートは Pure Rust で開く（Windows は Win32 の
+  通信の API、ほかは termios。`serialport` と libudev は使わない）。
+- 実機の確かめは TESTING.md の 6.24。言葉の誤りと、Unix の疑似端末を相手にした行き来は `tests/cli.rs` が CI で見る。
+
 ## [0.99.0] - 2026-10-11
 
 TODO の「後で」から、macOS の Secure Keyboard Entry を足した。

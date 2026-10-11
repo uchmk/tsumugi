@@ -448,10 +448,14 @@ on the right, the third below it, a fourth below the first).
 `profiles.toml` beside the settings, for **Profile…** to fill in next time.
 **Runs on** appears when there is somewhere else to start it: the WSL
 distributions (`wsl -l -q`, on Windows) and the hosts `~/.ssh/config` names
-(not its patterns). A WSL session starts in the folder; an SSH one in the
-login's home folder, with Claude Code typed in there. A profile keeps the
-choice (`place = "wsl:Ubuntu"` or `"ssh:box"` in `profiles.toml`, also
-editable in Settings → Sessions & profiles).
+(not its patterns), and the serial ports plugged in (`COM3`; `ttyUSB0` and
+`ttyACM0` on Linux, `cu.*` on macOS). A WSL session starts in the folder; an
+SSH one in the login's home folder, with Claude Code typed in there. A serial
+one talks to the port at 115200 8N1 and nothing is typed into it; `Ctrl+]`
+then `q` leaves (`Ctrl+]` twice sends one). A profile keeps the choice
+(`place = "wsl:Ubuntu"`, `"ssh:box"` or `"serial:COM3@9600,7E1"` in
+`profiles.toml`, also editable in Settings → Sessions & profiles), and
+`tsumugi serial COM3@9600` does the same in any terminal.
 
 ### Searching
 

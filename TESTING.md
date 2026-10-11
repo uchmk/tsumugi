@@ -87,6 +87,7 @@ they are not ticked by hand any more. A change that breaks one turns CI red.
 | 18.11 (half) | `tsumugi --keys`: no script, a plain space, a name that leaves the folder and a bad wait are refused with exit 2 and the reason, before a window opens; `--help` names it | `keys_refuses_a_bad_script` |
 | 2.78 (send) | A read-only session: `tsumugi send N` exits 1 saying it is read-only and nothing runs; `ls --json` has `read_only`; let go, `send` runs again | `send_to_a_read_only_session_is_refused` |
 | 2.79 | Windows: turn on Narrator (`Ctrl+Win+Enter`); click into a pane with `dir` on it, then press `Caps Lock+R` (read the window) or move Narrator's scan mode onto the pane; then turn on NVDA instead | Narrator calls the pane a document (terminal) and reads its rows -- `dir`'s lines, not the cells one by one, without the blanks after them; a pane that changed reads its new text the next time; nothing is typed into the pane by it |
+| 6.24 (text) | `tsumugi serial`: bad words exit 2 with why, a missing port exit 1 naming it; against a pseudo-terminal (Unix) both ways carry, `Ctrl+]` twice sends one, `Ctrl+]` `q` leaves with exit 0 | `serial_refuses_bad_words_and_a_missing_port`, `serial_carries_both_ways_and_leaves_on_its_key` |
 | 18.10 (half) | `tsumugi mcp`: answers `initialize` and `tools/list`; `tsumugi_sessions` says tsumugi is not running without a server, lists the session with one; `tsumugi_screen` by number and by tag | `mcp_lists_sessions_and_reads_a_screen` |
 
 A row that only needs text belongs here, not in a section below: add a test
@@ -305,6 +306,7 @@ to `cli.rs` and a line to this table instead of a row.
 | 6.21 | With a host where tsumugi is not installed: Runs on → SSH: it, kept there, Create; hover its red row | The tooltip says tsumugi is not there, gives the releases page and Settings → Advanced → Command there; filling that with tsumugi's full path there and Reconnect reaches it |
 | 6.22 | With an older tsumugi running as box's server: reach box; right-click → Restart its server | Before: the tooltip says the versions differ and to install the same one, then restart; after: box comes up on the new server with its tabs back (its sessions restarted) |
 | 6.23 | Over a slow line (a phone's hotspot or a far host), run `yes` and show a picture in a session on box | The window stays responsive, the pane updates in steps of about a tenth of a second, the picture comes through (shrunk if large) |
+| 6.24 | With a USB serial device plugged in (a board's console, or two adapters wired together, or a com0com pair): `Ctrl+Shift+T`, Runs on → Serial: COM3 (`ttyUSB0`, `cu.usbserial-…`), Shell, Create; type, then `Ctrl+]` `q`; then a profile whose place is `serial:COM3@9600,7E1` | The pane says `COM3 at 115200 8N1`, what the device prints shows (colors too), keys reach it; the dialog shows the note on `Ctrl+]`; no Claude Code is typed into it; `Ctrl+]` `q` ends the session; unplugging it says it went and waits for a key; a port another program holds says why and waits; the profile's speed and frame are used; no console window flashes on Windows |
 
 ## 7. The input box
 

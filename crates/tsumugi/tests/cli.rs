@@ -382,3 +382,109 @@ fn keys_refuses_a_bad_script() {
     }
     assert!(s.ok(&["--help"]).contains("--keys"), "the help names --keys");
 }
+
+/// `tsumugi serial` refuses words it cannot read with exit 2 and why, and
+/// a port that is not there with exit 1.
+#[test]
+fn serial_refuses_bad_words_and_a_missing_port() {
+    let s = Server::new("serial-words");
+    for (args, says) in [(&["serial"][..], "usage"), (&["serial", "COM3@fast"], "not a speed"), (&["serial", "COM3@9600,9N1"], "not a frame"), (&["serial", "a", "b"], "usage")] {
+        let out = s.run(args);
+        let err = String::from_utf8_lossy(&out.stderr);
+        assert_eq!(out.status.code(), Some(2), "tsumugi {args:?}: {err}");
+        assert!(err.contains(says), "tsumugi {args:?} said: {err}");
+    }
+    let port = if cfg!(windows) { "COM250" } else { "/dev/tsumugi-no-such-port" };
+    let out = s.run(&["serial", port]);
+    assert_eq!(out.status.code(), Some(1), "{}", String::from_utf8_lossy(&out.stderr));
+    if !cfg!(windows) {
+        assert!(String::from_utf8_lossy(&out.stdout).contains(port), "it names the port");
+    }
+}
+
+/// `tsumugi serial` against a pseudo-terminal standing in for the device:
+/// what the device sends reaches the screen, what is typed reaches the
+/// device, `Ctrl+]` twice sends one, and `Ctrl+]` then `q` leaves.
+#[cfg(unix)]
+#[test]
+fn serial_carries_both_ways_and_leaves_on_its_key() {
+    use std::io::{Read, Write};
+    use std::os::fd::FromRawFd;
+    use std::sync::mpsc;
+
+    let (mut master, mut slave): (libc::c_int, libc::c_int) = (0, 0);
+    // SAFETY: two out-parameters; no name, terminal settings or size.
+    assert_eq!(unsafe { libc::openpty(&mut master, &mut slave, std::ptr::null_mut(), std::ptr::null(), std::ptr::null()) }, 0);
+    // SAFETY: openpty gave both and nothing else owns them.
+    let (mut device, side) = unsafe { (std::fs::File::from_raw_fd(master), std::fs::File::from_raw_fd(slave)) };
+    // Raw, so the device's side neither echoes nor turns `\r` into `\n`.
+    // SAFETY: a termios filled by tcgetattr on the master that is open.
+    unsafe {
+        let mut t: libc::termios = std::mem::zeroed();
+        assert_eq!(libc::tcgetattr(master, &mut t), 0);
+        libc::cfmakeraw(&mut t);
+        assert_eq!(libc::tcsetattr(master, libc::TCSANOW, &t), 0);
+    }
+    // SAFETY: the fd is open; the name is copied before anything else runs.
+    let name = unsafe { libc::ttyname(slave) };
+    assert!(!name.is_null());
+    let path = unsafe { std::ffi::CStr::from_ptr(name) }.to_string_lossy().into_owned();
+    let mut child = Command::new(env!("CARGO_BIN_EXE_tsumugi"))
+        .args(["serial", &format!("{path}@9600,7E1")])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    // Its screen, read on a thread so a test that fails does not hang.
+    let (tx, screen) = mpsc::channel();
+    let mut out = child.stdout.take().unwrap();
+    std::thread::spawn(move || {
+        let mut buf = [0; 256];
+        while let Ok(n) = out.read(&mut buf) {
+            if n == 0 || tx.send(buf[..n].to_vec()).is_err() {
+                break;
+            }
+        }
+    });
+    let (to_device, from_device) = mpsc::channel();
+    let mut reader = device.try_clone().unwrap();
+    std::thread::spawn(move || {
+        let mut buf = [0; 256];
+        while let Ok(n) = reader.read(&mut buf) {
+            if n == 0 || to_device.send(buf[..n].to_vec()).is_err() {
+                break;
+            }
+        }
+    });
+    let wait_for = |rx: &mpsc::Receiver<Vec<u8>>, want: &[u8]| {
+        let mut got = Vec::new();
+        let end = Instant::now() + Duration::from_secs(10);
+        while !got.windows(want.len()).any(|w| w == want) {
+            match rx.recv_timeout(end.saturating_duration_since(Instant::now())) {
+                Ok(b) => got.extend(b),
+                Err(_) => panic!("waited for {:?}, got {:?}", String::from_utf8_lossy(want), String::from_utf8_lossy(&got)),
+            }
+        }
+        got
+    };
+    wait_for(&screen, b"9600 7E1; Ctrl+] q leaves");
+    device.write_all(b"hello from the device\r\n").unwrap();
+    wait_for(&screen, b"hello from the device");
+    let mut keys = child.stdin.take().unwrap();
+    keys.write_all(b"ls\r").unwrap();
+    wait_for(&from_device, b"ls\r");
+    keys.write_all(b"\x1d\x1d!").unwrap();
+    assert_eq!(wait_for(&from_device, b"!"), b"\x1d!", "two Ctrl+] send one");
+    keys.write_all(b"\x1dq").unwrap();
+    let end = Instant::now() + PATIENCE;
+    let status = loop {
+        if let Some(s) = child.try_wait().unwrap() {
+            break s;
+        }
+        assert!(Instant::now() < end, "Ctrl+] q did not leave");
+        std::thread::sleep(Duration::from_millis(50));
+    };
+    assert!(status.success(), "{status:?}");
+    drop(side);
+}
