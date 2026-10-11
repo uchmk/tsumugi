@@ -119,6 +119,8 @@ RULES = {
 OK_CONCLUSIONS = {"success", "skipped", "neutral"}
 MARK_LINE = re.compile(r"^- \[(.)\] (.*)$")
 PICTURE = re.compile(r"\.(png|jpe?g|bmp|gif|webp)\b", re.IGNORECASE)
+# a shot's bare name: letters, digits, `_` and `-`, no path or extension
+PICTURE_NAME = re.compile(r"[A-Za-z][\w-]{1,63}")
 MARKER = "<!-- merge-lanes:{kind}:{sha} -->"
 MACHINES = {"test/win-": "x64", "test/arm-": "ARM64", "test/linux-": "Linux"}
 RETESTS = "| **Re-tests of changed behaviour** |"
@@ -214,20 +216,54 @@ def mentions(line, rid, key):
     return False
 
 
+def evidence_items(text):
+    """The text's lines, each list item joined with its indented continuation
+    lines, so that a picture named on the item's second line still counts."""
+    out = []
+    for line in text.split("\n"):
+        if out and line.startswith((" ", "\t")) and line.strip() \
+                and not line.lstrip().startswith(("- ", "* ", "|")) and out[-1].lstrip().startswith(("- ", "* ")):
+            out[-1] += " " + line.strip()
+        else:
+            out.append(line)
+    return out
+
+
+def picture_names(items):
+    """The backticked names in a prose paragraph about pictures or shots: a lane's
+    report lists its shots once (`s273b`, from Save-Shot -Name) and names them
+    without `.png` on the evidence lines."""
+    names, para = set(), []
+    for line in items + [""]:
+        if line.lstrip().startswith(("- ", "* ", "|", "#")):
+            line = ""  # evidence items, tables and headings list no shots
+        if line.strip():
+            para.append(line)
+            continue
+        joined = " ".join(para)
+        if re.search(r"\b(pictures?|shots?|screenshots?)\b", joined, re.IGNORECASE):
+            names.update(n for n in re.findall(r"`([^`\s]+)`", joined) if PICTURE_NAME.fullmatch(n))
+        para = []
+    return names
+
+
 def missing_evidence(ticks, text):
     """The ticks with no evidence line in `text`, each with what is missing.
 
     `ticks` is [(path, mark, id)]. An evidence line names the row and says
     something beyond it; a `[~]` also names its picture somewhere on a line
-    that names the row."""
-    lines = text.split("\n")
+    that names the row: a file name with an image extension, or a backticked
+    name the text lists as a picture."""
+    items = evidence_items(text)
+    shots = picture_names(items)
     out = []
     for path, mark, rid in ticks:
         key = path == "TESTING-KEYS.md"
-        found = [ln for ln in lines if mentions(ln, rid, key) and len(ln.strip()) >= len(rid) + 10]
+        found = [ln for ln in items if mentions(ln, rid, key) and len(ln.strip()) >= len(rid) + 10]
         if not found:
             out.append(f"{rid} [{mark}] ({path}): no evidence line")
-        elif mark == "~" and not any(PICTURE.search(ln) for ln in found):
+        elif mark == "~" and not any(PICTURE.search(ln) or shots & set(re.findall(r"`([^`\s]+)`", ln))
+                                     for ln in found):
             out.append(f"{rid} [~] ({path}): no picture named on its evidence line")
     return out
 
@@ -830,6 +866,18 @@ def self_test():
              ("TESTING-CHECKS.md", "x", "1.6")]
     miss = missing_evidence(ticks, body)
     assert [m.split(" ")[0] for m in miss] == ["1.4", "1.5", "1.6"], miss
+
+    # tsumugi #12: the shots listed once without `.png`, the name on the item's second line
+    report = ("Pictures are in `C:\\shots\\run\\` (not in the repo): `s252_pwsh`,\n"
+              "`s273b`, `s510_1280`.\n\n## Evidence\n"
+              "- **2.73** A 257 586-byte PNG through OSC 1337: `after` at 0.19 s\n"
+              "  and 0.17 s. The picture drew (`s273b`); the shape is a look, so `[~]`.\n"
+              "- **2.74** `[~]`: the bar looked right, `after` read\n"
+              "- **2.75** `[~]`: as in the picture\n  - sub-item `s273b`\n")
+    ticks = [("TESTING-CHECKS.md", "~", "2.73"), ("TESTING-CHECKS.md", "~", "2.74"),
+             ("TESTING-CHECKS.md", "~", "2.75")]
+    miss = missing_evidence(ticks, report)
+    assert [m.split(" ")[0] for m in miss] == ["2.74", "2.75"], miss
 
     todo = ("## A\n- #12 not this\n## マージで止めている実機の PR\n\n説明（#3 の例）\n\n"
             "- #311: 32.20 を…\n  - 持ち主の答え: #312 と同じ\n## B\n- #400\n")
