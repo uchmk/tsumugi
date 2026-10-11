@@ -1270,15 +1270,15 @@ impl CardLines<'_> {
 fn work_log(client: &Client, info: &Info, tab: &str) -> (String, bool) {
     if !info.logging.is_empty() {
         client.log(info.id, None);
-        return (format!("Saved the work log to {}", info.logging), false);
+        return (trf("toast.work_log_saved", &[&info.logging]), false);
     }
     match export::log_path(tab) {
         Some(path) => {
-            let words = format!("Writing a work log to {} as the session goes (the same key finishes it)", path.display());
+            let words = trf("toast.work_log", &[&path.display().to_string()]);
             client.log(info.id, Some(path));
             (words, false)
         }
-        None => ("No home folder to write the work log in".into(), true),
+        None => (tr("toast.work_log_no_home").into(), true),
     }
 }
 
@@ -1662,14 +1662,14 @@ impl App {
             keys::Action::Record => match sessions.iter().find(|i| i.id == w.focus) {
                 Some(info) if !info.recording.is_empty() => {
                     client.record(w.focus, None);
-                    self.say(format!("Saved the recording to {}", info.recording), false);
+                    self.say(trf("toast.recording_saved", &[&info.recording]), false);
                 }
                 Some(info) => match export::cast_path(&sort::display_title(&info.title, &info.command)) {
                     Some(path) => {
-                        self.say(format!("Recording to {} (the same key stops)", path.display()), false);
+                        self.say(trf("toast.recording", &[&path.display().to_string()]), false);
                         client.record(w.focus, Some(path));
                     }
-                    None => self.say("No home folder to record in".into(), true),
+                    None => self.say(tr("toast.recording_no_home").into(), true),
                 },
                 None => {}
             },
@@ -1765,7 +1765,8 @@ impl App {
                 };
                 self.font = egui::FontId::monospace(font_size(base, self.font_step));
                 let size = self.font.size;
-                let words = if self.font_step == 0.0 { format!("Letters at {size} pt, as the settings have them") } else { format!("Letters at {size} pt ({} resets)", keys::label(keys::Action::FontReset)) };
+                let size = size.to_string();
+                let words = if self.font_step == 0.0 { trf("toast.font_size", &[&size]) } else { trf("toast.font_size_reset", &[&size, &keys::label(keys::Action::FontReset)]) };
                 self.say(words, false);
             }
         }
@@ -1780,10 +1781,10 @@ impl App {
         }
         for (k, p) in saved.iter().enumerate() {
             let first = p.text.lines().next().unwrap_or_default();
-            out.push(palette::Entry { title: format!("Send prompt: {}", p.name), detail: first.chars().take(60).collect(), pick: palette::Pick::Prompt(k) });
+            out.push(palette::Entry { title: trf("palette.send_prompt", &[&p.name]), detail: first.chars().take(60).collect(), pick: palette::Pick::Prompt(k) });
         }
         for (k, l) in kept.iter().enumerate() {
-            out.push(palette::Entry { title: format!("Open layout: {}", l.name), detail: layouts::words(&l.tree), pick: palette::Pick::Layout(k) });
+            out.push(palette::Entry { title: trf("palette.open_layout", &[&l.name]), detail: layouts::words(&l.tree), pick: palette::Pick::Layout(k) });
         }
         let mut folders: Vec<&std::path::Path> = Vec::new();
         for i in sessions {
@@ -1794,7 +1795,7 @@ impl App {
             }
         }
         for f in folders {
-            out.push(palette::Entry { title: format!("New session in {}", home_short(f)), detail: "folder".into(), pick: palette::Pick::Folder(f.to_path_buf()) });
+            out.push(palette::Entry { title: trf("palette.new_session_in", &[&home_short(f)]), detail: tr("palette.folder").into(), pick: palette::Pick::Folder(f.to_path_buf()) });
         }
         out
     }
@@ -1903,23 +1904,23 @@ impl App {
                 }
                 prefs::Change::Autostart(on) => self.job(move || {
                     autostart::set(on)?;
-                    Ok(if on { "The server now starts when you sign in".into() } else { "The server no longer starts at sign-in".into() })
+                    Ok(if on { tr("toast.autostart_on").into() } else { tr("toast.autostart_off").into() })
                 }),
                 prefs::Change::Hooks(true) => self.add_hooks(),
-                prefs::Change::Hooks(false) => self.job(|| hooks::uninstall().map(|p| format!("tsumugi's hooks are out of {}; the old file is beside it", home_short(&p)))),
+                prefs::Change::Hooks(false) => self.job(|| hooks::uninstall().map(|p| trf("toast.hooks_out", &[&home_short(&p)]))),
                 prefs::Change::ShellHook(shell, on) => self.job(move || {
                     let p = shellhook::set_installed(&shell, on)?;
-                    Ok(if on { format!("The shell integration is in {}: new sessions have it", home_short(&p)) } else { format!("The shell integration is out of {}", home_short(&p)) })
+                    Ok(if on { trf("toast.shell_hook_in", &[&home_short(&p)]) } else { trf("toast.shell_hook_out", &[&home_short(&p)]) })
                 }),
                 prefs::Change::RestartServer => self.restart_server(ui.ctx()),
                 prefs::Change::Export => self.job(|| {
                     let dir = tsumugi_mux::settings::default_path().and_then(|p| p.parent().map(std::path::Path::to_path_buf)).ok_or("no settings folder")?;
                     let to = export::place().ok_or("no home folder")?;
-                    export::export(&dir, &to).map(|f| format!("Exported to {}", home_short(&f)))
+                    export::export(&dir, &to).map(|f| trf("toast.exported", &[&home_short(&f)]))
                 }),
                 prefs::Change::Import(from) => self.job(move || {
                     let dir = tsumugi_mux::settings::default_path().and_then(|p| p.parent().map(std::path::Path::to_path_buf)).ok_or("no settings folder")?;
-                    export::import(&dir, std::path::Path::new(&from)).map(|n| format!("Read {n} files back; those there before are kept as .bak. Profiles come back when the window opens next"))
+                    export::import(&dir, std::path::Path::new(&from)).map(|n| trf("toast.imported", &[&n.to_string()]))
                 }),
                 prefs::Change::GoTo(_) => {}
                 prefs::Change::MuteTag(tag, on) => client.mute_tag(tag, on),
@@ -2074,7 +2075,7 @@ impl App {
                                 client.tag(vec![pane.id()], t, true);
                             }
                         }
-                        Err(e) => self.say(format!("A pane did not start: {e}"), true),
+                        Err(e) => self.say(trf("toast.pane_failed", &[&e.to_string()]), true),
                     }
                 }
             }
@@ -2115,7 +2116,7 @@ impl App {
         let words = layouts::words(&tree);
         layouts::put(&mut self.layouts, layouts::Layout { name: name.clone(), tree });
         layouts::save(self.layouts.clone());
-        self.say(format!("Saved layout \u{201c}{name}\u{201d} ({words}); open it from the search box"), false);
+        self.say(trf("toast.layout_saved", &[&name, &words]), false);
     }
 
     /// A saved layout as a new tab in `folder`: its first pane as the tab,
@@ -2135,7 +2136,7 @@ impl App {
                     self.failed = Some(format!("the shell did not start: {e}"));
                     return;
                 }
-                Err(e) => self.say(format!("A pane did not start: {e}"), true),
+                Err(e) => self.say(trf("toast.pane_failed", &[&e.to_string()]), true),
             }
         }
         let Some(&first) = made.first() else { return };
@@ -2166,8 +2167,8 @@ impl App {
                     };
                     client.send_prompt(*id, text);
                 }
-                let whom = if to.len() > 1 { format!("{} panes", to.len()) } else { "this pane".to_owned() };
-                self.say(format!("Sent \u{201c}{}\u{201d} to {whom}", p.name), false);
+                let words = if to.len() > 1 { trf("toast.sent_panes", &[&p.name, &to.len().to_string()]) } else { trf("toast.sent_pane", &[&p.name]) };
+                self.say(words, false);
             }
             palette::Pick::Layout(k) => {
                 let Some(l) = self.layouts.get(k).cloned() else { return };
@@ -2369,11 +2370,11 @@ impl App {
         ui.add_space(8.0);
         ui.horizontal(|ui| {
             ui.add_space(14.0);
-            let count = format!("{} of {}", shown.len(), tabs.len());
-            ui.label(egui::RichText::new("SESSIONS").size(11.0).strong().color(pal.fg_dim));
+            let count = trf("sidebar.count", &[&shown.len().to_string(), &tabs.len().to_string()]);
+            ui.label(egui::RichText::new(tr("sidebar.sessions")).size(11.0).strong().color(pal.fg_dim));
             // Another machine's, shown: whose.
             if let Some(host) = &self.on {
-                ui.label(egui::RichText::new(format!("on {host}")).size(11.0).strong().color(chrome::ink(chrome::cyan()))).on_hover_text("Kept on that machine's tsumugi; this machine's are under MACHINES below");
+                ui.label(egui::RichText::new(trf("sidebar.on_host", &[host])).size(11.0).strong().color(chrome::ink(chrome::cyan()))).on_hover_text(tr("sidebar.on_host_hover"));
             }
             ui.label(egui::RichText::new(count).size(11.0).color(crate::theme::colors().faint()));
             // Right to left: `+` at the end, the order before it.
@@ -2397,13 +2398,13 @@ impl App {
                     // How the rows look (the design's 1i).
                     ui.separator();
                     let lines = self.view.density == sort::Density::Lines;
-                    if ui.selectable_label(lines, "One line each").clicked() {
+                    if ui.selectable_label(lines, tr("sidebar.one_line")).clicked() {
                         self.view.density = if lines { sort::Density::Cards } else { sort::Density::Lines };
                         self.view.save();
                         ui.close();
                     }
                     let key = keys::label(keys::Action::Rail);
-                    if ui.selectable_label(false, format!("Narrow rail   {key}")).clicked() {
+                    if ui.selectable_label(false, trf("sidebar.rail", &[&key])).clicked() {
                         self.view.rail = true;
                         self.view.save();
                         ui.close();
@@ -2458,7 +2459,7 @@ impl App {
                 ui.spacing_mut().item_spacing = egui::vec2(5.0, 5.0);
                 ui.horizontal_wrapped(|ui| {
                     let all = self.filter.kind.is_none();
-                    if chrome::filter_button(ui, &pal, &format!("All {}", tabs.len()), None, all).clicked() {
+                    if chrome::filter_button(ui, &pal, &trf("sidebar.all", &[&tabs.len().to_string()]), None, all).clicked() {
                         self.filter.kind = None;
                     }
                     for k in sort::Kind::ALL {
@@ -2474,7 +2475,7 @@ impl App {
                 });
                 if projects.len() > 1 || self.filter.project.is_some() {
                     ui.horizontal_wrapped(|ui| {
-                        if chrome::filter_button(ui, &pal, &format!("All folders {}", tabs.len()), None, self.filter.project.is_none()).clicked() {
+                        if chrome::filter_button(ui, &pal, &trf("sidebar.all_folders", &[&tabs.len().to_string()]), None, self.filter.project.is_none()).clicked() {
                             self.filter.project = None;
                         }
                         for (p, n) in &projects {
@@ -2503,14 +2504,14 @@ impl App {
                         .corner_radius(5.0);
                     // No cap when the key was given back to the shell.
                     let a = key != "none" && ui.add(cap).clicked();
-                    let words = egui::RichText::new(format!("Jump to waiting · {waiting}")).size(12.0).color(pal.fg_dim);
+                    let words = egui::RichText::new(trf("sidebar.jump", &[&waiting.to_string()])).size(12.0).color(pal.fg_dim);
                     let b = ui.add(egui::Label::new(words).sense(egui::Sense::click()));
                     // All of them in a list, to answer together.
                     let list = ui
                         .with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             ui.add_space(12.0);
-                            let words = egui::RichText::new("List ›").size(12.0).color(chrome::ink(chrome::cyan()));
-                            ui.add(egui::Label::new(words).sense(egui::Sense::click())).on_hover_text(format!("The waiting sessions, answered together ({})", keys::label(keys::Action::Waiting))).clicked()
+                            let words = egui::RichText::new(tr("sidebar.list")).size(12.0).color(chrome::ink(chrome::cyan()));
+                            ui.add(egui::Label::new(words).sense(egui::Sense::click())).on_hover_text(trf("sidebar.list_hover", &[&keys::label(keys::Action::Waiting)])).clicked()
                         })
                         .inner;
                     (a || b.clicked(), list)
@@ -2530,7 +2531,7 @@ impl App {
             ui.add_space(24.0);
             ui.vertical_centered(|ui| {
                 ui.set_max_width(ui.available_width() - 40.0);
-                ui.label(egui::RichText::new("Sessions you start show here, with what each one is doing.").size(12.5).color(pal.fg_dim));
+                ui.label(egui::RichText::new(tr("sidebar.empty")).size(12.5).color(pal.fg_dim));
             });
         }
         // Rows can be dragged into another order in `Manual` only: in the
@@ -2584,7 +2585,7 @@ impl App {
                             for (k, color) in [(sort::Kind::Error, chrome::red()), (sort::Kind::Waiting, chrome::gold())] {
                                 let n = kinds.iter().filter(|x| **x == k).count();
                                 if n > 0 {
-                                    let r = p.text(egui::pos2(right, rect.center().y), egui::Align2::RIGHT_CENTER, format!("{n} {}", k.label().to_lowercase()), egui::FontId::proportional(11.5), color);
+                                    let r = p.text(egui::pos2(right, rect.center().y), egui::Align2::RIGHT_CENTER, if k == sort::Kind::Error { trf("sidebar.group_error", &[&n.to_string()]) } else { trf("sidebar.group_waiting", &[&n.to_string()]) }, egui::FontId::proportional(11.5), color);
                                     right = r.left() - 8.0;
                                 }
                             }
@@ -2749,9 +2750,9 @@ impl App {
                         ui.label(egui::RichText::new(format!("{} file(s) changed, not committed", c.files.len())).strong());
                         ui.label(egui::RichText::new(list.join("\n")).monospace().size(11.0).color(pal.fg_dim));
                         if more > 0 {
-                            ui.label(egui::RichText::new(format!("and {more} more")).size(11.0).color(pal.fg_dim));
+                            ui.label(egui::RichText::new(trf("sidebar.more_files", &[&more.to_string()])).size(11.0).color(pal.fg_dim));
                         }
-                        ui.label(egui::RichText::new("Click to see the diff").size(11.0).color(pal.fg_dim));
+                        ui.label(egui::RichText::new(tr("sidebar.see_diff")).size(11.0).color(pal.fg_dim));
                     });
                 }
                 let words = chrome::card_words(urgent, now);
@@ -2787,7 +2788,7 @@ impl App {
                         if r.left() < left + 40.0 {
                             break;
                         }
-                        let b = ui.interact(r, egui::Id::new(("answer", urgent.id, c.key)), egui::Sense::click()).on_hover_text(format!("Type {}: {}", c.key, c.text));
+                        let b = ui.interact(r, egui::Id::new(("answer", urgent.id, c.key)), egui::Sense::click()).on_hover_text(trf("sidebar.answer", &[&c.key.to_string(), &c.text]));
                         let first = c.key == '1';
                         let fill = match (first, b.hovered()) {
                             (true, true) => chrome::cyan(),
@@ -2844,7 +2845,7 @@ impl App {
                         if r.right() > left + width {
                             break;
                         }
-                        let b = ui.interact(r, egui::Id::new(("port", w.id, *port)), egui::Sense::click()).on_hover_text(format!("Open http://localhost:{port} in the browser"));
+                        let b = ui.interact(r, egui::Id::new(("port", w.id, *port)), egui::Sense::click()).on_hover_text(trf("sidebar.port", &[&port.to_string()]));
                         painter.rect_filled(r, 4.0, if b.hovered() { crate::theme::colors().hover() } else { crate::theme::colors().panel });
                         painter.galley(egui::pos2(r.left() + 4.0, r.top() + 1.0), g, chrome::ink(chrome::cyan()));
                         if b.clicked() {
@@ -3155,7 +3156,7 @@ impl App {
                         self.job(move || {
                             let url = gitinfo::create_pr(&cwd)?;
                             menu::open_url(&url);
-                            Ok(format!("Opened the pull request {url}"))
+                            Ok(trf("toast.pr_opened", &[&url]))
                         });
                     }
                     SideOp::SaveOutput(id, name) => {
@@ -3298,7 +3299,7 @@ impl App {
         let waiting = sessions.iter().filter(|i| matches!(i.state, State::Waiting | State::MaybeWaiting)).count();
         if waiting > 0 {
             let pill = egui::Rect::from_center_size(egui::pos2(area.center().x, foot + 18.0), egui::vec2(36.0, 22.0));
-            let resp = ui.interact(pill, egui::Id::new("rail-waiting"), egui::Sense::click()).on_hover_text("Jump to waiting");
+            let resp = ui.interact(pill, egui::Id::new("rail-waiting"), egui::Sense::click()).on_hover_text(tr("sidebar.rail_waiting"));
             ui.painter().rect_filled(pill, 11.0, chrome::gold());
             ui.painter().text(pill.center(), egui::Align2::CENTER_CENTER, waiting.to_string(), egui::FontId::proportional(12.0), crate::theme::colors().on_accent());
             if resp.clicked() {
@@ -3359,7 +3360,7 @@ impl App {
                 let (_, mut c) = self.worktree_making.take().expect("there");
                 match made {
                     Ok(path) => {
-                        self.say(format!("Worktree made: {}", home_short(&path)), false);
+                        self.say(trf("toast.worktree_made", &[&home_short(&path)]), false);
                         self.worktrees.push(path.clone());
                         c.folder = path;
                         self.create(client, c, current);
@@ -3382,7 +3383,7 @@ impl App {
                 self.worktree_removing = None;
                 match done {
                     Ok(()) => {
-                        self.say(format!("Worktree removed: {} (its branch stays)", home_short(&path)), false);
+                        self.say(trf("toast.worktree_removed", &[&home_short(&path)]), false);
                         self.worktrees.retain(|w| *w != path);
                     }
                     Err(e) => self.say(e, true),
@@ -3529,13 +3530,13 @@ impl App {
                 client.send_prompt(id, q.text);
                 self.queue_hold.insert(id, std::time::Instant::now());
                 let name = sort::display_title(&info.title, &info.command);
-                self.say(format!("Sent the queued prompt to {name}"), false);
+                self.say(trf("toast.queue_sent", &[&name]), false);
             }
         }
         if !gone.is_empty() {
             let n = self.queue.iter().filter(|q| gone.contains(&q.id)).count();
             self.queue.retain(|q| !gone.contains(&q.id));
-            self.say(format!("{n} queued prompt(s) dropped: the session ended"), true);
+            self.say(trf("toast.queue_dropped", &[&n.to_string()]), true);
         }
         // Looked at again within the second, not only on output.
         self.ctx.request_repaint_after(std::time::Duration::from_secs(1));
@@ -3549,9 +3550,9 @@ impl App {
                 self.hooks_check = None;
                 self.hooks_offered = !there && !self.view.hooks_asked;
                 match repaired {
-                    Ok(Some(path)) => self.say(format!("Claude Code's hooks in {} could not find tsumugi; they run this one now (the old file kept beside it)", home_short(&path)), false),
+                    Ok(Some(path)) => self.say(trf("toast.hooks_repaired", &[&home_short(&path)]), false),
                     Ok(None) => {}
-                    Err(e) => self.say(format!("Claude Code's hooks could not find tsumugi, and were left: {e}"), true),
+                    Err(e) => self.say(trf("toast.hooks_not_repaired", &[&e.to_string()]), true),
                 }
             }
         }
@@ -3559,7 +3560,7 @@ impl App {
             if let Ok(done) = rx.try_recv() {
                 self.hooks_adding = None;
                 match done {
-                    Ok(path) => self.say(format!("Claude Code's hooks added to {} (the old file kept beside it)", home_short(&path)), false),
+                    Ok(path) => self.say(trf("toast.hooks_added", &[&home_short(&path)]), false),
                     Err(e) => self.say(e, true),
                 }
                 if self.prefs.is_some() {
@@ -3741,10 +3742,10 @@ impl App {
             match m {
                 Ok((path, task)) => {
                     if let Err(e) = client.spawn_typing(path, None, Size::new(80, 24), (8, 16), Place::NewWorkspace, vec![parallel::typed(&claude, &task, how)]) {
-                        self.say(format!("A parallel session did not start: {e}"), true);
+                        self.say(trf("toast.parallel_failed", &[&e.to_string()]), true);
                     }
                 }
-                Err(e) => self.say(format!("Start in parallel stopped: {e}"), true),
+                Err(e) => self.say(trf("toast.parallel_stopped", &[&e.to_string()]), true),
             }
         }
     }
@@ -3753,7 +3754,7 @@ impl App {
     fn save_output(&self, name: String, text: String) {
         self.job(move || {
             let to = export::place().ok_or("no home folder to save in")?;
-            export::save_output(&to, &name, &text).map(|f| format!("Saved the output to {}", f.display()))
+            export::save_output(&to, &name, &text).map(|f| trf("toast.output_saved", &[&f.display().to_string()]))
         });
     }
 
@@ -3879,7 +3880,7 @@ impl App {
         let mut did = None;
         ui.horizontal(|ui| {
             ui.add_space(14.0);
-            ui.label(egui::RichText::new("MACHINES").size(11.0).strong().color(pal.fg_dim));
+            ui.label(egui::RichText::new(tr("sidebar.machines")).size(11.0).strong().color(pal.fg_dim));
         });
         // This machine's numbers: from the window's own when shown.
         let here = match (&self.on, &self.home) {
@@ -3889,14 +3890,14 @@ impl App {
         };
         // The host (`None` this machine), its line, its counts, why it is down.
         type Row = (Option<String>, machine::Link, (usize, usize), Option<String>);
-        let mut rows: Vec<Row> = vec![(None, if here.is_some() { machine::Link::Up } else { machine::Link::Lost }, here.unwrap_or((0, 0)), here.is_none().then(|| "Its server stopped; click to start it again".into()))];
+        let mut rows: Vec<Row> = vec![(None, if here.is_some() { machine::Link::Up } else { machine::Link::Lost }, here.unwrap_or((0, 0)), here.is_none().then(|| tr("sidebar.server_stopped").into()))];
         for m in &self.machines {
             let counts = if self.on.as_deref() == Some(m.host.as_str()) { machine::counts(sessions) } else { m.counts() };
             rows.push((Some(m.host.clone()), m.link(), counts, m.error.clone()));
         }
         for (host, link, (n, waiting), error) in rows {
             let shown = host == self.on;
-            let name = host.clone().unwrap_or_else(|| "This machine".into());
+            let name = host.clone().unwrap_or_else(|| tr("sidebar.this_machine").into());
             let resp = ui.horizontal(|ui| {
                 ui.add_space(14.0);
                 let (dot, _) = ui.allocate_exact_size(egui::vec2(8.0, 14.0), egui::Sense::hover());
@@ -3910,10 +3911,10 @@ impl App {
                 let words = if shown { words.strong() } else { words };
                 let label = ui.add(egui::Label::new(words).sense(egui::Sense::click()));
                 let (hint, more) = match link {
-                    machine::Link::Up if waiting > 0 => (format!("{n} sessions, {waiting} waiting"), format!("{n} · {waiting} waiting")),
-                    machine::Link::Up => (format!("{n} sessions"), n.to_string()),
-                    machine::Link::Connecting => ("Connecting over ssh…".into(), "connecting…".into()),
-                    machine::Link::Lost => (error.clone().unwrap_or_else(|| "Not connected".into()), "not connected".into()),
+                    machine::Link::Up if waiting > 0 => (trf("sidebar.machine_waiting_hover", &[&n.to_string(), &waiting.to_string()]), trf("sidebar.machine_waiting", &[&n.to_string(), &waiting.to_string()])),
+                    machine::Link::Up => (trf("sidebar.machine_sessions", &[&n.to_string()]), n.to_string()),
+                    machine::Link::Connecting => (tr("sidebar.connecting_hover").into(), tr("sidebar.connecting").into()),
+                    machine::Link::Lost => (error.clone().unwrap_or_else(|| tr("sidebar.not_connected_hover").into()), tr("sidebar.not_connected").into()),
                 };
                 let colour = if waiting > 0 && link == machine::Link::Up { chrome::ink(chrome::gold()) } else { t.faint() };
                 ui.label(egui::RichText::new(more).size(11.0).color(colour));
@@ -3921,7 +3922,7 @@ impl App {
                 if let (machine::Link::Lost, Some(_)) = (link, &host) {
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         ui.add_space(10.0);
-                        again = ui.add(egui::Label::new(egui::RichText::new("Reconnect").size(11.5).color(chrome::ink(chrome::cyan()))).sense(egui::Sense::click())).clicked();
+                        again = ui.add(egui::Label::new(egui::RichText::new(tr("machine.reconnect")).size(11.5).color(chrome::ink(chrome::cyan()))).sense(egui::Sense::click())).clicked();
                     });
                 }
                 (label.on_hover_text(hint), again)
@@ -4030,7 +4031,7 @@ impl App {
         }
         let Some(client) = self.client.clone() else {
             if let Some(machine::Then::Create(_)) = then {
-                self.say("This machine's server is starting; start the session again once it is up".into(), true);
+                self.say(tr("toast.server_starting").into(), true);
             }
             return;
         };
@@ -4069,7 +4070,7 @@ impl App {
             let more = hidden && self.machines[k].link() == machine::Link::Up && waiting > self.machines[k].waited;
             self.machines[k].waited = waiting;
             if more {
-                let words = format!("{}: {waiting} waiting. Show it from MACHINES in the sidebar", self.machines[k].host);
+                let words = trf("toast.machine_waiting", &[&self.machines[k].host, &waiting.to_string()]);
                 let looking = self.ctx.input(|i| i.viewport().focused).unwrap_or(true);
                 let hush = self.settings_now.notify.focus_mode && sound::quiet_time();
                 if !looking && !hush && self.alerts.rules.notify.waiting {
@@ -4085,7 +4086,7 @@ impl App {
                 m.error = Some("the line dropped".into());
             }
             self.show_machine(None);
-            self.say(format!("{host}: the line dropped; its sessions go on there. Reconnect from the sidebar"), true);
+            self.say(trf("toast.line_dropped", &[&host]), true);
         }
     }
 
@@ -4108,7 +4109,7 @@ impl App {
                 Some(path) => (path, None, None),
                 None => {
                     if !menu::open_url(&url) {
-                        self.say(format!("Not opened: {url} has characters the shell would read"), true);
+                        self.say(trf("toast.url_refused", &[&url]), true);
                     }
                     return;
                 }
@@ -4147,8 +4148,8 @@ impl App {
         }
         ctx.request_repaint_after(left);
         let words = match taken.as_slice() {
-            [one] => format!("Took {} off the list", sort::display_title(&one.title, &one.command)),
-            many => format!("Took {} sessions off the list", many.len()),
+            [one] => trf("toast.forgot_one", &[&sort::display_title(&one.title, &one.command)]),
+            many => trf("toast.forgot", &[&many.len().to_string()]),
         };
         let keyed = self.lists.is_some() && ctx.input_mut(|i| i.consume_key(egui::Modifiers::COMMAND, egui::Key::Z));
         let c = crate::theme::colors();
@@ -4156,7 +4157,7 @@ impl App {
             egui::Frame::NONE.fill(c.raised()).stroke(egui::Stroke::new(1.0, c.border)).corner_radius(6.0).inner_margin(egui::Margin::symmetric(12, 6)).show(ui, |ui| {
                 ui.horizontal(|ui| {
                     ui.add(egui::Label::new(egui::RichText::new(words).size(12.5).color(c.strong())).wrap_mode(egui::TextWrapMode::Extend));
-                    ui.button(egui::RichText::new("Undo").strong()).on_hover_text(if cfg!(target_os = "macos") { "Cmd+Z while the list is open" } else { "Ctrl+Z while the list is open" }).clicked()
+                    ui.button(egui::RichText::new(tr("toast.undo")).strong()).on_hover_text(trf("toast.undo_hover", &[if cfg!(target_os = "macos") { "Cmd+Z" } else { "Ctrl+Z" }])).clicked()
                 })
                 .inner
             })
@@ -4297,7 +4298,7 @@ impl App {
             let painter = ui.painter();
             painter.rect_filled(show, 6.0, chrome::cyan().gamma_multiply(0.16));
             painter.rect_stroke(show, 6.0, egui::Stroke::new(1.5, chrome::cyan()), egui::StrokeKind::Inside);
-            let words = if z == drop::Zone::Swap { "Swap" } else { "Move here" };
+            let words = if z == drop::Zone::Swap { tr("pane.swap") } else { tr("pane.move_here") };
             painter.text(show.center(), egui::Align2::CENTER_CENTER, words, egui::FontId::proportional(13.0), chrome::cyan());
             if let (true, Some(client)) = (released, &self.client) {
                 let layout = match z {
@@ -4505,7 +4506,7 @@ impl App {
                         let at = origin + egui::vec2(mode.cursor.0 as f32 * cell.x, mode.cursor.1 as f32 * cell.y);
                         let p = ui.painter_at(rect);
                         p.rect_stroke(egui::Rect::from_min_size(at, cell), 1.0, egui::Stroke::new(2.0, chrome::gold()), egui::StrokeKind::Inside);
-                        let words = if mode.marking { "COPY MODE · selecting · y copies · v drops it · Esc leaves" } else { "COPY MODE · arrows or hjkl move · v selects · y copies the line · Esc leaves" };
+                        let words = if mode.marking { tr("pane.copy_marking") } else { tr("pane.copy_mode") };
                         let galley = p.layout_no_wrap(words.into(), egui::FontId::proportional(11.5), crate::theme::colors().on_accent());
                         let badge = egui::Rect::from_min_size(egui::pos2(rect.right() - galley.size().x - 22.0, rect.top() + 6.0), galley.size() + egui::vec2(14.0, 6.0));
                         p.rect_filled(badge, 6.0, chrome::gold());
@@ -4533,7 +4534,7 @@ impl App {
                             p.rect_filled(tag, 3.0, chrome::gold());
                             p.galley(tag.center() - galley.size() / 2.0, galley, ink);
                         }
-                        let words = if q.hits.is_empty() { "QUICK SELECT · nothing to pick on the screen · Esc leaves" } else { "QUICK SELECT · a label copies · Shift and a label opens · Esc leaves" };
+                        let words = if q.hits.is_empty() { tr("pane.quick_none") } else { tr("pane.quick_select") };
                         let galley = p.layout_no_wrap(words.into(), egui::FontId::proportional(11.5), ink);
                         // At the top, or at the bottom when it would hide a label.
                         let size = galley.size() + egui::vec2(14.0, 6.0);
@@ -5193,7 +5194,7 @@ impl App {
         if let Some(Ok(answer)) = self.update.as_ref().map(|rx| rx.try_recv()) {
             self.update = None;
             if let Some(v) = answer {
-                self.say(format!("tsumugi {v} is out (this is {}): github.com/uchmk/tsumugi/releases", env!("CARGO_PKG_VERSION")), false);
+                self.say(trf("toast.update", &[&v, env!("CARGO_PKG_VERSION")]), false);
             }
         }
         // This machine's server of an older build that speaks the same
@@ -5204,7 +5205,7 @@ impl App {
             if !build.is_empty() {
                 self.build_told = true;
                 if build != env!("CARGO_PKG_VERSION") {
-                    self.say(format!("The server is still tsumugi {build} (this is {}): Settings → Advanced → Restart the server to use this one", env!("CARGO_PKG_VERSION")), false);
+                    self.say(trf("toast.old_server", &[&build, env!("CARGO_PKG_VERSION")]), false);
                 }
             }
         }
@@ -6008,7 +6009,7 @@ impl App {
                     let project = info.project.clone();
                     let (tx, ctx2) = (self.jobs.0.clone(), ctx.clone());
                     let _ = std::thread::Builder::new().name("permit".into()).spawn(move || {
-                        let _ = tx.send(permit::allow(&project, &rule).map(|p| format!("Claude Code runs {rule} without asking now ({})", p.display())));
+                        let _ = tx.send(permit::allow(&project, &rule).map(|p| trf("toast.permit", &[&rule, &p.display().to_string()])));
                         ctx2.request_repaint();
                     });
                     if let (Some(key), Some(pane)) = (yes, self.panes.get(&id)) {

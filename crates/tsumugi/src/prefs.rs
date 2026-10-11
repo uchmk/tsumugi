@@ -1565,11 +1565,11 @@ fn preview(ui: &mut egui::Ui, pal: &Palette) {
         p.text(r.left_top() + egui::vec2(10.0, 36.0), egui::Align2::LEFT_TOP, words, FontId::proportional(10.5), crate::chrome::ink(color));
         r
     };
-    card(12.0, c.wait, c.wait_bg(), "Approve the edit", "~/dev/filer", "Waiting for you · 2m", c.wait);
-    let running = card(72.0, c.run.gamma_multiply(0.6), c.panel, "Split the pane", "~/dev/tsumugi", "Running · 4m", c.dim);
+    card(12.0, c.wait, c.wait_bg(), tr("prefs.theme.preview_approve"), "~/dev/filer", &trf("state.waiting_long", &["2m"]), c.wait);
+    let running = card(72.0, c.run.gamma_multiply(0.6), c.panel, tr("prefs.theme.preview_split"), "~/dev/tsumugi", &trf("state.running", &["4m"]), c.dim);
     p.line_segment([running.left_top() + egui::vec2(30.0, 1.0), running.left_top() + egui::vec2(80.0, 1.0)], egui::Stroke::new(2.0, c.run));
-    card(132.0, c.err.gamma_multiply(0.7), c.panel, "Windows CI test", "~/dev/filer", "Error · Exited 101", c.err);
-    card(192.0, c.done.gamma_multiply(0.5), c.panel, "Write the scope", "~/notes", "Done · 20m", c.dim);
+    card(132.0, c.err.gamma_multiply(0.7), c.panel, tr("prefs.theme.preview_ci"), "~/dev/filer", &trf("state.error", &[tr("prefs.theme.preview_exited")]), c.err);
+    card(192.0, c.done.gamma_multiply(0.5), c.panel, tr("prefs.theme.preview_scope"), "~/notes", &trf("state.done", &["20m"]), c.dim);
     let pane = egui::Rect::from_min_max(egui::pos2(side.right() + 10.0, rect.top() + 10.0), rect.max - egui::vec2(10.0, 10.0));
     p.rect_filled(pane, 8.0, pal.bg);
     p.rect_stroke(pane, 8.0, egui::Stroke::new(1.0, c.wait), egui::StrokeKind::Inside);
