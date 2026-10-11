@@ -5,6 +5,17 @@
 
 ## [未リリース]
 
+## [0.99.0] - 2026-10-11
+
+TODO の「後で」から、macOS の Secure Keyboard Entry を足した。
+
+### 追加
+
+- macOS の Secure Keyboard Entry（Terminal や iTerm2 と同じもの）: `settings.toml` の `[advanced] secure_input`、設定の画面の
+  Advanced の **Secure Keyboard Entry**、パレットの同じ名前の行で入と切を替える（既定は切）。入のあいだ、窓が前にあるときだけ
+  ほかのプログラムが打ったキーを読めなくする（キーロガーやイベントタップ）。窓が後ろへ回ると放す。macOS のほかでは行も出ない。
+- 実機の確かめは TESTING.md の 17.42。
+
 ## [0.98.0] - 2026-10-11
 
 TODO の「後で」の重いものから、できる分を足した。ito を a2b9125（0.12.0）に上げた。残りの bidi・tmux の control mode・シリアル接続は

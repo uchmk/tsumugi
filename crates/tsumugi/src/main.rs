@@ -62,6 +62,7 @@ mod lists;
 mod copymode;
 mod primary;
 mod quickselect;
+mod secure;
 mod remote;
 mod layouts;
 mod help;
@@ -1043,6 +1044,8 @@ struct App {
     backdrop: backdrop::Backdrop,
     /// `[window] quake`, the key held from any program.
     quake: quake::Quake,
+    /// macOS's Secure Keyboard Entry, held while asked and in front.
+    secure: secure::Secure,
     /// Each session's folder as last seen, and the folders of those that
     /// ended (the new-session dialog's "closed" ones).
     known_cwds: HashMap<SessionId, std::path::PathBuf>,
@@ -1466,6 +1469,7 @@ impl App {
             transparent: first_window.opacity < 100,
             backdrop: backdrop::Backdrop::default(),
             quake: quake::Quake::default(),
+            secure: secure::Secure::default(),
             known_cwds: HashMap::new(),
             closed: closed_file().and_then(|p| std::fs::read_to_string(p).ok()).map(|t| t.lines().filter(|l| !l.is_empty()).map(std::path::PathBuf::from).collect()).unwrap_or_default(),
             shown_tab: None,
@@ -1845,6 +1849,9 @@ impl App {
     fn search_entries(sessions: &[Info], saved: &[prompts::Prompt], kept: &[layouts::Layout]) -> Vec<palette::Entry> {
         let mut out = Vec::new();
         for c in palette::Command::ALL {
+            if c == palette::Command::SecureInput && !secure::HERE {
+                continue;
+            }
             out.push(palette::Entry { title: c.title(), detail: c.key(), pick: palette::Pick::Command(c) });
         }
         for (k, p) in saved.iter().enumerate() {
@@ -2294,6 +2301,11 @@ impl App {
                     self.say(if i.read_only { tr("toast.read_only_off") } else { tr("toast.read_only") }.into(), false);
                 }
             }
+            palette::Pick::Command(palette::Command::SecureInput) => {
+                let on = !self.settings_now.advanced.secure_input;
+                edit_settings(self.settings_tx.clone(), move |t| tsumugi_mux::settings::set_key(t, Some("advanced"), "secure_input", &on.to_string()));
+                self.say(if on { tr("toast.secure_input") } else { tr("toast.secure_input_off") }.into(), false);
+            }
             palette::Pick::Command(palette::Command::Sort(s)) => {
                 self.view.sort = s;
                 self.view.save();
@@ -2316,7 +2328,7 @@ impl App {
                     palette::Command::SwapPane => keys::Action::SwapPane,
                     palette::Command::Equalize => keys::Action::Equalize,
                     palette::Command::WorkLog => keys::Action::WorkLog,
-                    palette::Command::Sort(_) | palette::Command::Closed | palette::Command::Changes | palette::Command::SaveOutput | palette::Command::Parallel | palette::Command::SaveLayout | palette::Command::ReadOnly => return,
+                    palette::Command::Sort(_) | palette::Command::Closed | palette::Command::Changes | palette::Command::SaveOutput | palette::Command::Parallel | palette::Command::SaveLayout | palette::Command::ReadOnly | palette::Command::SecureInput => return,
                 };
                 if let Some(w) = current {
                     self.act(action, w, workspaces, area);
@@ -5264,6 +5276,8 @@ impl eframe::App for App {
         self.frame(ui, frame);
         self.script(ui.ctx());
         self.quake(ui.ctx());
+        let front = ui.ctx().input(|i| i.viewport().focused).unwrap_or(false);
+        self.secure.follow(self.settings_now.advanced.secure_input && front);
         if !cfg!(target_os = "macos") {
             // The system's frame while there is no band to be one (the
             // screen saying the server cannot be reached), or when asked.

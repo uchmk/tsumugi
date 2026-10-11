@@ -144,6 +144,7 @@ const INDEX: &[(Page, &str)] = &[
     (Page::Advanced, "prefs.advanced.reached"),
     (Page::Advanced, "prefs.advanced.scrollback"),
     (Page::Advanced, "prefs.advanced.pane_log"),
+    (Page::Advanced, "prefs.advanced.secure_input"),
     (Page::Advanced, "prefs.advanced.settings_folder"),
     (Page::Advanced, "prefs.advanced.export"),
     (Page::Advanced, "prefs.advanced.usage"),
@@ -157,13 +158,15 @@ pub fn index() -> Vec<(Page, &'static str)> {
     use crate::keys::Action;
     let w = words();
     let keys = [Action::NewTab, Action::CloseTab, Action::Rename, Action::Duplicate, Action::NextTab, Action::PrevTab, Action::NextWaiting, Action::Waiting, Action::TypeAll, Action::SplitRight, Action::SplitDown, Action::Zoom];
-    let mut out: Vec<(Page, &'static str)> = INDEX.iter().map(|(p, k)| (*p, tr(k))).collect();
+    // Rows this system does not draw are not found either.
+    let here = |k: &&str| crate::secure::HERE || *k != "prefs.advanced.secure_input";
+    let mut out: Vec<(Page, &'static str)> = INDEX.iter().filter(|(_, k)| here(k)).map(|(p, k)| (*p, tr(k))).collect();
     let shared = |w: &'static Words| [(Page::General, w.language), (Page::General, w.scale), (Page::General, w.show_time), (Page::General, w.time_format), (Page::General, w.show_date), (Page::General, w.date_format), (Page::General, w.weekday), (Page::Theme, w.mode), (Page::Theme, w.preview)];
     out.extend(shared(w));
     out.extend(keys.map(|a| (Page::Keys, tr_desc(crate::keys::title(a)))));
     if crate::i18n::current_language() != "en" {
         out.extend(keys.map(|a| (Page::Keys, crate::keys::title(a))));
-        out.extend(INDEX.iter().map(|(p, k)| (*p, crate::i18n::tr_en(k))));
+        out.extend(INDEX.iter().filter(|(_, k)| here(k)).map(|(p, k)| (*p, crate::i18n::tr_en(k))));
         out.extend(shared(&ito_prefs::EN));
     }
     out
@@ -1531,6 +1534,9 @@ fn advanced(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut 
         if row(ui, l, tr("prefs.advanced.pane_log"), tr("prefs.advanced.pane_log_note"), |ui| switch(ui, l, a.pane_log)) {
             out.push(Change::Set(Some("advanced"), "pane_log", (!a.pane_log).to_string()));
         }
+        if crate::secure::HERE && row(ui, l, tr("prefs.advanced.secure_input"), tr("prefs.advanced.secure_input_note"), |ui| switch(ui, l, a.secure_input)) {
+            out.push(Change::Set(Some("advanced"), "secure_input", (!a.secure_input).to_string()));
+        }
         sep(ui, l);
         if row(ui, l, tr("prefs.advanced.settings_folder"), &seen.settings_path, |ui| button(ui, l, tr("prefs.common.open"))) {
             out.push(Change::OpenFolder);
@@ -1781,6 +1787,7 @@ mod tests {
             .split(needle.as_str())
             .skip(1)
             .filter_map(|rest| rest.split('"').next())
+            .filter(|k| crate::secure::HERE || *k != "prefs.advanced.secure_input")
             .map(tr)
             .filter(|label| !index.iter().any(|(_, words)| *label == *words || (words.len() >= 8 && label.contains(words))))
             .collect();

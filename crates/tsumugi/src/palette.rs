@@ -60,10 +60,12 @@ pub enum Command {
     WorkLog,
     /// Turn away typing and pasting into the pane, or let them in again.
     ReadOnly,
+    /// macOS's Secure Keyboard Entry on or off (listed only there).
+    SecureInput,
 }
 
 impl Command {
-    pub const ALL: [Command; 26] = [
+    pub const ALL: [Command; 27] = [
         Command::NewSession,
         Command::SplitRight,
         Command::SplitDown,
@@ -88,6 +90,7 @@ impl Command {
         Command::Sort(Sort::Folder),
         Command::Sort(Sort::Name),
         Command::Settings,
+        Command::SecureInput,
         Command::InputBox,
         Command::Help,
     ];
@@ -117,6 +120,7 @@ impl Command {
             Command::Equalize => tr("palette.equalize").into(),
             Command::WorkLog => tr("palette.work_log").into(),
             Command::ReadOnly => tr("palette.read_only").into(),
+            Command::SecureInput => tr("palette.secure_input").into(),
         }
     }
 
@@ -140,7 +144,7 @@ impl Command {
             Command::SwapPane => Action::SwapPane,
             Command::Equalize => Action::Equalize,
             Command::WorkLog => Action::WorkLog,
-            Command::Sort(_) | Command::Closed | Command::Changes | Command::SaveOutput | Command::Parallel | Command::SaveLayout | Command::ReadOnly => return String::new(),
+            Command::Sort(_) | Command::Closed | Command::Changes | Command::SaveOutput | Command::Parallel | Command::SaveLayout | Command::ReadOnly | Command::SecureInput => return String::new(),
         };
         label(action)
     }
