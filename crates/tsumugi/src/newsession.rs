@@ -503,7 +503,7 @@ pub fn show(ctx: &egui::Context, pal: &Palette, d: &mut Dialog, recents: &[Recen
                         ui.label(RichText::new(tr("newsession.one_pane")).size(12.0).color(chrome::grey()));
                     }
                 });
-                // Where it runs: shown once WSL or SSH has somewhere to offer
+                // Where it runs: shown once WSL, SSH or a serial port is there
                 // (or a profile asked for one).
                 if !d.places.is_empty() || d.on != Where::Here {
                     ui.horizontal(|ui| {
@@ -524,6 +524,9 @@ pub fn show(ctx: &egui::Context, pal: &Palette, d: &mut Dialog, recents: &[Recen
                             }
                             Where::Mux(_) => {
                                 ui.label(RichText::new(tr("newsession.mux_note")).size(12.0).color(chrome::grey()));
+                            }
+                            Where::Serial(_) => {
+                                ui.label(RichText::new(tr("newsession.serial_note")).size(12.0).color(chrome::grey()));
                             }
                             _ => {}
                         }

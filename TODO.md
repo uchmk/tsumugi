@@ -106,8 +106,8 @@ v0.94.0 から、実機の PR の所見と頼みは `finding` の issue に、�
   - [x] （v0.98.0）カーソルのアニメーション: カーソルを滑らせる（設定の Appearance）。自前のシェーダーは持たない。（要確認: #29）
   - [ ] 右から左の文字（bidi）。今はやらない。（要確認: #28）
   - [ ] tmux の control mode。やらない（tsumugi のサーバが同じ役をする）。（要確認: #30）
-  - [ ] シリアル接続（プロファイルのコマンドに `serial:COM3@115200`）。後で。（要確認: #31）
-  - [ ] macOS の Secure Keyboard Entry（macOS の窓と一緒に）。
+  - [x] （v0.100.0）シリアル接続: Runs on に `serial:COM3@115200`（`tsumugi serial`、プロファイルは `serial:COM3@9600,7E1`）。持ち主の指示で今入れた（#31）。
+  - [x] （v0.99.0）macOS の Secure Keyboard Entry。
 
 ## ソースレビュー（2026-10-07）の残り
 

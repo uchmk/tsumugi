@@ -1,7 +1,7 @@
-//! Where a new session runs: this machine, a WSL distribution, or a host
-//! from `~/.ssh/config`. The new-session dialog offers the ones found; a
-//! profile keeps the choice as a word (`wsl:Ubuntu`, `ssh:box`,
-//! `mux:box`).
+//! Where a new session runs: this machine, a WSL distribution, a host
+//! from `~/.ssh/config`, or a serial port. The new-session dialog offers
+//! the ones found; a profile keeps the choice as a word (`wsl:Ubuntu`,
+//! `ssh:box`, `mux:box`, `serial:COM3@115200`).
 
 use std::sync::{Arc, Mutex};
 
@@ -16,6 +16,9 @@ pub enum Where {
     /// The same host's own tsumugi server, over ssh (`machine.rs`): the
     /// session lives there and stays when the line drops.
     Mux(String),
+    /// A serial port, as `serial.rs` reads it (`COM3@9600`): the session is
+    /// `tsumugi serial` on it.
+    Serial(String),
 }
 
 impl Where {
@@ -26,16 +29,18 @@ impl Where {
             Where::Wsl(d) => format!("wsl:{d}"),
             Where::Ssh(h) => format!("ssh:{h}"),
             Where::Mux(h) => format!("mux:{h}"),
+            Where::Serial(p) => format!("serial:{p}"),
         }
     }
 
     pub fn from_word(w: &str) -> Self {
         let w = w.trim();
         let after = |p: &str| w.strip_prefix(p).map(str::trim).filter(|r| !r.is_empty()).map(str::to_owned);
-        match (after("wsl:"), after("ssh:"), after("mux:")) {
-            (Some(d), _, _) => Where::Wsl(d),
-            (_, Some(h), _) => Where::Ssh(h),
-            (_, _, Some(h)) => Where::Mux(h),
+        match (after("wsl:"), after("ssh:"), after("mux:"), after("serial:")) {
+            (Some(d), ..) => Where::Wsl(d),
+            (_, Some(h), ..) => Where::Ssh(h),
+            (_, _, Some(h), _) => Where::Mux(h),
+            (.., Some(p)) => Where::Serial(p),
             _ => Where::Here,
         }
     }
@@ -46,6 +51,7 @@ impl Where {
             Where::Wsl(d) => crate::i18n::trf("newsession.wsl", &[d]),
             Where::Ssh(h) => crate::i18n::trf("newsession.ssh", &[h]),
             Where::Mux(h) => crate::i18n::trf("newsession.mux", &[h]),
+            Where::Serial(p) => crate::i18n::trf("newsession.serial", &[p]),
         }
     }
 
@@ -63,13 +69,21 @@ impl Where {
 
     /// The program the session runs in place of the shell; `None` for the
     /// shell of the settings. WSL starts in the folder (it reads the
-    /// Windows folder it is started in); SSH in the login's home folder.
+    /// Windows folder it is started in); SSH in the login's home folder. A
+    /// serial port goes as the word: the server makes it `tsumugi serial`
+    /// (its own executable, which the window may not know).
     pub fn shell(&self) -> Option<(String, Vec<String>)> {
         match self {
             Where::Here | Where::Mux(_) => None,
             Where::Wsl(d) => Some(("wsl.exe".into(), vec!["-d".into(), d.clone()])),
             Where::Ssh(h) => Some(("ssh".into(), vec![h.clone()])),
+            Where::Serial(_) => Some((self.word(), Vec::new())),
         }
+    }
+
+    /// Whether the start (`claude` typed) belongs: not into a device.
+    pub fn takes_typing(&self) -> bool {
+        !matches!(self, Where::Serial(_))
     }
 }
 
@@ -111,8 +125,8 @@ pub fn wsl_distros(bytes: &[u8]) -> Vec<String> {
 }
 
 /// Look for the places on a thread (`wsl.exe` can take a moment to
-/// answer): this machine first, then WSL's, then SSH's. Into `into`, then a
-/// repaint.
+/// answer): this machine first, then WSL's, SSH's and the serial ports.
+/// Into `into`, then a repaint.
 pub fn find(into: Arc<Mutex<Vec<Where>>>, ctx: eframe::egui::Context) {
     let _ = std::thread::Builder::new().name("remote-places".into()).spawn(move || {
         let mut found = Vec::new();
@@ -120,6 +134,7 @@ pub fn find(into: Arc<Mutex<Vec<Where>>>, ctx: eframe::egui::Context) {
         if let Some(text) = tsumugi_mux::settings::home().and_then(|h| std::fs::read_to_string(h.join(".ssh").join("config")).ok()) {
             found.extend(ssh_hosts(&text).into_iter().map(Where::Ssh));
         }
+        found.extend(crate::serial::ports().into_iter().map(Where::Serial));
         if !found.is_empty() {
             found.insert(0, Where::Here);
         }
@@ -152,7 +167,7 @@ mod tests {
 
     #[test]
     fn a_place_keeps_as_a_word() {
-        for w in [Where::Here, Where::Wsl("Ubuntu-24.04".into()), Where::Ssh("box".into()), Where::Mux("box".into())] {
+        for w in [Where::Here, Where::Wsl("Ubuntu-24.04".into()), Where::Ssh("box".into()), Where::Mux("box".into()), Where::Serial("COM3@9600,7E1".into())] {
             assert_eq!(Where::from_word(&w.word()), w);
         }
         assert_eq!(Where::Mux("box".into()).shell(), None, "the server there runs its own shell");
@@ -162,6 +177,8 @@ mod tests {
         assert_eq!(Where::Ssh("box".into()).shell(), Some(("ssh".into(), vec!["box".into()])));
         assert_eq!(Where::Wsl("Debian".into()).shell(), Some(("wsl.exe".into(), vec!["-d".into(), "Debian".into()])));
         assert_eq!(Where::Here.shell(), None);
+        assert_eq!(Where::Serial("COM3".into()).shell(), Some(("serial:COM3".into(), vec![])));
+        assert!(!Where::Serial("COM3".into()).takes_typing() && Where::Ssh("box".into()).takes_typing());
     }
 
     #[test]

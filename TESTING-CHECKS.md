@@ -209,6 +209,7 @@
 - [ ] **6.21** With a host where tsumugi is not installed: Runs on → SSH: it, kept there, Create; hover its red row → The tooltip says tsumugi is not there, gives the releases page and Settings → Advanced → Command there; filling that with tsumugi's full path there and Reconnect reaches it
 - [ ] **6.22** With an older tsumugi running as box's server: reach box; right-click → Restart its server → Before: the tooltip says the versions differ and to install the same one, then restart; after: box comes up on the new server with its tabs back (its sessions restarted)
 - [ ] **6.23** Over a slow line (a phone's hotspot or a far host), run `yes` and show a picture in a session on box → The window stays responsive, the pane updates in steps of about a tenth of a second, the picture comes through (shrunk if large)
+- [ ] **6.24** With a USB serial device plugged in (a board's console, or two adapters wired together, or a com0com pair): `Ctrl+Shift+T`, Runs on → Serial: COM3 (`ttyUSB0`, `cu.usbserial-…`), Shell, Create; type, then `Ctrl+]` `q`; then a profile whose place is `serial:COM3@9600,7E1` → The pane says `COM3 at 115200 8N1`, what the device prints shows (colors too), keys reach it; the dialog shows the note on `Ctrl+]`; no Claude Code is typed into it; `Ctrl+]` `q` ends the session; unplugging it says it went and waits for a key; a port another program holds says why and waits; the profile's speed and frame are used; no console window flashes on Windows
 
 ## 7. The input box
 
