@@ -5,6 +5,21 @@
 
 ## [未リリース]
 
+## [0.102.0] - 2026-10-11
+
+TODO の「後で」から、tmux の control mode を足した（#30、持ち主の指示で今入れた）。
+
+### 追加
+
+- `tsumugi tmux [--ssh HOST] [-t NAME]`: tmux のセッションに control mode（`tmux -u -C`、iTerm2 と同じ形）でつなぎ、tmux の窓を
+  `tmux: <窓の名前>` のタブに、ペインを tmux と同じ分け方のペインにして開く。手元（Linux・macOS）か、`--ssh` で別の機械の tmux
+  （Windows からはこちら）。`-t` のセッションが無ければ作り、無指定なら最後のセッション。
+  - 打った字は tmux へ、ペインの大きさは tmux のペインの大きさになる。tmux で分けた・窓を足した・ペインが終わったのにも付いていく。
+  - プログラムは tmux の中で動き続ける。ここでペインを閉じても手放すだけで、`tmux detach-client`（または打ったペインで `Ctrl+C`）で
+    全部のタブが閉じる。もう一度打てば戻る。
+  - 仕組み: このコマンドが tmux とつなぐ口になり、ペインごとに `tsumugi tmux-pane` のセッションを開いて 127.0.0.1 のソケットで中身を渡す。
+- 実機の確かめは TESTING.md の 6.25・6.26。文字で確かめられる分は `tests/cli.rs` の `tmux_panes_open_as_sessions`（tmux のある Unix）。
+
 ## [0.101.1] - 2026-10-11
 
 ### 変更

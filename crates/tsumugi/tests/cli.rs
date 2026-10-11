@@ -37,17 +37,21 @@ impl Server {
         Self { dir, address }
     }
 
-    fn run(&self, args: &[&str]) -> Output {
-        Command::new(env!("CARGO_BIN_EXE_tsumugi"))
-            .args(args)
+    /// `tsumugi …` against this server, not yet run.
+    fn command(&self, args: &[&str]) -> Command {
+        let mut c = Command::new(env!("CARGO_BIN_EXE_tsumugi"));
+        c.args(args)
             .current_dir(&self.dir)
             .env("TSUMUGI_ADDRESS", &self.address)
             .env("TSUMUGI_STATE_HOME", &self.dir)
             .env("TSUMUGI_CONFIG_HOME", &self.dir)
             .env_remove("TSUMUGI_SESSION")
-            .stdin(Stdio::null())
-            .output()
-            .unwrap()
+            .stdin(Stdio::null());
+        c
+    }
+
+    fn run(&self, args: &[&str]) -> Output {
+        self.command(args).output().unwrap()
     }
 
     /// Its stdout, after asserting it succeeded.
@@ -487,4 +491,64 @@ fn serial_carries_both_ways_and_leaves_on_its_key() {
     };
     assert!(status.success(), "{status:?}");
     drop(side);
+}
+
+/// `tsumugi tmux` against a tmux server of its own (skipped where there is
+/// no tmux): a pane opens as a session showing what was on it, keys typed
+/// there reach tmux, a split opens a second session, and when tmux ends
+/// the gateway says so and the sessions close.
+#[cfg(unix)]
+#[test]
+fn tmux_panes_open_as_sessions() {
+    if Command::new("tmux").arg("-V").output().map(|o| !o.status.success()).unwrap_or(true) {
+        eprintln!("no tmux here: skipped");
+        return;
+    }
+    let s = Server::new("tmux");
+    let tmux = |args: &[&str]| {
+        let out = Command::new("tmux").args(args).env("TMUX_TMPDIR", &s.dir).env_remove("TMUX").current_dir(&s.dir).output().unwrap();
+        assert!(out.status.success(), "tmux {args:?}: {}", String::from_utf8_lossy(&out.stderr));
+        String::from_utf8_lossy(&out.stdout).into_owned()
+    };
+    tmux(&["new-session", "-d", "-s", "t", "-x", "80", "-y", "24", "sh"]);
+    tmux(&["send-keys", "-t", "t", "echo before-$((6*7))", "Enter"]);
+    /// The gateway, stopped if the test fails before tmux lets it go.
+    struct Gateway(std::process::Child);
+    impl Drop for Gateway {
+        fn drop(&mut self) {
+            let _ = self.0.kill();
+            let _ = self.0.wait();
+        }
+    }
+    let mut gateway = Gateway(s.command(&["tmux", "-t", "t"]).env("TMUX_TMPDIR", &s.dir).env_remove("TMUX").stdout(Stdio::piped()).stderr(Stdio::null()).spawn().unwrap());
+    let tmux_sessions = |n: usize| {
+        let deadline = Instant::now() + PATIENCE;
+        loop {
+            // No server yet until the gateway has started one.
+            let ls = String::from_utf8_lossy(&s.run(&["ls"]).stdout).into_owned();
+            let ids: Vec<String> = ls.lines().filter(|l| l.contains("tmux: ")).map(|l| l.split('\t').next().unwrap().to_owned()).collect();
+            if ids.len() == n {
+                return ids;
+            }
+            assert!(Instant::now() < deadline, "never {n} tmux sessions; ls:\n{ls}");
+            std::thread::sleep(Duration::from_millis(200));
+        }
+    };
+    let id = tmux_sessions(1).remove(0);
+    s.read_until(&id, "the pane as tmux has it", |t| t.contains("before-42"));
+    s.ok(&["send", &id, "echo after-$((6*7))"]);
+    s.read_until(&id, "tmux's answer", |t| t.contains("after-42"));
+    assert!(tmux(&["capture-pane", "-p", "-t", "t"]).contains("after-42"), "the keys went to tmux");
+    tmux(&["split-window", "-h", "-t", "t", "sh"]);
+    tmux_sessions(2);
+    tmux(&["kill-server"]);
+    let end = Instant::now() + PATIENCE;
+    while gateway.0.try_wait().unwrap().is_none() {
+        assert!(Instant::now() < end, "the gateway outlived tmux");
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    let mut said = String::new();
+    std::io::Read::read_to_string(gateway.0.stdout.as_mut().unwrap(), &mut said).unwrap();
+    assert!(said.contains("tsumugi tmux: tmux"), "{said}");
+    tmux_sessions(0);
 }

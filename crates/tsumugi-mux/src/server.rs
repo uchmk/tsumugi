@@ -1021,15 +1021,22 @@ fn serial_bridge(program: &str, args: &[String]) -> Option<(String, Vec<String>)
 }
 
 /// The command for `serial_bridge`, `--hold` so the pane says why before
-/// it goes. A release build on Windows is a GUI program, which ConPTY gives
-/// no console: PowerShell starts it on its own and waits, and it attaches
-/// to that.
+/// it goes.
 fn serial_command(exe: &str, spec: &str, windows: bool) -> (String, Vec<String>) {
+    own_command(exe, &["serial", "--hold", spec], windows)
+}
+
+/// A pane that runs this program, `exe` with `args` (`tsumugi serial`,
+/// `tsumugi tmux-pane`). A release build on Windows is a GUI program, which
+/// ConPTY gives no console: PowerShell starts it on its own and waits, and
+/// it attaches to that.
+pub fn own_command(exe: &str, args: &[&str], windows: bool) -> (String, Vec<String>) {
     if !windows {
-        return (exe.to_owned(), vec!["serial".into(), "--hold".into(), spec.to_owned()]);
+        return (exe.to_owned(), args.iter().map(|a| (*a).to_owned()).collect());
     }
     let quote = |s: &str| format!("'{}'", s.replace('\'', "''"));
-    let script = format!("Start-Process -FilePath {} -ArgumentList 'serial','--hold',{} -NoNewWindow -Wait", quote(exe), quote(spec));
+    let list: Vec<String> = args.iter().map(|a| quote(a)).collect();
+    let script = format!("Start-Process -FilePath {} -ArgumentList {} -NoNewWindow -Wait", quote(exe), list.join(","));
     let utf16: Vec<u8> = script.encode_utf16().flat_map(u16::to_le_bytes).collect();
     ("powershell.exe".into(), vec!["-NoProfile".into(), "-NonInteractive".into(), "-EncodedCommand".into(), base64(&utf16)])
 }

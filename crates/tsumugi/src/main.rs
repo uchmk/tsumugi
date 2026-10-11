@@ -64,6 +64,8 @@ mod primary;
 mod quickselect;
 mod secure;
 mod serial;
+mod console;
+mod tmux;
 mod remote;
 mod layouts;
 mod help;
@@ -101,7 +103,7 @@ fn main() -> std::process::ExitCode {
         Some("mcp") => mcp::run(),
         Some("send" | "read" | "split" | "close" | "log" | "wait") => remote(&args[0], &args[1..]),
         Some("help" | "--help" | "-h") => {
-            println!("tsumugi: the window, or one of\n{}\n{}\ntsumugi attach N|NAME\ntsumugi proxy                            (what --host runs on the other machine)\ntsumugi notify [--state S] [--session N] [MESSAGE]\ntsumugi tag [--session N] [--remove] TAG...\n{}\ntsumugi shell-hook bash|zsh|pwsh\ntsumugi mcp                              an MCP server on stdin/stdout, for Claude Code (see the README)\ntsumugi --keys SCRIPT                    the window, pressing the script's keys (`<C-S-t><Wait:500><Shot:tab><Quit>`); TSUMUGI_KEYS_DONE names the file for its state\n\nTSUMUGI_CONFIG_HOME and TSUMUGI_STATE_HOME name other folders for the settings (config.toml) and the state.", cli::NEW_USAGE, cli::REMOTE_USAGE, serial::USAGE);
+            println!("tsumugi: the window, or one of\n{}\n{}\ntsumugi attach N|NAME\ntsumugi proxy                            (what --host runs on the other machine)\ntsumugi notify [--state S] [--session N] [MESSAGE]\ntsumugi tag [--session N] [--remove] TAG...\n{}\n{}\ntsumugi shell-hook bash|zsh|pwsh\ntsumugi mcp                              an MCP server on stdin/stdout, for Claude Code (see the README)\ntsumugi --keys SCRIPT                    the window, pressing the script's keys (`<C-S-t><Wait:500><Shot:tab><Quit>`); TSUMUGI_KEYS_DONE names the file for its state\n\nTSUMUGI_CONFIG_HOME and TSUMUGI_STATE_HOME name other folders for the settings (config.toml) and the state.", cli::NEW_USAGE, cli::REMOTE_USAGE, serial::USAGE, tmux::USAGE);
             std::process::ExitCode::SUCCESS
         }
         Some("notify") => notify(&args[1..]),
@@ -109,6 +111,8 @@ fn main() -> std::process::ExitCode {
         Some("new") => new_cli(&args[1..]),
         Some("attach") => attach(&args[1..]),
         Some("serial") => serial::run(&args[1..]),
+        Some("tmux") => tmux::run(&args[1..]),
+        Some("tmux-pane") => tmux::bridge(&args[1..]),
         Some("shell-hook") => match shellhook::text(args.get(1).map(String::as_str)) {
             Ok(text) => {
                 print!("{text}");
@@ -138,7 +142,7 @@ fn main() -> std::process::ExitCode {
             std::process::ExitCode::SUCCESS
         }
         Some(other) => {
-            eprintln!("tsumugi: unknown command `{other}` (server, proxy, ls, new, attach, send, read, split, close, wait, notify, tag, serial, shell-hook, mcp, help, --keys, --version)");
+            eprintln!("tsumugi: unknown command `{other}` (server, proxy, ls, new, attach, send, read, split, close, wait, notify, tag, serial, tmux, shell-hook, mcp, help, --keys, --version)");
             std::process::ExitCode::from(2)
         }
     }

@@ -105,7 +105,7 @@ v0.94.0 から、実機の PR の所見と頼みは `finding` の issue に、�
   - [x] （v0.98.0）スクリーンリーダー（AccessKit）: ペインの画面の文字を Terminal の役で読ませる（読み取りだけ）。（要確認: #27）
   - [x] （v0.98.0）カーソルのアニメーション: カーソルを滑らせる（設定の Appearance）。自前のシェーダーは持たない。（要確認: #29）
   - [x] （v0.101.0）右から左の文字（bidi）。行ごとに Unicode の双方向のアルゴリズム（段落は左から右）で並べ替えて描く。格子・カーソル・選択・コピーは書かれた順のまま（#28）
-  - [ ] tmux の control mode。やらない（tsumugi のサーバが同じ役をする）。（要確認: #30）
+  - [x] （v0.102.0）tmux の control mode: `tsumugi tmux [--ssh HOST] [-t NAME]` が tmux の窓をタブに、ペインを同じ分け方のペインにする（iTerm2 と同じ形）。ペインを閉じても tmux の中では動き続ける（#30）
   - [x] （v0.100.0）シリアル接続: Runs on に `serial:COM3@115200`（`tsumugi serial`、プロファイルは `serial:COM3@9600,7E1`）。持ち主の指示で今入れた（#31）。
   - [x] （v0.99.0）macOS の Secure Keyboard Entry。
 

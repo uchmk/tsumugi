@@ -9,9 +9,6 @@ use std::process::ExitCode;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, mpsc};
 
-/// The keyboard, the screen, and what puts the console back as it was.
-type Console<G> = (Box<dyn Read + Send>, Box<dyn Write + Send>, G);
-
 pub const USAGE: &str = "tsumugi serial [--hold] PORT[@BAUD[,FRAME]]  a serial port (COM3, ttyUSB0; 115200 and 8N1 unless said); Ctrl+] then q leaves";
 
 /// The key that starts an escape: `Ctrl+]`, as telnet's.
@@ -183,7 +180,7 @@ pub fn run(args: &[String]) -> ExitCode {
             return ExitCode::from(2);
         }
     };
-    let (mut con_in, mut con_out, guard) = match imp::console() {
+    let (mut con_in, mut con_out, guard) = match crate::console::raw() {
         Ok(c) => c,
         Err(e) => {
             eprintln!("tsumugi serial: the console: {e}");
@@ -297,10 +294,6 @@ mod imp {
     use std::os::windows::io::AsRawHandle;
     use windows::Win32::Devices::Communication::{COMMTIMEOUTS, DCB, DCB_PARITY, DCB_STOP_BITS, GetCommState, SetCommState, SetCommTimeouts};
     use windows::Win32::Foundation::HANDLE;
-    use windows::Win32::System::Console::{
-        CONSOLE_MODE, DISABLE_NEWLINE_AUTO_RETURN, ENABLE_PROCESSED_OUTPUT, ENABLE_VIRTUAL_TERMINAL_INPUT, ENABLE_VIRTUAL_TERMINAL_PROCESSING, ENABLE_WRAP_AT_EOL_OUTPUT, GetConsoleCP, GetConsoleMode,
-        GetConsoleOutputCP, SetConsoleCP, SetConsoleMode, SetConsoleOutputCP,
-    };
 
     fn handle(f: &File) -> HANDLE {
         HANDLE(f.as_raw_handle())
@@ -333,48 +326,6 @@ mod imp {
             SetCommTimeouts(h, &t)?;
         }
         Ok(port)
-    }
-
-    /// The console's modes and code pages as they were.
-    pub struct Guard {
-        input: File,
-        output: File,
-        modes: (CONSOLE_MODE, CONSOLE_MODE),
-        cps: (u32, u32),
-    }
-
-    impl Drop for Guard {
-        fn drop(&mut self) {
-            // SAFETY: the handles are the console's, open until the guard goes.
-            unsafe {
-                let _ = SetConsoleMode(handle(&self.input), self.modes.0);
-                let _ = SetConsoleMode(handle(&self.output), self.modes.1);
-                let _ = SetConsoleCP(self.cps.0);
-                let _ = SetConsoleOutputCP(self.cps.1);
-            }
-        }
-    }
-
-    /// The console's own input and output (a GUI program's standard handles
-    /// are not set after `AttachConsole`), raw: keys as VT sequences, no
-    /// echo, no Ctrl+C; the output in UTF-8 and VT.
-    pub fn console() -> std::io::Result<super::Console<Guard>> {
-        let input = OpenOptions::new().read(true).write(true).open("CONIN$")?;
-        let output = OpenOptions::new().read(true).write(true).open("CONOUT$")?;
-        let mut mi = CONSOLE_MODE::default();
-        let mut mo = CONSOLE_MODE::default();
-        // SAFETY: the handles are the console's; the modes are ours.
-        let guard = unsafe {
-            GetConsoleMode(handle(&input), &mut mi)?;
-            GetConsoleMode(handle(&output), &mut mo)?;
-            let guard = Guard { input: input.try_clone()?, output: output.try_clone()?, modes: (mi, mo), cps: (GetConsoleCP(), GetConsoleOutputCP()) };
-            SetConsoleMode(handle(&input), ENABLE_VIRTUAL_TERMINAL_INPUT)?;
-            SetConsoleMode(handle(&output), ENABLE_PROCESSED_OUTPUT | ENABLE_WRAP_AT_EOL_OUTPUT | ENABLE_VIRTUAL_TERMINAL_PROCESSING | DISABLE_NEWLINE_AUTO_RETURN)?;
-            let _ = SetConsoleCP(65001);
-            let _ = SetConsoleOutputCP(65001);
-            guard
-        };
-        Ok((Box::new(input), Box::new(output), guard))
     }
 
     /// `HKLM\HARDWARE\DEVICEMAP\SERIALCOMM`: the ports there are now, each
@@ -508,38 +459,6 @@ mod imp {
             check(libc::fcntl(fd, libc::F_SETFL, flags & !libc::O_NONBLOCK))?;
         }
         Ok(port)
-    }
-
-    /// The terminal's settings as they were, when it is one.
-    pub struct Guard {
-        was: Option<libc::termios>,
-    }
-
-    impl Drop for Guard {
-        fn drop(&mut self) {
-            if let Some(t) = self.was {
-                // SAFETY: stdin's descriptor; the termios is ours.
-                unsafe {
-                    libc::tcsetattr(0, libc::TCSANOW, &t);
-                }
-            }
-        }
-    }
-
-    /// Standard input and output, the terminal raw while it is one.
-    pub fn console() -> std::io::Result<super::Console<Guard>> {
-        let mut guard = Guard { was: None };
-        // SAFETY: stdin's descriptor; the termios is ours.
-        unsafe {
-            if libc::isatty(0) == 1 {
-                let mut t: libc::termios = std::mem::zeroed();
-                check(libc::tcgetattr(0, &mut t))?;
-                guard.was = Some(t);
-                libc::cfmakeraw(&mut t);
-                check(libc::tcsetattr(0, libc::TCSANOW, &t))?;
-            }
-        }
-        Ok((Box::new(std::io::stdin()), Box::new(std::io::stdout()), guard))
     }
 
     pub fn ports() -> Vec<String> {

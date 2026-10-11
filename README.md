@@ -457,6 +457,17 @@ then `q` leaves (`Ctrl+]` twice sends one). A profile keeps the choice
 `profiles.toml`, also editable in Settings → Sessions & profiles), and
 `tsumugi serial COM3@9600` does the same in any terminal.
 
+**tmux** sessions open as tsumugi's own: `tsumugi tmux -t work` (here, on
+Linux and macOS) or `tsumugi tmux --ssh box -t work` (on another machine, from
+Windows too) attaches to the tmux session `work` in control mode (making it
+when it is not there; with no `-t`, the last one) and shows each tmux window
+as a tab named `tmux: <window>`, its panes split as tmux has them. What is
+typed goes to tmux, and a pane's size here becomes its size there. The
+programs keep running in tmux: closing a pane here only lets go of it, and
+`tmux detach-client` (or `Ctrl+C` in the pane that ran the command) closes
+them all here; running it again brings them back. Splits, new windows and
+panes ending in tmux follow along.
+
 ### Searching
 
 `Ctrl+Shift+P` (`Cmd+Shift+P` on macOS), or the box in the band along the
@@ -953,8 +964,9 @@ and then past it:
 - **A multiplexer underneath.** Sessions live in a background server, so
   closing the window, or the window crashing, never ends a running agent;
   open it again and everything is where it was. A CLI (`tsumugi ls`,
-  `attach`, `notify`) drives it from scripts and agent hooks. Later, tmux over
-  SSH or in WSL drawn as native tabs and splits.
+  `attach`, `notify`) drives it from scripts and agent hooks, and
+  `tsumugi tmux` draws a tmux session (here or over SSH) as native tabs and
+  splits.
 - **Good-looking.** GPU-drawn and smooth, a waiting pane that glows rather
   than blinks, Mica and Acrylic on Windows 11, ligatures and Nerd Font icons.
 
