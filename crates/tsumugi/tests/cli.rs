@@ -414,7 +414,7 @@ fn serial_carries_both_ways_and_leaves_on_its_key() {
 
     let (mut master, mut slave): (libc::c_int, libc::c_int) = (0, 0);
     // SAFETY: two out-parameters; no name, terminal settings or size.
-    assert_eq!(unsafe { libc::openpty(&mut master, &mut slave, std::ptr::null_mut(), std::ptr::null(), std::ptr::null()) }, 0);
+    assert_eq!(unsafe { libc::openpty(&mut master, &mut slave, std::ptr::null_mut(), std::ptr::null_mut(), std::ptr::null_mut()) }, 0);
     // SAFETY: openpty gave both and nothing else owns them.
     let (mut device, side) = unsafe { (std::fs::File::from_raw_fd(master), std::fs::File::from_raw_fd(slave)) };
     // Raw, so the device's side neither echoes nor turns `\r` into `\n`.
