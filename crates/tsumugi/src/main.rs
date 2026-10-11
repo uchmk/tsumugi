@@ -30,6 +30,7 @@ mod json;
 mod gitinfo;
 mod inputbox;
 mod keys;
+mod keyscript;
 mod material;
 mod backdrop;
 mod quake;
@@ -97,7 +98,7 @@ fn main() -> std::process::ExitCode {
         Some("mcp") => mcp::run(),
         Some("send" | "read" | "split" | "close" | "log" | "wait") => remote(&args[0], &args[1..]),
         Some("help" | "--help" | "-h") => {
-            println!("tsumugi: the window, or one of\n{}\n{}\ntsumugi attach N|NAME\ntsumugi proxy                            (what --host runs on the other machine)\ntsumugi notify [--state S] [--session N] [MESSAGE]\ntsumugi tag [--session N] [--remove] TAG...\ntsumugi shell-hook bash|zsh|pwsh\ntsumugi mcp                              an MCP server on stdin/stdout, for Claude Code (see the README)\n\nTSUMUGI_CONFIG_HOME and TSUMUGI_STATE_HOME name other folders for the settings (config.toml) and the state.", cli::NEW_USAGE, cli::REMOTE_USAGE);
+            println!("tsumugi: the window, or one of\n{}\n{}\ntsumugi attach N|NAME\ntsumugi proxy                            (what --host runs on the other machine)\ntsumugi notify [--state S] [--session N] [MESSAGE]\ntsumugi tag [--session N] [--remove] TAG...\ntsumugi shell-hook bash|zsh|pwsh\ntsumugi mcp                              an MCP server on stdin/stdout, for Claude Code (see the README)\ntsumugi --keys SCRIPT                    the window, pressing the script's keys (`<C-S-t><Wait:500><Shot:tab><Quit>`); TSUMUGI_KEYS_DONE names the file for its state\n\nTSUMUGI_CONFIG_HOME and TSUMUGI_STATE_HOME name other folders for the settings (config.toml) and the state.", cli::NEW_USAGE, cli::REMOTE_USAGE);
             std::process::ExitCode::SUCCESS
         }
         Some("notify") => notify(&args[1..]),
@@ -114,12 +115,26 @@ fn main() -> std::process::ExitCode {
                 std::process::ExitCode::from(2)
             }
         },
+        Some("--keys") => match (args.get(1).map(|s| keyscript::parse(s)), args.len()) {
+            (Some(Ok(steps)), 2) => {
+                let _ = KEYS.set(steps);
+                window()
+            }
+            (Some(Err(e)), 2) => {
+                eprintln!("tsumugi --keys: {e}");
+                std::process::ExitCode::from(2)
+            }
+            _ => {
+                eprintln!("usage: tsumugi --keys SCRIPT (one argument: keys as `<C-S-t>`, `<Wait:500>`, `<Shot:name>`, `<State:name>`, `<Click:x,y>`, `<Drag:x,y-x,y>`, `<Quit>`)");
+                std::process::ExitCode::from(2)
+            }
+        },
         Some("--version" | "-V") => {
             println!("tsumugi {}", env!("CARGO_PKG_VERSION"));
             std::process::ExitCode::SUCCESS
         }
         Some(other) => {
-            eprintln!("tsumugi: unknown command `{other}` (server, proxy, ls, new, attach, send, read, split, close, wait, notify, tag, shell-hook, mcp, help, --version)");
+            eprintln!("tsumugi: unknown command `{other}` (server, proxy, ls, new, attach, send, read, split, close, wait, notify, tag, shell-hook, mcp, help, --keys, --version)");
             std::process::ExitCode::from(2)
         }
     }
@@ -177,6 +192,9 @@ fn new_cli(args: &[String]) -> std::process::ExitCode {
         }
     }
 }
+
+/// The script `tsumugi --keys` gave the window to play.
+static KEYS: std::sync::OnceLock<Vec<keyscript::Step>> = std::sync::OnceLock::new();
 
 /// The session `tsumugi attach` asked the window to show.
 static SHOW_SESSION: std::sync::OnceLock<SessionId> = std::sync::OnceLock::new();
@@ -1099,6 +1117,9 @@ struct App {
     build_told: bool,
     /// The question was answered "Close": the next request goes through.
     close_ok: bool,
+    /// `--keys`: the script being played, and what it asked of this frame.
+    script: Option<keyscript::Runner>,
+    script_todo: Vec<keyscript::Do>,
     worktree_removing: Option<(std::path::PathBuf, std::sync::mpsc::Receiver<Result<(), String>>)>,
     /// A few words above the status bar for a few seconds: what was done,
     /// or (true) what went wrong.
@@ -1470,6 +1491,8 @@ impl App {
             update_asked: false,
             build_told: false,
             close_ok: false,
+            script: KEYS.get().map(|steps| keyscript::Runner::new(steps.clone(), std::env::var_os("TSUMUGI_KEYS_DONE").filter(|p| !p.is_empty()).map(std::path::PathBuf::from))),
+            script_todo: Vec::new(),
             worktree_removing: None,
             toast: None,
             forgotten: None,
@@ -5077,7 +5100,11 @@ fn window_handle(cc: &eframe::CreationContext<'_>) -> Option<isize> {
 }
 
 impl eframe::App for App {
-    fn raw_input_hook(&mut self, _ctx: &egui::Context, raw: &mut egui::RawInput) {
+    fn raw_input_hook(&mut self, ctx: &egui::Context, raw: &mut egui::RawInput) {
+        // A script's keys first, to take the road a real key takes.
+        if let Some(d) = self.script.as_mut().and_then(|s| s.input(ctx, raw)) {
+            self.script_todo.push(d);
+        }
         keys::physical_minus(&mut raw.events);
     }
 
@@ -5092,6 +5119,7 @@ impl eframe::App for App {
         self.peek = None;
         self.watching.clear();
         self.frame(ui, frame);
+        self.script(ui.ctx());
         self.quake(ui.ctx());
         if !cfg!(target_os = "macos") {
             // The system's frame while there is no band to be one (the
@@ -5117,6 +5145,76 @@ impl eframe::App for App {
 }
 
 impl App {
+    /// `--keys`, once a frame: the picture asked for, the state files, the
+    /// window closed, and the next frame when the script's next step is due.
+    fn script(&mut self, ctx: &egui::Context) {
+        let Some(script) = &mut self.script else { return };
+        if let Some(e) = script.shot(ctx) {
+            self.say(e, true);
+        }
+        for d in std::mem::take(&mut self.script_todo) {
+            let Some(script) = &self.script else { return };
+            let (path, tail) = match d {
+                keyscript::Do::State(name) => (Some(script.dir.join(format!("{name}.txt"))), ""),
+                keyscript::Do::Done => (script.done.clone(), "keys: done\n"),
+                keyscript::Do::Quit => {
+                    // Asked for by the script: no question about the
+                    // sessions still running.
+                    self.close_ok = true;
+                    ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                    (None, "")
+                }
+            };
+            if let Some(path) = path {
+                if let Err(e) = std::fs::write(&path, format!("{}{tail}", self.script_state(ctx))) {
+                    eprintln!("tsumugi --keys: {}: {e}", path.display());
+                }
+            }
+        }
+        if let Some(due) = self.script.as_ref().and_then(keyscript::Runner::due) {
+            ctx.request_repaint_after(due);
+        }
+    }
+
+    /// What `--keys` writes for a check to read: the lines every uchmk app
+    /// writes (ito's docs/common-spec.md), then tsumugi's own.
+    fn script_state(&self, ctx: &egui::Context) -> String {
+        let find = self.find.as_ref().is_some_and(find::Bar::keyed);
+        // In the order they are drawn over each other, the top first.
+        let overlays = [
+            (self.closing.is_some(), "close"),
+            (self.paste_ask.is_some(), "paste"),
+            (self.prefs.is_some(), "settings"),
+            (self.help.is_some(), "help"),
+            (self.search.is_some(), "palette"),
+            (self.new_session.is_some(), "new-session"),
+            (self.lists.is_some(), "lists"),
+            (self.diff.is_some(), "diff"),
+            (self.parallel.is_some(), "parallel"),
+            (self.renaming_card.is_some(), "rename"),
+            (self.noting_card.is_some(), "note"),
+            (self.menu_open, "menu"),
+            (find, "find"),
+        ];
+        let overlay = overlays.iter().find(|(open, _)| *open).map_or("none", |(_, name)| name);
+        let workspaces = self.client.as_ref().map(Client::workspaces).unwrap_or_default();
+        let shown = workspaces.iter().find(|w| Some(w.id) == self.active);
+        let focus = match () {
+            _ if overlay != "none" => overlay,
+            _ if shown.is_some() => "pane",
+            _ => "none",
+        };
+        let mut s = format!("focus: {focus}\noverlay: {overlay}\nscale: {}%\n", (ctx.zoom_factor() * 100.0).round());
+        s += &format!("tabs: {}\n", workspaces.len());
+        s += &format!("panes: {}\n", shown.map_or(0, |w| w.layout.leaves().len()));
+        s += &format!("zoom: {}\n", if self.zoom { "on" } else { "off" });
+        s += &format!("title: {}\n", keyscript::one_line(&self.title));
+        if let Some(e) = &self.failed {
+            s += &format!("failed: {}\n", keyscript::one_line(e));
+        }
+        s
+    }
+
     /// The branch mark is the Nerd Font's character: one is installed and
     /// the settings did not turn it off.
     fn nerd(&self) -> bool {

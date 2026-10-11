@@ -875,6 +875,28 @@ When the two ends speak different versions of the protocol, it says to
 install the same version there and then use **Restart its server**: the old
 server stops (its sessions end, its tabs come back) and the new one starts.
 
+### From a test: `--keys`
+
+`tsumugi --keys SCRIPT` opens the window and presses the script's keys
+itself, as kura and yagura do (the key script in ito's
+[common spec](https://github.com/uchmk/ito/blob/main/docs/common-spec.md)),
+so a test drives the window without reaching into it from outside:
+
+```sh
+TSUMUGI_KEYS_DONE=out/done.txt tsumugi --keys "<C-S-t><Wait:1500>echo<Space>hi<Enter><Wait:500><Shot:tab><State:tab>"
+```
+
+Keys are written as in the keymaps (`j`, `<Enter>`, `<C-S-t>`; `C` is Cmd on
+macOS), `<…>*3` presses one three times, and a plain space is `<Space>`.
+`<Wait:ms>` pauses, `<Click:x,y>` and `<Drag:x,y-x,y>` use the pointer
+(fractions of the window), `<Shot:name>` saves the window as `name.png` and
+`<State:name>` its state as `name.txt`, both beside `TSUMUGI_KEYS_DONE`;
+`<Quit>` closes the window without asking about running sessions. When the
+script ends, `TSUMUGI_KEYS_DONE` gets the state and a last line
+`keys: done`. The state is `key: value` lines: `focus` (`pane`, the open
+dialog or `none`), `overlay`, `scale`, then `tabs`, `panes` (in the tab
+shown), `zoom` and `title`.
+
 ### From Claude Code (MCP)
 
 `tsumugi mcp` is an [MCP](https://modelcontextprotocol.io) server on stdin and

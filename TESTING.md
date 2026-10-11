@@ -84,6 +84,7 @@ they are not ticked by hand any more. A change that breaks one turns CI red.
 | 18.3 | `tsumugi read N --lines 5` and `--all`, Japanese whole | `send_runs_a_line_and_read_gives_it_back` |
 | 18.5 | `tsumugi wait`: exit 0 on the state, 1 on the timeout, 3 for a session gone (`notify` standing in for Claude Code) | `wait_and_close` |
 | 18.6 (half) | `tsumugi close N`: the session ends | `wait_and_close` |
+| 18.11 (half) | `tsumugi --keys`: no script, a plain space, a name that leaves the folder and a bad wait are refused with exit 2 and the reason, before a window opens; `--help` names it | `keys_refuses_a_bad_script` |
 | 18.10 (half) | `tsumugi mcp`: answers `initialize` and `tools/list`; `tsumugi_sessions` says tsumugi is not running without a server, lists the session with one; `tsumugi_screen` by number and by tag | `mcp_lists_sessions_and_reads_a_screen` |
 
 A row that only needs text belongs here, not in a section below: add a test
@@ -497,6 +498,7 @@ to `cli.rs` and a line to this table instead of a row.
 | 18.8 | Pull the network while `tsumugi wait --host HOST N` waits, then `tsumugi ls --host HOST` again once it is back | The wait fails within about 30 s; the sessions on HOST are still there afterwards |
 | 18.9 | `tsumugi ls --host HOST` where HOST has no tsumugi, and where the key is refused | One line naming HOST and what ssh said (`command not found`, `Permission denied`); no password prompt |
 | 18.10 | In a terminal, `claude mcp add tsumugi -- "<full path>\tsumugi.exe" mcp`; start `claude`, type `/mcp`, then ask "Which tsumugi sessions are waiting, and what does the first one show?" with two sessions open in tsumugi | `/mcp` shows tsumugi connected with 2 tools; Claude Code calls `tsumugi_sessions` and `tsumugi_screen` and answers with the real sessions; no console window flashes. With tsumugi's server stopped, the answer says tsumugi is not running |
+| 18.11 | In a folder of its own, with a server of its own (`TSUMUGI_ADDRESS` set to `\\.\pipe\tsumugi-keys`, `TSUMUGI_STATE_HOME` to the folder) and `TSUMUGI_KEYS_DONE` set to `done.txt` there, start a shell with `tsumugi new .` and run `tsumugi --keys "<Wait:1500>echo<Space>hi<Enter><Wait:800><Shot:typed><State:one><C-,><Wait:500><State:two><Esc><Wait:300><Quit>"`; afterwards `tsumugi close` the session | The window opens on that shell and, after a moment, `echo hi` is typed into it and `hi` printed; `typed.png` shows it; `one.txt` says `focus: pane`, `overlay: none`, `scale: 100%`, `tabs: 1`, `panes: 1`, `zoom: off`; `two.txt` says `focus: settings`, `overlay: settings`; the settings close and the window closes without asking about the running session; `done.txt` is not written (the script ended in `<Quit>`). Without the `<Quit>`, `done.txt` appears, ending in `keys: done`, and the window stays |
 
 ## 19. Keys through every screen
 

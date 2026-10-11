@@ -1709,6 +1709,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "ito-keys"
+version = "0.9.1"
+source = "git+https://github.com/uchmk/ito?rev=3005b5c9b222117d8be783f74a7ac9577919427c#3005b5c9b222117d8be783f74a7ac9577919427c"
+dependencies = [
+ "egui",
+]
+
+[[package]]
 name = "ito-layout"
 version = "0.9.1"
 source = "git+https://github.com/uchmk/ito?rev=3005b5c9b222117d8be783f74a7ac9577919427c#3005b5c9b222117d8be783f74a7ac9577919427c"
@@ -3503,7 +3511,7 @@ dependencies = [
 
 [[package]]
 name = "tsumugi"
-version = "0.94.4"
+version = "0.95.0"
 dependencies = [
  "arboard",
  "chrono",
@@ -3513,6 +3521,7 @@ dependencies = [
  "image",
  "ito-common",
  "ito-i18n",
+ "ito-keys",
  "ito-layout",
  "ito-mcp",
  "ito-pane",
@@ -3528,7 +3537,7 @@ dependencies = [
 
 [[package]]
 name = "tsumugi-mux"
-version = "0.94.4"
+version = "0.95.0"
 dependencies = [
  "crossbeam-channel",
  "ito-common",

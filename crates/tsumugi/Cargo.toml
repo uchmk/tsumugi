@@ -31,6 +31,8 @@ ito-theme = { git = "https://github.com/uchmk/ito", rev = "3005b5c9b222117d8be78
 # The settings screen, shared with every uchmk app: the nav, the rows and
 # their controls, and the pages for common.toml (language, clock, theme).
 ito-prefs = { git = "https://github.com/uchmk/ito", rev = "3005b5c9b222117d8be783f74a7ac9577919427c" }
+# The key notation of `--keys` scripts (`<C-a>`), the same as kura and yagura.
+ito-keys = { git = "https://github.com/uchmk/ito", rev = "3005b5c9b222117d8be783f74a7ac9577919427c", features = ["egui"] }
 # eframe's own defaults, but for `winit/default`: that draws the title on
 # Wayland's window frame with ab_glyph, which brings the unmaintained
 # ttf-parser (RUSTSEC-2026-0192, QUESTIONS.md Q10). winit below keeps the
