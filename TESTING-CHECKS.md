@@ -12,12 +12,12 @@
 ## 1. The window and the server
 
 - [ ] **1.1** Start `tsumugi` with no session and nothing to restore → **Start your first session**: the folder it was started from first, the default folder, the last ones closed, **Choose another folder…**; Enter (or a click) starts the settings' program there. The window opens in under a second
-- [ ] **1.3** Close the window, then start `tsumugi` again → The same tab and the same shell, its output still there: the server kept it
-- [ ] **1.4** With the window closed, `tsumugi new . -- echo hi`, then start `tsumugi` → The window has a tab with `hi` in it (the number printed and the session itself: `cli.rs`)
-- [ ] **1.5** `tsumugi attach <that number>`, and `tsumugi attach <folder name>` → The window opens on that session. A name two sessions share says so and names their numbers
-- [ ] **1.6** With tsumugi running, `cargo build` (Windows) → The build replaces `tsumugi.exe` -- no `アクセスが拒否されました` -- because the server runs from its copy in `%LOCALAPPDATA%\uchmk\tsumugi\server\`
+- [x] **1.3** Close the window, then start `tsumugi` again → The same tab and the same shell, its output still there: the server kept it
+- [x] **1.4** With the window closed, `tsumugi new . -- echo hi`, then start `tsumugi` → The window has a tab with `hi` in it (the number printed and the session itself: `cli.rs`)
+- [x] **1.5** `tsumugi attach <that number>`, and `tsumugi attach <folder name>` → The window opens on that session. A name two sessions share says so and names their numbers
+- [x] **1.6** With tsumugi running, `cargo build` (Windows) → The build replaces `tsumugi.exe` -- no `アクセスが拒否されました` -- because the server runs from its copy in `%LOCALAPPDATA%\uchmk\tsumugi\server\`
 - [ ] **1.7** Start the newly built window while the older server runs (an unattended run: the older release in `$env:WINTEST_OLD_EXE`, started with `Start-OldTsumugi` and its window closed; by hand, a build of 0.45.0 or 0.46.0 too) → **tsumugi was updated**, what that means in a sentence, **Restart the server** lit; Enter (no Tab or click) restarts it and every tab comes back at once, with no Welcome back, never "the server did not answer" (try it with several Claude Code sessions running); Esc closes the window and the old sessions go on
-- [ ] **1.8** Task Manager after 1.3 → One `tsumugi-<version>-<hash>.exe` server, and no console window anywhere
+- [x] **1.8** Task Manager after 1.3 → One `tsumugi-<version>-<hash>.exe` server, and no console window anywhere
 - [ ] **1.9** The taskbar, Alt+Tab, and the window's corner → The logo (two threads, cyan and gold, on a dark tile) as the window's icon
 - [ ] **1.11** Settings → General → Restart the server after an update without asking on; then 1.7 (an unattended run: with `$env:WINTEST_OLD_EXE`) → No question: the older server is restarted at once and every tab comes back
 - [ ] **1.12** Build and start a newer window while the server of the build before runs, when the two speak the same version (no **tsumugi was updated**); then Settings → Advanced → Restart the server → A toast "The server is still tsumugi <old> (this is <new>): Settings → Advanced → Restart the server…", once; Settings → Advanced shows "Running · <old> · <up>"; after the restart it shows the new version and no toast comes
