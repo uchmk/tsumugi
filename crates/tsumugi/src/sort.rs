@@ -100,11 +100,11 @@ impl Kind {
 
     pub fn label(self) -> &'static str {
         match self {
-            Kind::Waiting => "Waiting",
-            Kind::Running => "Running",
-            Kind::Error => "Error",
-            Kind::Done => "Done",
-            Kind::Shell => "Shell",
+            Kind::Waiting => tr("kind.waiting"),
+            Kind::Running => tr("kind.running"),
+            Kind::Error => tr("kind.error"),
+            Kind::Done => tr("kind.done"),
+            Kind::Shell => tr("kind.shell"),
         }
     }
 

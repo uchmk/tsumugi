@@ -6,7 +6,7 @@ use eframe::egui::{self, Color32, FontId, RichText};
 use tsumugi_mux::{Info, Notice, SessionId, State};
 use ito_pane::Palette;
 
-use crate::i18n::tr;
+use crate::i18n::{tr, trf};
 
 /// The four state colours and the faintest text, from the theme in force
 /// (1k): waiting gold, running cyan, error red, done green.
@@ -255,11 +255,11 @@ pub fn short_words(info: &Info, now: u64) -> String {
     let t = elapsed(now.saturating_sub(info.since_ms));
     match look(info) {
         Look::Shell => String::new(),
-        Look::State(State::Waiting) => format!("Waiting · {t}"),
-        Look::State(State::MaybeWaiting) => format!("Quiet · {t}"),
-        Look::State(State::Running) => format!("Running · {t}"),
-        Look::State(State::Error) => format!("Error · {t}"),
-        Look::State(State::Done) => format!("Done · {t}"),
+        Look::State(State::Waiting) => trf("state.waiting", &[&t]),
+        Look::State(State::MaybeWaiting) => trf("state.quiet", &[&t]),
+        Look::State(State::Running) => trf("state.running", &[&t]),
+        Look::State(State::Error) => trf("state.error", &[&t]),
+        Look::State(State::Done) => trf("state.done", &[&t]),
     }
 }
 
@@ -277,11 +277,11 @@ pub fn card_words(info: &Info, now: u64) -> String {
 pub fn state_words(info: &Info, now: u64) -> String {
     let t = elapsed(now.saturating_sub(info.since_ms));
     match info.state {
-        State::Waiting => format!("Waiting for you · {t}"),
-        State::MaybeWaiting => format!("Quiet for {t} · probably waiting"),
-        State::Running => format!("Running · {t}"),
-        State::Error => format!("Error · {t}"),
-        State::Done => format!("Done · {t}"),
+        State::Waiting => trf("state.waiting_long", &[&t]),
+        State::MaybeWaiting => trf("state.quiet_long", &[&t]),
+        State::Running => trf("state.running", &[&t]),
+        State::Error => trf("state.error", &[&t]),
+        State::Done => trf("state.done", &[&t]),
     }
 }
 
@@ -347,17 +347,23 @@ pub fn status_bar(
     let small = |t: String, c: Color32| RichText::new(t).font(FontId::proportional(11.5)).color(c);
     ui.horizontal_centered(|ui| {
         ui.add_space(10.0);
-        ui.label(small(format!("mux · up {}", elapsed(up_ms)), pal.fg_dim));
+        ui.label(small(trf("status.up", &[&elapsed(up_ms)]), pal.fg_dim));
         ui.add_space(14.0);
         // Shells are none of these: they are not running anything of note.
         let count = |s: State| sessions.iter().filter(|i| !crate::sort::is_shell(i) && (i.state == s || (s == State::Waiting && i.state == State::MaybeWaiting))).count();
-        for (state, word) in [(State::Waiting, "waiting"), (State::Running, "running"), (State::Error, "error")] {
+        for state in [State::Waiting, State::Running, State::Error] {
             let n = count(state);
             if n == 0 {
                 continue;
             }
-            let r = ui.add(egui::Label::new(small(format!("● {n} {word}"), state_ink(state))).sense(egui::Sense::click()));
-            if r.on_hover_text("Open the notification list").clicked() {
+            let n = n.to_string();
+            let words = match state {
+                State::Waiting => trf("status.waiting", &[&n]),
+                State::Running => trf("status.running", &[&n]),
+                _ => trf("status.error", &[&n]),
+            };
+            let r = ui.add(egui::Label::new(small(words, state_ink(state))).sense(egui::Sense::click()));
+            if r.on_hover_text(tr("status.bell_hover")).clicked() {
                 click = Some(StatusClick::Bell);
             }
             ui.add_space(6.0);
@@ -416,17 +422,15 @@ pub fn status_bar(
                 use crate::price::dollars;
                 let money = |c: f64| if c > 0.0 { format!(" ≈{}", dollars(c)) } else { String::new() };
                 let said = match conversation {
-                    Some(c) => format!("{} tokens{} · Today {}{}", short(c.total()), money(cost.0.unwrap_or(0.0)), short(today.total()), money(cost.1)),
-                    None => format!("Today {} tokens{}", short(today.total()), money(cost.1)),
+                    Some(c) => trf("status.tokens", &[&short(c.total()), &money(cost.0.unwrap_or(0.0)), &short(today.total()), &money(cost.1)]),
+                    None => trf("status.tokens_today", &[&short(today.total()), &money(cost.1)]),
                 };
-                let detail = |t: &crate::usage::Tokens| format!("in {} · cache write {} · cache read {} · out {}", short(t.input), short(t.cache_write), short(t.cache_read), short(t.output));
-                let mut hover = format!("Claude Code's tokens today: {}", detail(today));
+                let detail = |t: &crate::usage::Tokens| trf("status.tokens_detail", &[&short(t.input), &short(t.cache_write), &short(t.cache_read), &short(t.output)]);
+                let mut hover = trf("status.tokens_hover_today", &[&detail(today)]);
                 if let Some(c) = conversation {
-                    hover = format!("This conversation: {}\n{hover}", detail(c));
+                    hover = trf("status.tokens_hover_conversation", &[&detail(c), &hover]);
                 }
-                ui.label(small(said, pal.fg_dim)).on_hover_text(format!(
-                    "{hover}\nThe totals leave out the cache's reads.\n≈ is what the tokens would cost on the API, at each model's prices (`[prices]` in the settings changes them); a Pro or Max plan is not billed this way."
-                ));
+                ui.label(small(said, pal.fg_dim)).on_hover_text(format!("{hover}\n{}", tr("status.tokens_note")));
             }
             if let Some(b) = block {
                 use crate::usage::short;
@@ -436,17 +440,12 @@ pub fn status_bar(
                 let left = (b.end_ms - now_ms() as i64).max(0) as u64;
                 ui.add_space(12.0);
                 let money = if b.cost > 0.0 { format!(" ≈{}", crate::price::dollars(b.cost)) } else { String::new() };
-                ui.label(small(format!("5h {}{money} · resets {end}", short(b.tokens.total())), pal.fg_dim)).on_hover_text(format!(
-                    "Claude Code's usage window: {start} to {end}, {} left; {} tokens in it so far.\n\
-                     Worked out from the transcripts: the window opens at the hour of the first answer after the last one closed. \
-                     How much a window allows depends on the plan, which tsumugi cannot read.",
-                    elapsed(left),
-                    short(b.tokens.total())
-                ));
+                let tokens = short(b.tokens.total());
+                ui.label(small(trf("status.block", &[&tokens, &money, &end]), pal.fg_dim)).on_hover_text(trf("status.block_hover", &[&start, &end, &elapsed(left), &tokens]));
             }
             if let (Some(i), Some((cols, lines))) = (focus, size) {
                 ui.add_space(12.0);
-                ui.label(small(format!("{} · {cols}×{lines}", crate::program_name(&i.command)), pal.fg_dim)).on_hover_text("The program in the pane with the keys, and its size in columns × rows");
+                ui.label(small(format!("{} · {cols}×{lines}", crate::program_name(&i.command)), pal.fg_dim)).on_hover_text(tr("status.program_hover"));
             }
             ui.add_space(10.0);
             divider(ui);
@@ -511,7 +510,7 @@ pub fn pr_line(pr: &crate::gitinfo::Pr) -> (String, Color32) {
 /// terminal's font, cut at the width rather than wrapped.
 pub fn peek(ui: &mut egui::Ui, pal: &Palette, lines: &[String]) {
     if lines.is_empty() {
-        ui.label(RichText::new("Nothing on its screen yet").size(11.5).color(pal.fg_dim));
+        ui.label(RichText::new(tr("sidebar.nothing_yet")).size(11.5).color(pal.fg_dim));
         return;
     }
     let font = FontId::monospace(11.0);
@@ -542,7 +541,7 @@ pub fn peek(ui: &mut egui::Ui, pal: &Palette, lines: &[String]) {
 /// The "+" that opens the new-session dialog (the same as `Ctrl+Shift+T`).
 pub fn plus_button(ui: &mut egui::Ui, pal: &Palette) -> egui::Response {
     let (rect, resp) = ui.allocate_exact_size(egui::vec2(26.0, 24.0), egui::Sense::click());
-    let resp = resp.on_hover_text(format!("New session   {}", crate::keys::label(crate::keys::Action::NewTab)));
+    let resp = resp.on_hover_text(trf("sidebar.new_session", &[&crate::keys::label(crate::keys::Action::NewTab)]));
     let p = ui.painter();
     let border = if resp.hovered() { crate::theme::colors().border_strong() } else { crate::theme::colors().border };
     if resp.hovered() {
@@ -560,7 +559,7 @@ pub fn plus_button(ui: &mut egui::Ui, pal: &Palette) -> egui::Response {
 pub fn bell(ui: &mut egui::Ui, rect: egui::Rect, pal: &Palette, notices: &[Notice]) -> egui::Response {
     let unread: Vec<&Notice> = notices.iter().filter(|n| !n.read).collect();
     let resp = ui.interact(rect, ui.id().with("bell"), egui::Sense::click());
-    let resp = resp.on_hover_text(format!("Notifications ({} unread)  {}", unread.len(), crate::keys::label(crate::keys::Action::Notices)));
+    let resp = resp.on_hover_text(trf("sidebar.notices", &[&unread.len().to_string(), &crate::keys::label(crate::keys::Action::Notices)]));
     let p = ui.painter_at(rect.expand(6.0));
     if resp.hovered() {
         p.rect_filled(rect, 6.0, pal.selection.gamma_multiply(0.5));
@@ -719,9 +718,9 @@ pub fn top_band(ui: &mut egui::Ui, pal: &Palette, tags: &[String], shown: usize,
     let name_right = o.x + 24.0 + name.size().x;
     p.galley(egui::pos2(o.x + 24.0, rect.center().y - name.size().y / 2.0), name, Color32::WHITE);
     if frame.settings {
-        p.text(whole.center(), egui::Align2::CENTER_CENTER, "Settings", FontId::proportional(13.0), pal.fg_dim);
+        p.text(whole.center(), egui::Align2::CENTER_CENTER, tr("title.settings"), FontId::proportional(13.0), pal.fg_dim);
         let r = egui::Rect::from_min_max(egui::pos2(rect.right() - 44.0, whole.top() + 4.0), egui::pos2(rect.right(), whole.bottom() - 4.0));
-        let resp = ui.interact(r, ui.id().with("close-settings"), egui::Sense::CLICK).on_hover_text("Close settings (Esc)");
+        let resp = ui.interact(r, ui.id().with("close-settings"), egui::Sense::CLICK).on_hover_text(tr("title.close_settings"));
         if resp.hovered() {
             p.rect_filled(r, 4.0, crate::theme::colors().hover());
         }
@@ -761,7 +760,7 @@ pub fn top_band(ui: &mut egui::Ui, pal: &Palette, tags: &[String], shown: usize,
         }
     }
 
-    let resp = ui.interact(r, ui.id().with("search"), egui::Sense::CLICK).on_hover_text("Commands, prompts, layouts and folders");
+    let resp = ui.interact(r, ui.id().with("search"), egui::Sense::CLICK).on_hover_text(tr("title.search"));
     let fill = if resp.hovered() { crate::theme::colors().hover() } else { crate::theme::colors().panel };
     p.rect_filled(r, 6.0, fill);
     p.rect_stroke(r, 6.0, egui::Stroke::new(1.0, crate::theme::colors().border), egui::StrokeKind::Inside);
@@ -772,7 +771,7 @@ pub fn top_band(ui: &mut egui::Ui, pal: &Palette, tags: &[String], shown: usize,
     if !compact {
         let key = p.layout_no_wrap(crate::keys::label(crate::keys::Action::Search), FontId::monospace(11.0), grey());
         let key_x = r.right() - 10.0 - key.size().x;
-        let mut job = egui::text::LayoutJob::simple_singleline("Commands, prompts, layouts and folders".into(), FontId::proportional(12.0), pal.fg_dim);
+        let mut job = egui::text::LayoutJob::simple_singleline(tr("title.search").into(), FontId::proportional(12.0), pal.fg_dim);
         job.wrap = egui::text::TextWrapping::truncate_at_width((key_x - r.left() - 40.0).max(0.0));
         let words = ui.fonts_mut(|f| f.layout_job(job));
         if key_x - r.left() > 140.0 {
@@ -828,7 +827,7 @@ const CAPTION_W: f32 = 46.0;
 /// as Windows draws them: thin lines, close red under the pointer.
 fn caption_buttons(ui: &mut egui::Ui, rect: egui::Rect, pal: &Palette, maximized: bool) -> Option<WindowOp> {
     let mut out = None;
-    let ops = [(WindowOp::Minimize, "Minimize"), (WindowOp::ToggleMax, if maximized { "Restore" } else { "Maximize" }), (WindowOp::Close, "Close")];
+    let ops = [(WindowOp::Minimize, tr("title.minimize")), (WindowOp::ToggleMax, if maximized { tr("title.restore") } else { tr("title.maximize") }), (WindowOp::Close, tr("title.close"))];
     for (k, (op, words)) in ops.into_iter().enumerate() {
         let r = egui::Rect::from_min_size(rect.min + egui::vec2(k as f32 * CAPTION_W, 0.0), egui::vec2(CAPTION_W, rect.height()));
         let resp = ui.interact(r, ui.id().with(("caption", k)), egui::Sense::CLICK).on_hover_text(words);
@@ -955,7 +954,7 @@ pub fn search_box(ctx: &egui::Context, pal: &Palette, view: &mut crate::palette:
                 let before = view.query.clone();
                 let field = egui::TextEdit::singleline(&mut view.query)
                     .id(egui::Id::new("search-field"))
-                    .hint_text("Commands, prompts, layouts, folders (sessions: Ctrl+Shift+O)")
+                    .hint_text(trf("title.search_hint", &[&crate::keys::label(crate::keys::Action::Overview)]))
                     .desired_width(f32::INFINITY);
                 crate::keep_focus(&ui.add(field));
                 if view.query != before {
@@ -963,7 +962,7 @@ pub fn search_box(ctx: &egui::Context, pal: &Palette, view: &mut crate::palette:
                 }
                 ui.add_space(4.0);
                 if found.is_empty() {
-                    ui.label(RichText::new("Nothing matches").color(pal.fg_dim).size(12.0));
+                    ui.label(RichText::new(tr("title.nothing_matches")).color(pal.fg_dim).size(12.0));
                 }
                 for (k, e) in found.iter().enumerate() {
                     let (rect, resp) = ui.allocate_exact_size(egui::vec2(ui.available_width(), 26.0), egui::Sense::click());
@@ -1131,16 +1130,16 @@ pub fn bell_list(ctx: &egui::Context, pal: &Palette, at: egui::Pos2, notices: &[
                 ui.set_width(360.0);
                 ui.horizontal(|ui| {
                     let unread = notices.iter().filter(|n| !n.read).count();
-                    ui.label(RichText::new(format!("Notifications · {unread} unread")).strong().color(pal.fg));
+                    ui.label(RichText::new(trf("notices.title", &[&unread.to_string()])).strong().color(pal.fg));
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if ui.add_enabled(unread > 0, egui::Button::new("Mark all read").small()).clicked() {
+                        if ui.add_enabled(unread > 0, egui::Button::new(tr("notices.mark_read")).small()).clicked() {
                             action = Some(BellAction::ReadAll);
                         }
                     });
                 });
                 ui.separator();
                 if notices.is_empty() {
-                    ui.label(RichText::new("Nothing yet. A session that waits for you, fails, or finishes a long run shows here.").color(pal.fg_dim));
+                    ui.label(RichText::new(tr("notices.empty")).color(pal.fg_dim));
                     return;
                 }
                 egui::ScrollArea::vertical().max_height(420.0).show(ui, |ui| {
@@ -1231,9 +1230,9 @@ pub fn restore_screen(ui: &mut egui::Ui, pal: &Palette, view: &mut RestoreView) 
     let when = chrono::DateTime::from_timestamp_millis(view.saved.at_ms as i64).map(|t| when_words(t.with_timezone(&chrono::Local).naive_local(), chrono::Local::now().naive_local())).unwrap_or_default();
     let mut child = ui.new_child(egui::UiBuilder::new().max_rect(egui::Rect::from_center_size(rect.center(), egui::vec2(width, rect.height().min(560.0)))));
     egui::Frame::NONE.fill(crate::theme::colors().panel).corner_radius(12.0).stroke(egui::Stroke::new(1.0, crate::theme::colors().border_strong())).inner_margin(20.0).show(&mut child, |ui| {
-        ui.label(RichText::new("Welcome back").size(18.0).strong().color(pal.fg));
-        let open = if panes.len() == 1 { "1 session was open".to_owned() } else { format!("{} sessions were open", panes.len()) };
-        ui.label(RichText::new(format!("{open} when tsumugi stopped, {when}.")).color(pal.fg_dim));
+        ui.label(RichText::new(tr("restore.title")).size(18.0).strong().color(pal.fg));
+        let lead = if panes.len() == 1 { trf("restore.lead_one", &[&when]) } else { trf("restore.lead", &[&panes.len().to_string(), &when]) };
+        ui.label(RichText::new(lead).color(pal.fg_dim));
         ui.add_space(10.0);
         // The rows scroll, so Restore and Start fresh stay in sight however
         // many there were.
@@ -1243,7 +1242,7 @@ pub fn restore_screen(ui: &mut egui::Ui, pal: &Palette, view: &mut RestoreView) 
             let some = count > 0 && !all;
             let ticked = &mut view.ticked;
             egui::Frame::NONE.inner_margin(egui::Margin::symmetric(8, 2)).show(ui, |ui| {
-                let label = RichText::new("Select all").size(12.5).color(pal.fg_dim);
+                let label = RichText::new(tr("restore.select_all")).size(12.5).color(pal.fg_dim);
                 if ui.add(egui::Checkbox::new(&mut all, label).indeterminate(some)).clicked() {
                     tick_all(ticked);
                 }
@@ -1267,9 +1266,9 @@ pub fn restore_screen(ui: &mut egui::Ui, pal: &Palette, view: &mut RestoreView) 
                         // room left and is cut short in it, never over it.
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             let what = match (&p.claude, p.state) {
-                                (Some(_), _) => "resume conversation".to_owned(),
-                                (None, State::Done) if !slot.1 => "finished · left closed".to_owned(),
-                                (None, _) => format!("new shell in {}", crate::home_short(&p.cwd)),
+                                (Some(_), _) => tr("restore.resume").to_owned(),
+                                (None, State::Done) if !slot.1 => tr("restore.left_closed").to_owned(),
+                                (None, _) => trf("restore.new_shell", &[&crate::home_short(&p.cwd)]),
                             };
                             // At most under half the row, so the name always shows.
                             let room = ui.available_width() * 0.45;
@@ -1289,14 +1288,14 @@ pub fn restore_screen(ui: &mut egui::Ui, pal: &Palette, view: &mut RestoreView) 
         ui.add_space(10.0);
         ui.separator();
         ui.horizontal(|ui| {
-            ui.checkbox(&mut view.always, RichText::new("Always restore without asking").size(12.5).color(pal.fg_dim));
+            ui.checkbox(&mut view.always, RichText::new(tr("restore.always")).size(12.5).color(pal.fg_dim));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 let picked: Vec<SessionId> = view.ticked.iter().filter(|(_, on)| *on).map(|(id, _)| *id).collect();
-                let restore = egui::Button::new(RichText::new(format!("Restore {}", picked.len())).strong().color(crate::theme::colors().on_accent())).fill(cyan());
+                let restore = egui::Button::new(RichText::new(trf("restore.restore", &[&picked.len().to_string()])).strong().color(crate::theme::colors().on_accent())).fill(cyan());
                 if ui.add_enabled(!picked.is_empty(), restore).clicked() {
                     answer = Some(RestoreAnswer::Restore(picked));
                 }
-                if ui.button("Start fresh").clicked() {
+                if ui.button(tr("restore.fresh")).clicked() {
                     answer = Some(RestoreAnswer::Fresh);
                 }
             });
@@ -1310,8 +1309,8 @@ pub fn restore_screen(ui: &mut egui::Ui, pal: &Palette, view: &mut RestoreView) 
 fn when_words(at: chrono::NaiveDateTime, now: chrono::NaiveDateTime) -> String {
     let days = (now.date() - at.date()).num_days();
     match days {
-        0 => format!("today at {}", at.format("%H:%M")),
-        1 => format!("yesterday at {}", at.format("%H:%M")),
+        0 => trf("restore.today", &[&at.format("%H:%M").to_string()]),
+        1 => trf("restore.yesterday", &[&at.format("%H:%M").to_string()]),
         _ => at.format("%Y/%m/%d %H:%M").to_string(),
     }
 }
