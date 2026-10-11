@@ -99,11 +99,14 @@ pub struct View {
     screen: egui::Vec2,
     /// It fits (or can get no smaller): shown, and left as it is.
     settled: bool,
+    /// Drawn once as it is now: the first frame after a change wraps in the
+    /// widths of the one before, so only the second is measured.
+    drawn: bool,
 }
 
 impl View {
     pub fn new() -> Self {
-        Self { opening: true, cols: 0, scale: 1.0, screen: egui::Vec2::ZERO, settled: false }
+        Self { opening: true, cols: 0, scale: 1.0, screen: egui::Vec2::ZERO, settled: false, drawn: false }
     }
 
     /// The next try after the content came out `tall` for `room`.
@@ -158,6 +161,7 @@ pub fn show(ctx: &egui::Context, view: &mut View, c: &Colors) -> bool {
         view.cols = columns_for(width);
         view.scale = 1.0;
         view.settled = false;
+        view.drawn = false;
     }
     let (n, s) = (view.cols, view.scale);
     let dealt = deal(&all, n);
@@ -201,7 +205,10 @@ pub fn show(ctx: &egui::Context, view: &mut View, c: &Colors) -> bool {
         });
     });
     if !view.settled {
-        view.refit(tall, room, most_columns(width));
+        if view.drawn {
+            view.refit(tall, room, most_columns(width));
+        }
+        view.drawn = !view.drawn;
         ctx.request_repaint();
     }
     keep
@@ -216,7 +223,9 @@ fn group(ui: &mut egui::Ui, g: &Group, c: &Colors, id: usize, s: f32) {
     // wrapping in what is left.
     let font = FontId::monospace(11.5 * s);
     let key_w = g.rows.iter().map(|(k, _)| ui.fonts_mut(|f| f.layout_no_wrap(k.clone(), font.clone(), c.fg).size().x)).fold(0.0_f32, f32::max).min(ui.available_width() * 0.45);
-    egui::Grid::new(("help-group", id)).num_columns(2).spacing(egui::vec2(10.0, 3.0) * s).show(ui, |ui| {
+    // The rows as low as the letters: egui's 18 pixels would keep them as
+    // tall at the smallest letters, and it would scroll anyway.
+    egui::Grid::new(("help-group", id)).num_columns(2).min_row_height(16.0 * s).spacing(egui::vec2(10.0, 3.0) * s).show(ui, |ui| {
         for (k, what) in &g.rows {
             ui.allocate_ui_with_layout(egui::vec2(key_w, 16.0 * s), egui::Layout::left_to_right(egui::Align::Center), |ui| {
                 ui.set_min_width(key_w);
@@ -281,7 +290,7 @@ mod tests {
         let ctx = egui::Context::default();
         let mut view = View::new();
         let mut texts = Vec::new();
-        for _ in 0..12 {
+        for _ in 0..30 {
             let input = egui::RawInput { screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(w, h))), ..Default::default() };
             let mut out = ctx.run_ui(input, |ui| {
                 assert!(show(ui.ctx(), &mut view, &crate::theme::colors()));
@@ -307,7 +316,7 @@ mod tests {
     #[test]
     fn it_fits_one_screen() {
         let (view, texts) = draw(1280.0, 800.0);
-        assert!(view.settled);
+        assert!(view.settled && view.scale == 1.0, "cols {}, scale {}", view.cols, view.scale);
         let top = texts.iter().map(|(_, r)| r.top()).fold(f32::MAX, f32::min);
         let bottom = texts.iter().map(|(_, r)| r.bottom()).fold(0.0_f32, f32::max);
         assert!(bottom < 800.0, "runs to {bottom}");
@@ -320,12 +329,15 @@ mod tests {
     }
 
     /// A shorter or narrower window takes more columns or smaller letters
-    /// instead of scrolling.
+    /// instead of scrolling: it settles before the smallest letters, so it
+    /// fits (the real machine found a scrollbar at 1000 × 700 with all of
+    /// them at the smallest, 5.10: the rows kept egui's 18-pixel height, and
+    /// the first frame after a change was measured in the last one's widths).
     #[test]
     fn a_small_window_still_holds_it_all() {
         for (w, h) in [(1280.0, 600.0), (1000.0, 700.0), (1366.0, 640.0)] {
             let (view, texts) = draw(w, h);
-            assert!(view.settled, "{w}x{h}");
+            assert!(view.settled && view.scale > SMALLEST + 0.05, "{w}x{h}: cols {}, scale {}", view.cols, view.scale);
             let bottom = texts.iter().map(|(_, r)| r.bottom()).fold(0.0_f32, f32::max);
             assert!(bottom < h, "{w}x{h}: runs to {bottom} (cols {}, scale {})", view.cols, view.scale);
             for g in all() {
