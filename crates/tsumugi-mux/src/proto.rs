@@ -7,7 +7,7 @@ use ito_pane::Size;
 
 /// Bumped whenever a message changes shape: a client and a server that
 /// disagree say so at `Hello` instead of misreading each other.
-pub const VERSION: u32 = 37;
+pub const VERSION: u32 = 38;
 
 /// A `Hello` with this version asks the server to stop, writing down its
 /// tabs first so the next window can bring them back. `Hello` stays the
@@ -138,6 +138,9 @@ pub struct Info {
     /// Typing and pasting into it are turned away (`ToServer::ReadOnly`).
     /// Not kept across a restart.
     pub read_only: bool,
+    /// The profile it was started from (`ToServer::Profile`), whose theme
+    /// and font size the windows draw it in; empty for none.
+    pub profile: String,
 }
 
 /// How many tags a session can have (the design's 1o).
@@ -279,6 +282,9 @@ pub enum ToServer {
     /// Turn away typing and pasting into a session, from every window and
     /// from `tsumugi send`, or let them in again.
     ReadOnly { id: SessionId, on: bool },
+    /// Say which profile a session was started from (empty for none): the
+    /// windows draw it in that profile's theme and font size.
+    Profile { id: SessionId, name: String },
 }
 
 /// A line `SearchAll` found.

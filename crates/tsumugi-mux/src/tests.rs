@@ -407,7 +407,8 @@ fn every_sessions_scrollback_is_searched() {
     quiet.kill();
 }
 
-/// A server asked to stop goes, its tabs written down for the next one.
+/// A server asked to stop goes, its tabs written down for the next one,
+/// each pane with the profile it was started from.
 #[cfg(unix)]
 #[test]
 fn a_server_stops_when_asked_and_keeps_its_tabs() {
@@ -420,6 +421,8 @@ fn a_server_stops_when_asked_and_keeps_its_tabs() {
     let c = Client::connect(&at, || {}).expect("a client connects");
     let pane = c.spawn(dir.clone(), None, Size::new(80, 24), (8, 16)).expect("a shell starts");
     until(&pane, "a prompt", |t| !t.trim().is_empty());
+    c.set_profile(pane.id(), "work".into());
+    eventually("the profile listed", || c.list().unwrap().iter().any(|i| i.id == pane.id() && i.profile == "work"));
     Client::stop(&at).expect("asked");
     let deadline = Instant::now() + Duration::from_secs(10);
     while !srv.stopped() {
@@ -429,6 +432,7 @@ fn a_server_stops_when_asked_and_keeps_its_tabs() {
     srv.wait(Duration::from_secs(1));
     let saved = crate::state::load(&state).expect("the tabs were written");
     assert_eq!(saved.workspaces.len(), 1);
+    assert_eq!(saved.workspaces[0].panes[0].profile, "work");
     pane.kill();
     let _ = std::fs::remove_dir_all(&dir);
 }

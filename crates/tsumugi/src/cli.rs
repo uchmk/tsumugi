@@ -122,6 +122,7 @@ mod tests {
             recording: String::new(),
             logging: String::new(),
             read_only: false,
+            profile: String::new(),
         }
     }
 
@@ -355,6 +356,7 @@ pub fn ls_json(list: &[Info]) -> String {
                     ("muted".into(), Json::Bool(i.muted)),
                     ("charset".into(), s(&i.charset)),
                     ("read_only".into(), Json::Bool(i.read_only)),
+                    ("profile".into(), s(&i.profile)),
                 ])
             })
             .collect(),

@@ -95,11 +95,14 @@ pub struct Dialog {
     /// shown).
     pub on: Where,
     pub places: Vec<Where>,
+    /// The profile last picked, whose theme and font size the session is
+    /// drawn in.
+    profile: String,
 }
 
 /// What the dialog was asked to do.
 pub enum Answer {
-    Create(Create),
+    Create(Box<Create>),
     Cancel,
 }
 
@@ -120,6 +123,9 @@ pub struct Create {
     pub more: Vec<Start>,
     /// This machine, a WSL distribution or an SSH host.
     pub on: Where,
+    /// The profile it was started from (picked, or kept as `save_as`), or
+    /// empty: its theme and font size are the session's.
+    pub profile: String,
 }
 
 /// Where the `k`th more pane goes (0 the first of them), given the first
@@ -164,6 +170,7 @@ impl Dialog {
             beside_id: None,
             on: Where::Here,
             places: Vec::new(),
+            profile: String::new(),
         }
     }
 
@@ -190,6 +197,7 @@ impl Dialog {
         self.tags.clone_from(&p.tags);
         self.more = p.panes.iter().filter_map(|w| Start::from_word(w)).take(MORE_MOST).collect();
         self.on = Where::from_word(&p.place);
+        self.profile.clone_from(&p.name);
         self.dropped.clear();
         self.selected = None;
     }
@@ -198,7 +206,7 @@ impl Dialog {
     /// `folder`, started as `start`, nothing else chosen.
     pub fn quick(folder: &std::path::Path, start: Start, rules: &[TagRule]) -> Create {
         match Self::starting(folder, start).create(rules, false) {
-            Answer::Create(c) => c,
+            Answer::Create(c) => *c,
             Answer::Cancel => unreachable!("create creates"),
         }
     }
@@ -215,7 +223,7 @@ impl Dialog {
             let b = self.branch.trim();
             if b.is_empty() { crate::worktree::default_branch(chrono::Local::now()) } else { b.to_owned() }
         });
-        Answer::Create(Create { folder: self.folder_path(), start: self.start, tags, dropped: self.dropped.clone(), split, save_as, worktree, more: self.more.clone(), on: self.on.clone() })
+        Answer::Create(Box::new(Create { folder: self.folder_path(), start: self.start, tags, dropped: self.dropped.clone(), split, save_as, worktree, more: self.more.clone(), on: self.on.clone(), profile: self.profile.clone() }))
     }
 }
 

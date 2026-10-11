@@ -1946,6 +1946,12 @@ impl App {
                 prefs::Change::RenameTag(old, new) => self.rename_tag(client, sessions, old, new),
                 prefs::Change::PlaySound(name) => sound::play(&name),
                 prefs::Change::SaveProfile(was, profile) => {
+                    // Renamed: the sessions started from it keep its look.
+                    if let Some(old) = was.as_ref().filter(|o| **o != profile.name) {
+                        for i in sessions.iter().filter(|i| i.profile == *old) {
+                            client.set_profile(i.id, profile.name.clone());
+                        }
+                    }
                     match self.profiles.iter_mut().find(|p| Some(&p.name) == was.as_ref()) {
                         Some(p) => *p = profile,
                         None => self.profiles.push(profile),
@@ -2075,13 +2081,13 @@ impl App {
                 let host = host.clone();
                 self.keep_profile(&mut c);
                 c.folder = "~".into();
-                self.reach(&host, machine::Then::Create(c));
+                self.reach(&host, machine::Then::Create(Box::new(c)));
                 return;
             }
         } else if self.on.is_some() {
             // This machine's (in a pane here, WSL, ssh in a pane): shown
             // again, and started there.
-            self.switch = Some((None, Some(machine::Then::Create(c))));
+            self.switch = Some((None, Some(machine::Then::Create(Box::new(c)))));
             return;
         }
         // The worktree first, on a thread (git can take a moment); the
@@ -2101,10 +2107,14 @@ impl App {
             _ => Place::NewWorkspace,
         };
         let shell = c.on.shell();
+        self.keep_profile(&mut c);
         match client.spawn_typing(c.folder.clone(), shell, Size::new(80, 24), (8, 16), place, c.start.typed(&self.settings_now.sessions.claude).into_iter().collect()) {
             Ok(pane) => {
                 let id = pane.id();
                 self.pending = Some(id);
+                if !c.profile.is_empty() {
+                    client.set_profile(id, c.profile.clone());
+                }
                 // The server gives the rules' tags itself; the rest go on,
                 // and the rules' taken off in the dialog come off.
                 for t in c.tags.iter().cloned() {
@@ -2124,6 +2134,9 @@ impl App {
                             for t in c.tags.iter().cloned() {
                                 client.tag(vec![pane.id()], t, true);
                             }
+                            if !c.profile.is_empty() {
+                                client.set_profile(pane.id(), c.profile.clone());
+                            }
                         }
                         Err(e) => self.say(trf("toast.pane_failed", &[&e.to_string()]), true),
                     }
@@ -2131,21 +2144,26 @@ impl App {
             }
             Err(e) => self.failed = Some(format!("the shell did not start: {e}")),
         }
-        self.keep_profile(&mut c);
     }
 
-    /// Keep the new-session dialog's choices as the profile it named, once.
+    /// Keep the new-session dialog's choices as the profile it named, once,
+    /// with the theme and font size of the profile it was picked from; the
+    /// session is started from it.
     fn keep_profile(&self, c: &mut newsession::Create) {
         if let Some(name) = c.save_as.take() {
+            let from = self.profiles.iter().find(|p| p.name == c.profile);
             let profile = tsumugi_mux::settings::Profile {
-                name,
+                name: name.clone(),
                 folder: home_short(&c.folder),
                 start: c.start.word().into(),
                 tags: c.tags.clone(),
                 panes: c.more.iter().map(|s| s.word().to_owned()).collect(),
                 place: c.on.word(),
+                theme: from.map(|p| p.theme.clone()).unwrap_or_default(),
+                font_size: from.and_then(|p| p.font_size),
             };
             save_profile(self.profiles.clone(), profile);
+            c.profile = name;
         }
     }
 
@@ -4100,7 +4118,7 @@ impl App {
             return;
         };
         match then {
-            Some(machine::Then::Create(c)) => self.create(&client, c, None),
+            Some(machine::Then::Create(c)) => self.create(&client, *c, None),
             // A machine with nothing running gets a shell in its home
             // folder, rather than an empty window.
             Some(machine::Then::Show) if host.is_some() && client.workspaces().is_empty() => match new_session(&client, "~".into(), Place::NewWorkspace) {
@@ -4280,10 +4298,32 @@ impl App {
 
     /// The panes' faces: the regular one, and bold and italic where found.
     fn faces(&self) -> ito_pane::Faces {
-        let size = self.font.size;
+        self.faces_at(self.font.size)
+    }
+
+    fn faces_at(&self, size: f32) -> ito_pane::Faces {
         let face = |k: usize, name: &str| self.faces_found[k].then(|| egui::FontId::new(size, egui::FontFamily::Name(name.into())));
         let shaper = self.shaper.clone().filter(|_| self.settings_now.font.ligatures);
-        ito_pane::Faces { regular: self.font.clone(), bold: face(0, fonts::BOLD), italic: face(1, fonts::ITALIC), bold_italic: face(2, fonts::BOLD_ITALIC), shaper, cursor: ito_pane::CursorStyle::from_word(&self.settings_now.appearance.cursor) }
+        ito_pane::Faces { regular: egui::FontId::monospace(size), bold: face(0, fonts::BOLD), italic: face(1, fonts::ITALIC), bold_italic: face(2, fonts::BOLD_ITALIC), shaper, cursor: ito_pane::CursorStyle::from_word(&self.settings_now.appearance.cursor) }
+    }
+
+    /// The palettes and font sizes of the profiles the shown sessions were
+    /// started from, where they have their own: looked up as drawn, so a
+    /// profile changed in the settings changes its sessions at once. The
+    /// font size grows and shrinks with the window's (`Ctrl+=`).
+    fn looks(&self, ids: &[SessionId], sessions: &[Info]) -> HashMap<SessionId, (Option<Palette>, Option<f32>)> {
+        let mut out = HashMap::new();
+        let mut themes = None;
+        for id in ids {
+            let Some(info) = sessions.iter().find(|i| i.id == *id).filter(|i| !i.profile.is_empty()) else { continue };
+            let Some(p) = self.profiles.iter().find(|p| p.name == info.profile) else { continue };
+            let pal = (!p.theme.is_empty()).then(|| themes.get_or_insert_with(|| self.themes().0).iter().find(|t| t.name == p.theme).map(|t| t.colors.palette())).flatten();
+            let size = p.font_size.filter(|s| s.is_finite() && *s > 0.0).map(|s| font_size(s, self.font_step));
+            if pal.is_some() || size.is_some() {
+                out.insert(*id, (pal, size));
+            }
+        }
+        out
     }
 
     /// A pane too small for a terminal: its state's dot and its name, along
@@ -4426,6 +4466,8 @@ impl App {
 
         let row_h = (ui.fonts_mut(|f| f.row_height(&self.font)) * self.settings_now.font.line_height).ceil();
         let faces = self.faces();
+        let ids: Vec<SessionId> = rects.iter().map(|(id, _)| *id).collect();
+        let looks = self.looks(&ids, sessions);
         // What came into view: the tab when it changed, a pane when it
         // appeared (a split, a new session). Each fades in over a moment.
         let now_t = std::time::Instant::now();
@@ -4550,6 +4592,17 @@ impl App {
                 r
             });
             if !narrow {
+                // A session from a profile with a theme or font size of its own.
+                let look = looks.get(id);
+                let own_pal = look.and_then(|l| l.0).map(|mut p| {
+                    p.bg = p.bg.gamma_multiply(alpha * (1.0 - through));
+                    p
+                });
+                let own_faces = look.and_then(|l| l.1).map(|s| {
+                    let f = self.faces_at(s);
+                    let h = (ui.fonts_mut(|x| x.row_height(&f.regular)) * self.settings_now.font.line_height).ceil();
+                    (f, h)
+                });
                 let (Some(pane), view) = (self.panes.get_mut(id), self.views.entry(*id).or_default()) else { continue };
                 let opts = ViewOptions { focused, wheel: true, copy_on_select: self.settings_now.general.copy_on_select, highlights: &self.highlights };
                 if self.transparent && rect.bottom() < card.bottom() {
@@ -4560,7 +4613,8 @@ impl App {
                 if let Some(t) = &image {
                     backdrop::paint(&ui.painter_at(rect), rect, t, alpha);
                 }
-                let shown = ui.push_id(id, |ui| ito_pane::show_faces(ui, Some(pane), view, rect, &faces, row_h, &pal, opts)).inner;
+                let (faces, row_h) = own_faces.as_ref().map_or((&faces, row_h), |(f, h)| (f, *h));
+                let shown = ui.push_id(id, |ui| ito_pane::show_faces(ui, Some(pane), view, rect, faces, row_h, own_pal.as_ref().unwrap_or(&pal), opts)).inner;
                 // The program rang the bell: the pane flashes a moment.
                 if let Some(at) = pane.rang().filter(|_| self.settings_now.appearance.visual_bell) {
                     let t = at.elapsed().as_secs_f32() / BELL_FLASH.as_secs_f32();
@@ -5873,7 +5927,7 @@ impl App {
         match made {
             Some(newsession::Answer::Create(c)) => {
                 self.new_session = None;
-                self.create(&client, c, current.as_ref());
+                self.create(&client, *c, current.as_ref());
             }
             Some(newsession::Answer::Cancel) => self.new_session = None,
             None => {}

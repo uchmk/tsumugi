@@ -13,7 +13,7 @@ pub enum Then {
     /// Show its sessions.
     Show,
     /// Show it and start what the new-session dialog asked for.
-    Create(newsession::Create),
+    Create(Box<newsession::Create>),
 }
 
 /// How the line to a machine is.

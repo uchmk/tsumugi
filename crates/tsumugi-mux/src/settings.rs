@@ -936,6 +936,12 @@ pub struct Profile {
     /// `ssh:<host>`.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub place: String,
+    /// The theme its sessions are drawn in, by name; empty for the window's.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub theme: String,
+    /// Its sessions' font size in points; `None` for the window's.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub font_size: Option<f32>,
 }
 
 #[derive(Default, Serialize, Deserialize)]
@@ -1189,8 +1195,8 @@ mod tests {
         let path = dir.join("profiles.toml");
         assert_eq!(load_profiles(&path), Ok(vec![]), "no file, no profiles");
         let list = vec![
-            Profile { name: "filer".into(), folder: "~/dev/filer".into(), start: "claude".into(), tags: vec!["review".into()], panes: vec!["claude".into(), "shell".into()], place: "ssh:box".into() },
-            Profile { name: "a \"quoted\" one".into(), folder: r"C:\dev\x".into(), start: "shell".into(), tags: vec![], panes: vec![], place: String::new() },
+            Profile { name: "filer".into(), folder: "~/dev/filer".into(), start: "claude".into(), tags: vec!["review".into()], panes: vec!["claude".into(), "shell".into()], place: "ssh:box".into(), theme: "Nord".into(), font_size: Some(16.0) },
+            Profile { name: "a \"quoted\" one".into(), folder: r"C:\dev\x".into(), start: "shell".into(), tags: vec![], panes: vec![], place: String::new(), theme: String::new(), font_size: None },
         ];
         save_profiles(&path, &list).unwrap();
         assert_eq!(load_profiles(&path), Ok(list));

@@ -388,6 +388,7 @@ mod tests {
             recording: String::new(),
             logging: String::new(),
             read_only: false,
+            profile: String::new(),
         }
     }
 
