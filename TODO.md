@@ -33,12 +33,12 @@ tsumugi のやること。`【人】` は持ち主の作業、`【金】` は 20
       yazi の `theme.toml` との関係は filer の QUESTIONS.md で持ち主に聞く。filer の TODO.md の「設定の画面（uchmk の共通仕様）」で進める。
 - [x] （v0.86.0）tsumugi 自身のメニューを `ito-i18n` の表に載せ、設定の画面の文字を `Words::of(language)` で日本語にも出す（今は英語だけ、TESTING.md 17.38）。
       タブ・タグ・マシンの右クリックのメニュー、文字コードのメニュー、入力欄の `+ Sessions` と `Prompts…` を `src/lang/` の表にした。
-- [ ] 残りの画面の文字も表に載せる: lists（全部のセッション・閉じたセッション・保存した並び）・newsession の画面、pick のトースト。
+- [x] （v0.92.0）残りの画面の文字も表に載せる。lists（全部のセッション・待ち・最近閉じた）・newsession の画面は v0.92.0、
       設定の画面の tsumugi のページ（`prefs.rs` の行・見出し・注記、検索は両方の言語）は v0.88.0、
       パレット・並べ方・ヘルプ（keys.rs の英語は `[keydesc]` で訳す。TESTING-KEYS.md のために英語のまま）は v0.89.0、
       サイドバー・ステータスバー・main.rs のトースト・通知の一覧・戻す画面・タイトルバー・テーマの見本は v0.90.0、
       main.rs のダイアログ・inputbox・parallel・find・paste・diffview・`spend` のトーストは v0.91.0 で済んだ。
-      保存した並びの名前（「… · N panes」）はデータなので英語のまま。
+      保存した並びの名前（「… · N panes」）はデータなので英語のまま。git・ssh・Claude Code の設定の読み書きなど、下の層から来るエラーの文も英語のまま。
 - [x] （v0.87.0）common.toml の `scale` で窓全体の倍率を当てる（設定の画面の General → Scale も書く）。Ctrl+= / Ctrl+- はペインの字の大きさのまま。
       設定を `<config>/uchmk/tsumugi/config.toml`、状態を `ito_common::state_dir` に移し（古い場所から自動で移す）、
       環境変数を `TSUMUGI_CONFIG_HOME`・`TSUMUGI_STATE_HOME` にした。字体のフォールバックは `ito_common::fonts`。窓の既定は 1280×800。
