@@ -1144,7 +1144,10 @@ pub fn bell_list(ctx: &egui::Context, pal: &Palette, at: egui::Pos2, notices: &[
                     ui.label(RichText::new(tr("notices.empty")).color(pal.fg_dim));
                     return;
                 }
-                egui::ScrollArea::vertical().max_height(420.0).show(ui, |ui| {
+                // The rows' own height, not what an Area leaves of its last
+                // frame's size: a list that gained an entry stayed at 1.5 rows.
+                let rows = notices.len() as f32 * (46.0 + ui.spacing().item_spacing.y);
+                egui::ScrollArea::vertical().max_height(rows.min(420.0)).min_scrolled_height(rows.min(420.0)).auto_shrink([false, false]).show(ui, |ui| {
                     for n in notices.iter().rev() {
                         let text_color = if n.read { pal.fg_dim } else { pal.fg };
                         let (rect, resp) = ui.allocate_exact_size(egui::vec2(ui.available_width(), 46.0), egui::Sense::click());
@@ -1368,6 +1371,33 @@ pub fn foot(ui: &mut egui::Ui, main: egui::Button<'_>, enabled: bool, cancel: &s
 #[cfg(test)]
 mod tests {
     use super::{BREATHE, SWEEP, breathe, edge_at, elapsed, sweep_at, when_words};
+
+    /// The bell's list grows with its entries, also when they arrive while it
+    /// is open (a lane saw only 1.5 rows once there were two).
+    #[test]
+    fn bell_list_grows_with_its_entries() {
+        let ctx = egui::Context::default();
+        let notice = |id: u64| tsumugi_mux::Notice { id, session: 1, state: tsumugi_mux::State::Done, title: format!("pane {id}"), note: String::new(), at_ms: 0, read: false, trigger: false };
+        let height = |notices: &[tsumugi_mux::Notice]| {
+            let input = egui::RawInput { screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1280.0, 800.0))), ..Default::default() };
+            let mut out = ctx.run_ui(input, |ui| {
+                super::bell_list(ui.ctx(), &super::Palette::default(), egui::pos2(100.0, 40.0), notices);
+            });
+            out.textures_delta.clear();
+            ctx.memory(|m| m.area_rect(egui::Id::new("bell-list"))).map_or(0.0, |r| r.height())
+        };
+        let mut seen = Vec::new();
+        for n in 1..=4u64 {
+            let list: Vec<_> = (1..=n).map(notice).collect();
+            // A few frames, as the window draws them while it is open.
+            let mut h = 0.0;
+            for _ in 0..4 {
+                h = height(&list);
+            }
+            seen.push((n, h));
+        }
+        assert!(seen.windows(2).all(|w| w[1].1 >= w[0].1 + 40.0), "the list stays small: {seen:?}");
+    }
 
     /// "Select all" ticks every row, finished ones too, unless all were
     /// ticked; then it clears them.
