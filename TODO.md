@@ -83,6 +83,20 @@ tsumugi のやること。`【人】` は持ち主の作業、`【金】` は 20
 - [x] （v0.83.0）（実機 #10・キュー）Keep 2.37 until `Ctrl+Shift+X` can be seen reaching tsumugi; do not offer it to this machine's lane before then.（PR 本文）
 - [x] （v0.83.0）（実機 #10・キュー）Keep 1.7, 1.11, 1.12 out of the lanes until an older server build can be fetched.（PR 本文）
 - [x] （v0.83.0 の時点で追いついている）（実機 #10・キュー）Regenerate TESTING-KEYS.md on `main` before the keys chunk is offered again.（PR 本文）
+- [ ] （実機 #12）`Ctrl+Shift+X` and `Ctrl+Shift+L` sent quickly lose Shift (egui turns them into `Cut` / `Copy` events); they work with `Send-Keys -Hold`. Probably only a test-harness matter, but a real fast typist may hit it.（qa-reports/2026-10-11-win-retest-2-27-0350.md）
+- [ ] （実機 #12）`tsumugi new -- pwsh` starts a nested, unhooked pwsh (no OSC 133 marks): `Ctrl+Shift+Up/Down` and `Ctrl+Shift+L` do nothing there. Use `tsumugi split` for hooked panes.（qa-reports/2026-10-11-win-retest-2-27-0350.md）
+- [ ] （実機 #12）2.44: `Ctrl+Shift+L` in a pane whose prompt line was reflowed/garbled (after a swap that changed the width) copied only the last output line. Mark boundaries seem to be confused by a reflow; worth a look.（qa-reports/2026-10-11-win-retest-2-27-0350.md）
+- [ ] （実機 #12）The first character after a window resize or a focus change is swallowed (typed `cho` for `echo`). Not a product finding, but a test must `Set-Foreground` and wait first.（qa-reports/2026-10-11-win-retest-2-27-0350.md）
+- [ ] （実機 #12）Let the overview key close the page when it has the keys (5.8).（qa-reports/2026-10-11-win-retest-2-27-0350.md）
+- [ ] （実機 #12）17.26 should show "Restarting the server…" (the code sets it) and, if the new server fails to start, say why.（qa-reports/2026-10-11-win-retest-2-27-0350.md）
+- [ ] （実機 #12・キュー）2.52: re-test after a fix, in PowerShell 7 and Git Bash, and including the close-and-reopen step.（qa-reports/2026-10-11-win-retest-2-27-0350.md）
+- [ ] （実機 #12・キュー）5.8: re-test the toggle after the fix.（qa-reports/2026-10-11-win-retest-2-27-0350.md）
+- [ ] （実機 #12・キュー）5.10: re-test at 1280 × 800 after resizing to 1000 × 700 and back.（qa-reports/2026-10-11-win-retest-2-27-0350.md）
+- [ ] （実機 #12・キュー）17.26: re-test after a fix; also run the "close the window, the server stays" and "restart after update" rows next to it.（qa-reports/2026-10-11-win-retest-2-27-0350.md）
+- [ ] （実機 #12・キュー）2.73: a person should look at the picture's shape (`[~]` → `[x]`).（qa-reports/2026-10-11-win-retest-2-27-0350.md）
+- [ ] （実機 #12・キュー）2.52, 5.8, 5.10, 17.26: re-test after fixes (details in the report).（PR 本文）
+- [ ] （実機 #12・キュー）2.73: a person should look at the picture's shape.（PR 本文）
+- [ ] （実機 #12・キュー）🤖 Generated with [Claude Code](https://claude.com/claude-code)（PR 本文）
 
 ## ほかのターミナルにあるもの（2026-10-08、持ち主の依頼で全部取り込む）
 
