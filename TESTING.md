@@ -96,6 +96,7 @@ they are not ticked by hand any more. A change that breaks one turns CI red.
 | 6.26 (text) | `tsumugi tmux -t t` against a tmux of its own (Unix): the pane opens as a session showing what was on it, `tsumugi send` reaches tmux, a split opens a second session, killing tmux ends the gateway saying so and closes both | `tmux_panes_open_as_sessions` |
 | 18.12 (text) | `tsumugi layout --list`, `layout NAME`, `split N -p 25`, `new . --name work` | `layout_opens_a_saved_layout_and_split_takes_a_share` |
 | 18.10 (half) | `tsumugi mcp`: answers `initialize` and `tools/list`; `tsumugi_sessions` says tsumugi is not running without a server, lists the session with one; `tsumugi_screen` by number and by tag | `mcp_lists_sessions_and_reads_a_screen` |
+| 18.13 | `tsumugi env`: the version, the OS, the settings and state places, the shell; the server line says it is not answering without a server and running with its session count with one; a variable that could hold a secret is hidden | `env_reports_the_places_and_the_server` |
 
 A row that only needs text belongs here, not in a section below: add a test
 to `cli.rs` and a line to this table instead of a row.
