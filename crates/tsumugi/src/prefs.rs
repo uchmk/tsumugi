@@ -93,6 +93,7 @@ const INDEX: &[(Page, &str)] = &[
     (Page::Appearance, "prefs.appearance.quake_height"),
     (Page::Appearance, "prefs.appearance.dim"),
     (Page::Appearance, "prefs.appearance.cursor"),
+    (Page::Appearance, "prefs.appearance.cursor_glide"),
     (Page::Appearance, "prefs.appearance.animations"),
     (Page::Appearance, "prefs.appearance.visual_bell"),
     (Page::Keys, "prefs.keys.preset"),
@@ -554,6 +555,10 @@ fn appearance(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mu
         ];
         if let Some(s) = row(ui, l, tr("prefs.appearance.cursor"), tr("prefs.appearance.cursor_note"), |ui| select(ui, "cursor", a.cursor.as_str(), &shapes)) {
             out.push(Change::Set(Some("appearance"), "cursor", cfg::quote(s)));
+        }
+        sep(ui, l);
+        if row(ui, l, tr("prefs.appearance.cursor_glide"), tr("prefs.appearance.cursor_glide_note"), |ui| switch(ui, l, a.cursor_glide)) {
+            out.push(Change::Set(Some("appearance"), "cursor_glide", (!a.cursor_glide).to_string()));
         }
         sep(ui, l);
         if row(ui, l, tr("prefs.appearance.animations"), tr("prefs.appearance.animations_note"), |ui| switch(ui, l, a.animations)) {

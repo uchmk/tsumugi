@@ -143,12 +143,34 @@ pub fn open_path(path: PathBuf, line: Option<u32>, column: Option<u32>, command:
 /// The environment variable a new window reads to show a tab first.
 pub const SHOW_TAB: &str = "TSUMUGI_SHOW_TAB";
 
-/// Another window of this program, showing `tab`.
-pub fn new_window(tab: WorkspaceId) {
+/// The environment variable a new window reads to open at a place on the
+/// screen: `x,y`, its top left in logical pixels (a tab dropped outside the
+/// window it was dragged from).
+pub const WINDOW_AT: &str = "TSUMUGI_WINDOW_AT";
+
+/// Where this window was asked to open, if anywhere.
+pub fn window_at() -> Option<[f32; 2]> {
+    std::env::var(WINDOW_AT).ok().and_then(|v| parse_at(&v))
+}
+
+fn parse_at(v: &str) -> Option<[f32; 2]> {
+    let (x, y) = v.split_once(',')?;
+    let (x, y) = (x.trim().parse::<f32>().ok()?, y.trim().parse::<f32>().ok()?);
+    (x.is_finite() && y.is_finite()).then_some([x, y])
+}
+
+/// Another window of this program, showing `tab`; at `at` on the screen, or
+/// where the system puts a new one.
+pub fn new_window(tab: WorkspaceId, at: Option<[f32; 2]>) {
     let _ = std::thread::Builder::new().name("new-window".into()).spawn(move || {
         let Ok(exe) = std::env::current_exe() else { return };
         let mut cmd = Command::new(exe);
         cmd.env(SHOW_TAB, tab.to_string()).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
+        // Not where this window was asked to open, which it would inherit.
+        match at {
+            Some([x, y]) => cmd.env(WINDOW_AT, format!("{},{}", x.round(), y.round())),
+            None => cmd.env_remove(WINDOW_AT),
+        };
         if let Ok(mut child) = cmd.spawn() {
             let _ = child.wait();
         }
@@ -163,6 +185,15 @@ mod tests {
     fn a_line_with_quotes_goes_to_cmd_whole() {
         let line = r#""C:\Program Files\Code\Code.exe" "C:\dev\x""#;
         assert_eq!(super::windows_line(line), format!("/S /C \"{line}\""));
+    }
+
+    #[test]
+    fn a_window_reads_where_to_open() {
+        assert_eq!(super::parse_at("120,-40"), Some([120.0, -40.0]));
+        assert_eq!(super::parse_at(" 8 , 9 "), Some([8.0, 9.0]));
+        assert_eq!(super::parse_at("8"), None);
+        assert_eq!(super::parse_at("x,9"), None);
+        assert_eq!(super::parse_at("NaN,9"), None);
     }
 
     #[test]
