@@ -293,9 +293,18 @@ fn waiting(ui: &mut egui::Ui, view: &mut View, rows: &[Row], c: &Colors, max: f3
         ui.add_space(12.0);
         return;
     }
+    // Up and Down pick a session, Enter goes to it (Left and Right turn the
+    // page). Enter is left to the "always allow" confirmation while it is open.
+    let (up, down, enter) = ui.input(|i| (i.key_pressed(egui::Key::ArrowUp), i.key_pressed(egui::Key::ArrowDown), i.key_pressed(egui::Key::Enter)));
+    let (picked, go) = waiting_keys(view.picked, rows.len(), (up, down, enter && view.confirming.is_none()));
+    view.picked = picked;
+    out.extend(go.map(|k| Do::Go(rows[k].id)));
     egui::ScrollArea::vertical().max_height(max).min_scrolled_height(max).auto_shrink([false, true]).show(ui, |ui| {
-        for r in rows {
-            ui.horizontal(|ui| {
+        for (k, r) in rows.iter().enumerate() {
+            let frame = egui::Frame::NONE.fill(if k == picked { c.hover() } else { egui::Color32::TRANSPARENT }).corner_radius(6.0);
+            let shown = frame.show(ui, |ui| {
+              ui.set_width(ui.available_width());
+              ui.horizontal(|ui| {
                 let mut on = !view.off.contains(&r.id);
                 if ui.checkbox(&mut on, "").on_hover_text(tr("lists.tick_hover")).changed() {
                     if on {
@@ -356,7 +365,11 @@ fn waiting(ui: &mut egui::Ui, view: &mut View, rows: &[Row], c: &Colors, max: f3
                         }
                     });
                 });
+              });
             });
+            if k == picked && (up || down) {
+                shown.response.scroll_to_me(None);
+            }
             ui.separator();
         }
     });
@@ -591,6 +604,13 @@ fn history(ui: &mut egui::Ui, view: &mut View, closed: &[Closed], c: &Colors, ma
     });
 }
 
+/// The waiting list's keys, (up, down, enter), on `len` sessions with `at`
+/// picked: the session picked after them, and the one Enter goes to.
+fn waiting_keys(at: usize, len: usize, (up, down, enter): (bool, bool, bool)) -> (usize, Option<usize>) {
+    let k = if up { at.saturating_sub(1) } else if down { at + 1 } else { at }.min(len.saturating_sub(1));
+    (k, enter.then_some(k).filter(|k| *k < len))
+}
+
 /// Recently closed's keys, (up, down, enter, delete), on `len` entries with
 /// `at` picked: the entry picked after them, and what they ask for. Delete
 /// leaves the pick on the entry that took the place of the one taken off.
@@ -680,6 +700,10 @@ mod tests {
         assert_eq!(closed_keys(Some(1), 3, (false, false, false, true)), (1, Some(Do::Forget(1))));
         // The last one taken off: the pick moves up to the new last.
         assert_eq!(closed_keys(Some(2), 2, none), (1, None));
+        assert_eq!(waiting_keys(0, 3, (false, true, false)), (1, None));
+        assert_eq!(waiting_keys(0, 3, (true, false, false)), (0, None));
+        assert_eq!(waiting_keys(5, 3, (false, false, true)), (2, Some(2)));
+        assert_eq!(waiting_keys(0, 0, (false, false, true)), (0, None));
         assert_eq!(tail(&["a".into(), "b".into(), "c".into()], 2), ["b".to_string(), "c".to_string()]);
     }
 

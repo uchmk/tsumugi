@@ -447,7 +447,9 @@ fn remote(what: &str, args: &[String]) -> std::process::ExitCode {
         }
         "split" => match cli::parse_split(args).and_then(|s| cli::split(&client, &list, id, &s)) {
             Ok(new) => {
-                println!("{new}");
+                for n in new {
+                    println!("{n}");
+                }
                 ExitCode::SUCCESS
             }
             Err(e) => fail(e),

@@ -576,6 +576,9 @@ fn layout_opens_a_saved_layout_and_split_takes_a_share() {
     let id = s.ok(&["split", &ids[0], "-p", "25"]);
     assert!(id.trim().parse::<u64>().is_ok(), "split printed {id:?}");
     assert!(!s.run(&["split", &ids[0], "-p", "99"]).status.success(), "a share of 99% is refused");
+    let row = s.ok(&["split", &ids[1], "--down", "-n", "4"]);
+    assert_eq!(row.lines().count(), 3, "-n 4 adds three panes: {row:?}");
+    assert!(!s.run(&["split", &ids[1], "-n", "4", "-p", "30"]).status.success(), "-n and -p do not go together");
     let named = s.ok(&["new", ".", "--name", "work"]);
     assert!(named.trim().parse::<u64>().is_ok(), "{named:?}");
 }

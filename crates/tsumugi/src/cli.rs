@@ -283,7 +283,7 @@ pub const REMOTE_USAGE: &str = "\
 tsumugi ls [--json]                      the sessions (--json: one array, every field)
 tsumugi send N|NAME TEXT...              type TEXT into the session, then Enter
 tsumugi read N|NAME [--lines K] [--all]  its last K lines (40), or its whole scrollback
-tsumugi split N|NAME [--down] [-p PERCENT] [-- CMD]\n                                         a new pane beside it, in its folder (PERCENT: its share,\n                                         like tmux -p); prints its number
+tsumugi split N|NAME [--down] [-p PERCENT | -n COUNT] [-- CMD]\n                                         a new pane beside it, in its folder (PERCENT: its share,\n                                         like tmux -p); prints its number
 tsumugi close N|NAME                     end the session
 tsumugi log N|NAME [PATH] [--stop]       write its text to PATH (Downloads) as it goes, or finish;
                                          prints the file (`-2` when PATH is there already)
@@ -349,11 +349,14 @@ pub struct Split {
     pub down: bool,
     /// The new pane's share of the two, in percent (tmux's `-p`).
     pub percent: Option<u8>,
+    /// How many panes the row (or column) ends up with, this one included,
+    /// all the same size: `-n 4` adds three.
+    pub count: Option<u8>,
     pub command: Vec<String>,
 }
 
 pub fn parse_split(args: &[String]) -> Result<Split, String> {
-    let mut out = Split { who: String::new(), down: false, percent: None, command: Vec::new() };
+    let mut out = Split { who: String::new(), down: false, percent: None, count: None, command: Vec::new() };
     let mut it = args.iter();
     while let Some(a) = it.next() {
         match a.as_str() {
@@ -364,6 +367,10 @@ pub fn parse_split(args: &[String]) -> Result<Split, String> {
                 Some(n) => out.percent = Some(n),
                 None => return Err("--percent takes the new pane's share, 1 to 95".into()),
             },
+            "--count" | "-n" => match it.next().and_then(|n| n.parse::<u8>().ok()).filter(|n| (2..=12).contains(n)) {
+                Some(n) => out.count = Some(n),
+                None => return Err("--count takes how many panes in all, 2 to 12".into()),
+            },
             s if s.starts_with('-') => return Err(format!("unknown option `{s}`")),
             _ if out.who.is_empty() => out.who = a.clone(),
             _ => return Err(format!("one session only (`{a}` is a second); a command goes after --")),
@@ -371,6 +378,9 @@ pub fn parse_split(args: &[String]) -> Result<Split, String> {
     }
     if out.who.is_empty() {
         return Err("which session? (tsumugi ls lists them)".into());
+    }
+    if out.count.is_some() && out.percent.is_some() {
+        return Err("--count and --percent do not go together (--count makes them all the same size)".into());
     }
     Ok(out)
 }
@@ -498,24 +508,42 @@ pub fn ls_json(list: &[Info]) -> String {
     .pretty()
 }
 
-/// A new pane beside session `id`, in its folder, running `command`; its
-/// number.
-pub fn split(client: &Client, list: &[Info], id: SessionId, s: &Split) -> Result<SessionId, String> {
+/// The share the pane being split keeps when `left` panes (it and the ones
+/// still to come) are to end up the same size: one of `left`.
+pub fn equal_share(left: u8) -> f32 {
+    1.0 / f32::from(left.max(1))
+}
+
+/// New panes beside session `id`, in its folder, running `command`; their
+/// numbers. With a count, a chain of them, each beside the one before, so
+/// that with `id` they are all the same size.
+pub fn split(client: &Client, list: &[Info], id: SessionId, s: &Split) -> Result<Vec<SessionId>, String> {
     let info = list.iter().find(|i| i.id == id).ok_or_else(|| format!("no session {id}"))?;
     let dir = if s.down { tsumugi_mux::Dir::Down } else { tsumugi_mux::Dir::Right };
-    let pane = client
-        .spawn_typing(info.cwd.clone(), None, Size::new(80, 24), (8, 16), Place::Split { beside: id, dir }, s.command.clone())
-        .map_err(|e| format!("the pane did not start: {e}"))?;
-    let new = pane.id();
-    if let Some(p) = s.percent {
-        let tab = tab_of(client, new, 2)?;
-        let mut tree = tab.layout.clone();
-        if set_share(&mut tree, id, new, 1.0 - f32::from(p) / 100.0) {
-            client.set_layout(tab.id, tree, tab.focus);
-            client.list().map_err(|e| e.to_string())?;
+    let mut made = Vec::new();
+    let mut from = id;
+    for step in 0..s.count.map_or(1, |n| n - 1) {
+        let pane = client
+            .spawn_typing(info.cwd.clone(), None, Size::new(80, 24), (8, 16), Place::Split { beside: from, dir }, s.command.clone())
+            .map_err(|e| format!("the pane did not start: {e}"))?;
+        let new = pane.id();
+        let share = match (s.count, s.percent) {
+            (Some(n), _) => Some(equal_share(n - step)),
+            (None, Some(p)) => Some(1.0 - f32::from(p) / 100.0),
+            _ => None,
+        };
+        if let Some(share) = share {
+            let tab = tab_of(client, new, 2)?;
+            let mut tree = tab.layout.clone();
+            if set_share(&mut tree, from, new, share) {
+                client.set_layout(tab.id, tree, tab.focus);
+                client.list().map_err(|e| e.to_string())?;
+            }
         }
+        made.push(new);
+        from = new;
     }
-    Ok(new)
+    Ok(made)
 }
 
 #[cfg(test)]
@@ -540,7 +568,7 @@ mod remote_tests {
     fn the_remote_controls_words_are_read() {
         assert_eq!(parse_read(&words("3 --lines 10")).unwrap(), Read { who: "3".into(), lines: 10, all: false });
         assert!(parse_read(&words("--all")).is_err(), "which session");
-        assert_eq!(parse_split(&words("filer --down -- npm run dev")).unwrap(), Split { who: "filer".into(), down: true, percent: None, command: words("npm run dev") });
+        assert_eq!(parse_split(&words("filer --down -- npm run dev")).unwrap(), Split { who: "filer".into(), down: true, percent: None, count: None, command: words("npm run dev") });
         assert_eq!(parse_split(&words("3 -p 30%")).unwrap().percent, Some(30));
         assert!(parse_split(&words("3 -p 0")).is_err());
         assert!(parse_split(&words("3 --percent")).is_err());
@@ -552,6 +580,13 @@ mod remote_tests {
         assert!(set_share(&mut tree, 1, 2, 0.7));
         assert!(matches!(tree, tsumugi_mux::Node::Split { ratio, .. } if (ratio - 0.7).abs() < 1e-6));
         assert!(!set_share(&mut tree, 2, 1, 0.3), "only the pair in that order");
+        assert_eq!(parse_split(&words("3 -n 4")).unwrap().count, Some(4));
+        assert!(parse_split(&words("3 -n 1")).is_err());
+        assert!(parse_split(&words("3 -n 4 -p 30")).is_err());
+        // 4 in a row: 1/4, then 1/3 of the rest, then 1/2: all a quarter.
+        let shares: Vec<f32> = (0..3).map(|step| equal_share(4 - step)).collect();
+        let sizes = [shares[0], (1.0 - shares[0]) * shares[1], (1.0 - shares[0]) * (1.0 - shares[1]) * shares[2], (1.0 - shares[0]) * (1.0 - shares[1]) * (1.0 - shares[2])];
+        assert!(sizes.iter().all(|s| (s - 0.25).abs() < 1e-6), "{sizes:?}");
         assert_eq!(parse_log(&words("3 out.txt")).unwrap(), Log { who: "3".into(), path: Some("out.txt".into()), stop: false });
         assert_eq!(parse_log(&words("3 --stop")).unwrap(), Log { who: "3".into(), path: None, stop: true });
         assert!(parse_log(&words("3 a.txt --stop")).is_err());

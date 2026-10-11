@@ -858,9 +858,10 @@ on Linux, `lsof` on macOS, the system's table of listeners on Windows.
 tsumugi ls [--json]                      the sessions (--json: one array, every field)
 tsumugi send N|NAME TEXT...              type TEXT into the session, then Enter
 tsumugi read N|NAME [--lines K] [--all]  its last K lines (40), or its whole scrollback
-tsumugi split N|NAME [--down] [-p PERCENT] [-- CMD]
+tsumugi split N|NAME [--down] [-p PERCENT | -n COUNT] [-- CMD]
                                          a new pane beside it, in its folder (PERCENT: its share, like
-                                         tmux -p); prints its number
+                                         tmux -p; COUNT: that many panes in all, the same size);
+                                         prints each new pane's number
 tsumugi layout NAME [FOLDER]             open a saved layout as a new tab; prints each pane's number
 tsumugi layout --list                    the saved layouts
 tsumugi new . --name NAME [--at N]       name the new tab, put it at place N

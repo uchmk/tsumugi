@@ -11,6 +11,13 @@
 
 - 通知の OS 側（トースト・`notify-send`・osascript）と音、Webhook を ito の `ito-notify`（v0.17.5）に移した。tsumugi は「どのセッションに何を出すか」（題・本文・Allow / Deny の有無・残す通知）を `Toast` に直して渡すだけ。タスクバーの数・窓の点滅・状態から Webhook の種類への読み替えは tsumugi に残る。見た目と動きは同じ。
 
+## [0.104.3] - 2026-10-11
+
+### 追加
+
+- `Ctrl+Shift+O` の「待ち」のページで、↑↓ でセッションを選び、Enter でそこへ行けるようにした（「最近閉じた」と同じ。左右の矢印はこれまでどおりページの切り替え）。
+- `tsumugi split N|NAME [--down] -n COUNT`: 横（`--down` なら縦）に COUNT 個の同じ大きさのペインを作る（N を含めて COUNT 個）。割合は tsumugi が計算し、作ったペインの番号を 1 行ずつ出す。`-p` とは一緒に使えない。上 70%・下 30% に 4 つなら `p=$(tsumugi split 1 --down -p 30)` のあと `tsumugi split $p -n 4`。
+
 ## [0.104.2] - 2026-10-11
 
 ### 修正

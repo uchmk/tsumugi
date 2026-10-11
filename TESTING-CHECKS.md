@@ -191,6 +191,7 @@
 - [x] **5.11** `Ctrl+Shift+O`, type `abc`, then `Left` and `Right`; clear the box, `Left` and `Right` again; type `zzzzqqq` → While typing the arrows move in the box and the page stays All; with it empty they turn the page; the last says Nothing matches
 - [x] **5.12** `Ctrl+Shift+P`, type part of a session's name, then `work` → No session or scrollback lines in the palette (its hint points to Ctrl+Shift+O); `work` shows **Work log …** with `Ctrl+Shift+S` beside it
 - [ ] **5.13** A saved layout (`Ctrl+Shift+S`) and a `[[scripts]]` entry exist; `Ctrl+Shift+O`; type part of the script's name; arrows and `Enter`, then again with a click → Under "OPEN FROM A LAYOUT OR SCRIPT" the layout and the script are listed after the sessions and scrollback lines, narrowed by what is typed; `Enter` or a click opens the layout / runs the script and closes the panel; with no session running the list still shows them
+- [ ] **5.14** Two sessions waiting (a permission prompt and a free-text question); `Ctrl+Shift+O`, `Ctrl+Tab` to Waiting; `Down`, `Up`, then `Enter` → The picked session has a lighter band and scrolls into view; `Enter` closes the panel and goes to it; `Left` and `Right` still turn the page
 
 ## 6. New sessions
 
