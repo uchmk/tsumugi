@@ -5709,6 +5709,7 @@ impl App {
                 }
             }
         }
+        alert::set_answer_buttons(self.settings_now.notify.answer_buttons);
         let outs = self.alerts.decide(&client.notices(), seen);
         self.run_base.retain(|id, _| sessions.iter().any(|i| i.id == *id && i.state == State::Running));
         // Focus mode on: the number on the taskbar only (`[notify] focus_mode`).

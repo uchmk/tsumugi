@@ -667,6 +667,7 @@ sound = []                              # a sound, once
 long_run = 60                           # a finish counts after this many seconds
 sound_waiting = "chime"                 # chime, low, alert or default
 sound_error = "low"
+answer_buttons = true                   # Windows: Allow / Deny on a waiting toast
 focus_mode = true                       # nothing while Windows' focus mode is on
 
 # The window's frame: "tsumugi" makes the band the title bar (its own

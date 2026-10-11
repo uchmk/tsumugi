@@ -187,6 +187,14 @@ fn mark(state: Option<State>, title: &str) -> String {
     }
 }
 
+/// Whether a waiting session's notification carries Allow and Deny
+/// (`[notify] answer_buttons`), read when the toast is made.
+static ANSWER_BUTTONS: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
+
+pub fn set_answer_buttons(on: bool) {
+    ANSWER_BUTTONS.store(on, std::sync::atomic::Ordering::Relaxed);
+}
+
 /// What a click on a notification asked for.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Reply {
@@ -445,7 +453,7 @@ mod os {
         // the system's own dismiss (the design's Notify).
         // One that wants a person, or failed, stays on screen until it is
         // dealt with; a finished one goes away by itself.
-        let waiting = matches!(state, Some(super::State::Waiting | super::State::MaybeWaiting));
+        let waiting = super::ANSWER_BUTTONS.load(std::sync::atomic::Ordering::Relaxed) && matches!(state, Some(super::State::Waiting | super::State::MaybeWaiting));
         // A waiting session can be answered from the toast: Allow presses
         // Enter, Deny presses Esc (checked again when the click arrives).
         let answers = if waiting { "<action content=\"Allow\" arguments=\"allow\"/><action content=\"Deny\" arguments=\"deny\"/>" } else { "" };

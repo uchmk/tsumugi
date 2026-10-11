@@ -765,6 +765,8 @@ pub struct Notify {
     pub sound_error: String,
     /// Windows: nothing shows or sounds while focus mode (do not disturb) is on.
     pub focus_mode: bool,
+    /// Windows: the toast of a session that waits has Allow and Deny.
+    pub answer_buttons: bool,
     /// Where to send a session waiting while no one is at the window: an
     /// ntfy topic's address, a Slack incoming webhook, or any address that
     /// takes JSON. Empty: nowhere.
@@ -795,6 +797,7 @@ impl Default for Notify {
             sound_waiting: "chime".into(),
             sound_error: "low".into(),
             focus_mode: true,
+            answer_buttons: true,
             webhook: String::new(),
             webhook_format: "ntfy".into(),
             webhook_after: 120,
