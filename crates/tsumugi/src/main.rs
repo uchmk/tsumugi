@@ -1247,6 +1247,9 @@ struct App {
     teller: alert::Teller,
     /// Whether the server was last told this window has the keyboard.
     focus_sent: Option<bool>,
+    /// A running session's tokens and cost when it began running, to tell
+    /// what a long run used when it is done.
+    run_base: std::collections::HashMap<SessionId, (u64, f64)>,
     /// The panes the keys went to last frame: one no longer fed hears of the
     /// keys it held as let go (a program asking for key releases).
     fed: Vec<SessionId>,
@@ -1626,6 +1629,7 @@ impl App {
                 move || ctx.request_repaint()
             }),
             focus_sent: None,
+            run_base: std::collections::HashMap::new(),
             fed: Vec::new(),
             keyed: None,
             filter: sort::Filter::default(),
@@ -5671,14 +5675,42 @@ impl App {
         let muted_tags = client.muted_tags();
         let muted: std::collections::HashSet<SessionId> = sessions.iter().filter(|i| quiet(i, &muted_tags)).map(|i| i.id).collect();
         let places: std::collections::HashMap<SessionId, String> = sessions.iter().map(|i| (i.id, i.project.file_name().map(|f| f.to_string_lossy().into_owned()).unwrap_or_default())).collect();
-        let seen = alert::Seen { looking: here || anyone, teller, muted: &muted, places: &places };
-        for id in self.teller.clicked() {
-            // A notification clicked: its pane, in front.
-            self.go_to(&client, &workspaces, id);
-            ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(false));
-            ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
+        // What each run has used so far, from the conversation's totals.
+        let used = self.usage.get();
+        let mut spent: std::collections::HashMap<SessionId, String> = std::collections::HashMap::new();
+        for i in sessions.iter().filter(|i| i.claude && !i.conversation.is_empty()) {
+            let now = (used.conversations.get(&i.conversation).map_or(0, usage::Tokens::total), used.costs.get(&i.conversation).copied().unwrap_or(0.0));
+            if i.state == State::Running {
+                self.run_base.entry(i.id).or_insert(now);
+            }
+            if let Some(&(tokens, cost)) = self.run_base.get(&i.id) {
+                let tokens = now.0.saturating_sub(tokens);
+                let cost = (now.1 - cost).max(0.0);
+                if tokens > 0 {
+                    spent.insert(i.id, if cost > 0.0 { format!("{} tokens · ${cost:.2}", usage::short(tokens)) } else { format!("{} tokens", usage::short(tokens)) });
+                }
+            }
+        }
+        let seen = alert::Seen { looking: here || anyone, teller, muted: &muted, places: &places, spent: &spent };
+        for (id, reply) in self.teller.clicked() {
+            match reply {
+                alert::Reply::Open => {
+                    // A notification clicked: its pane, in front.
+                    self.go_to(&client, &workspaces, id);
+                    ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(false));
+                    ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
+                }
+                // An answer from the toast, only to a session still waiting:
+                // the prompt it was about may be gone by now.
+                alert::Reply::Allow | alert::Reply::Deny => {
+                    if sessions.iter().any(|i| i.id == id && matches!(i.state, State::Waiting | State::MaybeWaiting)) {
+                        client.input(id, if reply == alert::Reply::Allow { vec![13] } else { vec![0x1b] });
+                    }
+                }
+            }
         }
         let outs = self.alerts.decide(&client.notices(), seen);
+        self.run_base.retain(|id, _| sessions.iter().any(|i| i.id == *id && i.state == State::Running));
         // Focus mode on: the number on the taskbar only (`[notify] focus_mode`).
         let hush = !outs.is_empty() && self.settings_now.notify.focus_mode && sound::quiet_time();
         for out in outs {

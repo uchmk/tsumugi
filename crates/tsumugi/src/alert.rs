@@ -101,12 +101,15 @@ pub struct Seen<'a> {
     /// Each session's folder by name (`filer`), for the notification's
     /// title; a session missing here is called by its title.
     pub places: &'a HashMap<SessionId, String>,
+    /// What each running session has used since it began running (`12k
+    /// tokens · $0.35`), put after a finished run's words.
+    pub spent: &'a HashMap<SessionId, String>,
 }
 
 impl Alerts {
     /// What the notices that arrived since the last call ask for.
     pub fn decide(&mut self, notices: &[Notice], seen: Seen) -> Vec<Out> {
-        let Seen { looking, teller, muted, places } = seen;
+        let Seen { looking, teller, muted, places, spent } = seen;
         let heard = |n: &&Notice| !muted.contains(&n.session);
         let mut out = Vec::new();
         let next = notices.iter().map(|n| n.id + 1).max().unwrap_or(0);
@@ -118,7 +121,13 @@ impl Alerts {
         if !looking && teller {
             // A trigger with `notify` asked to be told; the rest by its state.
             for n in fresh.iter().filter(|n| n.trigger || self.rules.notify.has(n.state)) {
-                let (title, body) = wording(n, places.get(&n.session).map(String::as_str));
+                let (title, mut body) = wording(n, places.get(&n.session).map(String::as_str));
+                if let Some(used) = spent.get(&n.session).filter(|_| n.state == State::Done && !n.trigger) {
+                    if !body.is_empty() {
+                        body.push_str(" · ");
+                    }
+                    body.push_str(used);
+                }
                 out.push(Out::Notify { session: n.session, title, body, state: (!n.trigger).then_some(n.state) });
             }
             let fresh: Vec<&Notice> = fresh.into_iter().filter(|n| !n.trigger).collect();
@@ -178,14 +187,25 @@ fn mark(state: Option<State>, title: &str) -> String {
     }
 }
 
-/// Called with the session of a notification that was clicked, from
-/// whichever thread the system tells it on.
-type Click = Arc<dyn Fn(SessionId) + Send + Sync>;
+/// What a click on a notification asked for.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Reply {
+    /// The notification itself, or its Open: go to the session.
+    Open,
+    /// Allow: the answer a waiting prompt's default takes (Enter).
+    Allow,
+    /// Deny: Esc.
+    Deny,
+}
+
+/// Called with the session of a notification that was clicked, and what the
+/// click asked for, from whichever thread the system tells it on.
+type Click = Arc<dyn Fn(SessionId, Reply) + Send + Sync>;
 
 /// Where the system's part runs.
 pub struct Teller {
     tx: mpsc::Sender<Out>,
-    clicked: mpsc::Receiver<SessionId>,
+    clicked: mpsc::Receiver<(SessionId, Reply)>,
 }
 
 impl Teller {
@@ -193,10 +213,10 @@ impl Teller {
     /// a click came back, to have the window look.
     pub fn start(window: Option<isize>, wake: impl Fn() + Send + Sync + 'static) -> Self {
         let (tx, rx) = mpsc::channel::<Out>();
-        let (click_tx, clicked) = mpsc::channel::<SessionId>();
+        let (click_tx, clicked) = mpsc::channel::<(SessionId, Reply)>();
         let click_tx = std::sync::Mutex::new(click_tx);
-        let click: Click = Arc::new(move |id| {
-            let _ = click_tx.lock().unwrap_or_else(|e| e.into_inner()).send(id);
+        let click: Click = Arc::new(move |id, reply| {
+            let _ = click_tx.lock().unwrap_or_else(|e| e.into_inner()).send((id, reply));
             wake();
         });
         let _ = std::thread::Builder::new().name("alerts".into()).spawn(move || {
@@ -212,8 +232,9 @@ impl Teller {
         let _ = self.tx.send(out);
     }
 
-    /// The sessions whose notification was clicked since the last call.
-    pub fn clicked(&self) -> Vec<SessionId> {
+    /// The sessions whose notification was clicked since the last call, and
+    /// what each click asked for.
+    pub fn clicked(&self) -> Vec<(SessionId, Reply)> {
         self.clicked.try_iter().collect()
     }
 }
@@ -424,10 +445,14 @@ mod os {
         // the system's own dismiss (the design's Notify).
         // One that wants a person, or failed, stays on screen until it is
         // dealt with; a finished one goes away by itself.
+        let waiting = matches!(state, Some(super::State::Waiting | super::State::MaybeWaiting));
+        // A waiting session can be answered from the toast: Allow presses
+        // Enter, Deny presses Esc (checked again when the click arrives).
+        let answers = if waiting { "<action content=\"Allow\" arguments=\"allow\"/><action content=\"Deny\" arguments=\"deny\"/>" } else { "" };
         let scenario = if matches!(state, Some(super::State::Waiting | super::State::MaybeWaiting | super::State::Error)) { " scenario=\"reminder\"" } else { "" };
         let xml = format!(
             "<toast launch=\"open\"{scenario}><visual><binding template=\"ToastGeneric\">{image}<text>{}</text><text>{}</text></binding></visual>\
-             <actions><action content=\"Open\" arguments=\"open\"/><action content=\"Later\" arguments=\"dismiss\" activationType=\"system\"/></actions></toast>",
+             <actions>{answers}<action content=\"Open\" arguments=\"open\"/><action content=\"Later\" arguments=\"dismiss\" activationType=\"system\"/></actions></toast>",
             xml_escape(title),
             xml_escape(body)
         );
@@ -440,13 +465,12 @@ mod os {
         toast.SetGroup(&HSTRING::from("sessions"))?;
         // A click on it or on Open, while tsumugi runs, goes to the session.
         toast.Activated(&TypedEventHandler::<ToastNotification, IInspectable>::new(move |_, args| {
-            let open = args
-                .as_ref()
-                .and_then(|a| a.cast::<ToastActivatedEventArgs>().ok())
-                .and_then(|a| a.Arguments().ok())
-                .is_none_or(|a| a.is_empty() || a == "open");
-            if open {
-                click(session);
+            let said = args.as_ref().and_then(|a| a.cast::<ToastActivatedEventArgs>().ok()).and_then(|a| a.Arguments().ok());
+            match said.as_ref().map(|a| a.to_string()).as_deref() {
+                None | Some("" | "open") => click(session, super::Reply::Open),
+                Some("allow") => click(session, super::Reply::Allow),
+                Some("deny") => click(session, super::Reply::Deny),
+                _ => {}
             }
             Ok(())
         }))?;
@@ -511,7 +535,7 @@ mod os {
                 // clicked waits until it is closed.
                 let _ = std::thread::Builder::new().name("notify".into()).spawn(move || {
                     if show(&title, &body) {
-                        click(session);
+                        click(session, super::Reply::Open);
                     }
                 });
             }
@@ -566,7 +590,7 @@ mod tests {
 
     fn seen<'a>(looking: bool, teller: bool, muted: &'a HashSet<SessionId>) -> Seen<'a> {
         static NONE: std::sync::OnceLock<HashMap<SessionId, String>> = std::sync::OnceLock::new();
-        Seen { looking, teller, muted, places: NONE.get_or_init(HashMap::new) }
+        Seen { looking, teller, muted, places: NONE.get_or_init(HashMap::new), spent: NONE.get_or_init(HashMap::new) }
     }
 
     #[test]
@@ -628,6 +652,17 @@ mod tests {
         // Not while looking at it.
         n.id = 1;
         assert_eq!(a.decide(&[n], seen(true, true, &none)), vec![]);
+    }
+
+    #[test]
+    fn a_done_run_says_what_it_used() {
+        let mut a = Alerts::default();
+        let none = HashSet::new();
+        a.decide(&[], seen(false, true, &none));
+        let spent: HashMap<SessionId, String> = HashMap::from([(1, "12.3k tokens · $0.35".to_owned())]);
+        let places = HashMap::new();
+        let out = a.decide(&[notice(0, State::Done, false)], Seen { looking: false, teller: true, muted: &none, places: &places, spent: &spent });
+        assert_eq!(out, vec![Out::Notify { session: 1, title: "claude is done".into(), body: "12.3k tokens · $0.35".into(), state: Some(State::Done) }]);
     }
 
     #[test]

@@ -386,6 +386,12 @@ impl Client {
         self.0.send(ToServer::Input { id, bytes: b"\r".to_vec() });
     }
 
+    /// Send raw bytes to a session as if typed (a notification's Allow is
+    /// Enter, its Deny Esc).
+    pub fn input(&self, id: SessionId, bytes: Vec<u8>) {
+        self.0.send(ToServer::Input { id, bytes });
+    }
+
     /// Turn away typing and pasting into a session (`on`), or let them in
     /// again; the session's `read_only` tells which.
     pub fn read_only(&self, id: SessionId, on: bool) {
