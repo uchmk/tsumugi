@@ -338,6 +338,7 @@
 - [ ] **16.3** `zoom = "none"` → `Ctrl+Shift+Z` reaches the shell
 - [ ] **16.4** Press only Ctrl while a key is being changed → Nothing is written until a real key comes
 - [ ] **16.5** Settings → Keys, each section → Every row's key button lines up in one column at the right, also after a key is changed; the VIEW section has Keys (F1), the overview and the font sizes
+- [ ] **16.6** Switch to a Japanese IME, click a pane (or a Claude Code prompt), type `nihongo` and Space, Enter → The composition shows underlined at the cursor, the candidate window opens beside it; Enter types the converted text (`日本語`) into the session; a settings field still takes Japanese on its own
 
 ## 17. What the settings' rows do
 

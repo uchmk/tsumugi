@@ -1870,10 +1870,11 @@ mod tests {
         let typed = run.frame(&mut screen, vec![egui::Event::Text("-x".into())]).0;
         assert!(typed.is_empty(), "nothing while typing: {typed:?}");
         let changes = run.key(&mut screen, egui::Key::Enter, egui::Modifiers::NONE);
-        assert_eq!(changes, vec![Change::Set(Some("sessions"), "claude", "\"claude-x\"".into())]);
-        // Shown as typed until the file says it.
+        assert_eq!(changes, vec![Change::Set(Some("sessions"), "claude", "\"-x\"".into())]);
+        // Shown as typed until the file says it. A field takes the keys with
+        // its words selected, so typing replaces them.
         let (_, texts) = run.frame(&mut screen, Vec::new());
-        assert!(find(&texts, "claude-x").is_some());
+        assert!(find(&texts, "-x").is_some());
     }
 
     #[test]
