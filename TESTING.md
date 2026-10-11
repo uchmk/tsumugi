@@ -93,6 +93,10 @@ they are not ticked by hand any more. A change that breaks one turns CI red.
 | 2.78 (send) | A read-only session: `tsumugi send N` exits 1 saying it is read-only and nothing runs; `ls --json` has `read_only`; let go, `send` runs again | `send_to_a_read_only_session_is_refused` |
 | 2.79 | Windows: turn on Narrator (`Ctrl+Win+Enter`); click into a pane with `dir` on it, then press `Caps Lock+R` (read the window) or move Narrator's scan mode onto the pane; then turn on NVDA instead | Narrator calls the pane a document (terminal) and reads its rows -- `dir`'s lines, not the cells one by one, without the blanks after them; a pane that changed reads its new text the next time; nothing is typed into the pane by it |
 | 2.80 | `printf 'see https://example.com/a/b?c=d&e=f#g now
+| 2.81 | `printf 'https://example.com/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/end
+'` in a window narrower than the address (so the terminal wraps it); hold `Ctrl` over the second row, click; double-click either row | The underline covers both rows; Ctrl+click opens the whole address; double-click selects the whole address across the rows. A line the program breaks itself (`printf 'https://example.com/a
+b
+'`) is not joined | 
 | 6.24 (text) | `tsumugi serial`: bad words exit 2 with why, a missing port exit 1 naming it; against a pseudo-terminal (Unix) both ways carry, `Ctrl+]` twice sends one, `Ctrl+]` `q` leaves with exit 0 | `serial_refuses_bad_words_and_a_missing_port`, `serial_carries_both_ways_and_leaves_on_its_key` |
 | 6.26 (text) | `tsumugi tmux -t t` against a tmux of its own (Unix): the pane opens as a session showing what was on it, `tsumugi send` reaches tmux, a split opens a second session, killing tmux ends the gateway saying so and closes both | `tmux_panes_open_as_sessions` |
 | 18.12 (text) | `tsumugi layout --list`, `layout NAME`, `split N -p 25`, `new . --name work` | `layout_opens_a_saved_layout_and_split_takes_a_share` |
