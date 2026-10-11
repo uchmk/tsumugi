@@ -398,7 +398,7 @@ pub fn set_bindings(table: &std::collections::BTreeMap<String, String>) -> Resul
 
 /// Keys Claude Code and the shells use, which a window key would take from
 /// them: the chord as `[keys]` writes it, and whose it is.
-const OTHERS: [(&str, &str); 14] = [
+pub(crate) const OTHERS: [(&str, &str); 14] = [
     ("Ctrl+C", "Claude Code's interrupt"),
     ("Ctrl+D", "Claude Code's exit"),
     ("Ctrl+R", "Claude Code's history search"),
@@ -415,16 +415,23 @@ const OTHERS: [(&str, &str); 14] = [
     ("Ctrl+A", "the shell's start of line"),
 ];
 
-/// What `chord` would take, given to `action`: another of the window's
-/// actions on it now, or a key of Claude Code's or the shell's.
-pub fn clash(chord: &Chord, action: Action) -> Option<String> {
+/// What a key given to an action would take from.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Clash {
+    /// Another of the window's actions, on it now.
+    Window(Action),
+    /// A key of Claude Code's or the shell's: whose, in English.
+    Other(&'static str),
+}
+
+/// What `chord` would take, given to `action`; the words are the settings
+/// screen's, in the language in force.
+pub fn clash(chord: &Chord, action: Action) -> Option<Clash> {
     let label = chord.label();
-    for (a, ..) in NAMED {
-        if a != action && self::label(a) == label {
-            return Some(format!("{label} is {} already", title(a)));
-        }
+    if let Some((a, ..)) = NAMED.iter().find(|(a, ..)| *a != action && self::label(*a) == label) {
+        return Some(Clash::Window(*a));
     }
-    OTHERS.iter().find(|(k, _)| Chord::parse(k).is_ok_and(|c| c == *chord)).map(|(_, whose)| format!("{label} is {whose}"))
+    OTHERS.iter().find(|(k, _)| Chord::parse(k).is_ok_and(|c| c == *chord)).map(|(_, whose)| Clash::Other(whose))
 }
 
 /// The key an action is on now, as shown beside it: the settings' key,
@@ -663,8 +670,8 @@ mod tests {
         let ctrl_alt = Modifiers { alt: true, ctrl: true, shift: false, mac_cmd: false, command: true };
         assert_eq!(action_with(Key::Plus, ctrl_alt, false, &split), Some(Action::SplitRight));
         // A clash is named: with another action, or with Claude Code.
-        assert_eq!(clash(&Chord::parse("Ctrl+Shift+W").unwrap(), Action::NewTab).as_deref(), Some("Ctrl+Shift+W is Close the session already"));
-        assert!(clash(&Chord::parse("Ctrl+C").unwrap(), Action::NewTab).unwrap().contains("Claude Code"));
+        assert_eq!(clash(&Chord::parse("Ctrl+Shift+W").unwrap(), Action::NewTab), Some(Clash::Window(Action::CloseTab)));
+        assert_eq!(clash(&Chord::parse("Ctrl+C").unwrap(), Action::NewTab), Some(Clash::Other("Claude Code's interrupt")));
         assert_eq!(clash(&Chord::parse("Ctrl+Shift+T").unwrap(), Action::NewTab), None, "its own key");
         assert_eq!(clash(&Chord::parse("Ctrl+Shift+K").unwrap(), Action::NewTab), None);
         // Every named action's own key reads.

@@ -72,6 +72,13 @@ pub fn tr(key: &str) -> &str {
     get().tr(key)
 }
 
+/// The `[keydesc]` translation of an English key text (keys.rs's names
+/// and the help's lines), so keys.rs stays English for TESTING-KEYS.md; the
+/// text itself when the language has none.
+pub fn tr_desc(desc: &str) -> &str {
+    get().tr_desc(desc)
+}
+
 /// [`tr`] with `{0}`, `{1}` … replaced by `args`.
 pub fn trf(key: &str, args: &[&str]) -> String {
     get().trf(key, args)

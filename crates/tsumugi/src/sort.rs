@@ -6,6 +6,8 @@ use std::path::{Path, PathBuf};
 
 use tsumugi_mux::{Info, State, Workspace};
 
+use crate::i18n::tr;
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Sort {
     /// As dragged (the default): the sidebar does not move under the hand.
@@ -27,22 +29,22 @@ impl Sort {
     /// In the menu.
     pub fn label(self) -> &'static str {
         match self {
-            Sort::Manual => "Manual (drag)",
-            Sort::Needs => "Needs me first",
-            Sort::Recent => "Recent activity",
-            Sort::Folder => "Folder",
-            Sort::Name => "Name",
+            Sort::Manual => tr("sort.manual"),
+            Sort::Needs => tr("sort.needs"),
+            Sort::Recent => tr("sort.recent"),
+            Sort::Folder => tr("sort.folder"),
+            Sort::Name => tr("sort.name"),
         }
     }
 
     /// On the button.
     pub fn short(self) -> &'static str {
         match self {
-            Sort::Manual => "Manual",
-            Sort::Needs => "Needs me",
-            Sort::Recent => "Recent",
-            Sort::Folder => "Folder",
-            Sort::Name => "Name",
+            Sort::Manual => tr("sort.manual_short"),
+            Sort::Needs => tr("sort.needs_short"),
+            Sort::Recent => tr("sort.recent_short"),
+            Sort::Folder => tr("sort.folder"),
+            Sort::Name => tr("sort.name"),
         }
     }
 
