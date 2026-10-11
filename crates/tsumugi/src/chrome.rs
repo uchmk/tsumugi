@@ -16,6 +16,10 @@ pub fn gold() -> Color32 {
 pub fn cyan() -> Color32 {
     crate::theme::colors().run
 }
+/// The work-log tag's fill: a deep amber, like the sidebar's tags, so white text reads on it.
+pub const LOG_FILL: Color32 = Color32::from_rgb(150, 98, 18);
+pub const LOG_HOVER: Color32 = Color32::from_rgb(180, 120, 24);
+
 pub fn red() -> Color32 {
     crate::theme::colors().err
 }
@@ -772,13 +776,13 @@ pub fn top_band(ui: &mut egui::Ui, pal: &Palette, tags: &[String], shown: usize,
             name.push('…');
         }
         let text = if log.paused { format!("{name} · LOG ‖") } else { format!("{name} · LOG") };
-        let ink = Color32::BLACK;
+        let ink = Color32::WHITE;
         let galley = p.layout_no_wrap(text, FontId::proportional(11.0), ink);
         let chip = egui::Rect::from_min_size(egui::pos2(left_edge - 6.0, rect.center().y - 8.0), egui::vec2(galley.size().x + 12.0, 16.0));
         if chip.right() + 12.0 < rect.right() {
             let hint = trf(if log.paused { "title.log_paused" } else { "title.log" }, &[&log.path]);
             let resp = ui.interact(chip, ui.id().with("work-log"), egui::Sense::CLICK).on_hover_cursor(egui::CursorIcon::PointingHand).on_hover_text(hint);
-            p.rect_filled(chip, 4.0, if resp.hovered() { gold() } else { gold().gamma_multiply(0.85) });
+            p.rect_filled(chip, 4.0, if resp.hovered() { LOG_HOVER } else { LOG_FILL });
             p.galley(egui::pos2(chip.left() + 6.0, chip.center().y - galley.size().y / 2.0), galley, ink);
             out.open_log = resp.clicked();
             left_edge = chip.right() + 12.0;

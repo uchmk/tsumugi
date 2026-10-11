@@ -4712,10 +4712,10 @@ impl App {
                         // A tag like the band's chip: a solid gold fill; the
                         // mark says a full-screen program holds the screen.
                         let text = if paused { "LOG ‖" } else { "LOG" };
-                        let galley = p.layout_no_wrap(text.into(), egui::FontId::proportional(10.5), egui::Color32::BLACK);
+                        let galley = p.layout_no_wrap(text.into(), egui::FontId::proportional(10.5), egui::Color32::WHITE);
                         let tag = egui::Rect::from_min_max(egui::pos2(right_x - galley.size().x - 10.0, head.center().y - 8.0), egui::pos2(right_x, head.center().y + 8.0));
-                        p.rect_filled(tag, 4.0, chrome::gold());
-                        p.galley(egui::pos2(tag.left() + 5.0, tag.center().y - galley.size().y / 2.0), galley, egui::Color32::BLACK);
+                        p.rect_filled(tag, 4.0, chrome::LOG_FILL);
+                        p.galley(egui::pos2(tag.left() + 5.0, tag.center().y - galley.size().y / 2.0), galley, egui::Color32::WHITE);
                         right_x = tag.left() - 10.0;
                     }
                     // A character set other than UTF-8, said where it applies.
