@@ -5,6 +5,20 @@
 
 ## [未リリース]
 
+## [0.95.0] - 2026-10-11
+
+kura・yagura と同じキーの台本 `--keys` を足した（#19 の推奨。ito の docs/common-spec.md の「キーの台本」）。
+
+### 追加
+
+- `tsumugi --keys "<台本>"`: 窓を開き、台本のキーを窓が自分で押す。キーは keymap と同じ書き方（`<C-S-t>`、`C` は macOS で Cmd）、
+  `<…>*N` で繰り返し、`<Wait:ms>`・`<Click:x,y>`・`<Drag:x,y-x,y>`・`<Shot:名前>`（PNG）・`<State:名前>`（状態の文字）・`<Quit>`。
+  キーは本物のキーと同じ道（`raw_input_hook`）を通るので、窓のキーにも、キーを持つペインにも届く。
+- `TSUMUGI_KEYS_DONE`: 台本が終わると、ここに状態を書く（最後の行は `keys: done`）。`<Shot:>`・`<State:>` は同じフォルダーに書く。
+  状態は `focus`（`pane`・開いているダイアログ・`none`）・`overlay`・`scale` と、tsumugi の `tabs`・`panes`・`zoom`・`title`。
+- `<Quit>` は走っているセッションについて聞かずに窓を閉じる。読めない台本は窓を開く前に理由を出して 2 で終わる（CI の `keys_refuses_a_bad_script`）。
+- 実機の確かめは TESTING.md の 18.11。
+
 ## [0.94.4] - 2026-10-11
 
 ### 修正

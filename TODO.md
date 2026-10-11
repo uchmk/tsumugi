@@ -42,8 +42,8 @@ tsumugi のやること。`【人】` は持ち主の作業、`【金】` は 20
 - [x] （v0.87.0）common.toml の `scale` で窓全体の倍率を当てる（設定の画面の General → Scale も書く）。Ctrl+= / Ctrl+- はペインの字の大きさのまま。
       設定を `<config>/uchmk/tsumugi/config.toml`、状態を `ito_common::state_dir` に移し（古い場所から自動で移す）、
       環境変数を `TSUMUGI_CONFIG_HOME`・`TSUMUGI_STATE_HOME` にした。字体のフォールバックは `ito_common::fonts`。窓の既定は 1280×800。
-- [ ] 標準の CLI の `--keys` を、kura・yagura と揃えて足す。common-spec では `--keys "<script>"` はキーの台本（実機のテスト用）で、
-      ここに書いていた「キーの表を文字で出す」とは違う。どちらにするか（推奨は台本）。`mcp` と `shell-hook` は tsumugi だけのものとして残す。（要確認: #19）
+- [x] （v0.95.0）標準の CLI の `--keys` を、kura・yagura と揃えて足した（common-spec のキーの台本。#19 の推奨）。
+      `TSUMUGI_KEYS_DONE` に状態（`focus`・`overlay`・`scale` と `tabs`・`panes`・`zoom`・`title`）を書く。`mcp` と `shell-hook` は tsumugi だけのものとして残す。
 - [ ] 古い `TSUMUGI_SETTINGS`（ファイル）と `TSUMUGI_STATE` を読むのをやめる時期を決める（v0.87.0 からは新しい名前が正）。（要確認: #20）
 
 ## 実機のレーンから

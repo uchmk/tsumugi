@@ -337,3 +337,17 @@ fn help_names_the_folders() {
     let out = s.ok(&["--help"]);
     assert!(out.contains("TSUMUGI_CONFIG_HOME") && out.contains("TSUMUGI_STATE_HOME"), "{out}");
 }
+
+/// `--keys` refuses a script it cannot play before any window opens: exit 2
+/// and what is wrong with it.
+#[test]
+fn keys_refuses_a_bad_script() {
+    let s = Server::new("keys");
+    for (args, says) in [(&["--keys"][..], "usage"), (&["--keys", "echo hi"], "<Space>"), (&["--keys", "<Shot:../up>"], "a name is"), (&["--keys", "<Wait:soon>"], "milliseconds"), (&["--keys", "j", "k"], "usage")] {
+        let out = s.run(args);
+        let err = String::from_utf8_lossy(&out.stderr);
+        assert_eq!(out.status.code(), Some(2), "tsumugi {args:?}: {err}");
+        assert!(err.contains(says), "tsumugi {args:?} said: {err}");
+    }
+    assert!(s.ok(&["--help"]).contains("--keys"), "the help names --keys");
+}
