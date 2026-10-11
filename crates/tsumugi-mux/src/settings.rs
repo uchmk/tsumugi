@@ -160,6 +160,7 @@
 //! backend = "auto"
 //! scrollback = 10000
 //! pane_log = false
+//! secure_input = false
 //!
 //! # Other machines' servers, reached over ssh: the window reaches those
 //! # in hosts again when it opens, and runs `command proxy` there (a
@@ -403,11 +404,14 @@ pub struct Advanced {
     /// Record what each pane sends and receives, for bug reports, in a file
     /// beside the state.
     pub pane_log: bool,
+    /// macOS's Secure Keyboard Entry while the window is in front: other
+    /// programs cannot read the keys typed. Nothing elsewhere.
+    pub secure_input: bool,
 }
 
 impl Default for Advanced {
     fn default() -> Self {
-        Self { backend: "auto".into(), scrollback: 10_000, pane_log: false }
+        Self { backend: "auto".into(), scrollback: 10_000, pane_log: false, secure_input: false }
     }
 }
 
