@@ -579,3 +579,24 @@ fn layout_opens_a_saved_layout_and_split_takes_a_share() {
     let named = s.ok(&["new", ".", "--name", "work"]);
     assert!(named.trim().parse::<u64>().is_ok(), "{named:?}");
 }
+
+#[test]
+fn env_reports_the_places_and_the_server() {
+    let s = Server::new("env");
+    let before = s.ok(&["env"]);
+    let line = |text: &str, name: &str| text.lines().find(|l| l.starts_with(name)).unwrap_or_else(|| panic!("no {name} line in {text}")).to_owned();
+    assert!(line(&before, "tsumugi").contains(env!("CARGO_PKG_VERSION")), "{before}");
+    assert!(line(&before, "os").contains(std::env::consts::OS), "{before}");
+    assert!(line(&before, "settings").contains(&s.dir.display().to_string()), "{before}");
+    assert!(line(&before, "server").contains("not answering"), "asking does not start a server: {before}");
+    // Asking started nothing: still no server.
+    assert!(s.ok(&["env"]).contains("not answering"));
+
+    s.new_session(&[]);
+    let after = s.ok(&["env"]);
+    assert!(line(&after, "server").contains("running, 1 session)"), "{after}");
+
+    let hidden = s.command(&["env"]).env("TSUMUGI_API_TOKEN", "hunter2").output().unwrap();
+    let hidden = String::from_utf8(hidden.stdout).unwrap();
+    assert!(hidden.contains("TSUMUGI_API_TOKEN=(hidden)") && !hidden.contains("hunter2"), "{hidden}");
+}
