@@ -103,12 +103,13 @@ fn main() -> std::process::ExitCode {
         Some("mcp") => mcp::run(),
         Some("send" | "read" | "split" | "close" | "log" | "wait") => remote(&args[0], &args[1..]),
         Some("help" | "--help" | "-h") => {
-            println!("tsumugi: the window, or one of\n{}\n{}\ntsumugi attach N|NAME\ntsumugi proxy                            (what --host runs on the other machine)\ntsumugi notify [--state S] [--session N] [MESSAGE]\ntsumugi tag [--session N] [--remove] TAG...\n{}\n{}\ntsumugi shell-hook bash|zsh|pwsh\ntsumugi mcp                              an MCP server on stdin/stdout, for Claude Code (see the README)\ntsumugi --keys SCRIPT                    the window, pressing the script's keys (`<C-S-t><Wait:500><Shot:tab><Quit>`); TSUMUGI_KEYS_DONE names the file for its state\n\nTSUMUGI_CONFIG_HOME and TSUMUGI_STATE_HOME name other folders for the settings (config.toml) and the state.", cli::NEW_USAGE, cli::REMOTE_USAGE, serial::USAGE, tmux::USAGE);
+            println!("tsumugi: the window, or one of\n{}\n{}\n{}\ntsumugi attach N|NAME\ntsumugi proxy                            (what --host runs on the other machine)\ntsumugi notify [--state S] [--session N] [MESSAGE]\ntsumugi tag [--session N] [--remove] TAG...\n{}\n{}\ntsumugi shell-hook bash|zsh|pwsh\ntsumugi mcp                              an MCP server on stdin/stdout, for Claude Code (see the README)\ntsumugi --keys SCRIPT                    the window, pressing the script's keys (`<C-S-t><Wait:500><Shot:tab><Quit>`); TSUMUGI_KEYS_DONE names the file for its state\n\nTSUMUGI_CONFIG_HOME and TSUMUGI_STATE_HOME name other folders for the settings (config.toml) and the state.", cli::NEW_USAGE, cli::LAYOUT_USAGE, cli::REMOTE_USAGE, serial::USAGE, tmux::USAGE);
             std::process::ExitCode::SUCCESS
         }
         Some("notify") => notify(&args[1..]),
         Some("tag") => tag(&args[1..]),
         Some("new") => new_cli(&args[1..]),
+        Some("layout") => layout_cli(&args[1..]),
         Some("attach") => attach(&args[1..]),
         Some("serial") => serial::run(&args[1..]),
         Some("tmux") => tmux::run(&args[1..]),
@@ -197,6 +198,56 @@ fn new_cli(args: &[String]) -> std::process::ExitCode {
         Err(e) => {
             eprintln!("tsumugi new: {e}");
             std::process::ExitCode::FAILURE
+        }
+    }
+}
+
+/// `tsumugi layout NAME [FOLDER]`: a saved layout as a new tab, the server
+/// started if need be; prints its panes' numbers, one to a line.
+fn layout_cli(args: &[String]) -> std::process::ExitCode {
+    use std::process::ExitCode;
+    let cmd = match cli::parse_layout(args) {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("tsumugi layout: {e}\nusage:\n{}", cli::LAYOUT_USAGE);
+            return ExitCode::from(2);
+        }
+    };
+    let list = layouts::load();
+    let (name, folder) = match cmd {
+        cli::LayoutCmd::List => {
+            for l in &list {
+                println!("{}\t{}", l.name, layouts::words(&l.tree));
+            }
+            return ExitCode::SUCCESS;
+        }
+        cli::LayoutCmd::Open { name, folder } => (name, folder),
+    };
+    let run = || -> Result<Vec<SessionId>, String> {
+        let l = cli::layout_named(&list, &name)?;
+        let here = std::env::current_dir().map_err(|e| format!("no current folder: {e}"))?;
+        let folder = match folder {
+            Some(f) => here.join(newsession::expand(&f.to_string_lossy())),
+            None => here,
+        };
+        let folder = std::path::absolute(&folder).map_err(|e| format!("{}: {e}", folder.display()))?;
+        if !folder.is_dir() {
+            return Err(format!("{}: not a folder", folder.display()));
+        }
+        let claude = tsumugi_mux::settings::default_path().and_then(|p| tsumugi_mux::settings::load(&p).ok()).map(|s| s.sessions.claude).unwrap_or_default();
+        let client = connect(|| {}).map_err(|e| e.to_string())?;
+        cli::open_layout(&client, l, &folder, &claude)
+    };
+    match run() {
+        Ok(ids) => {
+            for id in ids {
+                println!("{id}");
+            }
+            ExitCode::SUCCESS
+        }
+        Err(e) => {
+            eprintln!("tsumugi layout: {e}");
+            ExitCode::FAILURE
         }
     }
 }
@@ -2203,8 +2254,8 @@ impl App {
     fn save_layout(&mut self, client: &Client, w: &Workspace) {
         let sessions = client.sessions();
         let tree = w.layout.clone().map(&mut |id| match sessions.iter().find(|i| i.id == id) {
-            Some(i) if i.claude => newsession::Start::Claude,
-            _ => newsession::Start::Shell,
+            Some(i) if i.claude => layouts::Pane::of(newsession::Start::Claude),
+            _ => layouts::Pane::of(newsession::Start::Shell),
         });
         let name = if !w.name.trim().is_empty() {
             w.name.trim().to_owned()
@@ -2229,7 +2280,7 @@ impl App {
                 None => Place::NewWorkspace,
                 Some(first) => Place::Split { beside: *first, dir: Dir::Right },
             };
-            match client.spawn_typing(folder.clone(), None, Size::new(80, 24), (8, 16), place, s.typed(&claude).into_iter().collect()) {
+            match client.spawn_typing(s.folder(&folder), None, Size::new(80, 24), (8, 16), place, s.typed(&claude)) {
                 Ok(pane) => made.push(pane.id()),
                 Err(e) if k == 0 => {
                     self.failed = Some(format!("the shell did not start: {e}"));

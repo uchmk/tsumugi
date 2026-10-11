@@ -493,6 +493,16 @@ typing into all), `{folder}`, `{project}` and `{branch}` filled in for each.
 settings (it goes with an export); **Open layout: name** opens it again as a new tab in the folder of
 the pane with the keys. In the file, a pane is `"claude"`, `"resume"` or
 `"shell"` and a split `{ right = 0.6, first = …, second = … }` (or `down`).
+A pane may also be a table that says what to run and where:
+
+```toml
+[[layout]]
+name = "Dev"
+tree = { right = 0.6, first = "claude", second = { down = 0.5, first = { run = "npm run dev", dir = "web" }, second = "shell" } }
+```
+
+`run` is typed into the pane's shell; `dir` is relative to the folder the layout
+is opened in (`~` and absolute paths work). From a shell: `tsumugi layout Dev [FOLDER]`.
 
 ### Sorting and filtering
 
@@ -834,7 +844,12 @@ on Linux, `lsof` on macOS, the system's table of listeners on Windows.
 tsumugi ls [--json]                      the sessions (--json: one array, every field)
 tsumugi send N|NAME TEXT...              type TEXT into the session, then Enter
 tsumugi read N|NAME [--lines K] [--all]  its last K lines (40), or its whole scrollback
-tsumugi split N|NAME [--down] [-- CMD]   a new pane beside it, in its folder; prints its number
+tsumugi split N|NAME [--down] [-p PERCENT] [-- CMD]
+                                         a new pane beside it, in its folder (PERCENT: its share, like
+                                         tmux -p); prints its number
+tsumugi layout NAME [FOLDER]             open a saved layout as a new tab; prints each pane's number
+tsumugi layout --list                    the saved layouts
+tsumugi new . --name NAME [--at N]       name the new tab, put it at place N
 tsumugi close N|NAME                     end the session
 tsumugi wait N|NAME [--state S] [--timeout SECS]
                                          until it is waiting, done or failed

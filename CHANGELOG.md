@@ -5,6 +5,16 @@
 
 ## [未リリース]
 
+## [0.103.0] - 2026-10-11
+
+tmux / tmuxinator の起動スクリプトに近い使い方を足した（#32）。
+
+### 追加
+- `tsumugi layout NAME [FOLDER]` で保存した配置を新しいタブとして開く。`layout --list` で一覧。
+- `tsumugi split N -p PERCENT`: 新しい窓の幅（高さ）の割合。
+- `tsumugi new --name NAME --at N`: タブの名前と位置。
+- `layouts.toml` の窓に `{ run = "…", dir = "…" }`（打つ行とフォルダ）。設定の画面の「Open layout」もこれに従う。
+
 ## [0.102.0] - 2026-10-11
 
 TODO の「後で」から、tmux の control mode を足した（#30、持ち主の指示で今入れた）。

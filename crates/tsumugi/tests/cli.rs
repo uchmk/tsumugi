@@ -552,3 +552,30 @@ fn tmux_panes_open_as_sessions() {
     assert!(said.contains("tsumugi tmux: tmux"), "{said}");
     tmux_sessions(0);
 }
+
+/// `layout --list` names the saved layouts; `layout NAME` opens one as a tab
+/// whose panes run their own command, and `split -p` / `new --name` take the
+/// share and the tab's name.
+#[test]
+fn layout_opens_a_saved_layout_and_split_takes_a_share() {
+    let s = Server::new("layout");
+    std::fs::write(
+        s.dir.join("layouts.toml"),
+        "[[layout]]\nname = \"Dev\"\ntree = { right = 0.3, first = { run = \"echo from-a\" }, second = { run = \"echo from-b\" } }\n",
+    )
+    .unwrap();
+    let list = s.ok(&["layout", "--list"]);
+    assert!(list.starts_with("Dev\t"), "{list}");
+    let out = s.run(&["layout", "nope"]);
+    assert!(!out.status.success());
+    assert!(String::from_utf8_lossy(&out.stderr).contains("Dev"), "the error lists the names");
+    let ids: Vec<String> = s.ok(&["layout", "dev", "."]).lines().map(str::to_owned).collect();
+    assert_eq!(ids.len(), 2, "one id per pane: {ids:?}");
+    s.read_until(&ids[0], "from-a run", |t| t.matches("from-a").count() >= 2);
+    s.read_until(&ids[1], "from-b run", |t| t.matches("from-b").count() >= 2);
+    let id = s.ok(&["split", &ids[0], "-p", "25"]);
+    assert!(id.trim().parse::<u64>().is_ok(), "split printed {id:?}");
+    assert!(!s.run(&["split", &ids[0], "-p", "99"]).status.success(), "a share of 99% is refused");
+    let named = s.ok(&["new", ".", "--name", "work"]);
+    assert!(named.trim().parse::<u64>().is_ok(), "{named:?}");
+}
