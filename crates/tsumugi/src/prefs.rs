@@ -110,6 +110,7 @@ const INDEX: &[(Page, &str)] = &[
     (Page::Notifications, "prefs.notify.webhook"),
     (Page::Notifications, "prefs.notify.webhook_format"),
     (Page::Notifications, "prefs.notify.webhook_after"),
+    (Page::Notifications, "prefs.notify.webhook_states"),
     (Page::Notifications, "prefs.notify.sound_waiting"),
     (Page::Notifications, "prefs.notify.sound_error"),
     (Page::Notifications, "prefs.notify.focus"),
@@ -776,6 +777,7 @@ fn notifications(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: 
             ("taskbar", tr("prefs.notify.taskbar"), tr("prefs.notify.taskbar_note"), &n.taskbar),
             ("flash", tr("prefs.notify.flash"), tr("prefs.notify.flash_note"), &n.flash),
             ("sound", tr("prefs.notify.sound"), tr("prefs.notify.sound_note"), &n.sound),
+            ("webhook_states", tr("prefs.notify.webhook_states"), tr("prefs.notify.webhook_states_note"), &n.webhook_states),
         ] {
             sep(ui, l);
             // A line's height of room round the two lines of words, so the

@@ -155,8 +155,11 @@ ARE AWAY) sends a session that has waited `webhook_after` seconds (2 minutes
 by default) while no tsumugi window is looked at -- an ntfy topic's address
 (`https://ntfy.sh/my-topic`, the phone's notification), a Slack incoming
 webhook (`webhook_format = "slack"`) or any address taking JSON (`"json"`:
-`title`, `message`, `folder`). The server sends it, once a wait, through the
-system's `curl`, so it works with the window closed; muted sessions and quiet
+`title`, `message`, `folder`, `state`). `webhook_states` (default
+`["waiting"]`) picks what is sent: add `"error"` and `"done"` (a run past
+`long_run`) and a failure or a finish goes at once. The server sends it, once
+a wait, through the system's `curl` (tried again after 30 seconds if it did not
+get through), so it works with the window closed; muted sessions and quiet
 tags are not sent.
 
 `[notify] spend_day` and `spend_block` (Settings, Notifications, WHAT IT

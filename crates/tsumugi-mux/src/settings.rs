@@ -82,6 +82,7 @@
 //! webhook = "https://ntfy.sh/my-topic"
 //! webhook_format = "ntfy"
 //! webhook_after = 120
+//! webhook_states = ["waiting", "error", "done"]
 //! # Say so once when the day's estimated cost passes $20, or a 5-hour block's $10.
 //! spend_day = 20
 //! spend_block = 10
@@ -787,6 +788,9 @@ pub struct Notify {
     pub webhook_format: String,
     /// How many seconds a session waits before it is sent.
     pub webhook_after: u64,
+    /// Which states go to the webhook, by their words: `waiting` (after
+    /// `webhook_after`), `error` and `done` (a long run; at once).
+    pub webhook_states: Vec<String>,
     /// Say so once when the day's estimated cost (US dollars) passes this;
     /// 0: never.
     pub spend_day: u64,
@@ -813,6 +817,7 @@ impl Default for Notify {
             webhook: String::new(),
             webhook_format: "ntfy".into(),
             webhook_after: 120,
+            webhook_states: vec!["waiting".into()],
             spend_day: 0,
             spend_block: 0,
         }
@@ -883,6 +888,9 @@ pub fn parse(text: &str) -> Result<Settings, String> {
     }
     if !["ntfy", "slack", "json"].contains(&s.notify.webhook_format.as_str()) {
         return Err(format!("notify.webhook_format: `{}` is not ntfy, slack or json", s.notify.webhook_format));
+    }
+    if let Some(w) = s.notify.webhook_states.iter().find(|w| !["waiting", "error", "done"].contains(&w.as_str())) {
+        return Err(format!("notify.webhook_states: `{w}` is not waiting, error or done"));
     }
     let webhook = s.notify.webhook.trim();
     if !webhook.is_empty() && !(webhook.starts_with("https://") || webhook.starts_with("http://")) {
@@ -1200,10 +1208,12 @@ mod tests {
         let by_branch = TagRule { branch: "claude/*".into(), tag: "claude".into(), ..TagRule::default() };
         assert_eq!(s.tags.rule, vec![rule("~/dev/filer", "filer"), rule("~/dev/*", "{name}"), by_branch]);
         assert_eq!(s.tags.colors.get("claude").map(String::as_str), Some("#5e4a86"));
-        assert_eq!(s.notify, Notify { flash: vec![], webhook: "https://ntfy.sh/my-topic".into(), spend_day: 20, spend_block: 10, ..Notify::default() });
+        assert_eq!(s.notify, Notify { flash: vec![], webhook: "https://ntfy.sh/my-topic".into(), webhook_states: vec!["waiting".into(), "error".into(), "done".into()], spend_day: 20, spend_block: 10, ..Notify::default() });
         assert_eq!(s.prices.get("claude-opus-5-5"), Some(&Price { input: 4.0, output: 20.0, cache_read: Some(0.2) }));
         assert!(parse("[notify]\nwebhook = \"file:///etc\"\n").is_err(), "an http(s) address only");
         assert!(parse("[notify]\nwebhook_format = \"xml\"\n").is_err());
+        assert_eq!(parse("[notify]\nwebhook_states = [\"error\", \"done\"]\n").unwrap().notify.webhook_states, ["error", "done"]);
+        assert!(parse("[notify]\nwebhook_states = [\"sleeping\"]\n").is_err());
         assert_eq!(s.general.default_folder, "~/dev");
         assert_eq!(s.sessions.quiet, Some(10));
         assert_eq!(s.shell.command(), Some(("pwsh".to_string(), vec!["-NoLogo".to_string()])));
