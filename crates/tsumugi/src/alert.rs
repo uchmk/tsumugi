@@ -115,6 +115,11 @@ impl Alerts {
         let heard = |n: &&Notice| !muted.contains(&n.session);
         let mut out = Vec::new();
         let next = notices.iter().map(|n| n.id + 1).max().unwrap_or(0);
+        // A server that began again numbers its notices from 0: the mark
+        // from the old one would hide every new notice until they passed it.
+        if self.next.is_some_and(|from| !notices.is_empty() && next < from) {
+            self.next = None;
+        }
         let fresh: Vec<&Notice> = match self.next {
             Some(from) => notices.iter().filter(|n| n.id >= from && !n.read).filter(heard).collect(),
             None => Vec::new(),
@@ -148,6 +153,11 @@ impl Alerts {
             out.push(Out::Badge(badge.0, badge.1));
         }
         out
+    }
+
+    /// The mark below which a notice is not new (for the log).
+    pub fn mark_next(&self) -> Option<u64> {
+        self.next
     }
 
     /// The number on the taskbar now.
@@ -549,6 +559,17 @@ mod tests {
         assert_eq!(out, vec![Out::Notify { session: 1, title: "claude failed".into(), body: String::new(), state: Some(State::Error) }, Out::Badge(2, true)]);
         // Told once.
         assert_eq!(a.decide(&new, seen(false, true, &none)), vec![]);
+    }
+
+    #[test]
+    fn a_server_that_began_again_is_told_from_its_first_new_notice() {
+        let mut a = Alerts::default();
+        let none = HashSet::new();
+        a.decide(&[notice(40, State::Waiting, true), notice(41, State::Waiting, true)], seen(false, true, &none));
+        // The new server's list starts again: what it already holds is not told.
+        assert_eq!(a.decide(&[notice(0, State::Waiting, false)], seen(false, true, &none)), vec![Out::Badge(1, false)]);
+        let out = a.decide(&[notice(0, State::Waiting, false), notice(1, State::Error, false)], seen(false, true, &none));
+        assert!(matches!(out.first(), Some(Out::Notify { state: Some(State::Error), .. })));
     }
 
     #[test]

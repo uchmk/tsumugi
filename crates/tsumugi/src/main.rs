@@ -5788,6 +5788,8 @@ impl App {
             let unread = notices.iter().filter(|n| !n.read).count();
             if LOGGED.swap(unread, std::sync::atomic::Ordering::Relaxed) != unread {
                 let (here_now, teller_now) = (here, seen.teller);
+                let ids: Vec<(u64, bool)> = notices.iter().map(|n| (n.id, n.read)).collect();
+                eprintln!("alert: notices (id, read) {ids:?}, next {:?}", self.alerts.mark_next());
                 eprintln!(
                     "alert: {unread} unread; looking {} (here {here_now}, anyone {anyone}), teller {teller_now}, muted {:?}, notify rules waiting {} error {} done {}, focus_mode {} quiet_time {}",
                     seen.looking,
