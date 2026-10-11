@@ -1,0 +1,3 @@
+# Keep ripgrep (the Grep tool) out of build output, with or without git.
+target/
+target-*/
