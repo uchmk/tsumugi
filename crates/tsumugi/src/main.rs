@@ -84,6 +84,7 @@ use i18n::{tr, trf};
 fn main() -> std::process::ExitCode {
     // Before anything loads a DLL: `conpty.dll` only from beside the exe.
     ito_pane::restrict_dll_search();
+    ito_pane::set_identity("tsumugi", env!("CARGO_PKG_VERSION"));
     let args: Vec<String> = std::env::args().skip(1).collect();
     // The server and the proxy speak to no one through a console; the proxy's
     // stdout is the line to ssh, and `mcp`'s the line to the LLM client.

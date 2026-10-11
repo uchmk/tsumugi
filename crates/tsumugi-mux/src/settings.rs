@@ -1132,8 +1132,8 @@ mod tests {
         assert_eq!(remove_key(text, Some("shell.env"), "Z").unwrap(), text, "not there: as it was");
         let rules = vec![vec![("folder", quote("~/b")), ("tag", quote("b"))], vec![("branch", quote("claude/*")), ("tag", quote("claude"))]];
         let t = set_tables(text, "tags.rule", &rules).unwrap();
-        assert!(t.starts_with("# mine\n[shell.env]\nA = \"1\"\nB = \"2\"\n") && t.contains("[clock]\nshow = true\n") && !t.contains("# old"), "{t}");
-        assert!(t.contains("[[tags.rule]]\nfolder = \"~/b\""), "{t}");
+        assert!(t.starts_with("# mine\n[shell.env]\nA = \"1\"\nB = \"2\"\n") && t.contains("[clock]\nshow = true\n"), "{t}");
+        assert!(t.contains("[[tags.rule]]\n# old\nfolder = \"~/b\""), "edited in place, its comment kept: {t}");
         let s = parse(&t).expect("reads");
         assert_eq!(s.tags.rule.len(), 2);
         assert_eq!(s.tags.rule[1].branch, "claude/*");
