@@ -762,6 +762,31 @@ pub fn top_band(ui: &mut egui::Ui, pal: &Palette, tags: &[String], shown: usize,
             left_edge = chip.right() + 12.0;
         }
     }
+    // The session with the keys is writing a work log: its name and LOG,
+    // lit; a click opens the file. Dim while a full-screen program has the
+    // screen, which the log leaves out.
+    if let Some(log) = &frame.log {
+        let mut name: String = log.name.chars().take(18).collect();
+        if name.chars().count() < log.name.chars().count() {
+            name.push('…');
+        }
+        let text = if log.paused { format!("{name} · LOG ‖") } else { format!("● {name} · LOG") };
+        let ink = if log.paused { pal.fg_dim } else { Color32::BLACK };
+        let galley = p.layout_no_wrap(text, FontId::proportional(11.0), ink);
+        let chip = egui::Rect::from_min_size(egui::pos2(left_edge - 6.0, rect.center().y - 8.0), egui::vec2(galley.size().x + 12.0, 16.0));
+        if chip.right() + 12.0 < rect.right() {
+            let hint = trf(if log.paused { "title.log_paused" } else { "title.log" }, &[&log.path]);
+            let resp = ui.interact(chip, ui.id().with("work-log"), egui::Sense::CLICK).on_hover_cursor(egui::CursorIcon::PointingHand).on_hover_text(hint);
+            if log.paused {
+                p.rect_stroke(chip, 4.0, egui::Stroke::new(1.0, gold()), egui::StrokeKind::Inside);
+            } else {
+                p.rect_filled(chip, 4.0, if resp.hovered() { gold() } else { gold().gamma_multiply(0.85) });
+            }
+            p.galley(egui::pos2(chip.left() + 6.0, chip.center().y - galley.size().y / 2.0), galley, ink);
+            out.open_log = resp.clicked();
+            left_edge = chip.right() + 12.0;
+        }
+    }
     let room = (rect.right() - 12.0) - left_edge;
     let chip_w = |t: &str| p.layout_no_wrap(t.to_owned(), FontId::proportional(11.0), pal.fg).size().x + 12.0;
     let more_w = |n: usize| p.layout_no_wrap(format!("+{n}"), FontId::proportional(11.0), pal.fg).size().x + 12.0;
@@ -816,12 +841,24 @@ pub struct BandFrame {
     pub settings: bool,
     /// The running server's version when it is not this window's.
     pub old_server: Option<String>,
+    /// The session with the keys has a work log going.
+    pub log: Option<BandLog>,
+}
+
+/// The work log of the session with the keys, for the band.
+pub struct BandLog {
+    pub name: String,
+    pub path: String,
+    /// A full-screen program has the screen: nothing is being taken.
+    pub paused: bool,
 }
 
 #[derive(Default)]
 pub struct BandOut {
     /// The "server is old" chip was clicked.
     pub restart_server: bool,
+    /// The work log's chip was clicked.
+    pub open_log: bool,
     /// The search box was clicked.
     pub search: bool,
     /// The settings' close button was clicked.

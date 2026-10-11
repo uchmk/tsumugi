@@ -4705,23 +4705,13 @@ impl App {
                         let r = p.text(egui::pos2(right_x, head.center().y), egui::Align2::RIGHT_CENTER, "● REC", egui::FontId::proportional(10.5), chrome::ink(chrome::red()));
                         right_x = r.left() - 10.0;
                     }
-                    // A work log being written (Ctrl+Shift+S finishes it): a lit
-                    // pill; a click opens the file.
+                    // A work log being written (Ctrl+Shift+S finishes it); the
+                    // band has the lit chip that opens it.
                     if !info.logging.is_empty() {
-                        let galley = p.layout_no_wrap("LOG".into(), egui::FontId::proportional(10.5), crate::theme::colors().bg);
-                        let pill = egui::Rect::from_min_size(
-                            egui::pos2(right_x - galley.size().x - 12.0, head.center().y - 8.0),
-                            egui::vec2(galley.size().x + 12.0, 16.0),
-                        );
-                        let hit = ui.interact(pill, ui.id().with(("work-log", *id)), egui::Sense::click());
-                        let fill = if hit.hovered() { chrome::gold() } else { chrome::gold().gamma_multiply(0.85) };
-                        p.rect_filled(pill, 8, fill);
-                        p.galley(pill.center() - galley.size() / 2.0, galley, crate::theme::colors().bg);
-                        let hit = hit.on_hover_cursor(egui::CursorIcon::PointingHand).on_hover_text(trf("tab.work_log_open", &[&info.logging]));
-                        if hit.clicked() {
-                            menu::open_path(std::path::PathBuf::from(&info.logging), None, None, self.open.file.clone(), self.jobs.0.clone());
-                        }
-                        right_x = pill.left() - 10.0;
+                        let paused = self.panes.get(id).is_some_and(|pane| ito_pane::Pane::screen(pane).alt_screen);
+                        let ink = if paused { self.palette.fg_dim } else { chrome::ink(chrome::gold()) };
+                        let r = p.text(egui::pos2(right_x, head.center().y), egui::Align2::RIGHT_CENTER, "LOG", egui::FontId::proportional(10.5), ink);
+                        right_x = r.left() - 10.0;
                     }
                     // A character set other than UTF-8, said where it applies.
                     if !info.charset.is_empty() && info.charset != "UTF-8" {
@@ -6075,7 +6065,12 @@ impl App {
         let focus_tags = focus_info.as_ref().map(|i| i.tags.clone()).unwrap_or_default();
         let muted_tags_now = client.muted_tags();
         let maximized = ctx.input(|i| i.viewport().maximized.unwrap_or(false));
-        let band_frame = chrome::BandFrame { own: self.own_frame && !self.system_frame, left: if self.own_frame && cfg!(target_os = "macos") && !lights_on_side { 76.0 } else { 0.0 }, maximized, settings: self.prefs.is_some(), old_server: Some(client.server_build()).filter(|b| !b.is_empty() && b != env!("CARGO_PKG_VERSION")) };
+        let log = focus_info.as_ref().filter(|i| !i.logging.is_empty()).map(|i| chrome::BandLog {
+            name: sort::display_title(&i.title, &i.command).to_string(),
+            path: i.logging.clone(),
+            paused: self.panes.get(&i.id).is_some_and(|pane| ito_pane::Pane::screen(pane).alt_screen),
+        });
+        let band_frame = chrome::BandFrame { log, own: self.own_frame && !self.system_frame, left: if self.own_frame && cfg!(target_os = "macos") && !lights_on_side { 76.0 } else { 0.0 }, maximized, settings: self.prefs.is_some(), old_server: Some(client.server_build()).filter(|b| !b.is_empty() && b != env!("CARGO_PKG_VERSION")) };
         let band = egui::Panel::top("band")
             .exact_size(40.0)
             .frame(egui::Frame::NONE.fill(self.chrome_fill(crate::theme::colors().side)))
@@ -6093,6 +6088,11 @@ impl App {
         }
         if band.search {
             self.search = Some(palette::View::new());
+        }
+        if band.open_log {
+            if let Some(i) = &focus_info {
+                menu::open_path(std::path::PathBuf::from(&i.logging), None, None, self.open.file.clone(), self.jobs.0.clone());
+            }
         }
         if band.close_settings {
             self.prefs = None;
