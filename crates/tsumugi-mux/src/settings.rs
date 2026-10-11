@@ -109,6 +109,12 @@
 //! [menu]
 //! hide = ["new-window"]
 //!
+//! # A script the command palette runs (`Run script: Dev`): any command
+//! # line, with {folder} (the pane with the keys) and {session} put in.
+//! [[scripts]]
+//! name = "Dev"
+//! command = "tsumugi layout Dev {folder}"
+//!
 //! [[menu.session]]
 //! name = "Open lazygit here"
 //! command = "wt -d {folder} lazygit"
@@ -223,6 +229,11 @@ pub struct Settings {
     /// Regular expressions matched against the output: drawn in a colour,
     /// told of, or both.
     pub triggers: Vec<Trigger>,
+    /// Scripts to run from the command palette (`Run script: name`), like
+    /// tmux's `source-file`: a command line with `{folder}` and `{session}`
+    /// put in, which can rebuild a set of sessions with `tsumugi layout`,
+    /// `new`, `split` and `send`.
+    pub scripts: Vec<MenuItem>,
 }
 
 /// A trigger (iTerm2's): what in the output `regex` matches is drawn in
@@ -561,6 +572,7 @@ impl Default for Settings {
             prices: std::collections::BTreeMap::new(),
             agents: std::collections::BTreeMap::new(),
             triggers: Vec::new(),
+            scripts: Vec::new(),
         }
     }
 }
@@ -907,6 +919,11 @@ pub fn parse(text: &str) -> Result<Settings, String> {
             return Err(format!("notify.{key}: `{w}` is not waiting, error or done"));
         }
     }
+    for (i, sc) in s.scripts.iter().enumerate() {
+        if sc.name.trim().is_empty() || sc.command.trim().is_empty() {
+            return Err(format!("scripts[{}]: needs a name and a command", i + 1));
+        }
+    }
     for (i, t) in s.triggers.iter().enumerate() {
         let at = format!("triggers[{}]", i + 1);
         let r = ito_pane::regex::Regex::new(&t.regex).map_err(|e| format!("{at}: regex `{}` does not read: {}", t.regex, e.to_string().lines().last().unwrap_or("")))?;
@@ -1199,6 +1216,19 @@ mod tests {
         assert_eq!((s.remote.command_for("pi"), s.remote.command_for("box")), ("/opt/tsumugi/tsumugi".into(), "tsumugi".into()));
         let blank = Remote { command: " ".into(), ..Remote::default() };
         assert_eq!(blank.command_for("box"), "tsumugi", "a blank command is the plain one");
+    }
+
+    #[test]
+    fn scripts_are_read_and_checked() {
+        let s = parse("[[scripts]]
+name = \"Dev\"
+command = \"tsumugi layout Dev {folder}\"
+").expect("a script reads");
+        assert_eq!(s.scripts, vec![MenuItem { name: "Dev".into(), command: "tsumugi layout Dev {folder}".into() }]);
+        assert!(parse("[[scripts]]
+name = \"Dev\"
+command = \" \"
+").unwrap_err().contains("scripts[1]"));
     }
 
     #[test]

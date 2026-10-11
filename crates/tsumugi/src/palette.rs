@@ -20,6 +20,8 @@ pub enum Pick {
     Prompt(usize),
     /// Open the saved layout (by its place in the list) in a folder.
     Layout(usize),
+    /// Run the script from `[[scripts]]` (by its place in the list).
+    Script(usize),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]

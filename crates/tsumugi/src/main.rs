@@ -1958,7 +1958,7 @@ impl App {
 
     /// What the command palette lists: the commands, saved prompts and
     /// layouts, then every folder the sessions are in.
-    fn search_entries(sessions: &[Info], saved: &[prompts::Prompt], kept: &[layouts::Layout]) -> Vec<palette::Entry> {
+    fn search_entries(sessions: &[Info], saved: &[prompts::Prompt], kept: &[layouts::Layout], scripts: &[tsumugi_mux::settings::MenuItem]) -> Vec<palette::Entry> {
         let mut out = Vec::new();
         for c in palette::Command::ALL {
             if c == palette::Command::SecureInput && !secure::HERE {
@@ -1972,6 +1972,9 @@ impl App {
         }
         for (k, l) in kept.iter().enumerate() {
             out.push(palette::Entry { title: trf("palette.open_layout", &[&l.name]), detail: layouts::words(&l.tree), pick: palette::Pick::Layout(k) });
+        }
+        for (k, s) in scripts.iter().enumerate() {
+            out.push(palette::Entry { title: trf("palette.run_script", &[&s.name]), detail: s.command.chars().take(60).collect(), pick: palette::Pick::Script(k) });
         }
         let mut folders: Vec<&std::path::Path> = Vec::new();
         for i in sessions {
@@ -2375,6 +2378,13 @@ impl App {
                 }
                 let words = if to.len() > 1 { trf("toast.sent_panes", &[&p.name, &to.len().to_string()]) } else { trf("toast.sent_pane", &[&p.name]) };
                 self.say(words, false);
+            }
+            palette::Pick::Script(k) => {
+                let Some(s) = self.settings_now.scripts.get(k).cloned() else { return };
+                let focus = current.and_then(|w| client.sessions().into_iter().find(|i| i.id == w.focus));
+                let (folder, id) = focus.map(|i| (i.cwd, i.id)).unwrap_or_else(|| (std::env::current_dir().unwrap_or_default(), 0));
+                menu::run(tsumugi_mux::settings::fill(&s.command, &folder, id));
+                self.say(trf("toast.script_run", &[&s.name]), false);
             }
             palette::Pick::Layout(k) => {
                 let Some(l) = self.layouts.get(k).cloned() else { return };
@@ -6136,7 +6146,7 @@ impl App {
         self.show_undo(&ctx);
 
         let answer = match &mut self.search {
-            Some(view) => chrome::search_box(&ctx, &self.palette, view, &Self::search_entries(&sessions, &self.input.prompts, &self.layouts)),
+            Some(view) => chrome::search_box(&ctx, &self.palette, view, &Self::search_entries(&sessions, &self.input.prompts, &self.layouts, &self.settings_now.scripts)),
             None => None,
         };
         match answer {

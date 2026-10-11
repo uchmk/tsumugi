@@ -723,6 +723,14 @@ animations = true
 nerd_icons = true          # the Nerd Font's icons where one is installed
 cursor = "block-blink"     # block, bar or underline, -blink to blink
 
+# Scripts for the command palette ("Run script: Dev"), like tmux's source-file:
+# any command line, with {folder} (the pane with the keys) and {session} put
+# in. One can rebuild a set of sessions with `tsumugi layout`, `new`, `split`
+# and `send`.
+[[scripts]]
+name = "Dev"
+command = "tsumugi layout Dev {folder}"
+
 # What the tab's menu opens its folder with; the system's shell runs it.
 # A list for more than one: a click on the item runs the first, the others
 # open to its right.
