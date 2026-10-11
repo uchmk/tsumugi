@@ -330,13 +330,15 @@ mod os {
                 // Kept, so a click on one still reaches its handler.
                 let mut shown = VecDeque::new();
                 let mut registered = false;
+                let mut logo = None;
                 for (session, title, body) in rx {
-                    // The name, written at the first notification only.
+                    // The name and the logo, written at the first notification only.
                     if !registered {
-                        register();
+                        logo = write_logo();
+                        register(logo.as_deref());
                         registered = true;
                     }
-                    if let Ok(t) = toast(&title, &body, session, click.clone()) {
+                    if let Ok(t) = toast(&title, &body, session, logo.as_deref(), click.clone()) {
                         shown.push_back(t);
                         if shown.len() > 50 {
                             shown.pop_front();
@@ -374,23 +376,42 @@ mod os {
         }
     }
 
-    fn register() {
+    /// The logo (`icon::pixels`) as a PNG in the user's local app data, for the
+    /// notifications to show: its path, or None if it could not be written.
+    fn write_logo() -> Option<std::path::PathBuf> {
+        let dir = std::env::var_os("LOCALAPPDATA").map_or_else(std::env::temp_dir, std::path::PathBuf::from).join("tsumugi");
+        std::fs::create_dir_all(&dir).ok()?;
+        let path = dir.join("logo.png");
+        image::save_buffer(&path, &crate::icon::pixels(128), 128, 128, image::ColorType::Rgba8).ok()?;
+        Some(path)
+    }
+
+    fn register(logo: Option<&std::path::Path>) {
         let key = HSTRING::from(format!("Software\\Classes\\AppUserModelId\\{APP_ID}"));
         unsafe {
             let mut k = HKEY::default();
             if RegCreateKeyExW(HKEY_CURRENT_USER, &key, None, None, REG_OPTION_NON_VOLATILE, KEY_WRITE, None, &mut k, None).is_ok() {
                 let name: Vec<u8> = "tsumugi\0".encode_utf16().flat_map(u16::to_le_bytes).collect();
                 let _ = RegSetValueExW(k, w!("DisplayName"), None, REG_SZ, Some(&name));
+                // The small mark beside the name in the notification's header.
+                if let Some(path) = logo {
+                    let uri: Vec<u8> = format!("{}\0", path.display()).encode_utf16().flat_map(u16::to_le_bytes).collect();
+                    let _ = RegSetValueExW(k, w!("IconUri"), None, REG_SZ, Some(&uri));
+                }
                 let _ = RegCloseKey(k);
             }
         }
     }
 
-    fn toast(title: &str, body: &str, session: SessionId, click: Click) -> windows::core::Result<ToastNotification> {
+    fn toast(title: &str, body: &str, session: SessionId, logo: Option<&std::path::Path>, click: Click) -> windows::core::Result<ToastNotification> {
+        // The logo beside the words, if it was written.
+        let image = logo.map_or_else(String::new, |p| {
+            format!("<image placement=\"appLogoOverride\" src=\"file:///{}\"/>", xml_escape(&p.display().to_string().replace('\\', "/")))
+        });
         // Open goes to the session, as a click on the toast does; Later is
         // the system's own dismiss (the design's Notify).
         let xml = format!(
-            "<toast launch=\"open\"><visual><binding template=\"ToastGeneric\"><text>{}</text><text>{}</text></binding></visual>\
+            "<toast launch=\"open\"><visual><binding template=\"ToastGeneric\">{image}<text>{}</text><text>{}</text></binding></visual>\
              <actions><action content=\"Open\" arguments=\"open\"/><action content=\"Later\" arguments=\"dismiss\" activationType=\"system\"/></actions></toast>",
             xml_escape(title),
             xml_escape(body)
