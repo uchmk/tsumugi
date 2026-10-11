@@ -563,12 +563,12 @@ not_connected = "つながっていない"
 [title]
 settings = "設定"
 close_settings = "設定を閉じる（Esc）"
-search = "コマンド・プロンプト・並び・フォルダー"
+search = "コマンドパレット"
 minimize = "最小化"
 restore = "元に戻す"
 maximize = "最大化"
 close = "閉じる"
-search_hint = "コマンド・プロンプト・並び・フォルダー（セッション: {0}）"
+search_hint = "コマンドパレット（セッション: {0}）"
 nothing_matches = "合うものがありません"
 
 [notices]
