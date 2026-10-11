@@ -6,10 +6,12 @@
 
 use egui::{FontId, RichText};
 
+use crate::i18n::{tr, tr_desc};
 use crate::keys::{self, Action};
 use crate::theme::Colors;
 
-/// A kind of key and its lines: (key, what it does).
+/// A kind of key and its lines: (key, what it does). In English, as keys.rs
+/// has them; translated (`[keydesc]`) when drawn.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Group {
     pub title: &'static str,
@@ -169,10 +171,10 @@ pub fn show(ctx: &egui::Context, view: &mut View, c: &Colors) -> bool {
         egui::Frame::NONE.fill(c.panel).stroke(egui::Stroke::new(1.0, c.border_strong())).corner_radius(12.0).inner_margin(egui::Margin::symmetric(20, 14)).show(ui, |ui| {
             ui.set_width(width);
             ui.horizontal(|ui| {
-                ui.label(RichText::new("Keys").size(15.0).strong().color(c.strong()));
-                ui.label(RichText::new("Change them in Settings → Keys").size(12.0).color(c.dim));
+                ui.label(RichText::new(tr("help.title")).size(15.0).strong().color(c.strong()));
+                ui.label(RichText::new(tr("help.lead")).size(12.0).color(c.dim));
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if ui.button("×").on_hover_text("Close (Esc)").clicked() {
+                    if ui.button("×").on_hover_text(tr("help.close")).clicked() {
                         keep = false;
                     }
                 });
@@ -208,7 +210,7 @@ pub fn show(ctx: &egui::Context, view: &mut View, c: &Colors) -> bool {
 /// One group, its letters and spaces times `s`.
 fn group(ui: &mut egui::Ui, g: &Group, c: &Colors, id: usize, s: f32) {
     ui.add_space(6.0 * s);
-    ui.label(RichText::new(g.title.to_uppercase()).size(11.0 * s).strong().color(c.dim));
+    ui.label(RichText::new(tr_desc(g.title).to_uppercase()).size(11.0 * s).strong().color(c.dim));
     ui.add_space(2.0 * s);
     // The keys in a column as wide as the widest of the group's, the words
     // wrapping in what is left.
@@ -220,7 +222,7 @@ fn group(ui: &mut egui::Ui, g: &Group, c: &Colors, id: usize, s: f32) {
                 ui.set_min_width(key_w);
                 ui.label(RichText::new(k).font(font.clone()).color(c.wait_text()));
             });
-            ui.add(egui::Label::new(RichText::new(what).size(12.0 * s).color(c.fg)).wrap());
+            ui.add(egui::Label::new(RichText::new(tr_desc(what)).size(12.0 * s).color(c.fg)).wrap());
             ui.end_row();
         }
     });
@@ -246,6 +248,17 @@ mod tests {
         for (section, _, _, what) in keys::FIXED.iter().filter(|f| !matches!(f.0, "The window, fixed" | "The help")) {
             assert!(all.iter().any(|g| g.title == *section && g.rows.iter().any(|(_, w)| w == what)), "{section}: {what}");
         }
+    }
+
+    /// Every title and line the help draws, and whose key a clash names on
+    /// the settings screen, has a `[keydesc]` translation.
+    #[test]
+    fn every_line_is_translated() {
+        let all = all();
+        let mut descs: Vec<&str> = all.iter().flat_map(|g| std::iter::once(g.title).chain(g.rows.iter().map(|(_, w)| w.as_str()))).collect();
+        descs.extend(keys::OTHERS.iter().map(|(_, whose)| *whose));
+        let bad = ito_i18n::check::key_descriptions(crate::i18n::AVAILABLE, &descs);
+        assert!(bad.is_empty(), "{}", bad.join("\n"));
     }
 
     #[test]

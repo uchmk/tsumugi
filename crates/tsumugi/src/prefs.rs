@@ -13,7 +13,7 @@ use ito_pane::Palette;
 use ito_prefs::{button, field, keycap, row, section, select, sep, status, switch, Drafts, Look, Words};
 
 use crate::facts::Facts;
-use crate::i18n::{tr, trf};
+use crate::i18n::{tr, tr_desc, trf};
 use crate::sort::Sort;
 use crate::theme::{Colors, Theme};
 
@@ -158,8 +158,9 @@ pub fn index() -> Vec<(Page, &'static str)> {
     let mut out: Vec<(Page, &'static str)> = INDEX.iter().map(|(p, k)| (*p, tr(k))).collect();
     let shared = |w: &'static Words| [(Page::General, w.language), (Page::General, w.scale), (Page::General, w.show_time), (Page::General, w.time_format), (Page::General, w.show_date), (Page::General, w.date_format), (Page::General, w.weekday), (Page::Theme, w.mode), (Page::Theme, w.preview)];
     out.extend(shared(w));
-    out.extend(keys.map(|a| (Page::Keys, crate::keys::title(a))));
+    out.extend(keys.map(|a| (Page::Keys, tr_desc(crate::keys::title(a)))));
     if crate::i18n::current_language() != "en" {
+        out.extend(keys.map(|a| (Page::Keys, crate::keys::title(a))));
         out.extend(INDEX.iter().map(|(p, k)| (*p, crate::i18n::tr_en(k))));
         out.extend(shared(&ito_prefs::EN));
     }
@@ -576,7 +577,13 @@ fn keys(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut Vec<
                 let chord = crate::keys::Chord::pressed(k, m);
                 let action = NAMED.iter().find(|(_, n, ..)| *n == name).map(|(a, ..)| *a);
                 match action.and_then(|a| crate::keys::clash(&chord, a)) {
-                    Some(why) => edit.clash = Some((name, why, chord.label())),
+                    Some(c) => {
+                        let why = match c {
+                            crate::keys::Clash::Window(a) => trf("prefs.keys.clash_window", &[&chord.label(), tr_desc(crate::keys::title(a))]),
+                            crate::keys::Clash::Other(whose) => trf("prefs.keys.clash_other", &[&chord.label(), tr_desc(whose)]),
+                        };
+                        edit.clash = Some((name, why, chord.label()));
+                    }
                     None => {
                         out.push(Change::Set(Some("keys"), name, cfg::quote(&chord.label())));
                         edit.capturing = None;
@@ -611,7 +618,7 @@ fn keys(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut Vec<
             None if now != own => trf("prefs.keys.own_note", &[own]),
             None => String::new(),
         };
-        row(ui, l, crate::keys::title(a), &note, |ui| crate::chrome::in_order(ui, |ui| {
+        row(ui, l, tr_desc(crate::keys::title(a)), &note, |ui| crate::chrome::in_order(ui, |ui| {
             let waiting = edit.capturing == Some(*name);
             let text = if waiting { tr("prefs.keys.press").to_owned() } else { now.clone() };
             if keycap(ui, l, &text, waiting).on_hover_text(tr("prefs.keys.press_hover")).clicked() {

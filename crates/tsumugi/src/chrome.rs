@@ -1003,7 +1003,7 @@ pub fn sort_button(ui: &mut egui::Ui, pal: &Palette, label: &str) -> egui::Respo
     let galley = ui.painter().layout_no_wrap(label.to_owned(), FontId::proportional(11.5), pal.fg_dim);
     let size = egui::vec2(galley.size().x + 30.0, 24.0);
     let (rect, resp) = ui.allocate_exact_size(size, egui::Sense::click());
-    let resp = resp.on_hover_text("Sort sessions");
+    let resp = resp.on_hover_text(crate::i18n::tr("sort.hover"));
     let p = ui.painter();
     let border = if resp.hovered() { crate::theme::colors().border_strong() } else { crate::theme::colors().border };
     p.rect_stroke(rect, 6.0, egui::Stroke::new(1.0, border), egui::StrokeKind::Inside);
