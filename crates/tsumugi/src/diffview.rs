@@ -8,6 +8,7 @@ use std::sync::mpsc::Receiver;
 
 use eframe::egui::{self, RichText};
 
+use crate::i18n::{tr, trf};
 use crate::theme::Colors;
 
 pub struct View {
@@ -108,10 +109,10 @@ pub fn show(ctx: &egui::Context, view: &mut View, c: &Colors) -> bool {
         egui::Frame::NONE.fill(c.panel).stroke(egui::Stroke::new(1.0, c.border_strong())).corner_radius(12.0).inner_margin(egui::Margin::symmetric(16, 12)).show(ui, |ui| {
             ui.set_width(width);
             ui.horizontal(|ui| {
-                ui.label(RichText::new(format!("Changes · {}", view.title)).size(14.0).strong().color(c.strong()));
+                ui.label(RichText::new(trf("diff.title", &[&view.title])).size(14.0).strong().color(c.strong()));
                 ui.label(RichText::new(view.cwd.display().to_string()).monospace().size(11.0).color(c.dim));
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if ui.button("×").on_hover_text("Close (Esc)").clicked() {
+                    if ui.button("×").on_hover_text(tr("help.close")).clicked() {
                         open = false;
                     }
                     if let Some(Ok(lines)) = &view.text {
@@ -125,13 +126,13 @@ pub fn show(ctx: &egui::Context, view: &mut View, c: &Colors) -> bool {
             ui.separator();
             match &view.text {
                 None => {
-                    ui.label(RichText::new("Reading the changes…").color(c.dim));
+                    ui.label(RichText::new(tr("diff.reading")).color(c.dim));
                 }
                 Some(Err(e)) => {
                     ui.label(RichText::new(e).color(c.dim));
                 }
                 Some(Ok(lines)) if lines.is_empty() => {
-                    ui.label(RichText::new("Nothing changed since the last commit.").color(c.dim));
+                    ui.label(RichText::new(tr("diff.nothing")).color(c.dim));
                 }
                 Some(Ok(lines)) => {
                     let row = 16.0;

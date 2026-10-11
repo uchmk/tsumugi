@@ -7,6 +7,7 @@
 use egui::RichText;
 use tsumugi_mux::SessionId;
 
+use crate::i18n::tr;
 use crate::theme::Colors;
 
 /// The bar while it is open.
@@ -97,26 +98,26 @@ pub fn show(ctx: &egui::Context, pane: egui::Rect, bar: &mut Bar, c: &Colors) ->
             ui.set_width(width - 16.0);
             ui.horizontal(|ui| {
                 let words = match bar.said {
-                    Some(None) => RichText::new("No match").color(c.err),
+                    Some(None) => RichText::new(tr("find.no_match")).color(c.err),
                     // "From the end again" was cut short in the 96 points (the
                     // real machine, 2.30).
-                    Some(Some(true)) => RichText::new("Wrapped").color(c.dim),
+                    Some(Some(true)) => RichText::new(tr("find.wrapped")).color(c.dim),
                     _ => RichText::new(""),
                 };
                 let room = ui.available_width() - 3.0 * 24.0 - 96.0;
-                let field = ui.add(egui::TextEdit::singleline(&mut bar.needle).id(field_id).hint_text("Find in the pane").desired_width(room.max(60.0)));
+                let field = ui.add(egui::TextEdit::singleline(&mut bar.needle).id(field_id).hint_text(tr("find.hint")).desired_width(room.max(60.0)));
                 if std::mem::take(&mut bar.focus) || (bar.keyed && step.is_some()) {
                     field.request_focus();
                 }
                 bar.keyed = field.has_focus() || ctx.memory(|m| m.has_focus(field_id));
                 ui.add_sized(egui::vec2(96.0, 18.0), egui::Label::new(words.size(11.5)).truncate());
-                if ui.small_button("↑").on_hover_text("Older match (Shift+Enter)").clicked() {
+                if ui.small_button("↑").on_hover_text(tr("find.older")).clicked() {
                     step = Some(true);
                 }
-                if ui.small_button("↓").on_hover_text("Newer match (Enter)").clicked() {
+                if ui.small_button("↓").on_hover_text(tr("find.newer")).clicked() {
                     step = Some(false);
                 }
-                if ui.small_button("×").on_hover_text("Close (Esc)").clicked() {
+                if ui.small_button("×").on_hover_text(tr("help.close")).clicked() {
                     close = true;
                 }
             });
