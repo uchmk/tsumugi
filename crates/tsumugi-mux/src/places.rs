@@ -24,8 +24,14 @@ pub fn move_old_once() {
     static ONCE: std::sync::Once = std::sync::Once::new();
     ONCE.call_once(|| {
         let set = |k: &str| ito_common::env_dir(k).is_some();
-        let config = if set("TSUMUGI_SETTINGS") || set("TSUMUGI_CONFIG_HOME") { None } else { ito_common::app_dir("tsumugi") };
-        let state = if set("TSUMUGI_STATE") || set("TSUMUGI_STATE_HOME") { None } else { ito_common::state_dir("tsumugi") };
+        // Read until v0.103: say so once, so a script that still sets them is found.
+        for (old, new) in [("TSUMUGI_SETTINGS", "TSUMUGI_CONFIG_HOME"), ("TSUMUGI_STATE", "TSUMUGI_STATE_HOME")] {
+            if set(old) {
+                eprintln!("tsumugi: {old} is no longer read; use {new} (a folder)");
+            }
+        }
+        let config = if set("TSUMUGI_CONFIG_HOME") { None } else { ito_common::app_dir("tsumugi") };
+        let state = if set("TSUMUGI_STATE_HOME") { None } else { ito_common::state_dir("tsumugi") };
         let (old_config, old_state) = old_dirs();
         let old = (old_config.filter(|_| config.is_some()), old_state.filter(|_| state.is_some()));
         for e in move_old(old, (config, state)) {

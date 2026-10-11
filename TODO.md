@@ -44,7 +44,7 @@ tsumugi のやること。`【人】` は持ち主の作業、`【金】` は 20
       環境変数を `TSUMUGI_CONFIG_HOME`・`TSUMUGI_STATE_HOME` にした。字体のフォールバックは `ito_common::fonts`。窓の既定は 1280×800。
 - [x] （v0.95.0）標準の CLI の `--keys` を、kura・yagura と揃えて足した（common-spec のキーの台本。#19 の推奨）。
       `TSUMUGI_KEYS_DONE` に状態（`focus`・`overlay`・`scale` と `tabs`・`panes`・`zoom`・`title`）を書く。`mcp` と `shell-hook` は tsumugi だけのものとして残す。
-- [ ] 古い `TSUMUGI_SETTINGS`（ファイル）と `TSUMUGI_STATE` を読むのをやめる時期を決める（v0.87.0 からは新しい名前が正）。（要確認: #20）
+- [x] 古い `TSUMUGI_SETTINGS`（ファイル）と `TSUMUGI_STATE` を読むのをやめた（v0.104.0。設定されていたら起動のときに 1 回警告する。#20）。
 - [ ] keymap.toml（`[keys]` を yagura・kura と同じ層の書き方に）、`tsumugi.com` の前段（出力をコンソールに確実に出す）、`--keys` の ito-keyscript への載せ替えとシェルのフックの ito-pane への移し替え（#38 の 1・2・6）。ito 側のクレート（uchmk/ito#3）を待つ。（要確認: #39）
 
 ## 実機のレーンから
@@ -55,9 +55,9 @@ v0.94.0 から、実機の PR の所見と頼みは `finding` の issue に、�
 2.52・5.8・5.10・17.26 の再テストは実機の PR #14 が押した（マージで所見が issue になる）。
 
 - [ ] 2.73 の絵の形を人が見て `[~]` を `[x]` にする【人】
-- [ ] `examples/make-testcheck.rs`・`make-keycheck.rs` を ito の `ito-testcheck` に載せ替えるか決める。今の ito-testcheck は kura の表の形
+- [x] `examples/make-testcheck.rs`・`make-keycheck.rs` は ito の `ito-testcheck` に載せ替えない（#21 の票。ito-testcheck が tsumugi の形を読めるようになったら見直す）。今の ito-testcheck は kura の表の形
       （訳の toml・テスト名の走査・節の準備）で、tsumugi の表（`操作 → 期待` の 1 行）と違う。載せ替えると TESTING-CHECKS.md の中身が
-      全部変わり、レーンの塊の選び方（`wintest-queue.ps1`）の行の読み方も確かめ直しになる（v0.94.0 では見送った）。（要確認: #21）
+      全部変わり、レーンの塊の選び方（`wintest-queue.ps1`）の行の読み方も確かめ直しになる（v0.94.0 では見送った）。
 
 ## tmux / tmuxinator との比べ（#32、2026-10-11）
 

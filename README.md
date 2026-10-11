@@ -98,8 +98,7 @@ types `claude --resume <conversation>` where Claude Code ran. The file is
 `%LOCALAPPDATA%\uchmk\tsumugi\state` on Windows,
 `~/.local/state/uchmk/tsumugi/state` on Linux and
 `~/Library/Application Support/uchmk/tsumugi/state/state` on macOS
-(`TSUMUGI_STATE_HOME` names another folder; `TSUMUGI_STATE`, the file, is
-still read).
+(`TSUMUGI_STATE_HOME` names another folder).
 
 With Settings → General → On start set to Ask, **Welcome back** lists them
 first, each with a box, ticked but those that had finished. **Select all**
@@ -572,8 +571,7 @@ by hand stays; a field writes on Enter, and Esc leaves it as it was.
 `config.toml` is read from `%APPDATA%\uchmk\tsumugi\` on Windows,
 `~/Library/Application Support/uchmk/tsumugi/` on macOS and
 `~/.config/uchmk/tsumugi/` elsewhere, the folder every uchmk app keeps its
-own in (`TSUMUGI_CONFIG_HOME` names another folder; `TSUMUGI_SETTINGS`, the
-file, is still read). Before v0.87.0 it was `settings.toml` in a `tsumugi`
+own in (`TSUMUGI_CONFIG_HOME` names another folder). Before v0.87.0 it was `settings.toml` in a `tsumugi`
 folder of its own; the first start moves that, and the state, to the new
 places (the copies of the server in the old `server` folder stay). Changes apply within a
 couple of seconds, without restarting; a mistake shows above the status bar

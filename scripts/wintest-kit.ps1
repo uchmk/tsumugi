@@ -33,8 +33,7 @@
 #   Stop-Mine                           every window and the server this kit started; never the owner's
 #
 # Isolation: auto-wintest.ps1 sets TSUMUGI_ADDRESS, TSUMUGI_STATE_HOME,
-# TSUMUGI_CONFIG_HOME (and the names before v0.87.0, TSUMUGI_STATE and
-# TSUMUGI_SETTINGS, for an older build), TSUMUGI_PTY_LOG and TSUMUGI_KEYLOG for the whole run, and
+# TSUMUGI_CONFIG_HOME, TSUMUGI_PTY_LOG and TSUMUGI_KEYLOG for the whole run, and
 # WINTEST_KIT (the kit's folder) and WINTEST_EXE, so even a bare `tsumugi ls`
 # reaches the run's own server: the owner's server, sessions and settings are
 # never touched. By hand, the kit sets them itself (a folder under TEMP).
@@ -223,8 +222,6 @@ function Use-Isolation {
         $env:TSUMUGI_ADDRESS = '\\.\pipe\tsumugi-wintest-kit'
         $env:TSUMUGI_STATE_HOME = $script:KitDir
         $env:TSUMUGI_CONFIG_HOME = $script:KitDir
-        $env:TSUMUGI_STATE = Join-Path $script:KitDir 'state'
-        $env:TSUMUGI_SETTINGS = Join-Path $script:KitDir 'config.toml'
         $env:TSUMUGI_PTY_LOG = Join-Path $script:KitDir 'pty.log'
     }
     $env:TSUMUGI_KEYLOG = '1'

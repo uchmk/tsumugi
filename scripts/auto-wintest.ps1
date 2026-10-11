@@ -21,8 +21,7 @@
 #      Local\wintest-desktop for the time they drive it, and wait up to
 #      -DesktopWaitMin minutes for the other.
 #   5. The isolation: TSUMUGI_ADDRESS (a pipe of the run's own),
-#      TSUMUGI_STATE_HOME and TSUMUGI_CONFIG_HOME (with TSUMUGI_STATE and
-#      TSUMUGI_SETTINGS for an older build), TSUMUGI_PTY_LOG and TSUMUGI_KEYLOG are set for the
+#      TSUMUGI_STATE_HOME and TSUMUGI_CONFIG_HOME, TSUMUGI_PTY_LOG and TSUMUGI_KEYLOG are set for the
 #      whole run, so even a bare `tsumugi ls` reaches the run's server, never
 #      the owner's; scripts/wintest-kit.ps1 has the tools the run uses.
 #   6. The older build: for a chunk with a row that names WINTEST_OLD_EXE,
@@ -768,9 +767,6 @@ $chunkText
     $env:WINTEST_EXE = $exe
     $env:TSUMUGI_STATE_HOME = $kit
     $env:TSUMUGI_CONFIG_HOME = $kit
-    # The names before v0.87.0, for an older build (WINTEST_OLD_EXE): the same files.
-    $env:TSUMUGI_STATE = Join-Path $kit 'state'
-    $env:TSUMUGI_SETTINGS = Join-Path $kit 'config.toml'
     $env:TSUMUGI_PTY_LOG = Join-Path $kit 'pty.log'
     $env:TSUMUGI_KEYLOG = '1'
     Remove-Item Env:TSUMUGI_SESSION -ErrorAction SilentlyContinue

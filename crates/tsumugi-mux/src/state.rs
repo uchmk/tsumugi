@@ -307,17 +307,13 @@ mod old {
 }
 
 /// Where the state is kept: `state` in `TSUMUGI_STATE_HOME` when set; else
-/// `TSUMUGI_STATE` (the file, as before v0.87.0); else in tsumugi's state
-/// folder beside every uchmk app's (`%LOCALAPPDATA%\uchmk\tsumugi\state` on
+/// in tsumugi's state folder beside every uchmk app's (`%LOCALAPPDATA%\uchmk\tsumugi\state` on
 /// Windows, `ito_common::state_dir`). The first time, the old state is moved
 /// there (`places`).
 pub fn default_path() -> Option<PathBuf> {
     crate::places::move_old_once();
     if let Some(d) = ito_common::env_dir("TSUMUGI_STATE_HOME") {
         return Some(d.join("state"));
-    }
-    if let Some(p) = ito_common::env_dir("TSUMUGI_STATE") {
-        return Some(p);
     }
     Some(ito_common::state_dir("tsumugi")?.join("state"))
 }

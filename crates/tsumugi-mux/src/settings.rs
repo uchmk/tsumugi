@@ -825,7 +825,7 @@ impl Default for Notify {
 }
 
 /// Where the file is: `config.toml` in `TSUMUGI_CONFIG_HOME` when set; else
-/// `TSUMUGI_SETTINGS` (the file, as before v0.87.0); else in tsumugi's folder
+/// in tsumugi's folder
 /// beside every uchmk app's (`%APPDATA%\uchmk\tsumugi\config.toml` on
 /// Windows, `ito_common::app_dir`). The first time, the old settings are
 /// moved there (`places`).
@@ -833,9 +833,6 @@ pub fn default_path() -> Option<PathBuf> {
     crate::places::move_old_once();
     if let Some(d) = ito_common::env_dir("TSUMUGI_CONFIG_HOME") {
         return Some(d.join("config.toml"));
-    }
-    if let Some(p) = ito_common::env_dir("TSUMUGI_SETTINGS") {
-        return Some(p);
     }
     Some(ito_common::app_dir("tsumugi")?.join("config.toml"))
 }
