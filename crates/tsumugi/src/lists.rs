@@ -186,6 +186,14 @@ pub fn show(ctx: &egui::Context, view: &mut View, all: &[Card], found: &[Found],
     if dim.inner.clicked() && !view.opening {
         out.push(Do::Close);
     }
+    // The keys that open a page close it again, or turn to it from another
+    // page: the panel has the keys, so the window never saw them (the real
+    // machine, 5.8).
+    match ctx.input_mut(own_key) {
+        Some(page) if page == view.page && !view.opening => out.push(Do::Close),
+        Some(page) => view.page = page,
+        None => {}
+    }
     view.opening = false;
     if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
         out.push(Do::Close);
@@ -228,6 +236,21 @@ pub fn show(ctx: &egui::Context, view: &mut View, all: &[Card], found: &[Found],
         });
     });
     out
+}
+
+/// The page whose key (the overview's, the waiting list's) was pressed,
+/// taken out of the frame's input.
+fn own_key(i: &mut egui::InputState) -> Option<Page> {
+    let (key, m, page) = i.events.iter().find_map(|e| match e {
+        egui::Event::Key { key, pressed: true, modifiers, .. } => match crate::keys::action(*key, *modifiers) {
+            Some(crate::keys::Action::Overview) => Some((*key, *modifiers, Page::All)),
+            Some(crate::keys::Action::Waiting) => Some((*key, *modifiers, Page::Waiting)),
+            _ => None,
+        },
+        _ => None,
+    })?;
+    i.consume_key(m, key);
+    Some(page)
 }
 
 /// The keys that turn the page: (next, before). `arrows`: Left and Right
@@ -568,6 +591,28 @@ fn ended_words(ms: u64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The overview's and the waiting list's keys close their own page and
+    /// turn to theirs from another, while the panel has the keys (5.8).
+    #[test]
+    fn a_page_key_closes_its_page() {
+        let ctx = egui::Context::default();
+        let mut view = View::new(Page::All);
+        let mut frame = |key: Option<egui::Key>| {
+            let mac = crate::keys::mac();
+            let modifiers = egui::Modifiers { ctrl: !mac, mac_cmd: mac, command: true, shift: true, alt: false };
+            let events = key.map(|key| egui::Event::Key { key, physical_key: None, pressed: true, repeat: false, modifiers }).into_iter().collect();
+            let input = egui::RawInput { screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1280.0, 800.0))), events, ..Default::default() };
+            let mut got = Vec::new();
+            let mut out = ctx.run_ui(input, |ui| got = show(ui.ctx(), &mut view, &[], &[], 0, &[], &[], &crate::theme::colors()));
+            out.textures_delta.clear();
+            (got.contains(&Do::Close), view.page)
+        };
+        assert_eq!(frame(Some(egui::Key::O)), (false, Page::All), "the frame it opens in keeps it");
+        assert_eq!(frame(Some(egui::Key::Y)), (false, Page::Waiting));
+        assert_eq!(frame(Some(egui::Key::O)), (false, Page::All));
+        assert_eq!(frame(Some(egui::Key::O)), (true, Page::All));
+    }
 
     /// Each language's day is a format chrono reads: a bad one would panic
     /// on screen.

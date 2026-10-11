@@ -704,12 +704,20 @@ const OTHER_VERSION: &str = "A tsumugi server of another version is running: ";
 /// Stop the server of another version and start this version's, on a thread
 /// of its own (it can take seconds). A server from before tsumugi 0.19
 /// does not know how to be asked, and is said so.
-fn replace_server(wake: impl Fn() + Send + Sync + Clone + 'static) -> std::sync::mpsc::Receiver<Result<Client, String>> {
+/// `old`: the window's line to a server of this version being restarted.
+/// That server answers a new client until it has read the stop, so only
+/// the line's end says it went (the real machine, 17.26: the window took
+/// the old server back, and was left with nothing when it left).
+fn replace_server(old: Option<Client>, wake: impl Fn() + Send + Sync + Clone + 'static) -> std::sync::mpsc::Receiver<Result<Client, String>> {
     let (tx, rx) = std::sync::mpsc::channel();
     let _ = std::thread::Builder::new().name("replace-server".into()).spawn(move || {
         let at = tsumugi_mux::address();
         let _ = Client::stop(&at);
         let deadline = std::time::Instant::now() + Duration::from_secs(15);
+        let restarting = old.is_some();
+        while old.as_ref().is_some_and(|c| !c.lost()) && std::time::Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(50));
+        }
         // Gone only when nobody is at the address: a server stopping hangs
         // up on a new client without a word, and a new server started then
         // found the address still taken and left (the window said "the
@@ -727,6 +735,9 @@ fn replace_server(wake: impl Fn() + Send + Sync + Clone + 'static) -> std::sync:
         };
         let answer = if stopped {
             connect(wake)
+        } else if restarting {
+            let by_hand = if cfg!(windows) { "Stop-Process -Name tsumugi" } else { "pkill -f 'tsumugi server'" };
+            Err(trf("dialog.not_stopped", &[by_hand]))
         } else {
             let by_hand = if cfg!(windows) { "Stop-Process -Name tsumugi" } else { "pkill -f 'tsumugi server'" };
             Err(format!("The other server did not stop: it is from before tsumugi 0.19, which cannot be asked. Stop it by hand ({by_hand}) and open tsumugi again; its tabs come back."))
@@ -3802,10 +3813,10 @@ impl App {
         self.show_machine(None);
         self.prefs = None;
         self.panes.clear();
-        self.client = None;
-        self.failed = Some("Restarting the server…".into());
+        let old = self.client.take();
+        self.failed = Some(tr("dialog.restarting").into());
         let ctx = ctx.clone();
-        self.replacing = Some(replace_server(move || ctx.request_repaint()));
+        self.replacing = Some(replace_server(old, move || ctx.request_repaint()));
     }
 
     /// Show another machine's sessions (`Some(host)`, reached already), or
@@ -3852,7 +3863,7 @@ impl App {
             // This machine's server stopped while another was shown (one
             // no session was ever started on stops by itself): started
             // again, its saved tabs offered back.
-            self.failed = Some("Starting this machine's server…".into());
+            self.failed = Some(tr("dialog.starting_home").into());
             let ctx = self.ctx.clone();
             self.replacing = Some(spawn_connect(move || ctx.request_repaint()));
         }
@@ -5147,7 +5158,7 @@ impl App {
             ctx.input_mut(|i| i.events.push(egui::Event::Paste(text)));
         }
         if client.lost() && self.failed.is_none() {
-            self.failed = Some("The tsumugi server went away.".into());
+            self.failed = Some(tr("dialog.server_gone").into());
             self.panes.clear();
         }
         let workspaces = client.workspaces();
@@ -6097,7 +6108,7 @@ impl App {
             inner.label(egui::RichText::new(tr("dialog.restarting")).size(13.5).color(c.dim));
         } else if unasked {
             let ctx = inner.ctx().clone();
-            self.replacing = Some(replace_server(move || ctx.request_repaint()));
+            self.replacing = Some(replace_server(None, move || ctx.request_repaint()));
         } else {
             let (enter, esc) = inner.input(|i| (i.key_pressed(egui::Key::Enter), i.key_pressed(egui::Key::Escape)));
             let restart = inner.add(egui::Button::new(egui::RichText::new(trf("dialog.restart", &["Enter"])).color(c.on_accent()).strong()).fill(c.run).min_size(egui::vec2(220.0, 32.0)));
@@ -6105,7 +6116,7 @@ impl App {
             let later = inner.add(egui::Button::new(egui::RichText::new(trf("dialog.not_now_key", &["Esc"])).size(12.5)).frame(false));
             if restart.clicked() || enter {
                 let ctx = inner.ctx().clone();
-                self.replacing = Some(replace_server(move || ctx.request_repaint()));
+                self.replacing = Some(replace_server(None, move || ctx.request_repaint()));
             } else if later.on_hover_text(tr("dialog.not_now_hover")).clicked() || esc {
                 inner.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
             }
