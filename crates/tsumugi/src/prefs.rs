@@ -94,6 +94,7 @@ const INDEX: &[(Page, &str)] = &[
     (Page::Appearance, "prefs.appearance.dim"),
     (Page::Appearance, "prefs.appearance.cursor"),
     (Page::Appearance, "prefs.appearance.animations"),
+    (Page::Appearance, "prefs.appearance.visual_bell"),
     (Page::Keys, "prefs.keys.preset"),
     (Page::Keys, "prefs.keys.use_cmd"),
     (Page::Keys, "prefs.keys.nth_tab"),
@@ -548,6 +549,10 @@ fn appearance(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mu
         sep(ui, l);
         if row(ui, l, tr("prefs.appearance.animations"), tr("prefs.appearance.animations_note"), |ui| switch(ui, l, a.animations)) {
             out.push(Change::Set(Some("appearance"), "animations", (!a.animations).to_string()));
+        }
+        sep(ui, l);
+        if row(ui, l, tr("prefs.appearance.visual_bell"), tr("prefs.appearance.visual_bell_note"), |ui| switch(ui, l, a.visual_bell)) {
+            out.push(Change::Set(Some("appearance"), "visual_bell", (!a.visual_bell).to_string()));
         }
     });
 }
@@ -1091,6 +1096,7 @@ fn menu_label(word: &str) -> &'static str {
         "tags" => tr("prefs.common.tags"),
         "mute" => tr("tab.mute"),
         "pin" => tr("tab.pin"),
+        "read-only" => tr("tab.read_only"),
         "restart" => tr("tab.restart"),
         "duplicate" => tr("tab.duplicate"),
         "new-window" => tr("tab.new_window"),

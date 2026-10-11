@@ -58,10 +58,12 @@ pub enum Command {
     Equalize,
     /// Write a work log of the pane to a file as it goes, or finish it.
     WorkLog,
+    /// Turn away typing and pasting into the pane, or let them in again.
+    ReadOnly,
 }
 
 impl Command {
-    pub const ALL: [Command; 25] = [
+    pub const ALL: [Command; 26] = [
         Command::NewSession,
         Command::SplitRight,
         Command::SplitDown,
@@ -76,6 +78,7 @@ impl Command {
         Command::TypeAll,
         Command::SaveOutput,
         Command::WorkLog,
+        Command::ReadOnly,
         Command::Parallel,
         Command::SaveLayout,
         Command::CloseTab,
@@ -113,6 +116,7 @@ impl Command {
             Command::SwapPane => tr("palette.swap_pane").into(),
             Command::Equalize => tr("palette.equalize").into(),
             Command::WorkLog => tr("palette.work_log").into(),
+            Command::ReadOnly => tr("palette.read_only").into(),
         }
     }
 
@@ -136,7 +140,7 @@ impl Command {
             Command::SwapPane => Action::SwapPane,
             Command::Equalize => Action::Equalize,
             Command::WorkLog => Action::WorkLog,
-            Command::Sort(_) | Command::Closed | Command::Changes | Command::SaveOutput | Command::Parallel | Command::SaveLayout => return String::new(),
+            Command::Sort(_) | Command::Closed | Command::Changes | Command::SaveOutput | Command::Parallel | Command::SaveLayout | Command::ReadOnly => return String::new(),
         };
         label(action)
     }

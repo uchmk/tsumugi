@@ -437,6 +437,12 @@ fn handle(shared: &Arc<Shared>, client: ClientId, tx: &Sender<ToClient>, msg: To
             broadcast(shared, &sessions);
             save_soon(shared, SAVE_AFTER_CHANGE);
         }
+        ToServer::ReadOnly { id, on } => {
+            if let Some(s) = sessions.get_mut(&id) {
+                s.info.read_only = on;
+            }
+            broadcast(shared, &sessions);
+        }
         ToServer::OwnTab { id } => {
             let mut workspaces = lock(&shared.workspaces);
             let holder = workspaces.values().find(|w| w.layout.contains(&id) && w.layout.leaves().len() > 1).map(|w| w.id);
@@ -620,6 +626,11 @@ fn handle(shared: &Arc<Shared>, client: ClientId, tx: &Sender<ToClient>, msg: To
         other => {
             let Some(id) = target(&other) else { return };
             let Some(s) = sessions.get_mut(&id) else { return };
+            // A read-only session takes nothing typed or pasted, from any
+            // window, `tsumugi send` or an MCP prompt.
+            if s.info.read_only && matches!(other, ToServer::Input { .. } | ToServer::Paste { .. }) {
+                return;
+            }
             let term = &mut s.term;
             match other {
                 ToServer::Input { bytes, .. } => {
@@ -922,7 +933,7 @@ fn spawn_session(
     shared.ever.store(true, Ordering::Relaxed);
     let (branch, project) = git(&cwd);
     let branch = branch.unwrap_or_default();
-    let mut info = Info { id, cwd, title: String::new(), command, state: State::Running, note: String::new(), since_ms: now_ms(), branch, project, muted: false, tags: Vec::new(), claude: false, conversation: String::new(), charset: "UTF-8".into(), agent: String::new(), ports: Vec::new(), recording: String::new(), logging: String::new() };
+    let mut info = Info { id, cwd, title: String::new(), command, state: State::Running, note: String::new(), since_ms: now_ms(), branch, project, muted: false, tags: Vec::new(), claude: false, conversation: String::new(), charset: "UTF-8".into(), agent: String::new(), ports: Vec::new(), recording: String::new(), logging: String::new(), read_only: false };
     lock(&shared.rules).apply(&mut info);
     let watchers: BTreeSet<ClientId> = client.into_iter().collect();
     sessions.insert(
@@ -1619,6 +1630,7 @@ fn run_pump(shared: Arc<Shared>, dirty: Receiver<SessionId>) {
         for id in ids {
             let Some(s) = sessions.get_mut(&id) else { continue };
             let clipboard = s.term.drain();
+            let rang = std::mem::take(&mut s.term.bells) > 0;
             s.term.log_step();
             let noticed = s.term.take_notices().pop().map(|note| {
                 s.notice = Some((State::Waiting, std::time::Instant::now()));
@@ -1674,6 +1686,9 @@ fn run_pump(shared: Arc<Shared>, dirty: Receiver<SessionId>) {
                 if let Some(tx) = clients.get(c) {
                     for text in &clipboard {
                         let _ = tx.send(ToClient::Clipboard(text.clone()));
+                    }
+                    if rang {
+                        let _ = tx.send(ToClient::Bell { id });
                     }
                     // A slow line gets the latest screen at most once a gap,
                     // as the change from what it was last sent.
@@ -1812,7 +1827,7 @@ mod tags {
     }
 
     fn info(cwd: &str, tags: &[&str]) -> Info {
-        Info { id: 1, cwd: PathBuf::from(cwd), title: String::new(), command: String::new(), state: State::Running, note: String::new(), since_ms: 0, branch: String::new(), project: PathBuf::new(), muted: false, tags: tags.iter().map(|t| t.to_string()).collect(), claude: false, conversation: String::new(), charset: String::new(), agent: String::new(), ports: Vec::new(), recording: String::new(), logging: String::new() }
+        Info { id: 1, cwd: PathBuf::from(cwd), title: String::new(), command: String::new(), state: State::Running, note: String::new(), since_ms: 0, branch: String::new(), project: PathBuf::new(), muted: false, tags: tags.iter().map(|t| t.to_string()).collect(), claude: false, conversation: String::new(), charset: String::new(), agent: String::new(), ports: Vec::new(), recording: String::new(), logging: String::new(), read_only: false }
     }
 
     /// Going back and forth between two folders with a rule each swaps the

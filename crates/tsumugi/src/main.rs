@@ -349,6 +349,11 @@ fn remote(what: &str, args: &[String]) -> std::process::ExitCode {
             if rest.is_empty() {
                 return fail("nothing to send".into());
             }
+            match client.list() {
+                Ok(list) if list.iter().any(|i| i.id == id && i.read_only) => return fail(format!("session {id} is read-only; its menu lets typing in again")),
+                Ok(_) => {}
+                Err(e) => return fail(e.to_string()),
+            }
             client.send_prompt(id, rest.join(" "));
             // Sent before this process ends: a question after it is answered
             // once the server has it.
@@ -1044,6 +1049,8 @@ struct App {
     shown_panes: std::collections::HashSet<SessionId>,
     tab_at: Option<std::time::Instant>,
     pane_at: HashMap<SessionId, std::time::Instant>,
+    /// When the window last said a pane is read-only to someone typing in.
+    read_only_said: Option<std::time::Instant>,
     /// The session whose card the pointer is on: watched for its preview.
     peek: Option<SessionId>,
     /// Claude Code's hooks: being looked for (and pointed here when theirs
@@ -1326,6 +1333,8 @@ enum SideOp {
     Rename(WorkspaceId, String),
     Note(WorkspaceId, String),
     Pin(WorkspaceId, bool),
+    /// Turn away typing into the session, or let it in.
+    ReadOnly(SessionId, bool),
     Restart(SessionId),
     /// A new tab in this folder; Claude Code in it when it ran here.
     Duplicate(std::path::PathBuf, bool),
@@ -1446,6 +1455,7 @@ impl App {
             shown_panes: std::collections::HashSet::new(),
             tab_at: None,
             pane_at: HashMap::new(),
+            read_only_said: None,
             peek: None,
             watching: Vec::new(),
             queue: Vec::new(),
@@ -2241,6 +2251,13 @@ impl App {
                     self.diff = Some(diffview::View::open(sort::display_title(&i.title, &i.command), i.cwd, move || ctx.request_repaint()));
                 }
             }
+            palette::Pick::Command(palette::Command::ReadOnly) => {
+                let focus = current.and_then(|w| client.sessions().into_iter().find(|i| i.id == w.focus));
+                if let Some(i) = focus {
+                    client.read_only(i.id, !i.read_only);
+                    self.say(if i.read_only { tr("toast.read_only_off") } else { tr("toast.read_only") }.into(), false);
+                }
+            }
             palette::Pick::Command(palette::Command::Sort(s)) => {
                 self.view.sort = s;
                 self.view.save();
@@ -2263,7 +2280,7 @@ impl App {
                     palette::Command::SwapPane => keys::Action::SwapPane,
                     palette::Command::Equalize => keys::Action::Equalize,
                     palette::Command::WorkLog => keys::Action::WorkLog,
-                    palette::Command::Sort(_) | palette::Command::Closed | palette::Command::Changes | palette::Command::SaveOutput | palette::Command::Parallel | palette::Command::SaveLayout => return,
+                    palette::Command::Sort(_) | palette::Command::Closed | palette::Command::Changes | palette::Command::SaveOutput | palette::Command::Parallel | palette::Command::SaveLayout | palette::Command::ReadOnly => return,
                 };
                 if let Some(w) = current {
                     self.act(action, w, workspaces, area);
@@ -3086,6 +3103,13 @@ impl App {
                                     ui.close();
                                 }
                             }
+                            "read-only" => {
+                                let label = if focus.read_only { tr("tab.read_only_off") } else { tr("tab.read_only") };
+                                if ui.button(label).on_hover_text(tr("tab.read_only_hint")).clicked() {
+                                    ops.push(SideOp::ReadOnly(focus.id, !focus.read_only));
+                                    ui.close();
+                                }
+                            }
                             "restart" => {
                                 let label = if focus.claude { tr("tab.restart_resume") } else { tr("tab.restart") };
                                 if ui.button(label).clicked() {
@@ -3213,6 +3237,10 @@ impl App {
                         self.diff = Some(diffview::View::open(title, cwd, move || ctx.request_repaint()));
                     }
                     SideOp::Pin(id, on) => client.pin_workspace(id, on),
+                    SideOp::ReadOnly(id, on) => {
+                        client.read_only(id, on);
+                        toasts.push((if on { tr("toast.read_only") } else { tr("toast.read_only_off") }.into(), false));
+                    }
                     SideOp::Restart(id) => client.restart(id),
                     SideOp::Duplicate(cwd, claude) => {
                         let shell = None;
@@ -4464,6 +4492,11 @@ impl App {
                         let r = p.text(egui::pos2(right_x, head.center().y), egui::Align2::RIGHT_CENTER, "TYPING INTO ALL", egui::FontId::proportional(10.5), chrome::ink(chrome::gold()));
                         right_x = r.left() - 10.0;
                     }
+                    // Typing into it turned away (its menu lets it in).
+                    if info.read_only {
+                        let r = p.text(egui::pos2(right_x, head.center().y), egui::Align2::RIGHT_CENTER, "READ-ONLY", egui::FontId::proportional(10.5), chrome::ink(chrome::gold()));
+                        right_x = r.left() - 10.0;
+                    }
                     // Being recorded to a .cast file (Ctrl+Shift+R stops).
                     if !info.recording.is_empty() {
                         let r = p.text(egui::pos2(right_x, head.center().y), egui::Align2::RIGHT_CENTER, "● REC", egui::FontId::proportional(10.5), chrome::ink(chrome::red()));
@@ -4528,6 +4561,24 @@ impl App {
                     backdrop::paint(&ui.painter_at(rect), rect, t, alpha);
                 }
                 let shown = ui.push_id(id, |ui| ito_pane::show_faces(ui, Some(pane), view, rect, &faces, row_h, &pal, opts)).inner;
+                // The program rang the bell: the pane flashes a moment.
+                if let Some(at) = pane.rang().filter(|_| self.settings_now.appearance.visual_bell) {
+                    let t = at.elapsed().as_secs_f32() / BELL_FLASH.as_secs_f32();
+                    if t < 1.0 {
+                        ui.painter().rect_filled(rect, 0.0, self.palette.fg.gamma_multiply(0.18 * (1.0 - t)));
+                        ctx.request_repaint();
+                    }
+                }
+                // Typed into a read-only pane: the server turns it away; say
+                // why nothing happens, not more than every few seconds.
+                if focused && sessions.iter().any(|i| i.id == *id && i.read_only) && self.read_only_said.is_none_or(|t| t.elapsed() > std::time::Duration::from_secs(3)) {
+                    let typed = ui.input(|i| i.events.iter().any(|e| matches!(e, egui::Event::Text(_) | egui::Event::Paste(_) | egui::Event::Key { key: egui::Key::Enter | egui::Key::Backspace, pressed: true, .. })));
+                    if typed {
+                        self.read_only_said = Some(std::time::Instant::now());
+                        // Not `say`: the pane is still borrowed.
+                        self.toast = Some((tr("toast.read_only_typed").into(), std::time::Instant::now(), false));
+                    }
+                }
                 if !focused {
                     // The panes without the keys sit back; their marks do not (1e).
                     let dim = f32::from(self.settings_now.appearance.dim) / 100.0;
@@ -5025,6 +5076,8 @@ struct Queued {
 
 /// How long something coming into view takes to fade in.
 const FADE: std::time::Duration = std::time::Duration::from_millis(150);
+/// How long a pane flashes when its program rings the bell.
+const BELL_FLASH: std::time::Duration = std::time::Duration::from_millis(200);
 /// How long Undo can put back closed sessions taken off the list.
 const UNDO_FOR: std::time::Duration = std::time::Duration::from_secs(8);
 

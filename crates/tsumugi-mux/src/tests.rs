@@ -769,3 +769,29 @@ fn a_failed_ssh_says_what_to_do() {
     assert!(version.contains(env!("CARGO_PKG_VERSION")) && version.contains("restart its server"), "{version}");
     assert_eq!(explain("box", "tsumugi", &eof, None, ""), "box: failed to fill whole buffer");
 }
+
+/// A read-only session turns typing away until it is let go, and a
+/// program's bell reaches the window.
+#[cfg(unix)]
+#[test]
+fn a_read_only_session_turns_typing_away_and_the_bell_rings() {
+    let at = address();
+    let _srv = serve(&at).expect("the server starts");
+    let c = Client::connect(&at, || {}).expect("a client connects");
+    let pane = c.spawn(std::env::temp_dir(), None, Size::new(80, 24), (8, 16)).expect("a shell starts");
+    until(&pane, "a prompt", |t| !t.trim().is_empty());
+    let read_only = |c: &Client| c.list().unwrap().into_iter().find(|i| i.id == pane.id()).unwrap().read_only;
+    assert!(!read_only(&c), "not read-only to begin with");
+    c.read_only(pane.id(), true);
+    eventually("read-only", || read_only(&c));
+    pane.send(b"echo turned-away\r".to_vec());
+    std::thread::sleep(Duration::from_millis(500));
+    assert!(!text(&pane).contains("turned-away"), "the typing reached the shell:\n{}", text(&pane));
+    c.read_only(pane.id(), false);
+    eventually("let go", || !read_only(&c));
+    assert!(pane.rang().is_none(), "no bell yet");
+    pane.send(b"printf 'rung\\a\\n'\r".to_vec());
+    until(&pane, "the printf ran", |t| t.lines().any(|l| l == "rung"));
+    eventually("the bell", || pane.rang().is_some());
+    pane.kill();
+}

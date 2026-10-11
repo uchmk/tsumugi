@@ -18,11 +18,13 @@
 //! date_format = "YYYY/MM/DD"
 //! weekday = true
 //!
-//! # How much a pane without the keys is dimmed, in percent (1e), and
-//! # whether waiting rings breathe and running tabs show a moving line.
+//! # How much a pane without the keys is dimmed, in percent (1e), whether
+//! # waiting rings breathe and running tabs show a moving line, and whether
+//! # a pane flashes when its program rings the bell (BEL).
 //! [appearance]
 //! dim = 35
 //! animations = true
+//! visual_bell = true
 //!
 //! # The window's frame: "tsumugi" draws its own title bar along the band
 //! # (Windows and Linux; on macOS the band runs under the traffic lights), or
@@ -454,6 +456,8 @@ pub struct Appearance {
     /// The cursor of the pane with the keys: `block`, `bar` or `underline`,
     /// with `-blink` to blink.
     pub cursor: String,
+    /// A pane flashes when its program rings the bell (BEL).
+    pub visual_bell: bool,
 }
 
 /// The window's frame.
@@ -521,7 +525,7 @@ impl Default for Font {
 
 impl Default for Appearance {
     fn default() -> Self {
-        Self { dim: 35, animations: true, nerd_icons: true, cursor: "block-blink".into() }
+        Self { dim: 35, animations: true, nerd_icons: true, cursor: "block-blink".into(), visual_bell: true }
     }
 }
 
@@ -599,7 +603,7 @@ pub struct MenuItem {
 }
 
 /// The words of the menu's own items, for `menu.hide`.
-pub const MENU_ITEMS: [&str; 15] = ["rename", "note", "tags", "mute", "pin", "restart", "duplicate", "new-window", "filer", "editor", "copy-path", "save-output", "work-log", "pr", "close"];
+pub const MENU_ITEMS: [&str; 16] = ["rename", "note", "tags", "mute", "pin", "read-only", "restart", "duplicate", "new-window", "filer", "editor", "copy-path", "save-output", "work-log", "pr", "close"];
 
 /// The menu's items in the order `order` asks for: those it names first,
 /// in its order, then the rest in their own.
@@ -618,7 +622,7 @@ pub fn menu_words(order: &[String]) -> Vec<&'static str> {
 /// The group an item is drawn in; a line goes between two groups.
 pub fn menu_group(word: &str) -> &'static str {
     match word {
-        "rename" | "note" | "tags" | "mute" | "pin" => "look",
+        "rename" | "note" | "tags" | "mute" | "pin" | "read-only" => "look",
         "restart" | "duplicate" | "new-window" => "start",
         "filer" | "editor" | "copy-path" | "save-output" | "work-log" | "pr" => "folder",
         _ => "close",
@@ -633,6 +637,7 @@ pub fn menu_label(word: &str) -> &'static str {
         "tags" => "Tags",
         "mute" => "Mute notifications",
         "pin" => "Pin to top",
+        "read-only" => "Read-only (typing turned away)",
         "restart" => "Restart",
         "duplicate" => "Duplicate in the same folder",
         "new-window" => "Move to a new window",

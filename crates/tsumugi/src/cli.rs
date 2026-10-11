@@ -121,6 +121,7 @@ mod tests {
             ports: Vec::new(),
             recording: String::new(),
             logging: String::new(),
+            read_only: false,
         }
     }
 
@@ -353,6 +354,7 @@ pub fn ls_json(list: &[Info]) -> String {
                     ("ports".into(), Json::Array(i.ports.iter().map(|p| Json::Number(f64::from(*p))).collect())),
                     ("muted".into(), Json::Bool(i.muted)),
                     ("charset".into(), s(&i.charset)),
+                    ("read_only".into(), Json::Bool(i.read_only)),
                 ])
             })
             .collect(),
