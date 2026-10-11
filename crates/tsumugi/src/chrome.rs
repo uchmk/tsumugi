@@ -747,7 +747,22 @@ pub fn top_band(ui: &mut egui::Ui, pal: &Palette, tags: &[String], shown: usize,
     let r = egui::Rect::from_min_size(egui::pos2(group_left, rect.center().y - 13.0), egui::vec2(w, 26.0));
     // The tags at the right, in what the box and the bell leave: up to
     // `[tags] shown`, then +N; fewer, and +N, when they do not fit.
-    let room = (rect.right() - 12.0) - (r.right() + BELL + 12.0);
+    let mut left_edge = r.right() + BELL + 12.0;
+    // An old server stays flagged right of the bell until it is restarted
+    // (the toast alone was gone before it could be read).
+    if let Some(build) = &frame.old_server {
+        let galley = p.layout_no_wrap(tr("title.old_server").to_owned(),FontId::proportional(11.0), Color32::WHITE);
+        let chip = egui::Rect::from_min_size(egui::pos2(left_edge - 6.0, rect.center().y - 8.0), egui::vec2(galley.size().x + 12.0, 16.0));
+        if chip.right() + 12.0 < rect.right() {
+            let resp = ui.interact(chip, ui.id().with("old-server"), egui::Sense::CLICK).on_hover_text(trf("title.old_server_hint", &[build, env!("CARGO_PKG_VERSION")]));
+            let fill = if resp.hovered() { gold() } else { gold().gamma_multiply(0.75) };
+            p.rect_filled(chip, 4.0, fill);
+            p.galley(egui::pos2(chip.left() + 6.0, chip.center().y - galley.size().y / 2.0), galley, Color32::BLACK);
+            out.restart_server = resp.clicked();
+            left_edge = chip.right() + 12.0;
+        }
+    }
+    let room = (rect.right() - 12.0) - left_edge;
     let chip_w = |t: &str| p.layout_no_wrap(t.to_owned(), FontId::proportional(11.0), pal.fg).size().x + 12.0;
     let more_w = |n: usize| p.layout_no_wrap(format!("+{n}"), FontId::proportional(11.0), pal.fg).size().x + 12.0;
     let (n, used) = tags_that_fit(&tags.iter().map(|t| chip_w(t)).collect::<Vec<_>>(), shown, room, more_w);
@@ -799,10 +814,14 @@ pub struct BandFrame {
     /// The settings are open: the band says so in the middle, with their
     /// close button, in place of the search box and the tags.
     pub settings: bool,
+    /// The running server's version when it is not this window's.
+    pub old_server: Option<String>,
 }
 
 #[derive(Default)]
 pub struct BandOut {
+    /// The "server is old" chip was clicked.
+    pub restart_server: bool,
     /// The search box was clicked.
     pub search: bool,
     /// The settings' close button was clicked.
