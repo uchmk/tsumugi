@@ -30,7 +30,7 @@ Windows and Linux keys first; the macOS key is after `·`.
 - [ ] `Ctrl+=` · `Cmd+=` — Bigger letters (= or +) · `font_bigger`
 - [x] `Ctrl+-` · `Cmd+-` — Smaller letters · `font_smaller`
 - [x] `Ctrl+0` · `Cmd+0` — Letters as the settings have them · `font_reset`
-- [ ] `Ctrl+Shift+O` · `Cmd+Shift+O` — All sessions: find a session or a line in any scrollback · `overview`
+- [ ] `Ctrl+Shift+O` · `Cmd+Shift+O` — All sessions: find a session or a line in any scrollback, or open a saved layout or script · `overview`
 - [x] `Ctrl+Shift+M` · `Cmd+Shift+M` — Copy mode: select the output with the keys · `copy_mode`
 - [x] `Ctrl+Shift+Up` · `Cmd+Shift+Up` — To the prompt above · `prev_prompt`
 - [x] `Ctrl+Shift+Down` · `Cmd+Shift+Down` — To the prompt below · `next_prompt`

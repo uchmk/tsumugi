@@ -537,6 +537,30 @@ mod os {
     }
 }
 
+/// The `notify-send --action` arguments for a notification: a click on its
+/// body is `default`; a session that waits (and `answer_buttons` is on) also
+/// gets Allow and Deny.
+#[cfg_attr(windows, allow(dead_code))]
+fn notify_send_actions(answerable: bool) -> Vec<&'static str> {
+    let mut out = vec!["--action=default=Open"];
+    if answerable {
+        out.extend(["--action=allow=Allow", "--action=deny=Deny"]);
+    }
+    out.push("--wait");
+    out
+}
+
+/// What `notify-send --wait` printed: the name of the action clicked.
+#[cfg_attr(windows, allow(dead_code))]
+fn reply_of(printed: &str) -> Option<Reply> {
+    match printed.trim() {
+        "default" | "open" => Some(Reply::Open),
+        "allow" => Some(Reply::Allow),
+        "deny" => Some(Reply::Deny),
+        _ => None,
+    }
+}
+
 #[cfg(not(windows))]
 mod os {
     //! The notification through the desktop's own tool: `notify-send` on
@@ -560,54 +584,57 @@ mod os {
             if let Out::Notify { session, title, body, state } = out {
                 let title = super::mark(state, &title);
                 let click = self.click.clone();
+                let answerable = super::ANSWER_BUTTONS.load(std::sync::atomic::Ordering::Relaxed) && matches!(state, Some(super::State::Waiting | super::State::MaybeWaiting));
                 // Each on a thread of its own: one that can say it was
                 // clicked waits until it is closed.
                 let _ = std::thread::Builder::new().name("notify".into()).spawn(move || {
-                    if show(&title, &body) {
-                        click(session, super::Reply::Open);
+                    if let Some(reply) = show(&title, &body, answerable) {
+                        click(session, reply);
                     }
                 });
             }
         }
     }
 
-    /// Show it; whether it was clicked.
+    /// Show it; what a click on it asked for.
     #[cfg(target_os = "macos")]
-    fn show(title: &str, body: &str) -> bool {
+    fn show(title: &str, body: &str, _answerable: bool) -> Option<super::Reply> {
         // AppleScript's notifications cannot say they were clicked; a click
         // opens Script Editor. A signed app bundle would have its own.
         use super::applescript_string;
         let script = format!("display notification {} with title {}", applescript_string(body), applescript_string(title));
         let _ = Command::new("osascript").arg("-e").arg(script).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).status();
-        false
+        None
     }
 
-    /// Show it; whether it was clicked. libnotify 0.7.12 and later can wait
-    /// for a click (`--action --wait`) and print its name; an older
-    /// `notify-send` does not know the options, and shows it plainly.
+    /// Show it; what a click on it asked for. libnotify 0.7.12 and later can
+    /// wait for a click (`--action --wait`) and print the action's name (the
+    /// body is `default`; a waiting session's Allow and Deny are `allow` and
+    /// `deny`); an older `notify-send` does not know the options, and shows
+    /// it plainly.
     #[cfg(not(target_os = "macos"))]
-    fn show(title: &str, body: &str) -> bool {
+    fn show(title: &str, body: &str, answerable: bool) -> Option<super::Reply> {
         use std::sync::atomic::{AtomicBool, Ordering};
         static PLAIN: AtomicBool = AtomicBool::new(false);
         let run = |actions: bool| {
             let mut cmd = Command::new("notify-send");
             cmd.arg("--app-name=tsumugi");
             if actions {
-                cmd.args(["--action=default=Open", "--wait"]);
+                cmd.args(super::notify_send_actions(answerable));
             }
             cmd.args(["--", title, body]).stdin(Stdio::null()).stderr(Stdio::null());
             cmd.output()
         };
         if !PLAIN.load(Ordering::Relaxed) {
             match run(true) {
-                Ok(out) if out.status.success() => return String::from_utf8_lossy(&out.stdout).trim() == "default",
+                Ok(out) if out.status.success() => return super::reply_of(&String::from_utf8_lossy(&out.stdout)),
                 // Not there at all: nothing more to try.
-                Err(_) => return false,
+                Err(_) => return None,
                 Ok(_) => PLAIN.store(true, Ordering::Relaxed),
             }
         }
         let _ = run(false);
-        false
+        None
     }
 }
 
@@ -620,6 +647,15 @@ mod tests {
     fn seen<'a>(looking: bool, teller: bool, muted: &'a HashSet<SessionId>) -> Seen<'a> {
         static NONE: std::sync::OnceLock<HashMap<SessionId, String>> = std::sync::OnceLock::new();
         Seen { looking, teller, muted, places: NONE.get_or_init(HashMap::new), spent: NONE.get_or_init(HashMap::new) }
+    }
+
+    #[test]
+    fn notify_send_gets_allow_and_deny_only_for_a_wait() {
+        assert_eq!(notify_send_actions(false), ["--action=default=Open", "--wait"]);
+        assert_eq!(notify_send_actions(true), ["--action=default=Open", "--action=allow=Allow", "--action=deny=Deny", "--wait"]);
+        assert_eq!((reply_of("default
+"), reply_of("allow
+"), reply_of("deny"), reply_of("")), (Some(Reply::Open), Some(Reply::Allow), Some(Reply::Deny), None));
     }
 
     #[test]

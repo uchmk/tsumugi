@@ -5,6 +5,12 @@
 
 ## [未リリース]
 
+## [0.103.20] - 2026-10-11
+
+### 追加
+- `Ctrl+Shift+O`（すべてのセッション）の下に、保存した並び（layout）と `[[scripts]]` を「並びやスクリプトから開く」として並べた。入力で名前を絞り込み、矢印と Enter、またはクリックで開く（並びは開き、スクリプトは実行する）。動いているセッションが無くても出る。
+- Linux の通知（`notify-send --action`、libnotify 0.7.12 以降）にも、待ちの会話の Allow / Deny を出す。Allow は Enter、Deny は Esc を送る。`[notify] answer_buttons = false` で外せる。macOS（osascript）は押したことが取れないので、今までどおり。
+
 ## [0.103.19] - 2026-10-11
 
 ### 追加

@@ -146,7 +146,8 @@ On Windows the notification needs the app's name registered for the current
 user; tsumugi writes it at the first notification
 (`HKEY_CURRENT_USER\Software\Classes\AppUserModelId\uchmk.tsumugi`). On
 Linux it goes through `notify-send` (a click is seen with libnotify 0.7.12 or
-later), on macOS through AppleScript. Which
+later; a waiting session also gets Allow and Deny), on macOS through
+AppleScript. Which
 states tell in which way is `[notify]` in the settings (below); by default
 the taskbar does not flash.
 
@@ -326,7 +327,8 @@ page, those waiting for you first, then errors, running and done, each with
 its state, folder and branch, tags, tokens and its last two lines. The arrows
 and `Enter`, or a click, go to one. It takes most of the window. `Ctrl+Tab` /
 `Ctrl+Shift+Tab` (or `Ctrl+PageDown` / `Ctrl+PageUp`, or `Right` / `Left`) turn
-to **Waiting** and **Recently closed** and back.
+to **Waiting** and **Recently closed** and back. Below the sessions, the saved
+layouts and `[[scripts]]` are listed to open from (narrowed by the same field).
 
 Typing filters the cards there -- a few letters in order, from the name,
 folder, `#tags` or last lines -- and three letters or more also search every

@@ -6405,9 +6405,19 @@ impl App {
                 }
             }
         }
+        // The saved layouts and scripts, listed under All sessions to open.
+        let mut templates = Vec::new();
+        if view.page == lists::Page::All {
+            for (k, l) in self.layouts.iter().enumerate() {
+                templates.push(lists::Template { name: trf("palette.open_layout", &[&l.name]), detail: layouts::words(&l.tree), pick: palette::Pick::Layout(k) });
+            }
+            for (k, s) in self.settings_now.scripts.iter().enumerate() {
+                templates.push(lists::Template { name: trf("palette.run_script", &[&s.name]), detail: s.command.chars().take(60).collect(), pick: palette::Pick::Script(k) });
+            }
+        }
         let colors = theme::colors();
         let mut keep = true;
-        for d in lists::show(ctx, &mut view, &all, &found, sessions.len(), &rows, &self.ended, &colors) {
+        for d in lists::show(ctx, &mut view, &all, &found, &templates, sessions.len(), &rows, &self.ended, &colors) {
             match d {
                 lists::Do::Type(id, key) => {
                     if let Some(pane) = self.panes.get(&id) {
@@ -6434,6 +6444,11 @@ impl App {
                 lists::Do::Reveal(f) => {
                     self.go_to(client, workspaces, f.id);
                     client.reveal(f.id, f.line, f.col, f.len);
+                    keep = false;
+                }
+                lists::Do::Open(pick) => {
+                    let current = self.current(workspaces);
+                    self.picked(pick, current.as_ref(), workspaces, to_rect(ctx.content_rect()));
                     keep = false;
                 }
                 lists::Do::StartAgain(k) => {

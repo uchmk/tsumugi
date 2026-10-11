@@ -47,7 +47,7 @@ pub struct View {
     /// Opened this frame: the click that opened it is not a click outside.
     opening: bool,
     /// The row of All sessions the arrow keys are on: its cards that match,
-    /// then the scrollback lines.
+    /// then the scrollback lines, then the templates.
     picked: usize,
     /// What All sessions' field holds.
     pub query: String,
@@ -138,6 +138,20 @@ pub fn rank(state: tsumugi_mux::State, since_ms: u64) -> (u8, u64) {
     (k, since_ms)
 }
 
+/// A saved layout or script, listed under All sessions to open from.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Template {
+    pub name: String,
+    pub detail: String,
+    pub pick: crate::palette::Pick,
+}
+
+/// The templates whose name holds `query` (any case); all of them for none.
+pub fn matching_templates<'a>(query: &str, all: &'a [Template]) -> Vec<&'a Template> {
+    let q = query.to_lowercase();
+    all.iter().filter(|t| t.name.to_lowercase().contains(&q)).collect()
+}
+
 /// What the panel asks the window to do.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Do {
@@ -149,6 +163,8 @@ pub enum Do {
     Go(SessionId),
     /// Go to the session and show the line found in its scrollback.
     Reveal(Found),
+    /// Open a saved layout or run a saved script (and close the panel).
+    Open(crate::palette::Pick),
     /// Start the closed session again in its folder.
     StartAgain(usize),
     /// Put text on the clipboard.
@@ -174,7 +190,7 @@ pub fn bulk(rows: &[Row], off: &HashSet<SessionId>, yes: bool) -> Vec<(SessionId
 /// `all` (and `found`, the scrollback lines that hold the query) is filled
 /// only while its page shows; `count` is how many there are.
 #[allow(clippy::too_many_arguments)]
-pub fn show(ctx: &egui::Context, view: &mut View, all: &[Card], found: &[Found], count: usize, rows: &[Row], closed: &[Closed], c: &Colors) -> Vec<Do> {
+pub fn show(ctx: &egui::Context, view: &mut View, all: &[Card], found: &[Found], templates: &[Template], count: usize, rows: &[Row], closed: &[Closed], c: &Colors) -> Vec<Do> {
     let mut out = Vec::new();
     let screen = ctx.content_rect();
     // The rest of the window dimmed behind it; a click there closes it.
@@ -229,7 +245,7 @@ pub fn show(ctx: &egui::Context, view: &mut View, all: &[Card], found: &[Found],
             // Waiting's row of buttons.
             let max = (screen.height() - if view.page == Page::Waiting { 170.0 } else { 120.0 }).max(160.0);
             match view.page {
-                Page::All => overview(ui, view, all, found, c, max, &mut out),
+                Page::All => overview(ui, view, all, found, templates, c, max, &mut out),
                 Page::Waiting => waiting(ui, view, rows, c, max, &mut out),
                 Page::Closed => history(ui, view, closed, c, max, &mut out),
             }
@@ -369,8 +385,9 @@ fn waiting(ui: &mut egui::Ui, view: &mut View, rows: &[Row], c: &Colors, max: f3
     });
 }
 
-fn overview(ui: &mut egui::Ui, view: &mut View, all: &[Card], found: &[Found], c: &Colors, max: f32, out: &mut Vec<Do>) {
-    if all.is_empty() {
+#[allow(clippy::too_many_arguments)]
+fn overview(ui: &mut egui::Ui, view: &mut View, all: &[Card], found: &[Found], templates: &[Template], c: &Colors, max: f32, out: &mut Vec<Do>) {
+    if all.is_empty() && templates.is_empty() {
         ui.add_space(12.0);
         ui.label(RichText::new(tr("lists.none_running")).size(13.0).color(c.dim));
         ui.add_space(12.0);
@@ -391,7 +408,8 @@ fn overview(ui: &mut egui::Ui, view: &mut View, all: &[Card], found: &[Found], c
     }
     ui.add_space(4.0);
     let cards = matching(view.query.trim(), all);
-    let shown = cards.len() + found.len();
+    let kept = matching_templates(view.query.trim(), templates);
+    let shown = cards.len() + found.len() + kept.len();
     if shown == 0 {
         ui.add_space(8.0);
         ui.label(RichText::new(tr("lists.nothing")).size(13.0).color(c.dim));
@@ -402,7 +420,8 @@ fn overview(ui: &mut egui::Ui, view: &mut View, all: &[Card], found: &[Found], c
     if enter {
         out.push(match view.picked.checked_sub(cards.len()) {
             None => Do::Go(cards[view.picked].id),
-            Some(k) => Do::Reveal(found[k].clone()),
+            Some(k) if k < found.len() => Do::Reveal(found[k].clone()),
+            Some(k) => Do::Open(kept[k - found.len()].pick.clone()),
         });
     }
     egui::ScrollArea::vertical().max_height(max).min_scrolled_height(max).auto_shrink([false, true]).show(ui, |ui| {
@@ -455,6 +474,28 @@ fn overview(ui: &mut egui::Ui, view: &mut View, all: &[Card], found: &[Found], c
             }
             if resp.clicked() {
                 out.push(Do::Reveal(f.clone()));
+            }
+        }
+        if !kept.is_empty() {
+            ui.add_space(6.0);
+            ui.label(RichText::new(tr("lists.open_from")).size(10.5).strong().color(c.dim));
+        }
+        for (k, t) in kept.iter().enumerate() {
+            let picked = cards.len() + found.len() + k == view.picked;
+            let frame = egui::Frame::NONE.fill(if picked { c.hover() } else { egui::Color32::TRANSPARENT }).corner_radius(6.0).inner_margin(egui::Margin::symmetric(8, 3));
+            let shown = frame.show(ui, |ui| {
+                ui.set_width(ui.available_width());
+                ui.horizontal(|ui| {
+                    ui.label(RichText::new(&t.name).size(12.5).strong().color(c.strong()));
+                    ui.add(egui::Label::new(RichText::new(&t.detail).monospace().size(11.5).color(c.dim)).truncate());
+                });
+            });
+            let resp = ui.interact(shown.response.rect, egui::Id::new(("overview-template", k)), egui::Sense::click()).on_hover_text(tr("lists.open_enter"));
+            if picked && (up || down) {
+                resp.scroll_to_me(None);
+            }
+            if resp.clicked() {
+                out.push(Do::Open(t.pick.clone()));
             }
         }
     });
@@ -604,7 +645,7 @@ mod tests {
             let events = key.map(|key| egui::Event::Key { key, physical_key: None, pressed: true, repeat: false, modifiers }).into_iter().collect();
             let input = egui::RawInput { screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1280.0, 800.0))), events, ..Default::default() };
             let mut got = Vec::new();
-            let mut out = ctx.run_ui(input, |ui| got = show(ui.ctx(), &mut view, &[], &[], 0, &[], &[], &crate::theme::colors()));
+            let mut out = ctx.run_ui(input, |ui| got = show(ui.ctx(), &mut view, &[], &[], &[], 0, &[], &[], &crate::theme::colors()));
             out.textures_delta.clear();
             (got.contains(&Do::Close), view.page)
         };
@@ -671,7 +712,16 @@ mod tests {
 
     /// All sessions' field narrows by name, folder, tag and last lines.
     #[test]
-    fn the_filter_matches_name_folder_tags_and_last_lines() {
+    fn templates_are_found_by_name_in_any_case() {
+    let t = |name: &str| Template { name: name.into(), detail: String::new(), pick: crate::palette::Pick::Script(0) };
+    let all = [t("Two tabs"), t("Review")];
+    assert_eq!(matching_templates("", &all).len(), 2);
+    assert_eq!(matching_templates("TWO", &all)[0].name, "Two tabs");
+    assert!(matching_templates("zzz", &all).is_empty());
+}
+
+#[test]
+fn the_filter_matches_name_folder_tags_and_last_lines() {
         let all = [card(1, "claude", "~/dev/filer · main", &["work"], &["Tests passed"]), card(2, "pwsh", "~/notes", &[], &["PS> ls"])];
         let ids = |q: &str| matching(q, &all).into_iter().map(|c| c.id).collect::<Vec<_>>();
         assert_eq!(ids(""), [1, 2], "nothing typed, all in order");

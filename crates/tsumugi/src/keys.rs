@@ -271,7 +271,7 @@ pub fn title(a: Action) -> &'static str {
         Action::FontBigger => "Bigger letters (= or +)",
         Action::FontSmaller => "Smaller letters",
         Action::FontReset => "Letters as the settings have them",
-        Action::Overview => "All sessions: find a session or a line in any scrollback",
+        Action::Overview => "All sessions: find a session or a line in any scrollback, or open a saved layout or script",
         Action::CopyMode => "Copy mode: select the output with the keys",
         Action::PrevPrompt => "To the prompt above",
         Action::NextPrompt => "To the prompt below",

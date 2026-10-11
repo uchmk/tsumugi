@@ -152,4 +152,4 @@ v0.74.2 で 8 件のうち 7 件を、v0.74.3 で残りを直した（kitty の�
 - [ ] 通知の届け方そのものを実装する。今は Windows のトースト・タスクバー・音と、macOS（osascript）・Linux（notify-send）の画面の通知だけ。
   スマホ向けの経路、通知ごとの先の切り替え（状態ごとに先を選ぶ）、届かなかったときの扱いが要る。
 - [x] （v0.103.15）トーストの Allow / Deny を切る設定 `[notify] answer_buttons`（設定の Notifications にも）。
-- [ ] macOS・Linux の通知にも Allow / Deny を出す（osascript は押したことが取れない。notify-send は `--action` を足せる）。
+- [x] （v0.103.20）Linux の通知にも Allow / Deny（`notify-send --action`）。macOS は osascript が押したことを取れないので、署名したアプリの通知まで待つ。
