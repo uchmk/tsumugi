@@ -159,7 +159,7 @@ fn ls_json_is_one_array_of_sessions() {
     let json = s.ok(&["ls", "--json"]);
     let t = json.trim();
     assert!(t.starts_with('[') && t.ends_with(']'), "{json}");
-    for key in ["id", "state", "command", "agent", "cwd", "project", "branch", "title", "note", "since_ms", "tags", "ports", "muted", "charset", "read_only"] {
+    for key in ["id", "state", "command", "agent", "cwd", "project", "branch", "title", "note", "since_ms", "tags", "ports", "muted", "charset", "read_only", "profile"] {
         assert!(json.contains(&format!("\"{key}\":")), "no {key} in {json}");
     }
     assert!(json.contains(&format!("\"id\": {id}")) || json.contains(&format!("\"id\":{id}")), "{json}");

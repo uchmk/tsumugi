@@ -225,16 +225,25 @@ struct ProfileDraft {
     tags: String,
     panes: Vec<String>,
     place: String,
+    /// A theme's name; empty for the window's.
+    theme: String,
+    /// The font size as typed; empty for the window's.
+    font_size: String,
 }
 
 impl ProfileDraft {
     fn of(p: &Profile) -> Self {
-        Self { was: Some(p.name.clone()), name: p.name.clone(), folder: p.folder.clone(), start: p.start.clone(), tags: p.tags.join(", "), panes: p.panes.clone(), place: p.place.clone() }
+        Self { was: Some(p.name.clone()), name: p.name.clone(), folder: p.folder.clone(), start: p.start.clone(), tags: p.tags.join(", "), panes: p.panes.clone(), place: p.place.clone(), theme: p.theme.clone(), font_size: p.font_size.map(|s| s.to_string()).unwrap_or_default() }
     }
 
     fn profile(&self) -> Profile {
         let tags = self.tags.split(',').filter_map(tsumugi_mux::proto::tag_name).collect();
-        Profile { name: self.name.trim().to_owned(), folder: self.folder.trim().to_owned(), start: self.start.clone(), tags, panes: self.panes.clone(), place: self.place.trim().to_owned() }
+        Profile { name: self.name.trim().to_owned(), folder: self.folder.trim().to_owned(), start: self.start.clone(), tags, panes: self.panes.clone(), place: self.place.trim().to_owned(), theme: self.theme.clone(), font_size: self.size() }
+    }
+
+    /// The font size typed, if it is one (6 to 72 points).
+    fn size(&self) -> Option<f32> {
+        self.font_size.trim().trim_end_matches("pt").trim().parse::<f32>().ok().filter(|s| (6.0..=72.0).contains(s))
     }
 }
 
@@ -911,6 +920,12 @@ fn profile_words(p: &Profile) -> String {
     if !p.place.is_empty() {
         s.push_str(&format!(" · {}", trf("prefs.sessions.on", &[&p.place])));
     }
+    if !p.theme.is_empty() {
+        s.push_str(&format!(" · {}", p.theme));
+    }
+    if let Some(size) = p.font_size {
+        s.push_str(&format!(" · {size}pt"));
+    }
     if !p.tags.is_empty() {
         s.push_str(&format!(" · {}", p.tags.join(tr("prefs.common.list_sep"))));
     }
@@ -965,7 +980,7 @@ fn sessions(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut 
         }
         if row(ui, l, tr("prefs.sessions.new_profile"), tr("prefs.sessions.new_profile_note"), |ui| button(ui, l, tr("prefs.common.add"))) {
             let home = cfg::home().map(|h| h.display().to_string()).unwrap_or_default();
-            edit.profile = Some(ProfileDraft { was: None, name: String::new(), folder: home, start: "claude".into(), tags: String::new(), panes: Vec::new(), place: String::new() });
+            edit.profile = Some(ProfileDraft { was: None, name: String::new(), folder: home, start: "claude".into(), tags: String::new(), panes: Vec::new(), place: String::new(), theme: String::new(), font_size: String::new() });
         }
         let mut done = None;
         if let Some(d) = &mut edit.profile {
@@ -991,6 +1006,16 @@ fn sessions(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut 
                 ui.label(RichText::new(tr("prefs.sessions.runs_on")).color(c.dim));
                 ui.add(egui::TextEdit::singleline(&mut d.place).hint_text(tr("prefs.sessions.place_hint")).font(FontId::monospace(12.5)).desired_width(260.0));
                 ui.end_row();
+                ui.label(RichText::new(tr("prefs.sessions.theme")).color(c.dim));
+                let mut themes = vec![("", tr("prefs.sessions.window_theme"))];
+                themes.extend(seen.themes.iter().map(|t| (t.name.as_str(), t.name.as_str())));
+                if let Some(v) = select(ui, "profile-theme", d.theme.as_str(), &themes) {
+                    d.theme = v.to_owned();
+                }
+                ui.end_row();
+                ui.label(RichText::new(tr("prefs.sessions.font_size")).color(c.dim));
+                ui.add(egui::TextEdit::singleline(&mut d.font_size).hint_text(tr("prefs.sessions.font_size_hint")).desired_width(80.0));
+                ui.end_row();
                 let mut gone = None;
                 for (k, pane) in d.panes.iter_mut().enumerate() {
                     ui.label(RichText::new([tr("prefs.sessions.pane_right"), tr("prefs.sessions.pane_below"), tr("prefs.sessions.pane_below_first")][k.min(2)]).color(c.dim));
@@ -1015,7 +1040,7 @@ fn sessions(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut 
             let p = d.profile();
             let taken = seen.profiles.iter().any(|o| o.name == p.name && Some(&o.name) != d.was.as_ref());
             ui.horizontal(|ui| {
-                let ok = !p.name.is_empty() && !p.folder.is_empty() && !taken;
+                let ok = !p.name.is_empty() && !p.folder.is_empty() && !taken && (d.font_size.trim().is_empty() || p.font_size.is_some());
                 if taken {
                     ui.label(RichText::new(tr("prefs.sessions.taken")).size(12.0).color(c.err));
                 }
@@ -1968,5 +1993,21 @@ mod tests {
             }
         }
         assert_eq!(changes, vec![Change::Set(Some("notify"), "system", "[\"error\", \"done\"]".into())], "the first switch: system, waiting");
+    }
+
+    /// A profile's theme and font size go through the editor and back; a
+    /// size that is not one is left out.
+    #[test]
+    fn a_profile_keeps_its_theme_and_font_size() {
+        let p = Profile { name: "work".into(), folder: "~/dev".into(), start: "claude".into(), tags: vec![], panes: vec![], place: String::new(), theme: "Nord".into(), font_size: Some(16.0) };
+        let mut d = ProfileDraft::of(&p);
+        assert_eq!(d.profile(), p);
+        assert!(profile_words(&p).ends_with(" · Nord · 16pt"), "{}", profile_words(&p));
+        d.font_size = "18 pt".into();
+        assert_eq!(d.profile().font_size, Some(18.0));
+        for no in ["big", "3", "200", ""] {
+            d.font_size = no.into();
+            assert_eq!(d.profile().font_size, None, "{no:?}");
+        }
     }
 }

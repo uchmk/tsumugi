@@ -443,6 +443,13 @@ fn handle(shared: &Arc<Shared>, client: ClientId, tx: &Sender<ToClient>, msg: To
             }
             broadcast(shared, &sessions);
         }
+        ToServer::Profile { id, name } => {
+            if let Some(s) = sessions.get_mut(&id) {
+                s.info.profile = name;
+            }
+            broadcast(shared, &sessions);
+            save_soon(shared, SAVE_AFTER_CHANGE);
+        }
         ToServer::OwnTab { id } => {
             let mut workspaces = lock(&shared.workspaces);
             let holder = workspaces.values().find(|w| w.layout.contains(&id) && w.layout.leaves().len() > 1).map(|w| w.id);
@@ -898,6 +905,7 @@ fn save_if_due(shared: &Shared) {
                         tags: s.info.tags.clone(),
                         charset: s.info.charset.clone(),
                         agent: s.info.agent.clone(),
+                        profile: s.info.profile.clone(),
                     })
                     .collect(),
             })
@@ -933,7 +941,7 @@ fn spawn_session(
     shared.ever.store(true, Ordering::Relaxed);
     let (branch, project) = git(&cwd);
     let branch = branch.unwrap_or_default();
-    let mut info = Info { id, cwd, title: String::new(), command, state: State::Running, note: String::new(), since_ms: now_ms(), branch, project, muted: false, tags: Vec::new(), claude: false, conversation: String::new(), charset: "UTF-8".into(), agent: String::new(), ports: Vec::new(), recording: String::new(), logging: String::new(), read_only: false };
+    let mut info = Info { id, cwd, title: String::new(), command, state: State::Running, note: String::new(), since_ms: now_ms(), branch, project, muted: false, tags: Vec::new(), claude: false, conversation: String::new(), charset: "UTF-8".into(), agent: String::new(), ports: Vec::new(), recording: String::new(), logging: String::new(), read_only: false, profile: String::new() };
     lock(&shared.rules).apply(&mut info);
     let watchers: BTreeSet<ClientId> = client.into_iter().collect();
     sessions.insert(
@@ -1109,6 +1117,7 @@ fn restore(shared: &Arc<Shared>, sessions: &mut BTreeMap<SessionId, Session>, on
                 s.claude = Some(conversation.clone());
             }
             s.info.agent.clone_from(&p.agent);
+            s.info.profile.clone_from(&p.profile);
             s.pending = lock(&shared.rules).take_up(p.claude.as_deref(), &p.agent);
             ids.insert(p.id, id);
             started += 1;
@@ -1827,7 +1836,7 @@ mod tags {
     }
 
     fn info(cwd: &str, tags: &[&str]) -> Info {
-        Info { id: 1, cwd: PathBuf::from(cwd), title: String::new(), command: String::new(), state: State::Running, note: String::new(), since_ms: 0, branch: String::new(), project: PathBuf::new(), muted: false, tags: tags.iter().map(|t| t.to_string()).collect(), claude: false, conversation: String::new(), charset: String::new(), agent: String::new(), ports: Vec::new(), recording: String::new(), logging: String::new(), read_only: false }
+        Info { id: 1, cwd: PathBuf::from(cwd), title: String::new(), command: String::new(), state: State::Running, note: String::new(), since_ms: 0, branch: String::new(), project: PathBuf::new(), muted: false, tags: tags.iter().map(|t| t.to_string()).collect(), claude: false, conversation: String::new(), charset: String::new(), agent: String::new(), ports: Vec::new(), recording: String::new(), logging: String::new(), read_only: false, profile: String::new() }
     }
 
     /// Going back and forth between two folders with a rule each swaps the

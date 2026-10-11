@@ -386,6 +386,12 @@ impl Client {
         self.0.send(ToServer::ReadOnly { id, on });
     }
 
+    /// Say which profile a session was started from (empty for none); the
+    /// session's `profile` tells it back.
+    pub fn set_profile(&self, id: SessionId, name: String) {
+        self.0.send(ToServer::Profile { id, name });
+    }
+
     /// Look for `query` in every session's scrollback; the answer comes to
     /// `found_all`, without waiting for it here.
     pub fn search_all(&self, query: String) {
