@@ -4709,11 +4709,20 @@ impl App {
                     // band has the lit chip that opens it.
                     if !info.logging.is_empty() {
                         let paused = self.panes.get(id).is_some_and(|pane| ito_pane::Pane::screen(pane).alt_screen);
-                        let ink = if paused { self.palette.fg_dim } else { chrome::ink(chrome::gold()) };
-                        let r = p.text(egui::pos2(right_x, head.center().y), egui::Align2::RIGHT_CENTER, "LOG", egui::FontId::proportional(10.5), ink);
-                        // Boxed in the chip's colour, so the two read as one.
-                        p.rect_stroke(r.expand2(egui::vec2(4.0, 1.0)), 3.0, egui::Stroke::new(1.0, chrome::gold()), egui::StrokeKind::Outside);
-                        right_x = r.left() - 14.0;
+                        // A tag like the band's chip: gold fill, white text; only
+                        // an outline while a full-screen program holds the screen.
+                        let galley = p.layout_no_wrap("LOG".into(), egui::FontId::proportional(10.5), if paused { self.palette.fg_dim } else { egui::Color32::WHITE });
+                        let tag = egui::Rect::from_min_max(
+                            egui::pos2(right_x - galley.size().x - 10.0, head.center().y - 8.0),
+                            egui::pos2(right_x, head.center().y + 8.0),
+                        );
+                        if paused {
+                            p.rect_stroke(tag, 4.0, egui::Stroke::new(1.0, chrome::gold()), egui::StrokeKind::Inside);
+                        } else {
+                            p.rect_filled(tag, 4.0, chrome::gold().gamma_multiply(0.75));
+                        }
+                        p.galley(egui::pos2(tag.left() + 5.0, tag.center().y - galley.size().y / 2.0), galley, egui::Color32::WHITE);
+                        right_x = tag.left() - 10.0;
                     }
                     // A character set other than UTF-8, said where it applies.
                     if !info.charset.is_empty() && info.charset != "UTF-8" {
