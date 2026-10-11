@@ -372,11 +372,17 @@ impl Client {
         self.0.send(ToServer::MoveWorkspace { id, to });
     }
 
-    /// Give a session a prompt as if typed and sent: pasted (so its lines
-    /// arrive as one, in bracketed paste where the program asked for it),
-    /// then Enter. Its notices are read, as with any key.
+    /// Give a session a prompt as if typed and sent, then Enter. A line is
+    /// typed as it is: a shell that is not at its prompt, or that has not
+    /// really switched bracketed paste on, would take the markers around a
+    /// paste as text (#35). Several lines are pasted, so they arrive as one,
+    /// in bracketed paste where the program asked for it. Its notices are
+    /// read, as with any key.
     pub fn send_prompt(&self, id: SessionId, text: String) {
-        self.0.send(ToServer::Paste { id, text });
+        match typed_line(&text) {
+            Some(bytes) => self.0.send(ToServer::Input { id, bytes }),
+            None => self.0.send(ToServer::Paste { id, text }),
+        }
         self.0.send(ToServer::Input { id, bytes: b"\r".to_vec() });
     }
 
@@ -808,5 +814,32 @@ pub fn explain(host: &str, command: &str, e: &io::Error, code: Option<i32>, said
         format!("{host}: {e}")
     } else {
         format!("{host}: {said}")
+    }
+}
+
+/// What typing `text` sends, if it is one line: no line break, no control
+/// characters but Tab (which a paste drops too).
+fn typed_line(text: &str) -> Option<Vec<u8>> {
+    if text.is_empty() || text.chars().any(|c| c != '\t' && c.is_control()) {
+        return None;
+    }
+    Some(text.as_bytes().to_vec())
+}
+
+#[cfg(test)]
+mod typed_tests {
+    use super::typed_line;
+
+    /// One line is typed (no paste markers); several, or anything with a
+    /// control character, stay a paste.
+    #[test]
+    fn one_line_is_typed_and_several_are_pasted() {
+        assert_eq!(typed_line("sleep 3; echo hi").as_deref(), Some(&b"sleep 3; echo hi"[..]));
+        assert_eq!(typed_line("a\tb").as_deref(), Some(&b"a\tb"[..]));
+        assert_eq!(typed_line("日本語").as_deref(), Some("日本語".as_bytes()));
+        assert_eq!(typed_line("one\ntwo"), None);
+        assert_eq!(typed_line("one\r\ntwo"), None);
+        assert_eq!(typed_line("esc\x1b[31m"), None);
+        assert_eq!(typed_line(""), None);
     }
 }
