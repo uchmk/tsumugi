@@ -107,6 +107,7 @@ const INDEX: &[(Page, &str)] = &[
     (Page::Notifications, "prefs.notify.sound"),
     (Page::Notifications, "prefs.notify.long_run"),
     (Page::Notifications, "prefs.notify.answers"),
+    (Page::Notifications, "prefs.notify.stay"),
     (Page::Notifications, "prefs.notify.webhook"),
     (Page::Notifications, "prefs.notify.webhook_format"),
     (Page::Notifications, "prefs.notify.webhook_after"),
@@ -831,6 +832,10 @@ fn notifications(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: 
         sep(ui, l);
         if row(ui, l, tr("prefs.notify.answers"), tr("prefs.notify.answers_note"), |ui| switch(ui, l, n.answer_buttons)) {
             out.push(Change::Set(Some("notify"), "answer_buttons", (!n.answer_buttons).to_string()));
+        }
+        sep(ui, l);
+        if row(ui, l, tr("prefs.notify.stay"), tr("prefs.notify.stay_note"), |ui| switch(ui, l, n.stay)) {
+            out.push(Change::Set(Some("notify"), "stay", (!n.stay).to_string()));
         }
         sep(ui, l);
         let note = if cfg!(windows) { tr("prefs.notify.focus_note_win") } else { tr("prefs.notify.focus_note_other") };

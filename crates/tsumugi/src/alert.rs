@@ -193,6 +193,14 @@ fn mark(state: Option<State>, title: &str) -> String {
 /// (`[notify] answer_buttons`), read when the toast is made.
 static ANSWER_BUTTONS: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
 
+/// Whether a notification that wants a person stays on screen
+/// (`[notify] stay`), read when the toast is made.
+static STAY: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
+
+pub fn set_stay(on: bool) {
+    STAY.store(on, std::sync::atomic::Ordering::Relaxed);
+}
+
 pub fn set_answer_buttons(on: bool) {
     ANSWER_BUTTONS.store(on, std::sync::atomic::Ordering::Relaxed);
 }
@@ -242,7 +250,7 @@ fn toast(session: SessionId, title: &str, body: &str, state: Option<State>) -> T
         body: body.into(),
         // One per session: a newer one replaces the last in the Action Center.
         tag: session.to_string(),
-        urgent: waiting || state == Some(State::Error),
+        urgent: (waiting || state == Some(State::Error)) && STAY.load(std::sync::atomic::Ordering::Relaxed),
         launch: "open".into(),
         actions,
     }
@@ -645,5 +653,8 @@ mod tests {
         let done = toast(3, "t", "b", Some(State::Done));
         assert_eq!((args(&done), done.urgent), (["open", "dismiss"].map(String::from).to_vec(), false));
         assert!(toast(3, "t", "b", Some(State::Error)).urgent);
+        set_stay(false);
+        assert!(!toast(3, "t", "b", Some(State::Waiting)).urgent);
+        set_stay(true);
     }
 }

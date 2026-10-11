@@ -5731,6 +5731,7 @@ impl App {
             }
         }
         alert::set_answer_buttons(self.settings_now.notify.answer_buttons);
+        alert::set_stay(self.settings_now.notify.stay);
         let notices = client.notices();
         if self.key_log {
             // `TSUMUGI_KEYLOG=1` also says why a notice was or was not

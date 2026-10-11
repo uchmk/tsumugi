@@ -780,6 +780,10 @@ pub struct Notify {
     pub focus_mode: bool,
     /// Windows: the toast of a session that waits has Allow and Deny.
     pub answer_buttons: bool,
+    /// Windows: the toast of a session that waits or failed stays until it
+    /// is dealt with; off, it goes away by itself after a few seconds (the
+    /// system's banner time) and stays in the Action Center.
+    pub stay: bool,
     /// Where to send a session waiting while no one is at the window: an
     /// ntfy topic's address, a Slack incoming webhook, or any address that
     /// takes JSON. Empty: nowhere.
@@ -814,6 +818,7 @@ impl Default for Notify {
             sound_error: "low".into(),
             focus_mode: true,
             answer_buttons: true,
+            stay: true,
             webhook: String::new(),
             webhook_format: "ntfy".into(),
             webhook_after: 120,
