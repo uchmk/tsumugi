@@ -387,6 +387,7 @@ mod tests {
             ports: Vec::new(),
             recording: String::new(),
             logging: String::new(),
+            read_only: false,
         }
     }
 

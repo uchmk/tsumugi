@@ -36,6 +36,8 @@ struct Remote {
     selected: bool,
     /// The answer to `find`, not taken yet.
     found: Option<Option<bool>>,
+    /// When the program last rang the bell (BEL).
+    rang: Option<std::time::Instant>,
 }
 
 #[derive(Default)]
@@ -378,6 +380,12 @@ impl Client {
         self.0.send(ToServer::Input { id, bytes: b"\r".to_vec() });
     }
 
+    /// Turn away typing and pasting into a session (`on`), or let them in
+    /// again; the session's `read_only` tells which.
+    pub fn read_only(&self, id: SessionId, on: bool) {
+        self.0.send(ToServer::ReadOnly { id, on });
+    }
+
     /// Look for `query` in every session's scrollback; the answer comes to
     /// `found_all`, without waiting for it here.
     pub fn search_all(&self, query: String) {
@@ -541,6 +549,7 @@ fn receive(inner: &Inner, msg: ToClient) {
         }
         ToClient::Attention { looking, teller } => (st.looking, st.teller) = (looking, teller),
         ToClient::MutedTags(list) => st.muted_tags = list,
+        ToClient::Bell { id } => st.screens.entry(id).or_default().rang = Some(std::time::Instant::now()),
         // An error answers the request waiting on one (a spawn), if any.
         ToClient::Error(e) => st.spawned.push_back(Err(e)),
     }
@@ -557,6 +566,11 @@ pub struct RemotePane {
 impl RemotePane {
     pub fn id(&self) -> SessionId {
         self.id
+    }
+
+    /// When the program last rang the bell (BEL), if it has.
+    pub fn rang(&self) -> Option<std::time::Instant> {
+        self.inner.lock().screens.get(&self.id).and_then(|r| r.rang)
     }
 
     /// The shell has ended (or the server has gone).

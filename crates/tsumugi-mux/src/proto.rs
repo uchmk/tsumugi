@@ -7,7 +7,7 @@ use ito_pane::Size;
 
 /// Bumped whenever a message changes shape: a client and a server that
 /// disagree say so at `Hello` instead of misreading each other.
-pub const VERSION: u32 = 36;
+pub const VERSION: u32 = 37;
 
 /// A `Hello` with this version asks the server to stop, writing down its
 /// tabs first so the next window can bring them back. `Hello` stays the
@@ -135,6 +135,9 @@ pub struct Info {
     pub recording: String,
     /// The text file its work log is being written to, or empty.
     pub logging: String,
+    /// Typing and pasting into it are turned away (`ToServer::ReadOnly`).
+    /// Not kept across a restart.
+    pub read_only: bool,
 }
 
 /// How many tags a session can have (the design's 1o).
@@ -273,6 +276,9 @@ pub enum ToServer {
     /// every `ms` milliseconds, the latest then, and pictures of at most
     /// `picture_bytes` of RGBA, scaled down. Zero for either is no limit.
     Pace { ms: u32, picture_bytes: u64 },
+    /// Turn away typing and pasting into a session, from every window and
+    /// from `tsumugi send`, or let them in again.
+    ReadOnly { id: SessionId, on: bool },
 }
 
 /// A line `SearchAll` found.
@@ -337,4 +343,6 @@ pub enum ToClient {
     Picture { id: SessionId, key: u64, picture: Option<ito_pane::Picture> },
     /// The selection, for Linux's primary selection (`Copy` with `primary`).
     Primary(String),
+    /// The program in a session the window watches rang the bell (BEL).
+    Bell { id: SessionId },
 }

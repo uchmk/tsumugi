@@ -159,7 +159,7 @@ fn ls_json_is_one_array_of_sessions() {
     let json = s.ok(&["ls", "--json"]);
     let t = json.trim();
     assert!(t.starts_with('[') && t.ends_with(']'), "{json}");
-    for key in ["id", "state", "command", "agent", "cwd", "project", "branch", "title", "note", "since_ms", "tags", "ports", "muted", "charset"] {
+    for key in ["id", "state", "command", "agent", "cwd", "project", "branch", "title", "note", "since_ms", "tags", "ports", "muted", "charset", "read_only"] {
         assert!(json.contains(&format!("\"{key}\":")), "no {key} in {json}");
     }
     assert!(json.contains(&format!("\"id\": {id}")) || json.contains(&format!("\"id\":{id}")), "{json}");
@@ -187,6 +187,37 @@ fn send_runs_a_line_and_read_gives_it_back() {
     let five = s.ok(&["read", &id, "--lines", "5"]);
     assert!(five.lines().count() <= 5, "{five}");
     assert!(!five.contains("日本語ok"), "--lines 5 gave more than the last five:\n{five}");
+}
+
+/// 2.78's text half: a read-only session refuses `send` with exit 1 and
+/// says so, and `ls --json` tells it; let go, `send` works again.
+#[test]
+fn send_to_a_read_only_session_is_refused() {
+    let s = Server::new("ro");
+    let id = s.new_session(&[]);
+    let c = Client::connect(&Address(s.address.clone()), || {}).expect("a client connects");
+    let n: u64 = id.parse().unwrap();
+    c.read_only(n, true);
+    let deadline = Instant::now() + PATIENCE;
+    let read_only = || s.ok(&["ls", "--json"]).replace(' ', "").contains("\"read_only\":true");
+    while !read_only() {
+        assert!(Instant::now() < deadline, "never read-only: {}", s.ok(&["ls", "--json"]));
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    let out = s.run(&["send", &id, "echo refused > no.txt"]);
+    assert_eq!(out.status.code(), Some(1), "{}", String::from_utf8_lossy(&out.stderr));
+    assert!(String::from_utf8_lossy(&out.stderr).contains("read-only"), "{}", String::from_utf8_lossy(&out.stderr));
+    c.read_only(n, false);
+    while read_only() {
+        assert!(Instant::now() < deadline, "never let go");
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    s.ok(&["send", &id, "echo let-in > in.txt"]);
+    while !s.dir.join("in.txt").exists() {
+        assert!(Instant::now() < deadline, "no in.txt; the session shows:\n{}", s.ok(&["read", &id, "--all"]));
+        std::thread::sleep(Duration::from_millis(200));
+    }
+    assert!(!s.dir.join("no.txt").exists(), "the refused line ran");
 }
 
 /// 2.70's last clause, and starting a work log without the key: `log N

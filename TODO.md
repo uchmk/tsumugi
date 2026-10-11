@@ -29,7 +29,7 @@ tsumugi のやること。`【人】` は持ち主の作業、`【金】` は 20
       `tsumugi-prefs`（設定の画面の枠と部品、Language・CLOCK・Theme の共通のページ）を切り出し、tsumugi の設定の画面をその上に作り直した。
       テーマと時計は common.toml を読み書きする（settings.toml の古い値は common.toml に無ければ使う）。`uchmk/themes/` も読む。
 - [x] （mimamori v0.32.0 で済んだ）mimamori に設定の画面・テーマ・時計を足す。
-- [ ] filer に持ち帰る: Ctrl+, の設定の画面を `ito-prefs` で作り、ステータスバーの右端に時計を出し、common.toml のテーマと時計を読む。
+- [x] （kura v0.97.0・v0.100.0 で済んだ）filer に持ち帰る: Ctrl+, の設定の画面を `ito-prefs` で作り、ステータスバーの右端に時計を出し、common.toml のテーマと時計を読む。
       yazi の `theme.toml` との関係は filer の QUESTIONS.md で持ち主に聞く。filer の TODO.md の「設定の画面（uchmk の共通仕様）」で進める。
 - [x] （v0.86.0）tsumugi 自身のメニューを `ito-i18n` の表に載せ、設定の画面の文字を `Words::of(language)` で日本語にも出す（今は英語だけ、TESTING.md 17.38）。
       タブ・タグ・マシンの右クリックのメニュー、文字コードのメニュー、入力欄の `+ Sessions` と `Prompts…` を `src/lang/` の表にした。
@@ -99,7 +99,8 @@ v0.94.0 から、実機の PR の所見と頼みは `finding` の issue に、�
 - [x] （v0.74.0）トリガー（iTerm2）: 正規表現が出力に当たったら、色を付ける・知らせる。
 - [x] （v0.85.0）録画（`Ctrl+Shift+R`）の最初に、始めた時点の画面を 1 つ目の出力として書く。今は始めた後の出力だけなので、何も出さずに止めるとヘッダーだけの `.cast` になり、再生しても始めの画面が無い（2026-10-10、持ち主の質問から）。
 - 後で（範囲を決めてから）
-  - [ ] プロファイルごとのテーマとフォント、ペインの読み取り専用、視覚ベル。
+  - [x] （v0.96.0）ペインの読み取り専用、視覚ベル。
+  - [ ] プロファイルごとのテーマとフォント。
   - [ ] 窓を複数持つ・タブを窓の外へ引き出す、スクリーンリーダー（AccessKit）、右から左の文字（bidi）。
   - [ ] シェーダー・カーソルのアニメーション、tmux の control mode、シリアル接続、macOS の Secure Keyboard Entry（macOS の窓と一緒に）。
 
