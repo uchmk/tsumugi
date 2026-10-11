@@ -54,6 +54,7 @@ mod spawn;
 mod autostart;
 mod facts;
 mod envreport;
+mod winplace;
 mod update;
 mod export;
 mod icon;
@@ -652,6 +653,17 @@ fn window() -> std::process::ExitCode {
     if let Some(at) = menu::window_at() {
         viewport = viewport.with_position(at);
     }
+    // The first window opens where it was left.
+    let mut placed = None;
+    if winplace::wanted(&first.window.quake) {
+        if let Some(p) = winplace::path().and_then(|path| winplace::load(&path)) {
+            viewport = viewport.with_position(p.pos).with_inner_size(p.size);
+            if p.maximized {
+                viewport = viewport.with_maximized(true);
+            }
+            placed = Some(p);
+        }
+    }
     if first.window.own_titlebar() {
         // macOS keeps its traffic lights, over the band; elsewhere the band
         // draws its own buttons (chrome::top_band).
@@ -670,7 +682,13 @@ fn window() -> std::process::ExitCode {
     // window opens), so a machine without the file still follows it.
     i18n::follow("auto");
     let options = eframe::NativeOptions { viewport, wgpu_options: wgpu_options(&first.advanced.backend), ..Default::default() };
-    match eframe::run_native("tsumugi", options, Box::new(|cc| Ok(Box::new(App::new(cc))))) {
+    match eframe::run_native("tsumugi", options, Box::new(move |cc| {
+        let mut app = App::new(cc);
+        if let Some(p) = placed {
+            app.place.loaded(p);
+        }
+        Ok(Box::new(app))
+    })) {
         Ok(()) => std::process::ExitCode::SUCCESS,
         Err(e) => {
             eprintln!("tsumugi: {e}");
@@ -1107,6 +1125,8 @@ struct App {
     backdrop: backdrop::Backdrop,
     /// `[window] quake`, the key held from any program.
     quake: quake::Quake,
+    /// Where the window is, to open there next time (`winplace`).
+    place: winplace::Tracker,
     /// macOS's Secure Keyboard Entry, held while asked and in front.
     secure: secure::Secure,
     /// Each session's folder as last seen, and the folders of those that
@@ -1532,6 +1552,7 @@ impl App {
             transparent: first_window.opacity < 100,
             backdrop: backdrop::Backdrop::default(),
             quake: quake::Quake::default(),
+            place: winplace::Tracker::default(),
             secure: secure::Secure::default(),
             known_cwds: HashMap::new(),
             closed: closed_file().and_then(|p| std::fs::read_to_string(p).ok()).map(|t| t.lines().filter(|l| !l.is_empty()).map(std::path::PathBuf::from).collect()).unwrap_or_default(),
@@ -3505,6 +3526,16 @@ impl App {
         if self.material { c.gamma_multiply(a.min(0.55)) } else { c.gamma_multiply(a) }
     }
 
+    /// Write down where the window is once it holds still, for the next
+    /// start. The first window only, and not in quake mode.
+    fn remember_place(&mut self, ctx: &egui::Context) {
+        if !winplace::wanted(&self.settings_now.window.quake) {
+            return;
+        }
+        let (Some(place), Some(path)) = (self.place.observe(ctx), winplace::path()) else { return };
+        let _ = std::thread::Builder::new().name("window-place".into()).spawn(move || winplace::save(&path, &place));
+    }
+
     /// Quake mode's key: down from the top of the screen and given the keys,
     /// or, when it has them, away (hidden, off the taskbar too).
     fn quake(&mut self, ctx: &egui::Context) {
@@ -5339,6 +5370,7 @@ impl eframe::App for App {
         self.frame(ui, frame);
         self.script(ui.ctx());
         self.quake(ui.ctx());
+        self.remember_place(ui.ctx());
         let front = ui.ctx().input(|i| i.viewport().focused).unwrap_or(false);
         self.secure.follow(self.settings_now.advanced.secure_input && front);
         if !cfg!(target_os = "macos") {
