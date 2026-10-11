@@ -195,6 +195,21 @@ pub fn set_answer_buttons(on: bool) {
     ANSWER_BUTTONS.store(on, std::sync::atomic::Ordering::Relaxed);
 }
 
+/// The window out of the taskbar and in front (a click on a notification
+/// while it is minimized; the click gives the right to the front).
+#[cfg(windows)]
+fn restore_window(handle: isize) {
+    use windows::Win32::Foundation::HWND;
+    use windows::Win32::UI::WindowsAndMessaging::{IsIconic, SW_RESTORE, SetForegroundWindow, ShowWindow};
+    let hwnd = HWND(handle as *mut _);
+    unsafe {
+        if IsIconic(hwnd).as_bool() {
+            let _ = ShowWindow(hwnd, SW_RESTORE);
+        }
+        let _ = SetForegroundWindow(hwnd);
+    }
+}
+
 /// What a click on a notification asked for.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Reply {
@@ -225,6 +240,12 @@ impl Teller {
         let click_tx = std::sync::Mutex::new(click_tx);
         let click: Click = Arc::new(move |id, reply| {
             let _ = click_tx.lock().unwrap_or_else(|e| e.into_inner()).send((id, reply));
+            // A minimized window draws no frame, so the wake below would
+            // reach nobody: bring it back from here.
+            #[cfg(windows)]
+            if let (Reply::Open, Some(h)) = (reply, window) {
+                restore_window(h);
+            }
             wake();
         });
         let _ = std::thread::Builder::new().name("alerts".into()).spawn(move || {
