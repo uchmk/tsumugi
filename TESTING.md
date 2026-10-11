@@ -249,7 +249,7 @@ to `cli.rs` and a line to this table instead of a row.
 | 4.2 | With the hooks (12.x), Claude finishing a reply | The card turns green, **Done** |
 | 4.3 | The waiting card's `1 Yes` button, without going to the tab | Claude goes on, as if `1` were typed there; the card leaves the waiting state |
 | 4.4 | A card waiting with no menu on screen | No buttons |
-| 4.5 | Another window in front while a session starts waiting | A Windows toast titled `<folder> is waiting for you`, the work's name and words below, with **Open** and **Later**; the tsumugi logo (two threads on a dark tile) is the big image at the left and the small mark by the app name in the header; a second notice from the same session replaces it in the Action Center |
+| 4.5 | Another window in front while a session starts waiting | A Windows toast titled `<folder> is waiting for you`, the work's name and words below, with **Open** and **Later**; the title starts with ⏳ (waiting), ❌ (failed) or ✅ (done), and a waiting or failed one stays on screen until dismissed while a done one goes away by itself; the tsumugi logo (two threads on a dark tile) is the big image at the left and the small mark by the app name in the header; a second notice from the same session replaces it in the Action Center |
 | 4.6 | Click the toast, or Open; then Later on another | tsumugi comes to the front on that pane; Later only puts the toast away |
 | 4.7 | The taskbar button while two wait, then one fails | A gold `2` with dark digits; red with white once one has failed; it clears when the window is looked at |
 | 4.8 | Settings → Notifications: flash and sound on for waiting, then 4.5 again | The taskbar button flashes and the system's message sound plays once (the error sound for an error) |

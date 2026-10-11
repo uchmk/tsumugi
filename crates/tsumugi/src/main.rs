@@ -2093,6 +2093,7 @@ impl App {
                     session: 0,
                     title: "tsumugi".into(),
                     body: "A test notification: this is how a session tells you".into(),
+                    state: Some(State::Waiting),
                 }),
                 prefs::Change::DeleteProfile(name) => {
                     self.profiles.retain(|p| p.name != name);
@@ -4290,7 +4291,7 @@ impl App {
                 let looking = self.ctx.input(|i| i.viewport().focused).unwrap_or(true);
                 let hush = self.settings_now.notify.focus_mode && sound::quiet_time();
                 if !looking && !hush && self.alerts.rules.notify.waiting {
-                    self.teller.send(alert::Out::Notify { session: 0, title: "tsumugi".into(), body: words.clone() });
+                    self.teller.send(alert::Out::Notify { session: 0, title: "tsumugi".into(), body: words.clone(), state: None });
                 }
                 self.say(words, false);
             }
@@ -5696,7 +5697,7 @@ impl App {
         if day > 0 || block > 0 {
             for words in self.spend.check(&self.usage.get(), day, block) {
                 if !here {
-                    self.teller.send(alert::Out::Notify { session: 0, title: "tsumugi".into(), body: words.clone() });
+                    self.teller.send(alert::Out::Notify { session: 0, title: "tsumugi".into(), body: words.clone(), state: None });
                 }
                 self.say(words, false);
             }

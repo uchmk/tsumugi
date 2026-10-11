@@ -66,8 +66,9 @@ impl Default for Rules {
 /// One thing to do.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Out {
-    /// `session`: where a click on it goes.
-    Notify { session: SessionId, title: String, body: String },
+    /// `session`: where a click on it goes. `state`: what the session is
+    /// in, for a notification that looks like it (None: a plain one).
+    Notify { session: SessionId, title: String, body: String, state: Option<State> },
     Flash,
     /// The sound for a session that failed (`true`) or wants a person.
     Sound(bool),
@@ -118,7 +119,7 @@ impl Alerts {
             // A trigger with `notify` asked to be told; the rest by its state.
             for n in fresh.iter().filter(|n| n.trigger || self.rules.notify.has(n.state)) {
                 let (title, body) = wording(n, places.get(&n.session).map(String::as_str));
-                out.push(Out::Notify { session: n.session, title, body });
+                out.push(Out::Notify { session: n.session, title, body, state: (!n.trigger).then_some(n.state) });
             }
             let fresh: Vec<&Notice> = fresh.into_iter().filter(|n| !n.trigger).collect();
             if fresh.iter().any(|n| self.rules.flash.has(n.state)) {
@@ -164,6 +165,17 @@ fn wording(n: &Notice, place: Option<&str>) -> (String, String) {
         (false, _) => n.note.clone(),
     };
     (title, body)
+}
+
+/// The title with a mark for the state in front: the notification says at a
+/// glance whether it wants a person (⏳), failed (❌) or finished (✅).
+fn mark(state: Option<State>, title: &str) -> String {
+    match state {
+        Some(State::Waiting | State::MaybeWaiting) => format!("⏳ {title}"),
+        Some(State::Error) => format!("❌ {title}"),
+        Some(State::Done) => format!("✅ {title}"),
+        _ => title.to_owned(),
+    }
 }
 
 /// Called with the session of a notification that was clicked, from
@@ -312,7 +324,7 @@ mod os {
     pub struct System {
         window: Option<HWND>,
         taskbar: Option<ITaskbarList3>,
-        toasts: mpsc::Sender<(SessionId, String, String)>,
+        toasts: mpsc::Sender<(SessionId, String, String, Option<super::State>)>,
     }
 
     impl System {
@@ -322,7 +334,7 @@ mod os {
             }
             let taskbar = unsafe { CoCreateInstance::<_, ITaskbarList3>(&TaskbarList, None, CLSCTX_INPROC_SERVER) }.ok();
             let taskbar = taskbar.filter(|t| unsafe { t.HrInit() }.is_ok());
-            let (toasts, rx) = mpsc::channel::<(SessionId, String, String)>();
+            let (toasts, rx) = mpsc::channel::<(SessionId, String, String, Option<super::State>)>();
             let _ = std::thread::Builder::new().name("toasts".into()).spawn(move || {
                 unsafe {
                     let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
@@ -331,14 +343,14 @@ mod os {
                 let mut shown = VecDeque::new();
                 let mut registered = false;
                 let mut logo = None;
-                for (session, title, body) in rx {
+                for (session, title, body, state) in rx {
                     // The name and the logo, written at the first notification only.
                     if !registered {
                         logo = write_logo();
                         register(logo.as_deref());
                         registered = true;
                     }
-                    if let Ok(t) = toast(&title, &body, session, logo.as_deref(), click.clone()) {
+                    if let Ok(t) = toast(&title, &body, session, state, logo.as_deref(), click.clone()) {
                         shown.push_back(t);
                         if shown.len() > 50 {
                             shown.pop_front();
@@ -351,8 +363,8 @@ mod os {
 
         pub fn tell(&mut self, out: Out) {
             match out {
-                Out::Notify { session, title, body } => {
-                    let _ = self.toasts.send((session, title, body));
+                Out::Notify { session, title, body, state } => {
+                    let _ = self.toasts.send((session, super::mark(state, &title), body, state));
                 }
                 // The window does these itself (`RequestUserAttention`, `sound`).
                 Out::Flash | Out::Sound(_) => {}
@@ -403,15 +415,18 @@ mod os {
         }
     }
 
-    fn toast(title: &str, body: &str, session: SessionId, logo: Option<&std::path::Path>, click: Click) -> windows::core::Result<ToastNotification> {
+    fn toast(title: &str, body: &str, session: SessionId, state: Option<super::State>, logo: Option<&std::path::Path>, click: Click) -> windows::core::Result<ToastNotification> {
         // The logo beside the words, if it was written.
         let image = logo.map_or_else(String::new, |p| {
             format!("<image placement=\"appLogoOverride\" src=\"file:///{}\"/>", xml_escape(&p.display().to_string().replace('\\', "/")))
         });
         // Open goes to the session, as a click on the toast does; Later is
         // the system's own dismiss (the design's Notify).
+        // One that wants a person, or failed, stays on screen until it is
+        // dealt with; a finished one goes away by itself.
+        let scenario = if matches!(state, Some(super::State::Waiting | super::State::MaybeWaiting | super::State::Error)) { " scenario=\"reminder\"" } else { "" };
         let xml = format!(
-            "<toast launch=\"open\"><visual><binding template=\"ToastGeneric\">{image}<text>{}</text><text>{}</text></binding></visual>\
+            "<toast launch=\"open\"{scenario}><visual><binding template=\"ToastGeneric\">{image}<text>{}</text><text>{}</text></binding></visual>\
              <actions><action content=\"Open\" arguments=\"open\"/><action content=\"Later\" arguments=\"dismiss\" activationType=\"system\"/></actions></toast>",
             xml_escape(title),
             xml_escape(body)
@@ -489,7 +504,8 @@ mod os {
         }
 
         pub fn tell(&mut self, out: Out) {
-            if let Out::Notify { session, title, body } = out {
+            if let Out::Notify { session, title, body, state } = out {
+                let title = super::mark(state, &title);
                 let click = self.click.clone();
                 // Each on a thread of its own: one that can say it was
                 // clicked waits until it is closed.
@@ -578,7 +594,7 @@ mod tests {
         assert_eq!(a.decide(&old, seen(false, true, &none)), vec![Out::Badge(1, false)]);
         let new = [notice(0, State::Waiting, false), notice(1, State::Error, false)];
         let out = a.decide(&new, seen(false, true, &none));
-        assert_eq!(out, vec![Out::Notify { session: 1, title: "claude failed".into(), body: String::new() }, Out::Badge(2, true)]);
+        assert_eq!(out, vec![Out::Notify { session: 1, title: "claude failed".into(), body: String::new(), state: Some(State::Error) }, Out::Badge(2, true)]);
         // Told once.
         assert_eq!(a.decide(&new, seen(false, true, &none)), vec![]);
     }
@@ -608,7 +624,7 @@ mod tests {
         n.trigger = true;
         n.note = "BUILD FAILED".into();
         let out = a.decide(&[n.clone()], seen(false, true, &none));
-        assert_eq!(out, vec![Out::Notify { session: 1, title: "claude: a trigger matched".into(), body: "BUILD FAILED".into() }]);
+        assert_eq!(out, vec![Out::Notify { session: 1, title: "claude: a trigger matched".into(), body: "BUILD FAILED".into(), state: None }]);
         // Not while looking at it.
         n.id = 1;
         assert_eq!(a.decide(&[n], seen(true, true, &none)), vec![]);
@@ -621,7 +637,7 @@ mod tests {
         a.decide(&[], seen(false, true, &none));
         // A long run done: told, not counted, not flashed.
         let out = a.decide(&[notice(0, State::Done, false)], seen(false, true, &none));
-        assert_eq!(out, vec![Out::Notify { session: 1, title: "claude is done".into(), body: String::new() }]);
+        assert_eq!(out, vec![Out::Notify { session: 1, title: "claude is done".into(), body: String::new(), state: Some(State::Done) }]);
         a.rules.flash.waiting = true;
         a.rules.notify.waiting = false;
         let out = a.decide(&[notice(0, State::Done, false), notice(1, State::Waiting, false)], seen(false, true, &none));
