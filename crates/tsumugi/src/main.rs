@@ -4709,19 +4709,13 @@ impl App {
                     // band has the lit chip that opens it.
                     if !info.logging.is_empty() {
                         let paused = self.panes.get(id).is_some_and(|pane| ito_pane::Pane::screen(pane).alt_screen);
-                        // A tag like the band's chip: gold fill, white text; only
-                        // an outline while a full-screen program holds the screen.
-                        let galley = p.layout_no_wrap("LOG".into(), egui::FontId::proportional(10.5), if paused { self.palette.fg_dim } else { egui::Color32::WHITE });
-                        let tag = egui::Rect::from_min_max(
-                            egui::pos2(right_x - galley.size().x - 10.0, head.center().y - 8.0),
-                            egui::pos2(right_x, head.center().y + 8.0),
-                        );
-                        if paused {
-                            p.rect_stroke(tag, 4.0, egui::Stroke::new(1.0, chrome::gold()), egui::StrokeKind::Inside);
-                        } else {
-                            p.rect_filled(tag, 4.0, chrome::gold().gamma_multiply(0.75));
-                        }
-                        p.galley(egui::pos2(tag.left() + 5.0, tag.center().y - galley.size().y / 2.0), galley, egui::Color32::WHITE);
+                        // A tag like the band's chip: a solid gold fill; the
+                        // mark says a full-screen program holds the screen.
+                        let text = if paused { "LOG ‖" } else { "LOG" };
+                        let galley = p.layout_no_wrap(text.into(), egui::FontId::proportional(10.5), egui::Color32::BLACK);
+                        let tag = egui::Rect::from_min_max(egui::pos2(right_x - galley.size().x - 10.0, head.center().y - 8.0), egui::pos2(right_x, head.center().y + 8.0));
+                        p.rect_filled(tag, 4.0, chrome::gold());
+                        p.galley(egui::pos2(tag.left() + 5.0, tag.center().y - galley.size().y / 2.0), galley, egui::Color32::BLACK);
                         right_x = tag.left() - 10.0;
                     }
                     // A character set other than UTF-8, said where it applies.

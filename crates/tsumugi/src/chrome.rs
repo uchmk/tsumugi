@@ -756,7 +756,7 @@ pub fn top_band(ui: &mut egui::Ui, pal: &Palette, tags: &[String], shown: usize,
         let chip = egui::Rect::from_min_size(egui::pos2(left_edge - 6.0, rect.center().y - 9.0), egui::vec2(galley.size().x + 16.0, 18.0));
         if chip.right() + 12.0 < rect.right() {
             let resp = ui.interact(chip, ui.id().with("old-server"), egui::Sense::CLICK).on_hover_text(trf("title.old_server_hint", &[build, env!("CARGO_PKG_VERSION")]));
-            let fill = if resp.hovered() { red() } else { red().gamma_multiply(0.8) };
+            let fill = if resp.hovered() { Color32::from_rgb(240, 64, 64) } else { Color32::from_rgb(214, 40, 40) };
             p.rect_filled(chip, 4.0, fill);
             p.galley(egui::pos2(chip.left() + 8.0, chip.center().y - galley.size().y / 2.0), galley, Color32::WHITE);
             out.restart_server = resp.clicked();
@@ -772,17 +772,13 @@ pub fn top_band(ui: &mut egui::Ui, pal: &Palette, tags: &[String], shown: usize,
             name.push('…');
         }
         let text = if log.paused { format!("{name} · LOG ‖") } else { format!("{name} · LOG") };
-        let ink = if log.paused { pal.fg_dim } else { Color32::WHITE };
+        let ink = Color32::BLACK;
         let galley = p.layout_no_wrap(text, FontId::proportional(11.0), ink);
         let chip = egui::Rect::from_min_size(egui::pos2(left_edge - 6.0, rect.center().y - 8.0), egui::vec2(galley.size().x + 12.0, 16.0));
         if chip.right() + 12.0 < rect.right() {
             let hint = trf(if log.paused { "title.log_paused" } else { "title.log" }, &[&log.path]);
             let resp = ui.interact(chip, ui.id().with("work-log"), egui::Sense::CLICK).on_hover_cursor(egui::CursorIcon::PointingHand).on_hover_text(hint);
-            if log.paused {
-                p.rect_stroke(chip, 4.0, egui::Stroke::new(1.0, gold()), egui::StrokeKind::Inside);
-            } else {
-                p.rect_filled(chip, 4.0, if resp.hovered() { gold() } else { gold().gamma_multiply(0.75) });
-            }
+            p.rect_filled(chip, 4.0, if resp.hovered() { gold() } else { gold().gamma_multiply(0.85) });
             p.galley(egui::pos2(chip.left() + 6.0, chip.center().y - galley.size().y / 2.0), galley, ink);
             out.open_log = resp.clicked();
             left_edge = chip.right() + 12.0;
