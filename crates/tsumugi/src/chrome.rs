@@ -758,7 +758,6 @@ pub fn top_band(ui: &mut egui::Ui, pal: &Palette, tags: &[String], shown: usize,
             let resp = ui.interact(chip, ui.id().with("old-server"), egui::Sense::CLICK).on_hover_text(trf("title.old_server_hint", &[build, env!("CARGO_PKG_VERSION")]));
             let fill = if resp.hovered() { red() } else { red().gamma_multiply(0.8) };
             p.rect_filled(chip, 4.0, fill);
-            p.rect_stroke(chip, 4.0, egui::Stroke::new(1.0, Color32::WHITE), egui::StrokeKind::Inside);
             p.galley(egui::pos2(chip.left() + 8.0, chip.center().y - galley.size().y / 2.0), galley, Color32::WHITE);
             out.restart_server = resp.clicked();
             left_edge = chip.right() + 12.0;
