@@ -58,6 +58,15 @@ v0.94.0 から、実機の PR の所見と頼みは `finding` の issue に、�
       （訳の toml・テスト名の走査・節の準備）で、tsumugi の表（`操作 → 期待` の 1 行）と違う。載せ替えると TESTING-CHECKS.md の中身が
       全部変わり、レーンの塊の選び方（`wintest-queue.ps1`）の行の読み方も確かめ直しになる（v0.94.0 では見送った）。（要確認: #21）
 
+## tmux / tmuxinator との比べ（#32、2026-10-11）
+
+- 取り込んだ（v0.103.0）: `tsumugi layout NAME [FOLDER]` と `--list`（tmuxinator の `start`）、`split -p`（tmux の `-p`）、
+  `new --name` / `--at`（`new-window -n`）、`layouts.toml` の窓に `run`（打つ行）と `dir`（フォルダ）。
+- すでにある（同等）: 全部に打つ（broadcast）、`read`（capture-pane）、`log`（pipe-pane）、`wait`（wait-for）、`ls --json`。
+- 取り込まない: select-layout の型（even-horizontal など。割合は `-p` と保存した配置で足りる）、窓ごとの env（`run` に `FOO=1 cmd` と書ける）、
+  終了の hook（状態の通知と `wait` がある）、`has-session` の終了コード（`ls` / `wait` の 3 で足りる）、`ls --json` の分割の木（保存した配置を読む側が無い）。
+- MCP の layout の道具は足さない（`new`・`split` が MCP にあり、AI が配置を開く場面が見えない）。要るなら #32 に書いてもらう。
+
 ## ほかのターミナルにあるもの（2026-10-08、持ち主の依頼で全部取り込む）
 
 軽いものから順に入れる。重いものと、範囲を決めてからのものは後ろ。

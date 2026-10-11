@@ -13,12 +13,16 @@ use crate::sort;
 pub struct New {
     pub folder: Option<PathBuf>,
     pub tags: Vec<String>,
+    /// The tab's name, given at once.
+    pub name: Option<String>,
+    /// Its place among the tabs (1 is the first), when it should not go last.
+    pub at: Option<usize>,
     /// The command typed into the new shell (`claude`), from after `--`:
     /// its words, quoted there for the shell (one word is a line).
     pub command: Vec<String>,
 }
 
-pub const NEW_USAGE: &str = "tsumugi new [FOLDER] [--tag TAG]... [-- COMMAND ARGS...]";
+pub const NEW_USAGE: &str = "tsumugi new [FOLDER] [--tag TAG]... [--name NAME] [--at N] [-- COMMAND ARGS...]";
 
 pub fn parse_new(args: &[String]) -> Result<New, String> {
     let mut out = New::default();
@@ -31,6 +35,14 @@ pub fn parse_new(args: &[String]) -> Result<New, String> {
             "--tag" | "-t" => match it.next() {
                 Some(t) => out.tags.push(t.clone()),
                 None => return Err("--tag takes a name".into()),
+            },
+            "--name" | "-n" => match it.next() {
+                Some(n) => out.name = Some(n.clone()),
+                None => return Err("--name takes a name".into()),
+            },
+            "--at" => match it.next().and_then(|n| n.parse::<usize>().ok()).filter(|n| *n >= 1) {
+                Some(n) => out.at = Some(n),
+                None => return Err("--at takes a place, 1 for the first tab".into()),
             },
             s if s.starts_with('-') => return Err(format!("unknown option `{s}`")),
             _ if out.folder.is_none() => out.folder = Some(PathBuf::from(a)),
@@ -65,7 +77,119 @@ pub fn new(client: &Client, n: New) -> Result<SessionId, String> {
     // a question asked after them is answered once the server has them all
     // (it took only the first before, or none).
     client.list().map_err(|e| format!("the tags were not sent: {e}"))?;
+    if n.name.is_some() || n.at.is_some() {
+        let w = tab_of(client, id, 1)?;
+        if let Some(name) = n.name {
+            client.rename_workspace(w.id, name);
+        }
+        if let Some(at) = n.at {
+            client.move_workspace(w.id, at - 1);
+        }
+        client.list().map_err(|e| format!("the name was not sent: {e}"))?;
+    }
     Ok(id)
+}
+
+/// The tab that has session `id` and at least `panes` panes, once the
+/// server has said so.
+fn tab_of(client: &Client, id: SessionId, panes: usize) -> Result<tsumugi_mux::Workspace, String> {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    loop {
+        client.list().map_err(|e| e.to_string())?;
+        if let Some(w) = client.workspaces().into_iter().find(|w| w.layout.contains(&id) && w.layout.leaves().len() >= panes) {
+            return Ok(w);
+        }
+        if std::time::Instant::now() > deadline {
+            return Err("the server did not say where the tab is".into());
+        }
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+}
+
+/// `tsumugi layout NAME [FOLDER]` or `tsumugi layout --list`.
+#[derive(Debug, PartialEq)]
+pub enum LayoutCmd {
+    List,
+    Open { name: String, folder: Option<PathBuf> },
+}
+
+pub const LAYOUT_USAGE: &str = "tsumugi layout NAME [FOLDER]           open a saved layout (layouts.toml) as a new tab, in FOLDER (here); prints its panes' numbers\ntsumugi layout --list                   the saved layouts and their panes";
+
+pub fn parse_layout(args: &[String]) -> Result<LayoutCmd, String> {
+    let mut words = Vec::new();
+    let mut list = false;
+    for a in args {
+        match a.as_str() {
+            "--list" | "-l" => list = true,
+            s if s.starts_with('-') => return Err(format!("unknown option `{s}`")),
+            _ => words.push(a.clone()),
+        }
+    }
+    match (list, words.as_slice()) {
+        (true, []) => Ok(LayoutCmd::List),
+        (true, _) => Err("--list takes nothing else".into()),
+        (false, []) => Err("which layout? (tsumugi layout --list lists them)".into()),
+        (false, [name]) => Ok(LayoutCmd::Open { name: name.clone(), folder: None }),
+        (false, [name, folder]) => Ok(LayoutCmd::Open { name: name.clone(), folder: Some(PathBuf::from(folder)) }),
+        _ => Err("a layout and a folder only".into()),
+    }
+}
+
+/// The layout called `name` (case aside), or the error that says which are there.
+pub fn layout_named<'a>(list: &'a [crate::layouts::Layout], name: &str) -> Result<&'a crate::layouts::Layout, String> {
+    let want = name.trim().to_lowercase();
+    list.iter().find(|l| l.name == name).or_else(|| list.iter().find(|l| l.name.to_lowercase() == want)).ok_or_else(|| {
+        let names: Vec<&str> = list.iter().map(|l| l.name.as_str()).collect();
+        if names.is_empty() {
+            format!("no layout called `{name}` (none are saved; layouts.toml is read from beside config.toml)")
+        } else {
+            format!("no layout called `{name}` (there are: {})", names.join(", "))
+        }
+    })
+}
+
+/// Start a layout's panes in a tab of its own, named for the layout, with
+/// its shape; the panes' numbers in the layout's order.
+pub fn open_layout(client: &Client, l: &crate::layouts::Layout, base: &std::path::Path, claude: &str) -> Result<Vec<SessionId>, String> {
+    let panes = l.tree.leaves();
+    let mut made: Vec<SessionId> = Vec::new();
+    for p in &panes {
+        let place = match made.first() {
+            None => Place::NewWorkspace,
+            Some(first) => Place::Split { beside: *first, dir: tsumugi_mux::Dir::Right },
+        };
+        let folder = p.folder(base);
+        if !folder.is_dir() {
+            return Err(format!("{}: not a folder (a pane's dir)", folder.display()));
+        }
+        let pane = client.spawn_typing(folder, None, Size::new(80, 24), (8, 16), place, p.typed(claude)).map_err(|e| format!("a pane did not start: {e}"))?;
+        made.push(pane.id());
+    }
+    let first = *made.first().ok_or("the layout has no panes")?;
+    let tab = tab_of(client, first, made.len())?;
+    if let Some(tree) = crate::layouts::shaped(&l.tree, &made) {
+        client.set_layout(tab.id, tree, first);
+    }
+    client.rename_workspace(tab.id, l.name.clone());
+    client.list().map_err(|e| e.to_string())?;
+    Ok(made)
+}
+
+/// Where the first pane of `tree` is given `share` against its neighbour,
+/// as `split -p` asks: the split whose halves are exactly `a` and `b`.
+pub fn set_share(tree: &mut tsumugi_mux::Node<SessionId>, a: SessionId, b: SessionId, share: f32) -> bool {
+    use tsumugi_mux::Node;
+    match tree {
+        Node::Leaf(_) => false,
+        Node::Split { ratio, first, second, .. } => {
+            if matches!((&**first, &**second), (Node::Leaf(x), Node::Leaf(y)) if *x == a && *y == b) {
+                *ratio = share.clamp(ito_layout::MIN_RATIO, 1.0 - ito_layout::MIN_RATIO);
+                true
+            } else {
+                set_share(first, a, b, share) || set_share(second, a, b, share)
+            }
+        }
+    }
 }
 
 /// The session `name` means: its number, or the one whose folder, title,
@@ -130,7 +254,11 @@ mod tests {
     fn new_reads_a_folder_tags_and_a_command() {
         let a = |s: &str| s.split(' ').map(String::from).collect::<Vec<_>>();
         let n = parse_new(&a("~/dev/filer --tag review -- claude --continue")).unwrap();
-        assert_eq!(n, New { folder: Some("~/dev/filer".into()), tags: vec!["review".into()], command: a("claude --continue") });
+        assert_eq!(n, New { folder: Some("~/dev/filer".into()), tags: vec!["review".into()], command: a("claude --continue"), ..New::default() });
+        let n = parse_new(&a("--name api --at 2")).unwrap();
+        assert_eq!((n.name.as_deref(), n.at), (Some("api"), Some(2)));
+        assert!(parse_new(&a("--at 0")).is_err());
+        assert!(parse_new(&a("--name")).is_err());
         assert_eq!(parse_new(&[]).unwrap(), New::default());
         assert!(parse_new(&a("a b")).is_err(), "two folders");
         assert!(parse_new(&a("--tag")).is_err());
@@ -155,7 +283,7 @@ pub const REMOTE_USAGE: &str = "\
 tsumugi ls [--json]                      the sessions (--json: one array, every field)
 tsumugi send N|NAME TEXT...              type TEXT into the session, then Enter
 tsumugi read N|NAME [--lines K] [--all]  its last K lines (40), or its whole scrollback
-tsumugi split N|NAME [--down] [-- CMD]   a new pane beside it, in its folder; prints its number
+tsumugi split N|NAME [--down] [-p PERCENT] [-- CMD]\n                                         a new pane beside it, in its folder (PERCENT: its share,\n                                         like tmux -p); prints its number
 tsumugi close N|NAME                     end the session
 tsumugi log N|NAME [PATH] [--stop]       write its text to PATH (Downloads) as it goes, or finish;
                                          prints the file (`-2` when PATH is there already)
@@ -219,17 +347,23 @@ pub fn last_lines(text: &str, n: usize) -> String {
 pub struct Split {
     pub who: String,
     pub down: bool,
+    /// The new pane's share of the two, in percent (tmux's `-p`).
+    pub percent: Option<u8>,
     pub command: Vec<String>,
 }
 
 pub fn parse_split(args: &[String]) -> Result<Split, String> {
-    let mut out = Split { who: String::new(), down: false, command: Vec::new() };
+    let mut out = Split { who: String::new(), down: false, percent: None, command: Vec::new() };
     let mut it = args.iter();
     while let Some(a) = it.next() {
         match a.as_str() {
             "--" => out.command = it.by_ref().cloned().collect(),
             "--down" => out.down = true,
             "--right" => out.down = false,
+            "--percent" | "-p" => match it.next().and_then(|n| n.trim_end_matches('%').parse::<u8>().ok()).filter(|n| (1..=95).contains(n)) {
+                Some(n) => out.percent = Some(n),
+                None => return Err("--percent takes the new pane's share, 1 to 95".into()),
+            },
             s if s.starts_with('-') => return Err(format!("unknown option `{s}`")),
             _ if out.who.is_empty() => out.who = a.clone(),
             _ => return Err(format!("one session only (`{a}` is a second); a command goes after --")),
@@ -372,7 +506,16 @@ pub fn split(client: &Client, list: &[Info], id: SessionId, s: &Split) -> Result
     let pane = client
         .spawn_typing(info.cwd.clone(), None, Size::new(80, 24), (8, 16), Place::Split { beside: id, dir }, s.command.clone())
         .map_err(|e| format!("the pane did not start: {e}"))?;
-    Ok(pane.id())
+    let new = pane.id();
+    if let Some(p) = s.percent {
+        let tab = tab_of(client, new, 2)?;
+        let mut tree = tab.layout.clone();
+        if set_share(&mut tree, id, new, 1.0 - f32::from(p) / 100.0) {
+            client.set_layout(tab.id, tree, tab.focus);
+            client.list().map_err(|e| e.to_string())?;
+        }
+    }
+    Ok(new)
 }
 
 #[cfg(test)]
@@ -397,7 +540,18 @@ mod remote_tests {
     fn the_remote_controls_words_are_read() {
         assert_eq!(parse_read(&words("3 --lines 10")).unwrap(), Read { who: "3".into(), lines: 10, all: false });
         assert!(parse_read(&words("--all")).is_err(), "which session");
-        assert_eq!(parse_split(&words("filer --down -- npm run dev")).unwrap(), Split { who: "filer".into(), down: true, command: words("npm run dev") });
+        assert_eq!(parse_split(&words("filer --down -- npm run dev")).unwrap(), Split { who: "filer".into(), down: true, percent: None, command: words("npm run dev") });
+        assert_eq!(parse_split(&words("3 -p 30%")).unwrap().percent, Some(30));
+        assert!(parse_split(&words("3 -p 0")).is_err());
+        assert!(parse_split(&words("3 --percent")).is_err());
+        assert_eq!(parse_layout(&words("Dev ~/x")).unwrap(), LayoutCmd::Open { name: "Dev".into(), folder: Some("~/x".into()) });
+        assert_eq!(parse_layout(&words("--list")).unwrap(), LayoutCmd::List);
+        assert!(parse_layout(&words("")).is_err());
+        assert!(parse_layout(&words("a b c")).is_err());
+        let mut tree = tsumugi_mux::Node::Split { dir: tsumugi_mux::Dir::Right, ratio: 0.5, first: Box::new(tsumugi_mux::Node::Leaf(1)), second: Box::new(tsumugi_mux::Node::Leaf(2)) };
+        assert!(set_share(&mut tree, 1, 2, 0.7));
+        assert!(matches!(tree, tsumugi_mux::Node::Split { ratio, .. } if (ratio - 0.7).abs() < 1e-6));
+        assert!(!set_share(&mut tree, 2, 1, 0.3), "only the pair in that order");
         assert_eq!(parse_log(&words("3 out.txt")).unwrap(), Log { who: "3".into(), path: Some("out.txt".into()), stop: false });
         assert_eq!(parse_log(&words("3 --stop")).unwrap(), Log { who: "3".into(), path: None, stop: true });
         assert!(parse_log(&words("3 a.txt --stop")).is_err());
