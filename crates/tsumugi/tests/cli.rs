@@ -241,6 +241,38 @@ fn wait_and_close() {
     assert_eq!(gone.status.code(), Some(3), "{}", String::from_utf8_lossy(&gone.stderr));
 }
 
+/// What Restart the server (Settings, Advanced) waits on: a server asked
+/// to stop answers no new client once a window's line to it has ended, so
+/// the window does not take the old server back (17.26), and the next start
+/// gets a new one.
+#[test]
+fn a_stopped_server_answers_nobody_once_a_line_to_it_ends() {
+    let s = Server::new("restart");
+    s.new_session(&[]);
+    let at = Address(s.address.clone());
+    let window = Client::connect(&at, || {}).unwrap();
+    Client::stop(&at).unwrap();
+    let deadline = Instant::now() + Duration::from_secs(15);
+    while !window.lost() {
+        assert!(Instant::now() < deadline, "the window's line outlived the stop");
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    let deadline = Instant::now() + Duration::from_secs(10);
+    loop {
+        match Client::connect(&at, || {}) {
+            Ok(_) => panic!("the stopped server took a new client"),
+            Err(e) if matches!(e.kind(), std::io::ErrorKind::NotFound | std::io::ErrorKind::ConnectionRefused) => break,
+            Err(_) => {}
+        }
+        assert!(Instant::now() < deadline, "the stopped server never left the address");
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    // It stays 300 ms after the listener goes (main.rs `server`).
+    std::thread::sleep(Duration::from_millis(500));
+    let id = s.new_session(&[]);
+    assert!(s.line_of(&s.ok(&["ls"]), &id).is_some(), "a new server started");
+}
+
 /// `tsumugi mcp` the way Claude Code runs it: JSON-RPC lines on stdin, one
 /// answer per request on stdout. With no server it says tsumugi is not
 /// running; with one, `tsumugi_sessions` lists the session and
