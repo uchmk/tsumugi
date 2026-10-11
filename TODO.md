@@ -42,9 +42,9 @@ tsumugi のやること。`【人】` は持ち主の作業、`【金】` は 20
 - [x] （v0.87.0）common.toml の `scale` で窓全体の倍率を当てる（設定の画面の General → Scale も書く）。Ctrl+= / Ctrl+- はペインの字の大きさのまま。
       設定を `<config>/uchmk/tsumugi/config.toml`、状態を `ito_common::state_dir` に移し（古い場所から自動で移す）、
       環境変数を `TSUMUGI_CONFIG_HOME`・`TSUMUGI_STATE_HOME` にした。字体のフォールバックは `ito_common::fonts`。窓の既定は 1280×800。
-- [ ] 標準の CLI の `--keys`（キーの表を文字で出す）を、kura・yagura と揃えて足す。出し方（keys.rs の表をそのまま・`<C-…>` の書き方）を
-      ito の common-spec に先に決める。`mcp` と `shell-hook` は tsumugi だけのものとして残す。
-- [ ] 古い `TSUMUGI_SETTINGS`（ファイル）と `TSUMUGI_STATE` を読むのをやめる時期を決める（v0.87.0 からは新しい名前が正）。
+- [ ] 標準の CLI の `--keys` を、kura・yagura と揃えて足す。common-spec では `--keys "<script>"` はキーの台本（実機のテスト用）で、
+      ここに書いていた「キーの表を文字で出す」とは違う。どちらにするか（推奨は台本）。`mcp` と `shell-hook` は tsumugi だけのものとして残す。（要確認: #19）
+- [ ] 古い `TSUMUGI_SETTINGS`（ファイル）と `TSUMUGI_STATE` を読むのをやめる時期を決める（v0.87.0 からは新しい名前が正）。（要確認: #20）
 
 ## 実機のレーンから
 
@@ -56,7 +56,7 @@ v0.94.0 から、実機の PR の所見と頼みは `finding` の issue に、�
 - [ ] 2.73 の絵の形を人が見て `[~]` を `[x]` にする【人】
 - [ ] `examples/make-testcheck.rs`・`make-keycheck.rs` を ito の `ito-testcheck` に載せ替えるか決める。今の ito-testcheck は kura の表の形
       （訳の toml・テスト名の走査・節の準備）で、tsumugi の表（`操作 → 期待` の 1 行）と違う。載せ替えると TESTING-CHECKS.md の中身が
-      全部変わり、レーンの塊の選び方（`wintest-queue.ps1`）の行の読み方も確かめ直しになる（v0.94.0 では見送った）。
+      全部変わり、レーンの塊の選び方（`wintest-queue.ps1`）の行の読み方も確かめ直しになる（v0.94.0 では見送った）。（要確認: #21）
 
 ## ほかのターミナルにあるもの（2026-10-08、持ち主の依頼で全部取り込む）
 
@@ -125,6 +125,6 @@ v0.74.2 で 8 件のうち 7 件を、v0.74.3 で残りを直した（kitty の�
 
 - [x] （v0.74.3）`Ctrl+Shift+C` でコピーするかを画面に見えている選択だけで決めている（`main.rs`）。選んだところをスクロールで画面の外に出すと `Ctrl+C` が送られる。サーバーのペインは選択の有無を手元に持たないので、mux の画面の知らせに「選択あり」を足してから（取り決めの版が上がる）。
 - （実機 #6）不具合: ARM64 で `Ctrl+C` が走っているプログラム（`sleep 30`）を止めない。`^C` は PTY に届く。2.69 の後半はこれが直るまで `[ ]`（`qa-reports/2026-10-10-arm-2-61.md`）。
-- （実機 #6）不具合: notify トリガーが、入力したコマンド行（PSReadLine の再描画）にも一致して 10 秒の間隔を使い切るため、2.62〜2.65 は書かれたとおりだと通知が出ないことが多い（`qa-reports/2026-10-10-arm-2-61.md`）。
-- （実機 #6）不具合: ベルの一覧で長いタイトルが時刻と **trigger** の印に重なって読めない（`qa-reports/2026-10-10-arm-2-61.md`）。
-- （実機 #6）提案: 2.62〜2.65 の文言を、入力したコマンド行がトリガーの文字列を含まない形（`echo Build" "succeeded`）に変える。キットに `Send-Keys -Hold`・`Send-Wheel`・`Send-Drag`・`Set-WindowSize` を足す。2.67 は `kitten` が要るので kitty を入れるか人に回す。2.62〜2.65 の点滅・音・タスクバーの数・trigger の印は人が確かめる（`qa-reports/2026-10-10-arm-2-61.md`）。
+- （v0.94.2 で直した）（実機 #6）不具合: notify トリガーが、入力したコマンド行（PSReadLine の再描画）にも一致して 10 秒の間隔を使い切るため、2.62〜2.65 は書かれたとおりだと通知が出ないことが多い（`qa-reports/2026-10-10-arm-2-61.md`）。
+- （v0.94.2 で直した）（実機 #6）不具合: ベルの一覧で長いタイトルが時刻と **trigger** の印に重なって読めない（`qa-reports/2026-10-10-arm-2-61.md`）。
+- （実機 #6）提案: ~~2.62〜2.65 の文言を、入力したコマンド行がトリガーの文字列を含まない形（`echo Build" "succeeded`）に変える。~~（v0.94.2 で打った行を読まなくなったので要らない）キットに `Send-Keys -Hold`・`Send-Wheel`・`Send-Drag`・`Set-WindowSize` を足す。2.67 は `kitten` が要るので kitty を入れるか人に回す。2.62〜2.65 の点滅・音・タスクバーの数・trigger の印は人が確かめる（`qa-reports/2026-10-10-arm-2-61.md`）。

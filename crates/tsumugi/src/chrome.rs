@@ -1162,11 +1162,25 @@ pub fn bell_list(ctx: &egui::Context, pal: &Palette, at: egui::Pos2, notices: &[
                             State::Error => "error",
                             _ => "finished",
                         };
-                        let head = format!("{} · {word}", crate::sort::without_spinner(&n.title));
-                        p.text(rect.left_top() + egui::vec2(22.0, 6.0), egui::Align2::LEFT_TOP, head, FontId::proportional(13.0), text_color);
-                        p.text(rect.right_top() + egui::vec2(-6.0, 6.0), egui::Align2::RIGHT_TOP, format!("{} ago", elapsed(now.saturating_sub(n.at_ms))), FontId::proportional(11.0), pal.fg_dim);
+                        // The time first, then the word, and the title cut
+                        // short in what is left: a long one ran over both.
+                        let line = |text: String, size: f32, color: Color32, width: f32| {
+                            let mut job = egui::text::LayoutJob::simple_singleline(text, FontId::proportional(size), color);
+                            job.wrap = egui::text::TextWrapping::truncate_at_width(width.max(10.0));
+                            ui.fonts_mut(|f| f.layout_job(job))
+                        };
+                        let ago = line(format!("{} ago", elapsed(now.saturating_sub(n.at_ms))), 11.0, pal.fg_dim, rect.width());
+                        let room = rect.width() - 22.0 - 6.0 - ago.size().x - 10.0;
+                        let word = line(format!(" · {word}"), 13.0, text_color, room / 2.0);
+                        let title = line(crate::sort::without_spinner(&n.title).to_string(), 13.0, text_color, room - word.size().x);
+                        let head = rect.left_top() + egui::vec2(22.0, 6.0);
+                        let after = head + egui::vec2(title.size().x, 0.0);
+                        p.galley(egui::pos2(rect.right() - 6.0 - ago.size().x, rect.top() + 6.0), ago, pal.fg_dim);
+                        p.galley(head, title, text_color);
+                        p.galley(after, word, text_color);
                         if !n.note.is_empty() {
-                            p.text(rect.left_top() + egui::vec2(22.0, 25.0), egui::Align2::LEFT_TOP, &n.note, FontId::proportional(11.5), pal.fg_dim);
+                            let note = line(n.note.clone(), 11.5, pal.fg_dim, rect.width() - 22.0 - 6.0);
+                            p.galley(rect.left_top() + egui::vec2(22.0, 25.0), note, pal.fg_dim);
                         }
                         if resp.clicked() {
                             action = Some(BellAction::Open(n.session, n.id));
