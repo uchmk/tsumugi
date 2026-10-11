@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
+# Source is uchmk/ito scripts/lanes/; an app's copy is written by its
+# scripts/lanes.sh sync, so edit ito's.
 """Merge the real-machine lanes' pull requests that keep to the rules.
 
 Run by .github/workflows/merge-lanes.yml. It merges a pull request from a lane
-branch (test/win-*, test/arm-*, and in kura test/linux-*) with a merge commit
-pinned to its head, and only when all of these hold:
+branch (test/win-*, in tsumugi test/arm-*, in kura test/linux-*) with a merge commit
+pinned to its head, and only when all of these hold (yagura has no lanes: there
+it only keeps the labels and counts the votes):
 
   1. it touches only the files a lane may write: the checklists and one new
      report under qa-reports/ (kura), or the checklists and new files under
@@ -33,11 +36,27 @@ the merge routine reads (.claude/merge-routine.md).
 
 It also does the merger's share for lane pull requests merged in the last 7
 days whose `#N` is not in CHANGELOG.md: a PATCH bump (Cargo.toml and
-Cargo.lock), a CHANGELOG line per pull request, and the reports' proposals,
-queue notes and votes into TODO.md. In tsumugi it also takes the ticked rows
-out of the role's re-test list. In kura, whose lane queue is prose, the
-TODO.md lines carry `【後】` and one more line per pull request asks for its
-report to be read: the merge routine sorts them once a day.
+Cargo.lock) and a CHANGELOG line per pull request. The reports' proposals,
+queue notes and votes go to issues (kura since v0.102.0, tsumugi since
+v0.94.0): a vote `- #N: option — why` on an open question issue as a comment
+there, the rest as one finding issue per pull request (a hidden
+`<!-- kura-lane:#N -->`, named after the repository, keeps it from
+repeating), and the pull request gets the label lane-review, which the merge
+routine takes off once it has read the report. (A rule with share.role and
+todo_heading set takes the ticked rows out of the role's re-test list and
+lists the leftovers in TODO.md instead: tsumugi's way before v0.94.0.)
+
+It also keeps the labels as LABELS says (each repository the ones its rule
+names; `--labels` does only that), and counts the votes on the open question
+issues: `vote[cloud]:` and `vote[win]:` comments, the newest per voter, from
+the owner's account (or relayed here). Both on one option: vote-decided;
+apart: needs-owner; an owner's `回答:` makes it answered whatever the votes
+say.
+
+Last, it watches the lanes' status issues ("Lane status: <lane>", label
+lane-status, written by the lane's machine at every firing): one whose last
+firing is more than three hours old (five while a run is going) gets the label
+lane-stalled and one comment, and loses the label when the lane writes again.
 
 It reads the pull request through the API and git, never runs its code, and
 runs only main's copy of this script.
@@ -45,9 +64,10 @@ runs only main's copy of this script.
     python3 scripts/merge-lanes.py              # GITHUB_TOKEN, GITHUB_REPOSITORY
     MERGE_LANES_DRY_RUN=1 python3 scripts/merge-lanes.py
     python3 scripts/merge-lanes.py --self-test
+    python3 scripts/merge-lanes.py --labels     # what scripts/labels.sh runs
 
-The same file lives in uchmk/kura and uchmk/tsumugi; keep the two copies
-identical (the repository picks its rules from RULES).
+Every app runs the same bytes (the source is uchmk/ito scripts/lanes/); the
+repository picks its rules from RULES.
 """
 
 import base64
@@ -59,6 +79,7 @@ import subprocess
 import sys
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 
 API = os.environ.get("GITHUB_API_URL", "https://api.github.com")
@@ -81,23 +102,32 @@ RULES = {
     "uchmk/kura": {
         "lanes": {
             "test/win-": WINDOWS_MARKS,
-            "test/arm-": WINDOWS_MARKS,
+            # no test/arm- since v0.101.3: the ARM64 machine ticks its release
+            # rows in the release-arm64 issue and opens no pull request
             "test/linux-": {"TESTING-LINUX.md": {(" ", "x"), (" ", "-")}},
         },
+        # a lane watched for a stall only while an issue with this label is
+        # open: the ARM64 machine fires only once per release
+        "watch_when": {"arm": "release-arm64"},
         # exactly one new report: another run's file is not this run's to edit
         "reports": (1, 1),
         "evidence_in_report": False,
         "required_checks": ["checklists"],
         "hold_heading": "マージで止めている実機の PR",
-        # the lane's queue is prose in .claude/windows-role.md, so the role is
-        # left alone; the lines wait for the merge routine to sort them
+        # since v0.102.0 the share writes no TODO.md lines: a report's
+        # leftovers become one finding issue, its votes comments on the
+        # question issues, and the merged pull request gets lane-review
         "share": {
             "role": None,
-            "todo_heading": "実機のレーンから",
-            "todo_mark": "【後】",
-            "review_line": True,
+            "todo_heading": None,
+            "todo_mark": "",
+            "issues": True,
             "dispatch": ["ci.yml"],
         },
+        # labels kept as LABELS says (True: all of them, or a list of names),
+        # and question issues' votes counted
+        "labels": True,
+        "votes": True,
     },
     "uchmk/tsumugi": {
         "lanes": {"test/win-": TSUMUGI_WINDOWS_MARKS, "test/arm-": TSUMUGI_WINDOWS_MARKS},
@@ -105,14 +135,31 @@ RULES = {
         "evidence_in_report": True,
         "required_checks": ["check"],
         "hold_heading": None,
+        # since v0.94.0 as kura's: re-tests come from retest issues, which the
+        # lane's pull request closes, and the leftovers go to issues
         "share": {
-            "role": ".claude/windows-role.md",
-            "todo_heading": "実機のレーンから",
+            "role": None,
+            "todo_heading": None,
             "todo_mark": "",
-            "review_line": False,
+            "issues": True,
             # a push with the workflow's token starts no workflows, except these
             "dispatch": ["ci.yml", "checklists.yml"],
         },
+        "labels": True,
+        "votes": True,
+    },
+    # no lanes (its real-machine checks are TESTING.md, by hand): the labels
+    # the issue flow uses and the question issues' votes only
+    "uchmk/yagura": {
+        "lanes": {},
+        "reports": (0, 0),
+        "evidence_in_report": False,
+        "required_checks": [],
+        "hold_heading": None,
+        "share": None,
+        "labels": ["bug", "finding", "question", "lane:cloud", "lane:qa",
+                   "vote", "vote-decided", "needs-owner", "answered"],
+        "votes": True,
     },
 }
 
@@ -428,7 +475,140 @@ def todo_add(todo, heading, lines):
     return "\n".join(rows[:end] + lines + rows[end:])
 
 
+# ---------------------------------------------------------------- issues
+
+
+# The labels the issue flow uses, kept as written here by ensure_labels (every
+# run, and scripts/labels.sh by hand): name -> (colour, description).
+LABELS = {
+    "bug": ("d73a4a", "Something isn't working"),
+    "finding": ("fbca04", "Something a lane, QA or a session saw, to sort"),
+    "question": ("d876e3", "A decision for the owner or the two votes (was QUESTIONS.md)"),
+    "retest": ("0e8a16", "Rows to press again on the x64 machine"),
+    "release-arm64": ("0e8a16", "Rows the ARM64 machine checks once per release (TESTING-ARM64.md)"),
+    "lane:win": ("1d76db", "From the x64 Windows lane"),
+    "lane:linux": ("1d76db", "From the Linux lane"),
+    "lane:cloud": ("1d76db", "From a cloud session"),
+    "lane:qa": ("1d76db", "From the QA lane"),
+    "vote": ("c5def5", "Up for the two votes, cloud and win"),
+    "vote-decided": ("0e8a16", "The two votes agree: the dev session implements it"),
+    "needs-owner": ("b60205", "Waits on the owner"),
+    "answered": ("0e8a16", "The owner answered: the dev session implements it"),
+    "lane-status": ("ededed", "A lane's status, rewritten at every firing"),
+    "lane-stalled": ("b60205", "A lane has not fired for too long"),
+    "lane-review": ("fef2c0", "A merged lane pull request whose report the merge routine reads"),
+}
+LANE_LABELS = {"test/win-": "lane:win", "test/arm-": "lane:win", "test/linux-": "lane:linux"}
+VOTERS = {"test/win-": "win"}
+
+
+def label_changes(existing, wanted):
+    """[(method, name, colour, description)] that make `existing` ({name:
+    (colour, description)}) hold `wanted`; labels not in `wanted` are left."""
+    out = []
+    for name, (colour, desc) in wanted.items():
+        have = existing.get(name)
+        if have is None:
+            out.append(("POST", name, colour, desc))
+        elif (have[0].lower(), have[1] or "") != (colour, desc):
+            out.append(("PATCH", name, colour, desc))
+    return out
+
+
+VOTE = re.compile(r"^\s*vote\[(\w+)\]:\s*(\S+)\s*(?:[—–-]+\s*(.*))?$", re.M)
+UNCOUNT = re.compile(r"^\s*uncount\[(\w+)\]:", re.M)
+ANSWER = re.compile(r"^\s*回答[:：]", re.M)
+TRUSTED = {"OWNER", "MEMBER", "COLLABORATOR"}
+VOTE_LABELS = {"vote", "vote-decided", "needs-owner", "answered"}
+
+
+def tally(comments):
+    """'answered', 'decided:<option>', 'split' or 'open' for a question issue.
+
+    `comments` is [(author_association, body)], oldest first; the workflow's
+    own relayed votes come as association BOT. Only the owner's side counts:
+    a `回答:` from it answers (and wins over any vote), and `vote[cloud]:` /
+    `vote[win]:` lines vote, the newest per voter counting; `uncount[voter]:`
+    takes that voter's earlier vote back. Both voters on one option decide
+    it; two options, or either saying `owner`, split it to the owner."""
+    votes, answered = {}, False
+    for who, body in comments:
+        if who not in TRUSTED and who != "BOT":
+            continue
+        body = body or ""
+        if who != "BOT" and ANSWER.search(body):
+            answered = True
+        for m in re.finditer(VOTE.pattern + "|" + UNCOUNT.pattern, body, re.M):
+            if m[1] in ("cloud", "win"):
+                votes[m[1]] = m[2].rstrip(".,")
+            elif m[4] in ("cloud", "win"):
+                votes.pop(m[4], None)
+    if answered:
+        return "answered"
+    if len(votes) < 2:
+        return "open"
+    if votes["cloud"] == votes["win"] and votes["cloud"] != "owner":
+        return f"decided:{votes['cloud']}"
+    return "split"
+
+
+def vote_labels(state, current):
+    """The vote labels (of VOTE_LABELS) a question issue should carry."""
+    if state == "answered":
+        return {"answered"}
+    if state.startswith("decided:"):
+        return {"vote-decided"}
+    if state == "split":
+        return {"needs-owner"}
+    have = current & VOTE_LABELS
+    if "vote-decided" in have:  # a vote taken back: up for the votes again
+        return (have - {"vote-decided"}) | {"vote"}
+    return have
+
+
+RELAYED_VOTE = re.compile(r"^#(\d+):\s*(\S+)\s*(?:[—–-]+\s*(.*))?$")
+
+
+def finding_marker(number):
+    """The hidden line that ties a finding issue to its lane pull request:
+    `<!-- kura-lane:#N -->` in uchmk/kura, named after the repository."""
+    app = REPO.rsplit("/", 1)[-1] or "kura"
+    return f"<!-- {app}-lane:#{number} -->"
+
+
+def finding_body(number, machine, items):
+    """The body of the one finding issue for a merged lane pull request's
+    leftovers: `items` is [(section, where, text)]."""
+    lines = [finding_marker(number),
+             f"What the {machine} lane's run in #{number} left in its report or pull request body"
+             " for somebody to sort (written by scripts/merge-lanes.py). Make each one its own"
+             " `bug` / `finding` / `question` issue, a TODO.md line or nothing, then close this.", ""]
+    for section in ("Proposals", "Queue", "Votes"):
+        rows = [f"- {text} ({where})" for s, where, text in items if s == section]
+        if rows:
+            lines += [f"### {section}", "", *rows, ""]
+    return "\n".join(lines)
+
+
 # ---------------------------------------------------------------- GitHub
+
+
+LAST_FIRING = re.compile(r"\*\*Last firing\*\* (\d{4}-\d\d-\d\d \d\d:\d\d) ([+-])(\d\d):?(\d\d)")
+STALLED = "lane-stalled"
+
+
+def last_firing(body):
+    """When a lane-status issue's body says the lane last fired, or None."""
+    m = LAST_FIRING.search(body or "")
+    if not m:
+        return None
+    offset = datetime.timedelta(hours=int(m[3]), minutes=int(m[4])) * (-1 if m[2] == "-" else 1)
+    return datetime.datetime.strptime(m[1], "%Y-%m-%d %H:%M").replace(tzinfo=datetime.timezone(offset))
+
+
+def overdue_hours(body):
+    """How old the last firing may be: a firing every hour, a run up to four."""
+    return 5 if "**This firing:** A run is going" in (body or "") else 3
 
 
 def api(method, path, body=None):
@@ -712,17 +892,21 @@ def share_once(rules, share, base, since):
         lines.append(changelog_line(n, MACHINES[lane], done, dropped))
         retested.update(rid for path, _, rid in done if path == "TESTING-CHECKS.md")
         mark = share["todo_mark"]
-        if share["review_line"]:
-            where = "、".join(name for name, _ in reports) or "PR 本文"
-            todo_lines.append(f"- [ ] （実機 #{n}）報告の所見と印の証拠を読み、振り分ける（{where}）{mark}")
-        seen = set()
+        seen, items = set(), []
         for where, text in reports + \
                 [("PR 本文", pr.get("body") or "")]:
             for kind, name in [("", "Proposals"), ("・キュー", "Queue"), ("・票", "Votes")]:
                 for item in section_items(text, name):
                     if item not in seen:
                         seen.add(item)
+                        items.append((name, where, item))
                         todo_lines.append(f"- [ ] （実機 #{n}{kind}）{item}（{where}）{mark}")
+        if share["issues"]:
+            todo_lines = []
+            if not DRY:
+                file_findings(pr, lane, items)
+            else:
+                print(f"  (dry run) #{n}: would file {len(items)} leftovers and label it lane-review")
     cargo = read("Cargo.toml")
     m = re.search(r'^version = "(\d+\.\d+\.\d+)"', cargo, re.M)
     old = m.group(1)
@@ -743,8 +927,10 @@ def share_once(rules, share, base, since):
     msg = (f"v{new}: Merge real-machine checks from {numbers}\n\n"
            f"Record the real-machine lane runs merged from {which}: the rows they checked are listed"
            " in the changelog" + (", the re-test list drops them," if share["role"] else "") +
-           " and their reports' proposals, queue notes and votes are listed in TODO.md"
-           + (" for the merge routine to sort." if share["review_line"] else " for an interactive session."))
+           (" and their reports' proposals, queue notes and votes are in a finding issue each,"
+            " for the merge routine to sort." if share["issues"] else
+            " and their reports' proposals, queue notes and votes are listed in TODO.md"
+            " for an interactive session."))
     if DRY:
         print(f"(dry run) would commit:\n{msg}\n" + "\n".join(lines + todo_lines))
         git("checkout", "-q", "--force", "--detach", f"origin/{base}")
@@ -782,6 +968,159 @@ def do_share(rules, share):
     print("share: gave up for this run")
 
 
+def watch_lanes(watch_when=None):
+    """Label a lane whose status issue has not been written for too long.
+
+    The lane's machine rewrites its open "Lane status: <lane>" issue (label
+    lane-status) at every firing, so an old **Last firing** means the firings
+    stopped, and nothing on the machine can say so: it is off or asleep, or the
+    scheduled task fails before the script runs. This adds lane-stalled and one
+    comment per last firing (a comment notifies; an edit does not), and takes
+    the label off once the lane writes again. Closing the issue retires the lane.
+
+    A lane named in watch_when ({lane: label}) is watched only while an issue
+    with that label is open, and is not stalled otherwise.
+    """
+    now = datetime.datetime.now(datetime.timezone.utc)
+    gates = {}
+    for issue in get_all(f"/repos/{REPO}/issues?state=open&labels=lane-status"):
+        if "pull_request" in issue:
+            continue
+        number, body = issue["number"], issue.get("body") or ""
+        labels = {label["name"] for label in issue.get("labels", [])}
+        gate = (watch_when or {}).get(issue.get("title", "").removeprefix("Lane status: ").strip())
+        if gate:
+            if gate not in gates:
+                gates[gate] = any("pull_request" not in i
+                                  for i in get_all(f"/repos/{REPO}/issues?state=open&labels={gate}"))
+            if not gates[gate]:
+                print(f"watch: #{number}: no open {gate} issue, not watched")
+                if STALLED in labels and not DRY:
+                    api("DELETE", f"/repos/{REPO}/issues/{number}/labels/{STALLED}")
+                continue
+        when, hours = last_firing(body), overdue_hours(body)
+        if when is None:
+            print(f"watch: #{number}: no **Last firing** in the body")
+            continue
+        age = now - when
+        if age <= datetime.timedelta(hours=hours):
+            if STALLED in labels:
+                print(f"watch: #{number}: writing again, {STALLED} off")
+                if not DRY:
+                    api("DELETE", f"/repos/{REPO}/issues/{number}/labels/{STALLED}")
+            continue
+        late = f"{age.days * 24 + age.seconds // 3600} h {age.seconds // 60 % 60} min"
+        print(f"watch: #{number}: last firing {late} ago, {STALLED}")
+        if STALLED not in labels and not DRY:
+            api("POST", f"/repos/{REPO}/issues/{number}/labels", {"labels": [STALLED]})
+        comment_once({"number": number}, "stalled", when.strftime("%Y-%m-%dT%H:%M%z"),
+                     f"The last firing written here was {late} ago ({when:%Y-%m-%d %H:%M %z}), and a firing "
+                     f"should write every hour ({hours} h is the limit{' while a run is going' if hours > 3 else ''}). "
+                     "The machine is off or asleep, or its scheduled task fails before the script runs: what to "
+                     "look at on the machine is in the body's last paragraph. The label comes off at the next "
+                     "firing that writes here.",
+                     lead=f"has not seen this lane fire for {late}")
+
+
+def file_findings(pr, lane, items):
+    """A merged lane pull request's report, as issues: the votes on a question
+    issue (`- #N: option — why`) as a comment there, everything else in one
+    finding issue, and the label lane-review on the pull request itself, which
+    the merge routine reads and takes off."""
+    n = pr["number"]
+    api("POST", f"/repos/{REPO}/issues/{n}/labels", {"labels": ["lane-review"]})
+    rest = []
+    for section, where, text in items:
+        m = RELAYED_VOTE.match(text) if section == "Votes" and lane in VOTERS else None
+        if m:
+            status, issue, _ = api("GET", f"/repos/{REPO}/issues/{m[1]}")
+            names = {label["name"] for label in (issue or {}).get("labels", [])} if status == 200 else set()
+            if "question" in names and issue.get("state") == "open":
+                why = f" — {m[3]}" if m[3] else ""
+                comment_once({"number": int(m[1])}, "vote", f"pr{n}",
+                             f"vote[{VOTERS[lane]}]: {m[2]}{why}",
+                             lead=f"relays the {MACHINES[lane]} lane's vote from #{n} ({where})")
+                continue
+        rest.append((section, where, text))
+    if not rest:
+        return
+    marker = finding_marker(n)
+    for issue in get_all(f"/repos/{REPO}/issues?state=all&labels=finding"):
+        if marker in (issue.get("body") or ""):
+            return
+    status, payload, _ = api("POST", f"/repos/{REPO}/issues", {
+        "title": f"Lane #{n} ({MACHINES[lane]}): what its report left to sort",
+        "body": finding_body(n, MACHINES[lane], rest),
+        "labels": ["finding", LANE_LABELS[lane]]})
+    print(f"  #{n}: finding issue {status} {payload.get('html_url') or payload.get('message')}")
+
+
+def wanted_labels(setting):
+    """The labels of LABELS a rule's `labels` asks for: True for all of them,
+    or a list of names; nothing when it is missing or false."""
+    if setting is True:
+        return dict(LABELS)
+    return {name: LABELS[name] for name in setting or []}
+
+
+def ensure_labels(setting=True):
+    """Create or correct the labels the rule names; others are left alone."""
+    existing = {label["name"]: (label["color"], label.get("description") or "")
+                for label in get_all(f"/repos/{REPO}/labels")}
+    changes = label_changes(existing, wanted_labels(setting))
+    for method, name, colour, desc in changes:
+        print(f"labels: {method} {name}")
+        if DRY:
+            continue
+        path = f"/repos/{REPO}/labels" + ("" if method == "POST" else "/" + urllib.parse.quote(name))
+        status, payload, _ = api(method, path, {"name": name, "color": colour, "description": desc})
+        if status not in (200, 201):
+            print(f"  {status} {payload.get('message')}")
+    if not changes:
+        print("labels: as LABELS says")
+
+
+def count_votes():
+    """Count the votes on every open question issue and set its labels.
+
+    An owner's `回答:` makes it answered on any question issue. The votes count
+    only on one up for them (vote or vote-decided): agreement makes it
+    vote-decided, a split needs-owner (which stays until the owner answers or
+    puts vote back), each with one comment saying so."""
+    for issue in get_all(f"/repos/{REPO}/issues?state=open&labels=question"):
+        if "pull_request" in issue:
+            continue
+        number = issue["number"]
+        current = {label["name"] for label in issue.get("labels", [])}
+        comments = [("BOT" if (c.get("user") or {}).get("login") == "github-actions[bot]"
+                     else c.get("author_association", ""), c.get("body") or "")
+                    for c in get_all(f"/repos/{REPO}/issues/{number}/comments")]
+        state = tally(comments)
+        if state != "answered" and not current & {"vote", "vote-decided"}:
+            continue
+        wanted = vote_labels(state, current)
+        have = current & VOTE_LABELS
+        if wanted == have:
+            continue
+        print(f"votes: #{number}: {state}, labels {sorted(have)} -> {sorted(wanted)}")
+        if DRY:
+            continue
+        for name in have - wanted:
+            api("DELETE", f"/repos/{REPO}/issues/{number}/labels/{urllib.parse.quote(name)}")
+        if wanted - have:
+            api("POST", f"/repos/{REPO}/issues/{number}/labels", {"labels": sorted(wanted - have)})
+        if state.startswith("decided:"):
+            option = state.split(":", 1)[1]
+            comment_once({"number": number}, "decided", option,
+                         f"Both votes say **{option}**. The dev session implements it, takes"
+                         f" `（要確認: #{number}）` out of TODO.md and closes this issue. A `回答:` from the"
+                         " owner still wins.", lead="counted the votes")
+        elif state == "split":
+            comment_once({"number": number}, "split", f"c{len(comments)}",
+                         "The two votes differ (or one says `owner`), so this waits on the owner's `回答:`.",
+                         lead="counted the votes")
+
+
 def main():
     rules = RULES.get(REPO)
     if not rules:
@@ -807,8 +1146,22 @@ def main():
         except RuntimeError as e:
             outcome = f"error: {e}"
         print(f"#{pr['number']} {ref}: {outcome}")
+    if rules.get("labels"):
+        try:
+            ensure_labels(rules["labels"])
+        except RuntimeError as e:
+            print(f"labels: {e}")
     if rules["share"]:
         do_share(rules, rules["share"])
+    if rules.get("votes"):
+        try:
+            count_votes()
+        except RuntimeError as e:
+            print(f"votes: {e}")
+    try:
+        watch_lanes(rules.get("watch_when"))
+    except RuntimeError as e:
+        print(f"watch: {e}")
 
 
 # ---------------------------------------------------------------- self-test
@@ -949,11 +1302,82 @@ def self_test():
         "# TODO\n\n## 実機のレーンから\n\n説明\n\n- [ ] a\n- [ ] c\n\n## 後で\n\n- b\n"
     assert todo_add("# TODO\n\n## 実機のレーンから\n\n- [ ] a\n", "実機のレーンから", ["- [ ] c"]) == \
         "# TODO\n\n## 実機のレーンから\n\n- [ ] a\n- [ ] c\n"
+
+    status = ("<!-- Written -->\n**Lane** `win` · **Last firing** 2026-10-11 08:20 +09:00 · **Script** x\n\n"
+              "**This firing:** Nothing new on main.\n")
+    assert last_firing(status) == datetime.datetime(2026, 10, 10, 23, 20, tzinfo=datetime.timezone.utc)
+    assert overdue_hours(status) == 3
+    assert overdue_hours(status.replace("Nothing new on main.", "A run is going (started ...).")) == 5
+    assert last_firing("**Last firing** 2026-10-11 08:20 -05:30") == \
+        datetime.datetime(2026, 10, 11, 13, 50, tzinfo=datetime.timezone.utc)
+    assert last_firing("no firing yet") is None
+
+    have = {"bug": ("D73A4A", "Something isn't working"), "vote": ("ffffff", "old"), "other": ("000000", "")}
+    changes = label_changes(have, LABELS)
+    assert ("PATCH", "vote", *LABELS["vote"]) in changes
+    assert not any(name in ("bug", "other") for _, name, _, _ in changes), changes
+    assert len(changes) == len(LABELS) - 1, changes
+    for method, name, colour, desc in changes:
+        have[name] = (colour, desc)
+    assert label_changes(have, LABELS) == []
+
+    c, w, o = "OWNER", "OWNER", "NONE"
+    assert tally([]) == "open"
+    assert tally([(c, "vote[cloud]: 1 — the small one")]) == "open"
+    assert tally([(c, "vote[cloud]: 1 — x"), (w, "vote[win]: 1 -- y")]) == "decided:1"
+    assert tally([(c, "vote[cloud]: 1"), (w, "vote[win]: 2 — y")]) == "split"
+    assert tally([(c, "vote[cloud]: owner — no evidence"), (w, "vote[win]: owner")]) == "split"
+    assert tally([(c, "vote[cloud]: 1"), (w, "vote[win]: 2"), (w, "vote[win]: 1 — on second look")]) == "decided:1"
+    assert tally([(c, "vote[cloud]: 1"), (w, "vote[win]: 1"), (c, "uncount[cloud]: wrong issue")]) == "open"
+    assert tally([(c, "vote[cloud]: 1"), (o, "vote[win]: 1")]) == "open", "a stranger's vote counts"
+    assert tally([(c, "vote[cloud]: 1"), ("BOT", "<!-- m -->\n**merge-lanes** relays:\n\nvote[win]: 1 — y")]) \
+        == "decided:1"
+    assert tally([("BOT", "回答: 2")]) == "open"
+    assert tally([(c, "vote[cloud]: 1"), (w, "vote[win]: 1"), ("OWNER", "回答：2 にする")]) == "answered"
+    assert tally([(o, "回答: 2")]) == "open"
+    assert tally([(c, "Some prose.\nvote[cloud]: 3.\n")]) == "open"
+
+    assert vote_labels("answered", {"vote", "question"}) == {"answered"}
+    assert vote_labels("decided:1", {"vote"}) == {"vote-decided"}
+    assert vote_labels("split", {"vote"}) == {"needs-owner"}
+    assert vote_labels("open", {"vote", "question"}) == {"vote"}
+    assert vote_labels("open", {"vote-decided"}) == {"vote"}
+    assert vote_labels("open", {"needs-owner"}) == {"needs-owner"}
+
+    m = RELAYED_VOTE.match("#412: 2 — the menu keeps it")
+    assert m and (m[1], m[2], m[3]) == ("412", "2", "the menu keeps it")
+    assert RELAYED_VOTE.match("Q57: 1 -- old style") is None
+    body = finding_body(331, "x64", [("Proposals", "qa-reports/a.md", "Reword 2.62."),
+                                     ("Votes", "PR 本文", "Q57: 1 -- old"),
+                                     ("Proposals", "PR 本文", "Kit helpers.")])
+    assert body.startswith(finding_marker(331) + "\n")
+    global REPO
+    saved = REPO
+    for REPO, marker in (("uchmk/kura", "<!-- kura-lane:#331 -->"), ("uchmk/tsumugi", "<!-- tsumugi-lane:#331 -->")):
+        assert finding_marker(331) == marker, finding_marker(331)
+    REPO = saved
+    assert set(wanted_labels(True)) == set(LABELS)
+    assert wanted_labels(None) == {}
+    for repo, rules in RULES.items():
+        assert set(wanted_labels(rules.get("labels"))) <= set(LABELS), repo
+        share = rules["share"]
+        assert share is None or share["issues"] or share["todo_heading"], repo
+        assert set(rules["lanes"]) <= set(MACHINES), repo
+    assert wanted_labels(RULES["uchmk/yagura"]["labels"])["question"] == LABELS["question"]
+    assert "retest" not in wanted_labels(RULES["uchmk/yagura"]["labels"])
+    assert "### Proposals\n\n- Reword 2.62. (qa-reports/a.md)\n- Kit helpers. (PR 本文)\n" in body, body
+    assert "### Queue" not in body and "### Votes\n\n- Q57: 1 -- old (PR 本文)\n" in body, body
     print("merge-lanes self-test: OK")
 
 
 if __name__ == "__main__":
     if sys.argv[1:] == ["--self-test"]:
         self_test()
+    elif sys.argv[1:] == ["--labels"]:
+        if not TOKEN or not REPO:
+            sys.exit("merge-lanes: GITHUB_TOKEN and GITHUB_REPOSITORY are needed")
+        if not (RULES.get(REPO) or {}).get("labels"):
+            sys.exit(f"merge-lanes: no labels for {REPO!r} in RULES")
+        ensure_labels(RULES[REPO]["labels"])
     else:
         main()

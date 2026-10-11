@@ -18,7 +18,17 @@ Claude Code などの AI CLI のセッションを何本も並べて動かすた
 - 作業のブランチに push したら、頼まれなくても `main` にマージして push する（merge コミット。`main` が進んでいれば先にブランチに取り込み、`scripts/verify.sh` を回し直す）。
 - 改行は LF。スクリプトで書き換えるときは改行を変えない（Python なら `newline=''`）。
 - やることは [TODO.md](TODO.md) に書く（`【人】` は持ち主の作業、`【金】` は 2026-10-09 以降に始めるもの）。
-- 人への確認事項は QUESTIONS.md に書く（形式は kura の CLAUDE.md の「確認事項」と同じ。選択肢に推奨を 1 つ付ける）。
+- 所見は `finding` の issue（フォーム `.github/ISSUE_TEMPLATE/finding.yml`。直したら版を書いて閉じる）、
+  動きを変えた行の再テストは `retest` の issue（題 `Re-test: vX.Y.Z`、本文は行 ID のチェックリスト。x64 のレーンが古いものから押す）。
+- 人への確認事項は「確認事項」の節のとおり `question` の issue に書く（QUESTIONS.md は Q1-Q16 の archive で読まない）。
+
+## 確認事項
+
+- 新しい質問は `question` の issue（フォーム `.github/ISSUE_TEMPLATE/question.yml`）。背景・止まっている TODO・選択肢（推奨を 1 つ）を書く。
+  TODO.md の項目には `（要確認: #N）` を付ける。回答が来るまでは推奨で進めてよい（フォームの印で決める）。
+- 票を入れてよい質問はラベル `vote`。票はコメント `vote[cloud]: 2 — 理由`（クラウド）と `vote[win]: 2 — 理由`（x64 のレーン）で、
+  取り消しは `uncount[cloud]:`。ワークフロー `Merge lanes` が数え、2 者が同じなら `vote-decided`、割れたら `needs-owner` を付ける。
+  持ち主のコメント `回答: …` がいつも優先し、`answered` になる。回答を反映したら issue を閉じる。
 - **`cargo fmt` は走らせない。**kura と同じく手で整形する（`Self { a, b, c }` を 1 行に収める書き方）。整形の確認は `cargo fmt --check` で見るだけ。
 - clippy は `--all-targets -- -D warnings` で警告ゼロを保つ。検証は CI と同じ stable で回す。
 
@@ -61,27 +71,37 @@ kura と同じ。`Cargo.toml` の `version` が正、版の繰り上げと CHANG
 
 ## Windows 実機のセッション
 
-- 役割は [.claude/windows-role.md](.claude/windows-role.md)。`scripts/auto-wintest.ps1` をタスク スケジューラで毎時 :50 に回す
-  （x64 と ARM64 の `-Lane arm`）。スクリプトが先に `cargo build` / `cargo test` / ConPTY の取得を済ませ、TESTING-CHECKS.md と TESTING-KEYS.md から
-  1 回分の塊（再テスト → キー（x64 だけ）→ 節の順、最大 15 行）を選び、その行だけをプロンプトに入れて Claude（既定は Sonnet 5.5）を起動する。
-  塊が無い・自分の PR が開いている・ビルドが落ちたときは Claude を起動しない。道具は `scripts/wintest-kit.ps1`、塊の選び方は `scripts/wintest-queue.ps1`
-  （`scripts/check-ps1.ps1` が CI で確かめる）。報告は `qa-reports/<日付>-<ブランチ>-<時刻>.md`（名前はプロンプトが渡す）。
-  実行の後、main とチェック表だけがぶつかるならスクリプトが main を取り込み、印を入れ直して push する（v0.84.1 から）。
-- **レーンの様子は GitHub の issue で見える（v0.87.1 から、kura と同じ `scripts/lane-status.ps1`）。**`auto-wintest.ps1` は起動のたびと実行の始めに、
-  レーンごとの issue「Lane status: win」「Lane status: arm」（ラベル `lane-status`、最初の起動で作る）の本文を書き直す（通知は出ない）。
-  最後の起動の時刻・スクリプトの版・その起動の結末・作業フォルダの汚れ・続けて失敗した回数・その起動のログ・それまでの 24 回の結末が載る。
+- 役割は [.claude/windows-role.md](.claude/windows-role.md)。タスク スケジューラが毎時 :50 に `scripts/lane-boot.ps1` を回す
+  （x64 と ARM64 の `-Lane arm`）。lane-boot は fetch したあと origin/main の `scripts/` を状態フォルダ（`%LOCALAPPDATA%\tsumugi-wintest`）に
+  取り出して `auto-wintest.ps1` を実行するので、作業フォルダが汚れていても最新のスクリプトが走る（v0.94.0 から）。
+  汚れた作業フォルダは `rescue/<lane>-<日時>` ブランチにコミットして push してから origin/main に戻す（救ったことは状態の issue に書く）。
+- `auto-wintest.ps1` が先に `cargo build` / `cargo test` / ConPTY の取得を済ませ、1 回分の塊（開いている `retest` の issue の行（x64 だけ、
+  古い issue から）→ キー（x64 だけ）→ 節の順、最大 15 行）を選び、その行だけをプロンプトに入れて Claude（既定は Sonnet 5.5）を起動する。
+  塊が無い・自分の PR が開いている・ビルドが落ちたときは Claude を起動しない。道具は `scripts/wintest-kit.ps1`、塊の選び方は
+  `scripts/wintest-queue.ps1`（`scripts/check-ps1.ps1` が CI で確かめる。tsumugi だけの確認は `scripts/check-ps1-app.ps1`）。
+  報告は `qa-reports/<日付>-<ブランチ>-<時刻>.md`（名前はプロンプトが渡す）。
+- レーンは所見を `finding` の issue に直接立て（`gh issue create -l finding,lane:win`）、再テストの PR に `Closes #N` を書き、
+  x64 は開いている `vote` の質問に `vote[win]:` で票を入れる。`gh` が使えなかったときだけ報告の `### Proposals`・`### Votes` に書く。
+- **レーンの様子は GitHub の issue で見える（`scripts/lane-status.ps1`）。**起動のたびと実行の始めに、レーンごとの issue
+  「Lane status: win」「Lane status: arm」（ラベル `lane-status`）の本文を書き直す。最後の起動の時刻・スクリプトの版・結末・作業フォルダの汚れ・
+  続けて失敗した回数・ログ・それまでの 24 回の結末・タスクの `LastTaskResult` が載る。
   クラウドからは `gh api 'repos/uchmk/tsumugi/issues?labels=lane-status&state=all' --jq '.[]|{number,title,updated_at,body}'` で読む。
-  **最後の起動が 2 時間より前で、その前の起動が実行を始めていないなら、タスクがスクリプトを起動していない**
-  （機械が止まっている・眠っている、またはスクリプトの前でタスクが落ちている。機械で `Get-ScheduledTaskInfo tsumugi-auto-wintest` の `LastTaskResult`）。
-  リポジトリは公開なので、本文ではユーザーのフォルダを `~` に変え、`@` はメンションにせず、実行の出力は最後の 1 行だけを載せる。
+  3 時間より古いと `Merge lanes` が `lane-stalled` を付けてコメントを 1 回付ける（タスクがスクリプトを起動していない。
+  機械で `Get-ScheduledTaskInfo tsumugi-auto-wintest` の `LastTaskResult`）。本文ではユーザーのフォルダを `~` に変え、`@` はメンションにしない。
 - 同じ机で kura のレーンとキーがぶつからないよう、両方のスクリプトが `Local\wintest-desktop` のロックを取る（最大 20 分待って次回へ）。
-- 実機の PR（`test/win-*`・`test/arm-*`）は、ワークフロー `Merge lanes`（`.github/workflows/merge-lanes.yml`、中身は kura と同じ `scripts/merge-lanes.py`）が
-  規則（触ってよいファイル・印の変わり方・印ごとの証拠の行）と `check` の緑を確かめて、head を固定した merge コミットでマージする（v0.76.4 から）。
-  チェック表だけのぶつかりは main の表に PR の印を入れ直して自分でマージし、マージ済みの PR の分け前（PATCH・Cargo.lock・CHANGELOG・再テストの表・
-  報告の Proposals と Queue を TODO.md へ）も main に push して CI を起こす（v0.76.6 から）。
+- 実機の PR（`test/win-*`・`test/arm-*`）は、ワークフロー `Merge lanes`（`.github/workflows/merge-lanes.yml`、`scripts/merge-lanes.py`）が
+  規則（触ってよいファイル・印の変わり方・印ごとの証拠の行）と `check` の緑を確かめて、head を固定した merge コミットでマージする。
+  チェック表だけのぶつかりは main の表に PR の印を入れ直して自分でマージし、分け前（PATCH・Cargo.lock・CHANGELOG）を main に push する。
+  報告に残った Proposals・Queue は `finding` の issue（`<!-- tsumugi-lane:#N -->` の印で 1 回だけ）に、`### Votes` は質問へのコメントにし、
+  PR にラベル `lane-review` を付ける（v0.94.0 から。前は TODO.md と QUESTIONS.md に書いていた）。
   クラウドのマージの Routine（手順は [.claude/merge-routine.md](.claude/merge-routine.md)）はマージも分け前もせず、ワークフローが止めた PR
-  （規則・赤・チェック表以外のぶつかり）の QUESTIONS.md への質問と解決だけをする。レーンは前の PR の `#N` が CHANGELOG に入るまで次を始めない。
+  （規則・赤・チェック表以外のぶつかり）の `question` / `finding` の issue と、`lane-review` の PR を読んでラベルを外すことだけをする。
+  レーンは前の PR の `#N` が CHANGELOG に入るまで次を始めない。
 - `[x]` を付けてよいのはこのセッションと持ち主だけ。版と CHANGELOG は触らず、PR 本文に 1 行書く。
+- **レーンの共通のスクリプト（ito の `scripts/lanes/FILES` のうち `scripts/lanes.conf` の `files=` に並ぶもの）の正は ito。**
+  ここの `scripts/` の写しは直さない。ito で直して push → `rev` を上げて `cargo build` → `scripts/lanes.sh sync`（`verify.sh` が `check` で見る）。
+  `wintest-queue.ps1`・`auto-wintest.ps1`・`wintest-kit.ps1`・`check-ps1-app.ps1` は tsumugi のもの。
+- **ARM64 の `cargo test` は CI（`.github/workflows/arm64.yml`、`windows-11-arm` と `ubuntu-24.04-arm`）が main への push とリリースで回す。**
 
 ## 持ち主の PC への依頼（needs-pc）
 

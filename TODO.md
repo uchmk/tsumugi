@@ -48,59 +48,15 @@ tsumugi のやること。`【人】` は持ち主の作業、`【金】` は 20
 
 ## 実機のレーンから
 
-マージの Routine（`.claude/merge-routine.md`）が、実機の PR の `### Proposals`・見つけた不具合・`## Queue` の頼みをここに積む。対話のセッションが拾う。
+v0.94.0 から、実機の PR の所見と頼みは `finding` の issue に、再テストは `retest` の issue に、質問は `question` の issue に行く（CLAUDE.md）。
+ここに積んでいた分は、済んだものを消し（v0.93.0 の TODO.md に残る）、残りを issue にした:
+2.44 の折り返し（[#16](https://github.com/uchmk/tsumugi/issues/16)）、速く打った `Ctrl+Shift+X` / `Ctrl+Shift+L` の Shift（[#17](https://github.com/uchmk/tsumugi/issues/17)）。
+2.52・5.8・5.10・17.26 の再テストは実機の PR #14 が押した（マージで所見が issue になる）。
 
-- [x] （v0.76.0）実機 #1〜#5 の不具合と提案を入れた。仕切りのドラッグ（2.3・2.15）、`Ctrl+Shift+-`（2.24）、コピーモードの選択とバッジ（2.25・2.26）、
-      `PromptLinks`（pwsh・Starship のプロンプトジャンプとコマンドのバー、2.27・2.42・2.44）、MSYS の `/c/...`（2.28）、`Ctrl+Shift+X` と
-      パレットの入れ替え・均等割り（2.37）、検索バーの `Alt+矢印`（2.31）、ConPTY の `Ctrl+C`（2.58）と `Shift+Enter`（2.55）、`CSI 16 t`（2.48）、
-      フォーカスの `\e[O`（2.53）、設定の検索の索引、`TERM_PROGRAM`（2.54）。キットに `Send-Keys -Hold`・`vk:0x..`・`Send-Drag`・`Send-Wheel`・
-      `Send-Click -Middle`・入力待ち、`Invoke-Tsumugi` は位置引数を受ける。キューは `Linux/macOS:`・`A person:` の行と ARM64 の 2.46〜2.49 を渡さない。
-      2.10・2.18・2.19 は人の行にし、2.28 の zsh は「入っていれば」、2.29 は `291`、2.30 は「Wrapped」、2.40 は `"r"` イベント、2.45 は「2.42 のあと」。
-      直した行は `.claude/windows-role.md` の再テストの列に積んだ。
-- [x] （v0.84.0、両方のシェルで、落ちたら `out` 行を貼る形で再テストに積んだ）【実機】2.52（SGR の下線・打ち消し線・隠し文字）は Linux では再現しなかった。再テストで落ちたら PTY ログの `out` 行を報告に貼ってもらい、それから直す。
-- [x] （v0.83.0、語をセッションのシェルに合わせて引用する。`crates/tsumugi-mux/src/quote.rs`）（実機 #7）`tsumugi new` が argv を受ける（または語ごとに引用する）ようにする。`Program Files` の bash.exe を渡すと pwsh が `ParserError` になる（`qa-reports/2026-10-10-arm-2-28.md`）。
-- [x] （v0.83.0）（実機 #7）TESTING.md 2.45 に「フック付きの bash のペインでも成り立つ」と書く（同レポート）。
-- [x] （v0.83.0、作りどおり。役割に Welcome back を Esc で閉じてから打つと書いた）（実機 #7）最後のセッションを閉じるとサーバーも止まり、次の起動の Welcome back ダイアログがキーを取る。入力が吸われた（同レポート。不具合ではない）。
-- [x] （v0.84.0、JIS 配列では `'Ctrl+Shift+vk:0xBB'`（`=` は Shift+-）で、egui には `Ctrl++` に見える。役割に書き、キーの行は「= or +」にした）【実機】`Ctrl+=`（`font_bigger`）を `'Ctrl+vk:0xBB'` で確かめる（JIS 配列のレーン）。
-- [x] （v0.84.0、ito v0.4.0 の `INPUT_LINK`・`PROMPT_REST_LINK` と pwsh のフックの `133;B`。2.27・2.44 を再テストに）（実機 #9）**Last-output copy and prompt jumps with multi-line prompts** (2.27, 2.44): start at the row after the *input* mark (OSC 133 `B`/`C`), or the row after the last prompt row, so a two-line prompt does not leak the command row into the copy. Small (one function in the OSC handling plus a test with a two-line prompt).（qa-reports/2026-10-10-arm-retest-1-7.md）
-- [x] （v0.83.0、`event Cut … -> …` の行）（実機 #9）**Log the keys egui turns into events** (Cut/Copy/Paste): add a `key X` line, or an `event Cut` line, to `TSUMUGI_KEYLOG`, so `Ctrl+Shift+X` and its siblings can be read as text. Small.（qa-reports/2026-10-10-arm-retest-1-7.md）
-- [x] （v0.83.0、`divider x,y wxh`・`divider none` の行と `Get-DividerLog`）（実機 #9）**A CLI or log line for the divider under the pointer** (for example a `hover divider x,y` line in the key log): rows 2.3 and 2.15 are pictures now and could be read. Small.（qa-reports/2026-10-10-arm-retest-1-7.md）
-- [x] （v0.84.0、`auto-wintest.ps1` がひとつ前のリリースを `kit\old\` に取る。`Start-OldTsumugi`。1.12 は同じプロトコルの版が要るので渡さない）（実機 #9）**Older-server fixture**: keep an older `tsumugi.exe` (0.46.x) in the repo's releases or the scratch cache so 1.7, 1.11 and 1.12 can be run by the unattended lane. Medium.（qa-reports/2026-10-10-arm-retest-1-7.md）
-- [x] （v0.83.0、古いサーバーを取れるまで両方のレーンが 1.7・1.11・1.12 を渡さない）（実機 #9・キュー）Keep 1.7, 1.11, 1.12 in the re-tests, but they need the older build first (see the last proposal); until then the lane keeps offering rows it cannot do. Move them out of the ARM64 re-tests, or give them to a run with the old build.（qa-reports/2026-10-10-arm-retest-1-7.md）
-- [x] （x64 で `[x]` になった。仕切りのログは v0.83.0）（実機 #9・キュー）Keep 2.3, 2.15 in the re-tests (retry with the divider's exact coordinates, or after the hover log exists).（qa-reports/2026-10-10-arm-retest-1-7.md）
-- [x] （2.27・2.44 は x64 で `[x]`。2.37 は残し、v0.83.0 のキーのログで読める）（実機 #9・キュー）Keep 2.27, 2.44, 2.37 in the re-tests; they are not done, and the first two will fail until the multi-line prompt is handled.（qa-reports/2026-10-10-arm-retest-1-7.md）
-- [x] （2.24 は x64 で `[x]` で、ARM64 にも渡らない）（実機 #9・キュー）Drop 2.24 from the ARM64 lane (the bash path is not available here).（qa-reports/2026-10-10-arm-retest-1-7.md）
-- [x] （v0.83.0 までに再テストの表から外した）（実機 #9・キュー）2.25, 2.26, 2.42, 2.53 can leave the re-tests (now `[x]`); 2.29 and 2.31 are `[~]`, the owner's to confirm.（qa-reports/2026-10-10-arm-retest-1-7.md）
-- [x] （v0.84.0、`Send-DoubleClick`・`Get-KitCursor`・`Set-KitWindow`）（実機 #10）**Kit: double-click, window resize, cursor-shape and "same-second" helpers.** I wrote `GetCursorInfo`, a double-click and `SetWindowPos` by hand for 2.3/2.15/2.70. A `Send-DoubleClick`, `Get-KitCursor` and `Set-KitWindow` in `wintest-kit.ps1` would stop every lane from doing it again. Small.（qa-reports/2026-10-10-win-retest-1-7.md）
-- [x] （v0.84.0、`Send-KeysAtOnce` が 1 回の `SendInput` で送り、`Wait-InputReady` が前面を取り戻す）（実機 #10）**Kit: keep the foreground.** The owner's Claude desktop takes it between two sends; for a two-input race (2.70's `-2`) the kit should send both inputs inside one `SendInput` batch or hold the desktop lock with `LockSetForegroundWindow`. Small–medium.（qa-reports/2026-10-10-win-retest-1-7.md）
-- [x] （v0.83.0、`log_starts_and_finishes_a_work_log_and_never_writes_over_one`）（実機 #10）**Make 2.70's `-2` a test** in `crates/tsumugi/tests/cli.rs` (two `log` requests with the same path) instead of a real-machine row; it is server logic with a file as the result. Small.（qa-reports/2026-10-10-win-retest-1-7.md）
-- [x] （v0.83.0、`event Cut … -> …` の行）（実機 #10）**Read the log keys.** `Ctrl+Shift+X` (and Cut/Copy/Paste) never show in `TSUMUGI_KEYLOG`; a `key X` or `event Cut` line would let 2.37 be read as text. Small.（qa-reports/2026-10-10-win-retest-1-7.md）
-- [x] （v0.84.0、ito v0.4.0。Windows の読み取りが 0 バイトの読みで止まっていた。2.73 を足した）（実機 #10）**Large OSC 1337 images are slow** (37–91 KB: 10–15 s before the prompt returns). Decoding or the escape parser looks quadratic. Medium; worth a profile.（qa-reports/2026-10-10-win-retest-1-7.md）
-- [x] （v0.83.0）（実機 #10）**A `tsumugi log N [PATH]` CLI** would let a lane start and finish work logs without the key or the menu, and make 2.70/2.71 text rows. Small.（qa-reports/2026-10-10-win-retest-1-7.md）
-- [x] （v0.84.0、上と同じ）（実機 #10）**Older-server fixture** for 1.7/1.11/1.12: keep one old `tsumugi.exe` (0.46.x) next to the scratch cache, or let `scripts/auto-wintest.ps1` fetch the previous release's `.zip` from GitHub into `kit\old\`. Medium.（qa-reports/2026-10-10-win-retest-1-7.md）
-- [x] （v0.83.0 までに再テストの表から外した）（実機 #10・キュー）Take 2.58, 2.24, 2.44, 2.27, 2.3, 2.15, 2.71, 4.16 out of the re-tests (now `[x]`), and 2.54, 2.48 (`[~]`, the owner's to confirm).（qa-reports/2026-10-10-win-retest-1-7.md）
-- [x] （v0.83.0、`-2` は CI のテストに移し、2.70 は残りだけで再テストに残す）（実機 #10・キュー）Keep 2.70 in the re-tests, but only for the `-2` file; it is better moved to `cli.rs` (see Proposals) and the row's last clause then lives in "Covered by tests". Everything else in it passed on the real exe, key and menu.（qa-reports/2026-10-10-win-retest-1-7.md）
-- [x] （v0.83.0、キーのログで読めるので再テストに残す）（実機 #10・キュー）Keep 2.37 in the re-tests until `Ctrl+Shift+X` can be seen reaching tsumugi (key-log line, or a machine where the chord is not swallowed). Do not offer it to this machine's lane again before then.（qa-reports/2026-10-10-win-retest-1-7.md）
-- [x] （v0.83.0、両方のレーンが渡さない）（実機 #10・キュー）Keep 1.7, 1.11, 1.12 out of the lanes until an older server build can be fetched (they were offered here and could not be done).（qa-reports/2026-10-10-win-retest-1-7.md）
-- [x] （v0.83.0 の時点で main の TESTING-KEYS.md は追いついている）（実機 #10・キュー）`TESTING-KEYS.md` needs regenerating on `main` (see Findings) before the keys chunk is offered again; `Ctrl+Shift+S` and `Ctrl+Shift+O` are then unticked keys for the next x64 run.（qa-reports/2026-10-10-win-retest-1-7.md）
-- [x] （v0.83.0）（実機 #10・キュー）Keep 2.70 for the `-2` file only; better moved to `cli.rs` as a test, then "Covered by tests".（PR 本文）
-- [x] （v0.83.0）（実機 #10・キュー）Keep 2.37 until `Ctrl+Shift+X` can be seen reaching tsumugi; do not offer it to this machine's lane before then.（PR 本文）
-- [x] （v0.83.0）（実機 #10・キュー）Keep 1.7, 1.11, 1.12 out of the lanes until an older server build can be fetched.（PR 本文）
-- [x] （v0.83.0 の時点で追いついている）（実機 #10・キュー）Regenerate TESTING-KEYS.md on `main` before the keys chunk is offered again.（PR 本文）
-- [ ] （実機 #12）`Ctrl+Shift+X` and `Ctrl+Shift+L` sent quickly lose Shift (egui turns them into `Cut` / `Copy` events); they work with `Send-Keys -Hold`. Probably only a test-harness matter, but a real fast typist may hit it.（qa-reports/2026-10-11-win-retest-2-27-0350.md）
-- [ ] （実機 #12）`tsumugi new -- pwsh` starts a nested, unhooked pwsh (no OSC 133 marks): `Ctrl+Shift+Up/Down` and `Ctrl+Shift+L` do nothing there. Use `tsumugi split` for hooked panes.（qa-reports/2026-10-11-win-retest-2-27-0350.md）
-- [ ] （実機 #12）2.44: `Ctrl+Shift+L` in a pane whose prompt line was reflowed/garbled (after a swap that changed the width) copied only the last output line. Mark boundaries seem to be confused by a reflow; worth a look.（qa-reports/2026-10-11-win-retest-2-27-0350.md）
-  - 見立て（v0.93.0 の後、クラウド）: 幅が変わると alacritty が行を折り返し直し、ConPTY も自分の画面を書き直すので、両方の思う画面が食い違う（行が崩れて見えたのはこれ）。ConPTY が空だと思っている所に、印（`tsumugi:prompt` のリンク）の付いた古いセルが残り、`one` を書いた行の右側にそれが残ると、`mark_on` はその行をプロンプトと読み、`two` だけを返す。行の中ほどから始まるプロンプト（改行の無い出力の後の bash）と形が同じなので、印の位置だけでは見分けられない。直すなら、幅が変わった後の ConPTY の書き直しに合わせて alacritty の折り返しを止めるか、書き直しの間は印を捨てる方向。実機で、崩れた行の `tsumugi read` と、崩れる前後の画面の画像があれば確かめられる。
-- [ ] （実機 #12）The first character after a window resize or a focus change is swallowed (typed `cho` for `echo`). Not a product finding, but a test must `Set-Foreground` and wait first.（qa-reports/2026-10-11-win-retest-2-27-0350.md）
-- [x] （v0.93.0）（実機 #12）Let the overview key close the page when it has the keys (5.8).（qa-reports/2026-10-11-win-retest-2-27-0350.md）
-- [x] （v0.93.0）（実機 #12）17.26 should show "Restarting the server…" (the code sets it) and, if the new server fails to start, say why.（qa-reports/2026-10-11-win-retest-2-27-0350.md）
-- [ ] （実機 #12・キュー）2.52: re-test after a fix, in PowerShell 7 and Git Bash, and including the close-and-reopen step.（qa-reports/2026-10-11-win-retest-2-27-0350.md）
-- [ ] （実機 #12・キュー）5.8: re-test the toggle after the fix.（qa-reports/2026-10-11-win-retest-2-27-0350.md）
-- [ ] （実機 #12・キュー）5.10: re-test at 1280 × 800 after resizing to 1000 × 700 and back.（qa-reports/2026-10-11-win-retest-2-27-0350.md）
-- [ ] （実機 #12・キュー）17.26: re-test after a fix; also run the "close the window, the server stays" and "restart after update" rows next to it.（qa-reports/2026-10-11-win-retest-2-27-0350.md）
-- [ ] （実機 #12・キュー）2.73: a person should look at the picture's shape (`[~]` → `[x]`).（qa-reports/2026-10-11-win-retest-2-27-0350.md）
-- [ ] （実機 #12・キュー）2.52, 5.8, 5.10, 17.26: re-test after fixes (details in the report).（PR 本文）
-- [ ] （実機 #12・キュー）2.73: a person should look at the picture's shape.（PR 本文）
+- [ ] 2.73 の絵の形を人が見て `[~]` を `[x]` にする【人】
+- [ ] `examples/make-testcheck.rs`・`make-keycheck.rs` を ito の `ito-testcheck` に載せ替えるか決める。今の ito-testcheck は kura の表の形
+      （訳の toml・テスト名の走査・節の準備）で、tsumugi の表（`操作 → 期待` の 1 行）と違う。載せ替えると TESTING-CHECKS.md の中身が
+      全部変わり、レーンの塊の選び方（`wintest-queue.ps1`）の行の読み方も確かめ直しになる（v0.94.0 では見送った）。
 
 ## ほかのターミナルにあるもの（2026-10-08、持ち主の依頼で全部取り込む）
 

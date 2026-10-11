@@ -1,3 +1,5 @@
+# Source is uchmk/ito scripts/lanes/; an app's copy is written by its scripts/lanes.sh sync, so edit ito's.
+#
 # A lane's state on GitHub, where a cloud session can read it: one issue per
 # lane, "Lane status: <lane>" with the label lane-status, whose body every
 # firing of auto-wintest.ps1 writes again. Editing a body sends no
@@ -5,8 +7,7 @@
 # machine (the log, dirty.txt, the failures file): on 2026-10-10 kura's lanes
 # had made no pull request for a day, and nobody outside the machine could
 # tell why.
-# Dot-sourced by auto-wintest.ps1 and checked by check-ps1.ps1. The same file
-# in kura and tsumugi.
+# Dot-sourced by auto-wintest.ps1 and checked by check-ps1.ps1.
 
 # The last $Keep lines of a firing history kept in $File, with $Line added
 # first. Never throws.
@@ -37,7 +38,7 @@ function Format-LaneStatus {
         $s
     }
     $worktree = if ($Dirty.Count) {
-        "**dirty** ($($Dirty.Count) changed path(s)): no run starts until a person looks at it and cleans it"
+        "**dirty** ($($Dirty.Count) changed path(s)) and it could not be saved to a rescue/ branch: no run starts until a person looks at it and cleans it"
     } else { 'clean' }
     $body = @(
         '<!-- Written by scripts/auto-wintest.ps1 on the lane''s machine at every firing (scripts/lane-status.ps1). An edit here is overwritten. -->'
@@ -47,7 +48,7 @@ function Format-LaneStatus {
         ''
         "**Worktree:** $worktree · **Failed runs in a row:** $Failures"
         ''
-        "If **Last firing** is more than two hours old and the firing before it did not start a run (a run may take up to four), the scheduled task is not starting the script: the machine is off or asleep, or the task fails before the script runs (on the machine: ``Get-ScheduledTaskInfo $Task``, LastTaskResult)."
+        "If **Last firing** is more than two hours old and the firing before it did not start a run (a run may take up to four), the scheduled task is not starting the script: the machine is off or asleep, or the task fails before the script runs (on the machine: ``Get-ScheduledTaskInfo $Task``, LastTaskResult). The Merge lanes workflow labels this issue lane-stalled and comments once when it is three hours old (five while a run is going)."
     )
     if ($Said.Count) {
         $body += @('', "<details><summary>This firing's log ($($Said.Count) lines)</summary>", '', "${fence}text")
@@ -65,6 +66,26 @@ function Format-LaneStatus {
         $body += @($fence, '', '</details>')
     }
     ($body -join "`n") + "`n"
+}
+
+# A comment on the lane's issue, which Publish-LaneStatus has written (its
+# number is in $StateDir). A comment notifies the people watching the issue;
+# an edit of the body does not. Never throws: returns $null, or what went wrong.
+function Add-LaneComment([string]$Repo, [string]$Lane, [string]$Body, [string]$StateDir) {
+    try {
+        $numFile = Join-Path $StateDir "status-issue-$Lane"
+        $n = if (Test-Path $numFile) { (Get-Content -Raw -LiteralPath $numFile).Trim() } else { '' }
+        if ($n -notmatch '^\d+$') { return "no status issue for $Lane yet" }
+        $json = Join-Path $StateDir "status-comment-$Lane.json"
+        $text = ($Body -replace '@', "@$([char]0x200B)")
+        if ($env:USERPROFILE) { $text = $text.Replace($env:USERPROFILE, '~') }
+        [IO.File]::WriteAllText($json, (@{ body = $text } | ConvertTo-Json -Compress), [Text.UTF8Encoding]::new($false))
+        $out = gh api "repos/$Repo/issues/$n/comments" --input $json --jq .id 2>&1
+        if ($LASTEXITCODE -ne 0) { return "gh api could not comment on #${n}: $out" }
+        $null
+    } catch {
+        "Add-LaneComment: $_"
+    }
 }
 
 # Writes $Body into the lane's issue, made the first time. Its number is kept

@@ -19,10 +19,12 @@ the same file as filer's) does both:
   a comment (`<!-- merge-lanes:dropped:<sha> -->`);
 - then the share for every merged lane pull request whose `#N` is not in
   CHANGELOG.md: one PATCH bump (Cargo.toml and Cargo.lock), a CHANGELOG line
-  per pull request made from its marks, the ticked rows out of the role's
-  re-test list, the reports' `### Proposals` and the `## Queue` notes into
-  TODO.md under "実機のレーンから" (`- [ ] （実機 #N）…`). It pushes that to
-  `main` and starts CI and Checklists there.
+  per pull request made from its marks. It pushes that to `main` and starts
+  CI and Checklists there. Since v0.94.0 it also files what the report left
+  for others as issues instead of TODO.md lines: the `### Proposals` and
+  `### Queue` items as one `finding` issue (`lane:win` / `lane:arm`), the
+  `### Votes` lines as comments on their `question` issues; and it labels the
+  pull request `lane-review` for you (3).
 
 In filer the cloud session's auto mode refused the routine's merges as
 unreviewed (2026-10-10); a workflow whose rules are code does not need a
@@ -53,10 +55,13 @@ role file in English (CHANGELOG.md itself is Japanese). Read
     those with `merged_at` set). The workflow should have shared them: read
     its last runs' logs (Actions, `Merge lanes`), and do that share by hand as
     in 2.
+  - **merged and labelled `lane-review`**
+    (`gh api "repos/uchmk/tsumugi/issues?labels=lane-review&state=closed"`):
+    the workflow labels each one it shares. Each one is read in 3.
   - Open lane pull requests with no such comment are the workflow's (checks
     running, or it merges them on its next pass: whenever CI, Checklists or
     Audit finishes, and at :17). Leave them.
-- Nothing in either list: reply `nothing to do` and stop. Do not read
+- Nothing in any list: reply `nothing to do` and stop. Do not read
   further, build or check out.
 - The checkout: `uchmk/tsumugi` with push access (attach it with `add_repo`,
   `access: "push"`, and clone it when the session does not have it), then
@@ -65,8 +70,8 @@ role file in English (CHANGELOG.md itself is Japanese). Read
   may be unavailable).
 - A lane that has made no pull request for hours says why in its status
   issue (`gh api 'repos/uchmk/tsumugi/issues?labels=lane-status&state=all'`,
-  CLAUDE.md). Asking the owner about it in QUESTIONS.md is fine; it is not
-  the routine's to fix.
+  CLAUDE.md). Asking the owner about it in a `question` issue is fine; it is
+  not the routine's to fix.
 
 ## 1. What the workflow merges, and what to do when it stops
 
@@ -98,25 +103,23 @@ When it stops:
   `cargo run -q -p tsumugi --example make-testcheck` and `make-keycheck`,
   check both with `-- --check`, commit, and push to the pull request's
   branch. The workflow merges and shares it once its checks are green again.
-- **`rules`**: you do not change a run's ticks or its report. Add a question
-  to QUESTIONS.md (CLAUDE.md's format, one recommended option): the pull
-  request, each problem the comment lists, and the choices (the owner merges
-  it by hand as it is, or closes it and the rows are offered again). Commit
-  it as in 2; a run with only a question still bumps PATCH and adds a
-  CHANGELOG line (one version per push).
+- **`rules`**: you do not change a run's ticks or its report. Open a
+  `question` issue (`.github/ISSUE_TEMPLATE/question.yml`, one recommended
+  option): the pull request, each problem the comment lists, and the choices
+  (the owner merges it by hand as it is, or closes it and the rows are offered
+  again). An issue needs no commit.
 - **`red`**: read the log. A pull request of Markdown cannot break a build.
-  **Do not fix code from here**: write the failing check, the log line and
-  your reading of the cause into TODO.md under "実機のレーンから", committed as
-  in 2.
-- A question already open for that pull request: do not add another. One the
-  owner answered: carry it out (close the pull request with a one-line
-  comment naming the answer, or leave a merge to the owner) and mark the
-  question answered.
+  **Do not fix code from here**: open a `finding` issue labelled
+  `lane:cloud` with the failing check, the log line and your reading of the
+  cause (`bug` too when it is one).
+- A question issue already open for that pull request: do not add another.
+  One the owner answered (`回答:`): carry it out (close the pull request with
+  a one-line comment naming the answer, or leave a merge to the owner) and
+  close the issue.
 
 ## 2. Committing (once per run)
 
-What you write (questions, TODO lines, and a share the workflow missed) goes
-in one commit on `claude/merge-run`, after
+What you write (a share the workflow missed) goes in one commit on `claude/merge-run`, after
 `git fetch origin main && git reset --hard origin/main`:
 
 1. **Version**: one PATCH bump in `Cargo.toml` (`[workspace.package]`), then
@@ -125,10 +128,8 @@ in one commit on `claude/merge-run`, after
    `TZ=Asia/Tokyo date +%F`, `### 変更`, one Japanese line for what you did.
    A share by hand also needs the workflow's lines: one per merged pull
    request (rows ticked on which machine, e.g.
-   "実機（x64）で 1.3・1.5 を確かめた（#N）"), the ticked rows out of
-   windows-role.md's "Re-tests of changed behaviour" row (`none yet` when
-   it empties), and the reports' `### Proposals` and `## Queue` lines in
-   TODO.md under "実機のレーンから". Do not edit the rest of windows-role.md.
+   "実機（x64）で 1.3・1.5 を確かめた（#N）"); the report's leftovers as
+   in 3. Do not edit windows-role.md.
 3. `scripts/verify.sh`; the last line must be `ALL OK: …`.
 4. Commit `vX.Y.Z: <what>` with a one-paragraph English body (it becomes the
    release note), and `git push origin HEAD:main`. Rejected because `main`
@@ -138,9 +139,36 @@ in one commit on `claude/merge-run`, after
 Do not wait for `main`'s CI after the push. When there is nothing to write,
 there is no push.
 
+## 3. Reading the merged pull requests (`lane-review`)
+
+The workflow merged, shared and filed them; what is left is the judgment.
+For each pull request labelled `lane-review`:
+
+- **The evidence, read as a merger would**: the workflow checked only that
+  each mark has a line naming its row. Read those lines against
+  windows-role.md ("Ticking TESTING-CHECKS.md"). A mark whose line does not
+  hold up (a `[~]` on a row that can be measured, a tick from running
+  rather than checking): open a `retest` issue for the row
+  (`.github/ISSUE_TEMPLATE/retest.yml`) and a `finding` issue saying why;
+  the development session unticks it.
+- **Every bug and proposal ended up an issue**: the run opens them itself
+  (`Findings: #N` in its body), and the workflow files what the report still
+  lists as one `finding` issue. Open what is missing (`finding` and the
+  lane's label, the run's `#N` in the body; `bug` for a bug). A key, a
+  default or a design choice is a `question` issue instead, with a
+  recommendation; one with an arguable technical answer gets `vote` and your
+  own `vote[cloud]:` comment.
+- **A `retest` issue the pull request named** with `Refs #N`: leave it open
+  (the next x64 run takes what is left). One every row of which is ticked
+  but still open: close it with the pull request's number.
+- Then take the label off:
+  `gh api -X DELETE "repos/uchmk/tsumugi/issues/<N>/labels/lane-review"`.
+
+None of this is a commit: issues, comments and labels only.
+
 ## The reply
 
 In Japanese, one line per pull request: `shared #N by hand` /
-`resolved conflict on #N` / `asked about #N: why（QUESTIONS.md Qn）` /
+`resolved conflict on #N` / `asked about #N: why（#Q）` / `read #N（findings #…）` /
 `closed #N: …`; then the version pushed (`v0.76.5 を push`), or
 `nothing to do` when there was nothing.

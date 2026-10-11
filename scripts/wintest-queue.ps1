@@ -3,12 +3,14 @@
 # them on Linux too.
 #
 # A run gets one chunk: up to -Rows rows of one section of TESTING-CHECKS.md,
-# -Keys lines of TESTING-KEYS.md, or the re-tests. It is told those rows and
-# nothing else, which is most of what keeps a run small. A row a run was
-# given and left `[ ]` (a look, a failure, a row it could not reach) is
-# written to the attempted list with a hash of its words, so the next run
-# moves on; changing the row's words in TESTING.md, or naming it in the
-# re-tests, offers it again.
+# -Keys lines of TESTING-KEYS.md, or the re-tests of one `retest` issue. It is
+# told those rows and nothing else, which is most of what keeps a run small.
+# A row a run was given and left `[ ]` (a look, a failure, a row it could not
+# reach) is written to the attempted list with a hash of its words, so the
+# next run moves on; changing the row's words in TESTING.md, or naming it in a
+# new retest issue, offers it again.
+#
+# The marks a run set are made again on main by lane-marks.ps1 (ito's).
 
 # The win lane's order after the re-tests and the keys; the sections not
 # named follow in their own order. The ARM64 lane takes only the sections
@@ -60,14 +62,11 @@ function Get-OpenKeys([string]$Keys) {
     }
 }
 
-# The row ids named in the role's "Re-tests of changed behaviour" row.
-function Get-RetestIds([string]$Role) {
-    $row = ($Role -split "`r?`n") | Where-Object { $_ -like '|*Re-tests of changed behaviour*' } | Select-Object -First 1
-    if (-not $row) { return @() }
-    # Every cell after the first, which is its name: the role's table has the
-    # ids in its third cell ("Up to" is the second), the tests' in its second.
-    $cell = (($row -split '\|') | Select-Object -Skip 2) -join '|'
-    @([regex]::Matches($cell, '\b\d+\.\d+[a-z]?\b') | ForEach-Object Value | Select-Object -Unique)
+# The row ids a retest issue's body still names `[ ]`: `- [ ] 2.52` or
+# `- [ ] **2.52** …` (since v0.94.0 the re-tests are issues, not a row of the
+# role's table).
+function Get-RetestIds([string]$Body) {
+    @([regex]::Matches($Body, '(?m)^\s*- \[ \] \**(\d+\.\d+[a-z]?)\b') | ForEach-Object { $_.Groups[1].Value } | Select-Object -Unique)
 }
 
 function Get-TextHash([string]$Text) {
@@ -101,25 +100,29 @@ function Select-Chunk {
         [ValidateSet('win', 'arm')] [string]$Lane,
         [string]$Checks,
         [string]$Keys,
-        [string]$Role,
+        # the open retest issues, oldest first: @{ Number; Body }
+        $Retests = @(),
         [hashtable]$Attempted = @{},
         [int]$Rows = 15,
         [int]$KeyCount = 20
     )
     $open = @(Get-OpenRows $Checks)
 
-    # 1. Re-tests: rows whose behaviour changed, still `[ ]`. The re-test
-    # row's words are in the hash, so a row named again is offered again.
-    $retest = Get-RetestIds $Role
-    if ($retest) {
-        $roleRow = (($Role -split "`r?`n") | Where-Object { $_ -like '|*Re-tests of changed behaviour*' } | Select-Object -First 1)
-        $picked = @($open | Where-Object { $_.Id -in $retest -and (Test-Unattended $Lane $_) } | ForEach-Object {
-                $r = $_.PSObject.Copy()
-                $r | Add-Member Hash (Get-TextHash ($r.Text + "`n" + $roleRow))
-                $r
-            } | Where-Object { $Attempted[$_.Id] -ne $_.Hash } | Select-Object -First $Rows)
-        if ($picked) {
-            return [pscustomobject]@{ Kind = 'retest'; Title = 'Re-tests of changed behaviour'; Rows = $picked; Branch = "test/$Lane-retest-$($picked[0].Id -replace '\.', '-')" }
+    # 1. Re-tests: the rows an open retest issue names, still `[ ]`, the
+    # oldest issue first, x64 only (the ARM64 lane keeps to its sections). The
+    # issue's number is in the hash, so a row named again in a new issue is
+    # offered again.
+    if ($Lane -eq 'win') {
+        foreach ($issue in @($Retests)) {
+            $ids = Get-RetestIds $issue.Body
+            $picked = @($open | Where-Object { $_.Id -in $ids -and (Test-Unattended $Lane $_) } | ForEach-Object {
+                    $r = $_.PSObject.Copy()
+                    $r | Add-Member Hash (Get-TextHash ($r.Text + "`n#" + $issue.Number))
+                    $r
+                } | Where-Object { $Attempted[$_.Id] -ne $_.Hash } | Select-Object -First $Rows)
+            if ($picked) {
+                return [pscustomobject]@{ Kind = 'retest'; Title = "Re-tests of changed behaviour (#$($issue.Number))"; Rows = $picked; Issue = [int]$issue.Number; Branch = "test/$Lane-retest-$($issue.Number)" }
+            }
         }
     }
 
@@ -153,39 +156,4 @@ function Format-Chunk($Chunk) {
         if ($Chunk.Kind -eq 'keys') { "- $($r.Text)" } else { "- **$($r.Id)** $($r.Text)" }
     }
     "## $($Chunk.Title)`n`n" + ($lines -join "`n")
-}
-
-# The marks a run set in one checklist: each `- [x] …` or `- [~] …` line of
-# the run's copy whose line at the run's base was `- [ ] …` with the same
-# words, as @{ Mark; Rest }.
-function Get-LaneMarks([string]$Base, [string]$Branch) {
-    $open = [Collections.Generic.HashSet[string]]::new([string[]]@($Base -split "`r?`n"))
-    foreach ($line in $Branch -split "`r?`n") {
-        if ($line -match '^- \[([x~])\] (.*)$' -and $open.Contains("- [ ] $($Matches[2])")) {
-            [pscustomobject]@{ Mark = $Matches[1]; Rest = $Matches[2] }
-        }
-    }
-}
-
-# main's checklist with a run's marks made again (merge-lanes.py's
-# reapply_marks does the same on the workflow's side). A run takes an hour,
-# and main's copy moves under it: a row reworded and its mark taken back, a
-# row added, another lane's ticks. Git calls a mark beside such a line a
-# conflict, so instead each mark goes on main's line with the same words while
-# it is still `[ ]`. A row main reworded or took out keeps no mark: what the
-# run checked is not what the row says now. Returns @{ Text; Dropped } with
-# the dropped rows' ids (or a key's line).
-function Set-LaneMarks([string]$Main, $Marks) {
-    $lines = $Main -split "`n"
-    $where = @{}
-    for ($i = 0; $i -lt $lines.Count; $i++) { $where[$lines[$i].TrimEnd("`r")] = $i }
-    $dropped = foreach ($m in @($Marks)) {
-        $i = $where["- [ ] $($m.Rest)"]
-        if ($null -ne $i) {
-            $lines[$i] = "- [$($m.Mark)] $($m.Rest)" + $(if ($lines[$i].EndsWith("`r")) { "`r" })
-        } elseif ($null -eq $where["- [$($m.Mark)] $($m.Rest)"]) {
-            if ($m.Rest -match '^\*\*([^*]+)\*\*') { $Matches[1] } else { $m.Rest }
-        }
-    }
-    [pscustomobject]@{ Text = $lines -join "`n"; Dropped = @($dropped) }
 }

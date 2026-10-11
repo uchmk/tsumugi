@@ -8,8 +8,9 @@
 # judgement is done here, before claude starts, and claude is given one chunk.
 #
 #   1. The chunk. scripts/wintest-queue.ps1 picks it from origin/main's
-#      TESTING-CHECKS.md, TESTING-KEYS.md and the role's re-test row: up to
-#      15 rows of one section (or 20 keys, or the re-tests). Rows a run was
+#      TESTING-CHECKS.md and TESTING-KEYS.md and the oldest open `retest`
+#      issue (x64 only, since v0.94.0): up to 15 rows of one section (or 20
+#      keys, or the rows of one retest issue). Rows a run was
 #      given and left `[ ]` go to %LOCALAPPDATA%\tsumugi-wintest\attempted*.txt
 #      so the next run moves on; no chunk left, no run (0 tokens).
 #   2. No pull request of this lane (test/win-* or test/arm-*) is open: the
@@ -30,19 +31,28 @@
 #
 # Register it with Task Scheduler every hour at :50 (filer's runs at :20), as
 # you, "only when the user is logged on" (the run drives a real window). The
-# task moves the worktree to origin/main and then runs the worktree's copy, so
-# a change to this script reaches the very next firing. The first time, make
-# the worktree (C:\dev\tsumugi-wintest):
+# task runs scripts/lane-boot.ps1 (ito's, the same as kura's), which fetches
+# main and runs main's copy of this script from the state folder
+# (boot<suffix>), whatever state the worktree is in, so a change to this
+# script reaches the very next firing. A worktree a cut-off run left dirty is
+# saved to a branch of its own, rescue/<lane>-<time>, and pushed, and goes
+# back to origin/main (Save-DirtyWorktree, since v0.94.0). The first time,
+# make the worktree (C:\dev\tsumugi-wintest):
 #
 #   git -C C:\dev\tsumugi fetch origin
 #   git -C C:\dev\tsumugi worktree add --detach C:\dev\tsumugi-wintest origin/main
 #   $w = 'C:\dev\tsumugi-wintest'
-#   $a = New-ScheduledTaskAction -Execute (Get-Command pwsh).Source -Argument "-NoProfile -WindowStyle Hidden -Command `"git -C $w fetch -q origin main; if (-not (git -C $w status --porcelain)) { git -C $w checkout -q --detach origin/main }; & $w\scripts\auto-wintest.ps1`""
+#   $a = New-ScheduledTaskAction -Execute (Get-Command pwsh).Source -Argument "-NoProfile -WindowStyle Hidden -File $w\scripts\lane-boot.ps1"
 #   $t = New-ScheduledTaskTrigger -Once -At ((Get-Date).Date.AddHours((Get-Date).Hour).AddMinutes(50)) -RepetitionInterval (New-TimeSpan -Hours 1)
 #   $s = New-ScheduledTaskSettingsSet -MultipleInstances IgnoreNew -ExecutionTimeLimit (New-TimeSpan -Hours 4) -StartWhenAvailable
 #   Register-ScheduledTask -TaskName tsumugi-auto-wintest -Action $a -Trigger $t -Settings $s
 #
 #   Unregister-ScheduledTask -TaskName tsumugi-auto-wintest   # to stop it
+#
+# A task registered before v0.94.0 ran `-Command "git ... ; & $w\scripts\auto-wintest.ps1"`;
+# to move it over, run the $w and $a lines above, then
+#
+#   Set-ScheduledTask -TaskName tsumugi-auto-wintest -Action $a
 #
 # pwsh is given by its full path: on 2026-10-09 a task registered with a bare
 # `pwsh` ended every firing with 0x80070002 (2147942402, file not found)
@@ -52,20 +62,23 @@
 # $env:LOCALAPPDATA\Microsoft\WindowsApps\pwsh.exe (the Store's own alias,
 # which follows updates) or install the MSI build (C:\Program Files\PowerShell\7).
 #
-# The ARM64 laptop: C:\dev\tsumugi-armtest, `& $w\scripts\auto-wintest.ps1 -Lane arm`,
-# and the task name tsumugi-auto-wintest-arm.
+# The ARM64 laptop: C:\dev\tsumugi-armtest, `-File $w\scripts\lane-boot.ps1 -Lane arm`,
+# and the task name tsumugi-auto-wintest-arm. It takes no re-tests: those are
+# x64's.
 #
 # Status on GitHub. Every firing writes the lane's issue, "Lane status: win"
 # or "Lane status: arm" (label lane-status, opened by the first firing), again:
 # when it fired, which copy of this script, what the firing came to, whether
 # the worktree is dirty, the failed runs in a row and this firing's log lines
 # (scripts/lane-status.ps1, the same file as kura's). A run also writes it
-# when it starts. A cloud session reads it with
+# when it starts, and a rescue adds a comment (which notifies). A cloud
+# session reads it with
 #   gh api 'repos/uchmk/tsumugi/issues?labels=lane-status&state=all'
 # A failure to write it is logged and changes nothing else.
 #
 # By hand:
 #
+#   pwsh -File scripts\lane-boot.ps1             # main's copy: look once, run if there is work
 #   pwsh -File scripts\auto-wintest.ps1 -DryRun   # the chunk and the prompt it would give; builds nothing
 #   pwsh -File scripts\auto-wintest.ps1           # look once, run if there is work
 #   pwsh -File scripts\auto-wintest.ps1 -Force    # forget the attempted rows first
@@ -95,11 +108,16 @@ param(
     [string]$Model = 'claude-sonnet-5-5',
     [int]$Rows = 15,
     [int]$KeyCount = 20,
-    [int]$DesktopWaitMin = 20
+    [int]$DesktopWaitMin = 20,
+    # Given by lane-boot.ps1: the origin/main commit this copy was taken from,
+    # and the checkout lane-boot.ps1 is in (the worktree is made from it).
+    [string]$Booted,
+    [string]$From
 )
 
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'wintest-queue.ps1')
+. (Join-Path $PSScriptRoot 'lane-marks.ps1')
 . (Join-Path $PSScriptRoot 'lane-status.ps1')
 
 $repo = 'uchmk/tsumugi'
@@ -184,7 +202,8 @@ function Publish-Status {
         $history = @(Add-LaneHistory (Join-Path $state "status-history$suffix.txt") ('{0:yyyy-MM-dd HH:mm} {1}' -f $now, $what))
         $toml = Get-Content -Raw -LiteralPath (Join-Path (Split-Path -Parent $PSScriptRoot) 'Cargo.toml') -ErrorAction SilentlyContinue
         $version = if ($toml -match '(?m)^version = "([^"]+)"') { "v$($Matches[1])" } else { '?' }
-        $copy = "$version ($((git -C $PSScriptRoot rev-parse --short HEAD 2>$null) -join ''))"
+        $copy = if ($Booted) { "$version ($($Booted.Substring(0, [Math]::Min(7, $Booted.Length))), main's copy by lane-boot.ps1)" }
+                else { "$version ($((git -C $PSScriptRoot rev-parse --short HEAD 2>$null) -join ''), $PSCommandPath)" }
         $dirty = if (Test-Path $Work) { @(git -C $Work status --porcelain 2>$null) } else { @() }
         $fails = if (Test-Path $failFile) { [int](Get-Content -Raw -LiteralPath $failFile | ConvertFrom-Json).Total } else { 0 }
         $task = if ($Lane -eq 'win') { 'tsumugi-auto-wintest' } else { "tsumugi-auto-wintest-$Lane" }
@@ -192,6 +211,11 @@ function Publish-Status {
             -Said @($said) -Dirty $dirty -Failures $fails -History @($history | Select-Object -Skip 1)
         $err = Publish-LaneStatus -Repo $repo -Lane $Lane -Body $body -StateDir $state
         if ($err) { Say "Could not write the lane's status issue: $err" }
+        if ($script:rescued -and -not $err) {
+            $err = Add-LaneComment -Repo $repo -Lane $Lane -Body ($script:rescued -join "`n") -StateDir $state
+            if ($err) { Say "Could not comment on the lane's status issue: $err" }
+            $script:rescued = $null
+        }
     } catch {
         Say "Could not write the lane's status issue: $_"
     }
@@ -392,8 +416,9 @@ function Add-Failure([string]$Branch, [string]$Why) {
     }
 }
 
-# A worktree with uncommitted changes stops every run until a person cleans
-# it. The log says so once a day, and $dirtyFile lists what is changed.
+# A dirty worktree that Save-DirtyWorktree could not save stops every run
+# until a person cleans it. The log says so once a day, and $dirtyFile lists
+# what is changed.
 function Note-Dirty([string[]]$changes) {
     $now = Get-Date
     $since = $now
@@ -419,6 +444,61 @@ function Note-Dirty([string[]]$changes) {
         'git status --porcelain:'
     ) + @($changes | Select-Object -First 40)
     Set-Content -Path $dirtyFile -Value $body
+}
+
+# A dirty worktree is a run that was cut off. Until v0.94.0 it stopped every
+# run until a person cleaned it, and kura's lanes sat still for days that way
+# (2026-09-30, 2026-10-10). Now its changes are committed to a branch of their
+# own, rescue/<lane>-<time>, which is pushed (kept locally when the push
+# fails), and the worktree goes back to origin/main: nothing is lost and the
+# lane carries on. Only in a lane's own worktree -- on a detached HEAD, a
+# test/<lane>-* branch or an earlier rescue/<lane>-* branch, which is all a
+# lane's worktree is ever on -- and never in the middle of a rebase. Returns
+# the branch, or $null when the worktree is left as it is (Note-Dirty then
+# stops the run). Say goes to the host: its output would be the return value.
+$rescued = $null
+function Save-DirtyWorktree([string[]]$changes) {
+    $head = (git -C $Work rev-parse --abbrev-ref HEAD 2>$null | Out-String).Trim()
+    if ($head -ne 'HEAD' -and $head -notlike "test/$Lane-*" -and $head -notlike "rescue/$Lane-*") {
+        Say "$Work is on $head, not a lane's branch: its changes are left alone." | Out-Host
+        return $null
+    }
+    foreach ($dir in 'rebase-merge', 'rebase-apply') {
+        if (Test-Path (git -C $Work rev-parse --path-format=absolute --git-path $dir | Out-String).Trim()) {
+            Say "$Work is in the middle of a rebase: its changes are left alone." | Out-Host
+            return $null
+        }
+    }
+    $on = if ($head -eq 'HEAD') { 'a detached HEAD' } else { $head }
+    $branch = 'rescue/{0}-{1:yyyyMMdd-HHmm}' -f $Lane, (Get-Date)
+    $was = (git -C $Work rev-parse --short HEAD | Out-String).Trim()
+    try {
+        git -C $Work checkout -q -B $branch
+        if ($LASTEXITCODE -ne 0) { throw "git checkout -B $branch failed" }
+        git -C $Work add -A
+        if ($LASTEXITCODE -ne 0) { throw 'git add -A failed' }
+        $what = "auto-wintest.ps1 found $($changes.Count) uncommitted path(s) in the $Lane lane's worktree on $on ($was), left by a run that was cut off, and saved them here before putting the worktree back on origin/main."
+        git -C $Work commit -q --no-verify -m "Rescue the $Lane lane's uncommitted changes" -m $what
+        if ($LASTEXITCODE -ne 0) { throw 'git commit failed' }
+        git -C $Work push -q origin "refs/heads/${branch}:refs/heads/$branch" 2>$null
+        $pushed = $LASTEXITCODE -eq 0
+        git -C $Work checkout -q --detach origin/main
+        if ($LASTEXITCODE -ne 0) { throw 'git checkout origin/main failed' }
+    } catch {
+        Say "Could not save the dirty worktree to ${branch}: $_" | Out-Host
+        return $null
+    }
+    $where = if ($pushed) { "pushed to origin as $branch" } else { "committed to the local branch $branch (the push failed: it is only on this machine)" }
+    Say "!!!!! [$Lane] $Work had $($changes.Count) uncommitted path(s) on $on ($was): $where, and the worktree is back on origin/main. !!!!!" | Out-Host
+    $script:rescued = @(
+        "**Rescued a dirty worktree.** It had $($changes.Count) uncommitted path(s) on $on (``$was``), left by a run that was cut off. They are $where, and the worktree is back on origin/main, so the lane carries on."
+        ''
+        'Look at the branch: merge what is worth keeping (a run''s ticks need their evidence, as in any lane pull request) and delete it.'
+        ''
+        '```text'
+    ) + @($changes | Select-Object -First 40) + @('```')
+    if (Test-Path $dirtyFile) { Remove-Item -LiteralPath $dirtyFile }
+    $branch
 }
 
 # A run takes an hour and main moves under it: a row reworded, another lane's
@@ -498,8 +578,8 @@ try {
     }
 
     if (-not (Test-Path $Work)) {
-        # The worktree hangs off the checkout this script is in.
-        $main = Split-Path -Parent $PSScriptRoot
+        # The worktree hangs off the checkout lane-boot.ps1 or this script is in.
+        $main = if ($From) { $From } else { Split-Path -Parent $PSScriptRoot }
         git -C $main fetch -q origin main
         git -C $main worktree add -q --detach $Work origin/main
         Say "Made the worktree $Work."
@@ -520,21 +600,33 @@ try {
             $changes = @(git -C $Work status --porcelain)
         }
     }
+    # A dirty worktree is saved to a rescue/ branch (Save-DirtyWorktree); when
+    # it cannot be, it stops the run further down.
+    if ($changes.Count -and -not $DryRun -and (Save-DirtyWorktree $changes)) { $changes = @() }
     if ($changes.Count -eq 0) {
         git -C $Work checkout -q --detach origin/main
         if (Test-Path $dirtyFile) { Say "$Work is clean again."; Remove-Item -LiteralPath $dirtyFile }
     } elseif (-not $DryRun) { Note-Dirty $changes }
 
-    # 1. The chunk, from origin/main's checklists.
+    # 1. The chunk, from origin/main's checklists and, for x64, the open
+    # retest issues, the oldest first.
     if ($Force) { Remove-Item -LiteralPath $attemptedFile -ErrorAction SilentlyContinue }
     $show = { param($f) (git -C $Work show "origin/main:$f") -join "`n" }
+    $retests = @()
+    if ($Lane -eq 'win') {
+        $json = gh issue list --repo $repo --label retest --state open --limit 50 --json number,body,createdAt
+        if ($LASTEXITCODE -ne 0) { Say 'gh issue list failed (is gh logged in?). Trying again next time.'; exit 0 }
+        $retests = @($json | ConvertFrom-Json | Sort-Object { [datetime]$_.createdAt } |
+            ForEach-Object { [pscustomobject]@{ Number = $_.number; Body = $_.body } })
+    }
     $chunk = Select-Chunk -Lane $Lane -Checks (& $show 'TESTING-CHECKS.md') -Keys (& $show 'TESTING-KEYS.md') `
-        -Role (& $show '.claude/windows-role.md') -Attempted (Read-Attempted $attemptedFile) -Rows $Rows -KeyCount $KeyCount
+        -Retests $retests -Attempted (Read-Attempted $attemptedFile) -Rows $Rows -KeyCount $KeyCount
     if (-not $chunk) {
         if ($DryRun) { 'Nothing left for this lane: every open row has been tried.' }
         $outcome = 'Nothing left for this lane: every open row has been tried.'
-        if ($changes.Count) { $outcome += ' The worktree is dirty, so new work would not start either.' }
-        exit 0   # quiet: nothing left until a row changes or a re-test is named
+        if ($changes.Count) { $outcome += ' The worktree is dirty and could not be saved, so new work would not start either.' }
+        if ($rescued) { $outcome = "Saved a dirty worktree to a rescue/ branch (see the comment). $outcome" }
+        exit 0   # quiet: nothing left until a row changes or a retest issue names it
     }
     $chunkText = Format-Chunk $chunk
     $branch = $chunk.Branch
@@ -549,8 +641,8 @@ try {
     }
 
     # Since v0.76.4 the merge-lanes workflow merges this lane's pull request
-    # as soon as its checks are green, and the merge routine does the share
-    # (the re-tests in windows-role.md, CHANGELOG.md) at :40. Starting between
+    # as soon as its checks are green, and then does the share (the PATCH and
+    # CHANGELOG.md, the report's findings as issues). Starting between
     # the two would take the same rows again, so wait while the lane's latest
     # merged pull request is not named in main's CHANGELOG.md yet.
     $merged = gh pr list --repo $repo --state merged --limit 30 --json number,headRefName,mergedAt
@@ -567,8 +659,8 @@ try {
 
     if ($changes.Count -and -not $DryRun) {
         $names = @($changes | Select-Object -First 5 | ForEach-Object { $_.Trim() }) -join ', '
-        Say "$Work has uncommitted changes ($names; all in $dirtyFile), left by a run that was cut off. Look at them, then clean it (git -C $Work stash -u, or git restore/clean) and run again."
-        $outcome = "Stopped: $Work has uncommitted changes, left by a run that was cut off. A person has to look at them and clean the worktree."
+        Say "$Work has uncommitted changes ($names; all in $dirtyFile), left by a run that was cut off, and they could not be saved to a rescue/ branch (the lines above say why). Look at them, then clean it (git -C $Work stash -u, or git restore/clean) and run again."
+        $outcome = "Stopped: $Work has uncommitted changes that could not be saved to a rescue/ branch. A person has to look at them and clean the worktree."
         exit 1
     }
     if (-not $DryRun) { git -C $Work checkout -q --detach origin/main }
@@ -586,8 +678,8 @@ try {
     }
     $started = Get-Date
     $stamp = '{0:yyyyMMdd-HHmmss}' -f $started
-    # The report's own name. A chunk's branch comes back (a re-test list that
-    # starts with the same row), and a second run's report under the same
+    # The report's own name. A chunk's branch comes back (a section whose
+    # first open row is the same), and a second run's report under the same
     # name was a changed file, which the Merge lanes workflow refuses.
     $report = 'qa-reports/{0:yyyy-MM-dd}-{1}-{0:HHmm}.md' -f $started, ($branch -replace '^test/', '')
     $Scratch = Join-Path $Scratch "run-$stamp"
@@ -608,7 +700,23 @@ $chunkText
 - 道具は scripts\wintest-kit.ps1 にあります。PowerShell を呼ぶたびに、先頭で ``. .\scripts\wintest-kit.ps1`` を読み込んでください（関数の一覧はファイルの先頭）。SendInput・PrintWindow・バックアップを自分で書き直さないでください。
 - 環境変数は分離済みです（TSUMUGI_ADDRESS・TSUMUGI_STATE_HOME・TSUMUGI_CONFIG_HOME・TSUMUGI_PTY_LOG・TSUMUGI_KEYLOG・WINTEST_KIT=$kit）。素の ``tsumugi ls`` もこの実行のサーバに届き、持ち主のサーバには届きません。終わる前に ``Stop-Mine`` を呼びます。
 - 作業用の一時ディレクトリは $Scratch で、TEMP / TMP も既にそこを指しています（役割定義に出てくる R:\Temp は、すべてここに読み替えてください）。
+- 所見（不具合・提案）は ``gh issue create --repo $repo -l finding,lane:$Lane --title "<1 行>" --body-file <ファイル>`` で issue にし（欄は .github/ISSUE_TEMPLATE/finding.yml、不具合なら ``bug`` も付ける）、PR 本文に ``Findings: #N, #M`` と書きます。gh で issue が作れなかったときだけ、報告の ``### Proposals`` に書きます（マージのときに issue になります）。
+
 "@
+    if ($Lane -eq 'win') {
+        $prompt += @"
+- 開いている ``vote`` の issue（``gh issue list --repo $repo -l vote --state open``）に、まだ ``vote[win]:`` のコメントが無ければ票を入れます（``gh issue comment N --repo $repo --body "vote[win]: 2 — <理由>"``。理由はこの機械でしたこと・見たことに基づける。持ち主が決めることなら ``owner``）。役割定義の「How to work」の Vote の項目のとおりです。
+
+"@
+    }
+    if ($chunk.Kind -eq 'retest') {
+        $n = $chunk.Issue
+        $prompt += @"
+- この塊は再テストの issue #$n の行です。押した結果は TESTING-CHECKS.md に加えて issue の本文にも付けます（``gh issue view $n --repo $repo --json body -q .body`` をファイルに書き、箱を ``[x]`` にして ``gh issue edit $n --repo $repo --body-file <ファイル>``）。
+- PR 本文には、issue の行が全部 ``[x]`` になったら ``Closes #$n``、残りがあれば ``Refs #$n`` と書きます。落ちた行は所見の issue にし、その番号を #$n へのコメント 1 つに書きます。
+
+"@
+    }
 
     if ($DryRun) {
         "Lane $Lane on $head; branch $branch; open pull requests of the lane: $(if ($open) { $open -join ', ' } else { 'none' })"
@@ -621,15 +729,16 @@ $chunkText
     Say "[$Lane] $branch on ${head}: $($chunk.Kind), $(@($chunk.Rows).Count) rows ($((@($chunk.Rows) | ForEach-Object Id) -join ', '))."
     # Which copy of this script is running, and how old it is (filer's ARM64
     # laptop once ran a stale one for days).
-    $self = (git -C $PSScriptRoot log -1 --format='%h %s' -- auto-wintest.ps1 2>$null) -join ''
+    $self = if ($Booted) { (git -C $Work log -1 --format='%h %s' $Booted -- scripts/auto-wintest.ps1 2>$null) -join '' }
+            else { (git -C $PSScriptRoot log -1 --format='%h %s' -- auto-wintest.ps1 2>$null) -join '' }
     Say "Script: $PSCommandPath ($self)"
     Say "Model: $Model"
     $outcome = "A run is going (started $('{0:yyyy-MM-dd HH:mm}' -f (Get-Date)): $branch on $head, $(@($chunk.Rows).Count) rows, model $Model)."
     Publish-Status
     $outcome = $null
     $inWork = [IO.Path]::GetFullPath($PSScriptRoot).StartsWith([IO.Path]::GetFullPath($Work), [StringComparison]::OrdinalIgnoreCase)
-    if (-not $inWork) {
-        Say "This script is not the worktree's copy, so it does not follow origin/main. Point the task at $Work\scripts\auto-wintest.ps1 (see the top of the script)."
+    if (-not $Booted -and -not $inWork) {
+        Say "This script is neither main's copy nor the worktree's, so it does not follow origin/main. Point the task at $Work\scripts\lane-boot.ps1 (see the top of the script)."
     }
 
     New-Item -ItemType Directory -Force -Path $kit | Out-Null
@@ -732,7 +841,7 @@ $chunkText
     $tail = ($out.TrimEnd() -split "`r?`n")[-1].Trim()
     if ($code -eq 0 -and $tail -match '^WINTEST_(DONE|NOTHING)\b') {
         # The chunk is used up: what it left `[ ]` is not offered again
-        # until its words change or it is named in the re-tests.
+        # until its words change or it is named in a new retest issue.
         Add-Attempted $attemptedFile $chunk
         Remove-Item -LiteralPath $failFile -ErrorAction SilentlyContinue
         Say "Done: $tail"
