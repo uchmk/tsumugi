@@ -1878,6 +1878,30 @@ impl App {
                     None => self.panes.get(&w.focus).map(|pane| (w.focus, quickselect::QuickSelect::new(&ito_pane::Pane::screen(pane).rows))),
                 };
             }
+            keys::Action::ClosedList => self.lists = Some(lists::View::new(lists::Page::Closed)),
+            keys::Action::SaveLayout => self.save_layout(&client, w),
+            keys::Action::SaveOutput => {
+                if let Some(i) = sessions.iter().find(|i| i.id == w.focus) {
+                    self.saving.insert(i.id, sort::display_title(&i.title, &i.command));
+                    client.all_text(i.id);
+                }
+            }
+            keys::Action::Changes => {
+                if let Some(i) = sessions.iter().find(|i| i.id == w.focus) {
+                    let ctx = self.ctx.clone();
+                    self.diff = Some(diffview::View::open(sort::display_title(&i.title, &i.command), i.cwd.clone(), move || ctx.request_repaint()));
+                }
+            }
+            keys::Action::ReadOnly => {
+                if let Some(i) = sessions.iter().find(|i| i.id == w.focus) {
+                    client.read_only(i.id, !i.read_only);
+                    self.say(if i.read_only { tr("toast.read_only_off") } else { tr("toast.read_only") }.into(), false);
+                }
+            }
+            keys::Action::RestartServer => {
+                let ctx = self.ctx.clone();
+                self.restart_server(&ctx);
+            }
             keys::Action::CopyOutput => {
                 if let Some(pane) = self.panes.get(&w.focus) {
                     pane.copy_output();
@@ -2354,37 +2378,10 @@ impl App {
                 let folder = focus.map(|i| i.cwd).or_else(|| std::env::current_dir().ok()).unwrap_or_default();
                 self.open_layout(&client, &l, folder);
             }
-            palette::Pick::Command(palette::Command::SaveLayout) => {
-                if let Some(w) = current {
-                    self.save_layout(&client, w);
-                }
-            }
-            palette::Pick::Command(palette::Command::Closed) => self.lists = Some(lists::View::new(lists::Page::Closed)),
             palette::Pick::Command(palette::Command::Parallel) => {
                 let focus = current.and_then(|w| client.sessions().into_iter().find(|i| i.id == w.focus));
                 let folder = focus.map(|i| i.project).or_else(|| std::env::current_dir().ok()).unwrap_or_default();
                 self.parallel = Some(parallel::View::new(&folder));
-            }
-            palette::Pick::Command(palette::Command::SaveOutput) => {
-                let focus = current.and_then(|w| client.sessions().into_iter().find(|i| i.id == w.focus));
-                if let Some(i) = focus {
-                    self.saving.insert(i.id, sort::display_title(&i.title, &i.command));
-                    client.all_text(i.id);
-                }
-            }
-            palette::Pick::Command(palette::Command::Changes) => {
-                let focus = current.and_then(|w| client.sessions().into_iter().find(|i| i.id == w.focus));
-                if let Some(i) = focus {
-                    let ctx = self.ctx.clone();
-                    self.diff = Some(diffview::View::open(sort::display_title(&i.title, &i.command), i.cwd, move || ctx.request_repaint()));
-                }
-            }
-            palette::Pick::Command(palette::Command::ReadOnly) => {
-                let focus = current.and_then(|w| client.sessions().into_iter().find(|i| i.id == w.focus));
-                if let Some(i) = focus {
-                    client.read_only(i.id, !i.read_only);
-                    self.say(if i.read_only { tr("toast.read_only_off") } else { tr("toast.read_only") }.into(), false);
-                }
             }
             palette::Pick::Command(palette::Command::SecureInput) => {
                 let on = !self.settings_now.advanced.secure_input;
@@ -2413,7 +2410,13 @@ impl App {
                     palette::Command::SwapPane => keys::Action::SwapPane,
                     palette::Command::Equalize => keys::Action::Equalize,
                     palette::Command::WorkLog => keys::Action::WorkLog,
-                    palette::Command::Sort(_) | palette::Command::Closed | palette::Command::Changes | palette::Command::SaveOutput | palette::Command::Parallel | palette::Command::SaveLayout | palette::Command::ReadOnly | palette::Command::SecureInput => return,
+                    palette::Command::Closed => keys::Action::ClosedList,
+                    palette::Command::Changes => keys::Action::Changes,
+                    palette::Command::SaveOutput => keys::Action::SaveOutput,
+                    palette::Command::SaveLayout => keys::Action::SaveLayout,
+                    palette::Command::ReadOnly => keys::Action::ReadOnly,
+                    palette::Command::RestartServer => keys::Action::RestartServer,
+                    palette::Command::Sort(_) | palette::Command::Parallel | palette::Command::SecureInput => return,
                 };
                 if let Some(w) = current {
                     self.act(action, w, workspaces, area);

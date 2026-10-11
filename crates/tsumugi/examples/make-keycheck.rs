@@ -31,6 +31,8 @@ Windows and Linux keys first; the macOS key is after `·`.
 fn lines() -> Vec<(String, String)> {
     let mut out = Vec::new();
     for (a, name, win, mac) in keys::NAMED {
+        // No key of its own: tick it once given one in Settings → Keys.
+        let (win, mac) = if win.is_empty() { ("none (give one)", "none (give one)") } else { (win, mac) };
         out.push(("The window, changeable (Settings → Keys, `[keys]`)".to_owned(), format!("`{win}` · `{mac}` — {} · `{name}`", keys::title(a))));
     }
     for (section, win, mac, what) in keys::FIXED {

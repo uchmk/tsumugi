@@ -21,16 +21,20 @@ pub struct Group {
 /// The changeable keys, by kind, in the order they read.
 const KINDS: [(&str, &[Action]); 4] = [
     ("Sessions and tabs", &[Action::NewTab, Action::CloseTab, Action::Rename, Action::Duplicate, Action::NextTab, Action::PrevTab, Action::NextWaiting]),
-    ("Panes", &[Action::SplitRight, Action::SplitDown, Action::Zoom, Action::TypeAll, Action::CopyMode, Action::QuickSelect, Action::Find, Action::PrevPrompt, Action::NextPrompt, Action::SwapPane, Action::Equalize, Action::PaneToTab, Action::Record, Action::WorkLog, Action::CopyOutput]),
-    ("Lists and boxes", &[Action::Search, Action::Waiting, Action::Overview, Action::Notices, Action::Input, Action::Settings, Action::Help]),
-    ("The view", &[Action::Rail, Action::FontBigger, Action::FontSmaller, Action::FontReset]),
+    ("Panes", &[Action::SplitRight, Action::SplitDown, Action::Zoom, Action::TypeAll, Action::CopyMode, Action::QuickSelect, Action::Find, Action::PrevPrompt, Action::NextPrompt, Action::SwapPane, Action::Equalize, Action::PaneToTab, Action::Record, Action::WorkLog, Action::CopyOutput, Action::SaveOutput, Action::Changes, Action::ReadOnly, Action::SaveLayout]),
+    ("Lists and boxes", &[Action::Search, Action::Waiting, Action::Overview, Action::Notices, Action::Input, Action::Settings, Action::Help, Action::ClosedList]),
+    ("The view", &[Action::Rail, Action::FontBigger, Action::FontSmaller, Action::FontReset, Action::RestartServer]),
 ];
 
 /// Every group, the keys as they are now (`label` is the settings' key for
 /// an action, `mac` picks the fixed keys' Mac column).
 pub fn groups(label: impl Fn(Action) -> String, mac: bool) -> Vec<Group> {
     let pick = |win: &str, m: &str| if mac { m.to_owned() } else { win.to_owned() };
-    let mut out: Vec<Group> = KINDS.iter().map(|(title, actions)| Group { title, rows: actions.iter().map(|a| (label(*a), keys::title(*a).to_owned())).collect() }).collect();
+    // An action with no key stays out: the palette and the settings have it.
+    let mut out: Vec<Group> = KINDS
+        .iter()
+        .map(|(title, actions)| Group { title, rows: actions.iter().map(|a| (label(*a), keys::title(*a).to_owned())).filter(|(k, _)| !k.is_empty() && k != "none").collect() })
+        .collect();
     // The window's fixed keys, the four arrows on one line each.
     out[0].rows.push((pick("Ctrl+Alt+1 … 9", "Cmd+1 … 9"), "The Nth tab".into()));
     out[1].rows.push((pick("Alt+Arrows", "Cmd+Option+Arrows"), "The keys to the pane that way".into()));
@@ -250,7 +254,7 @@ mod tests {
     fn every_key_is_in_the_help_once() {
         let all = all();
         let rows: Vec<&(String, String)> = all.iter().flat_map(|g| &g.rows).collect();
-        for (a, ..) in keys::NAMED {
+        for (a, ..) in keys::NAMED.into_iter().filter(|n| !n.2.is_empty()) {
             assert_eq!(rows.iter().filter(|(_, w)| w == keys::title(a)).count(), 1, "{a:?}");
         }
         assert!(rows.iter().any(|(k, w)| k == "F1" && w.contains("help")));

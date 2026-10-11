@@ -62,10 +62,12 @@ pub enum Command {
     ReadOnly,
     /// macOS's Secure Keyboard Entry on or off (listed only there).
     SecureInput,
+    /// Restart this machine's server.
+    RestartServer,
 }
 
 impl Command {
-    pub const ALL: [Command; 27] = [
+    pub const ALL: [Command; 28] = [
         Command::NewSession,
         Command::SplitRight,
         Command::SplitDown,
@@ -91,6 +93,7 @@ impl Command {
         Command::Sort(Sort::Name),
         Command::Settings,
         Command::SecureInput,
+        Command::RestartServer,
         Command::InputBox,
         Command::Help,
     ];
@@ -121,6 +124,7 @@ impl Command {
             Command::WorkLog => tr("palette.work_log").into(),
             Command::ReadOnly => tr("palette.read_only").into(),
             Command::SecureInput => tr("palette.secure_input").into(),
+            Command::RestartServer => tr("palette.restart_server").into(),
         }
     }
 
@@ -144,9 +148,17 @@ impl Command {
             Command::SwapPane => Action::SwapPane,
             Command::Equalize => Action::Equalize,
             Command::WorkLog => Action::WorkLog,
-            Command::Sort(_) | Command::Closed | Command::Changes | Command::SaveOutput | Command::Parallel | Command::SaveLayout | Command::ReadOnly | Command::SecureInput => return String::new(),
+            Command::Closed => Action::ClosedList,
+            Command::Changes => Action::Changes,
+            Command::SaveOutput => Action::SaveOutput,
+            Command::SaveLayout => Action::SaveLayout,
+            Command::ReadOnly => Action::ReadOnly,
+            Command::RestartServer => Action::RestartServer,
+            Command::Sort(_) | Command::Parallel | Command::SecureInput => return String::new(),
         };
-        label(action)
+        // An action without a key shows none beside it.
+        let key = label(action);
+        if key == "none" { String::new() } else { key }
     }
 }
 

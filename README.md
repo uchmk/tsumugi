@@ -698,7 +698,9 @@ quake_height = 50
 # split_down, zoom, search, rail, settings, input, rename, duplicate,
 # waiting_list, type_into_all, notifications, font_bigger, font_smaller,
 # font_reset, overview, copy_mode, find, prev_prompt, next_prompt, help,
-# swap_pane, equalize, pane_to_tab, record, copy_output, quick_select.
+# swap_pane, equalize, pane_to_tab, record, copy_output, quick_select,
+# closed_sessions, changes, read_only, save_layout, save_output,
+# restart_server (these six have no key until you give one).
 [keys]
 new_tab = "Ctrl+Shift+N"
 

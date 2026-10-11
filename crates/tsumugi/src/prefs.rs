@@ -633,6 +633,8 @@ fn keys(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut Vec<
     let mut changeable = |ui: &mut egui::Ui, a: Action| {
         let Some((_, name, win, m)) = NAMED.iter().find(|(x, ..)| *x == a) else { return };
         let own = if mac { *m } else { *win };
+        // No key of its own reads as `none`, which `[keys]` takes too.
+        let own = if own.is_empty() { "none" } else { own };
         let now = label(a);
         let clash = edit.clash.clone().filter(|(n, ..)| n == name);
         let note = match &clash {
@@ -693,13 +695,13 @@ fn keys(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut Vec<
         changeable(ui, Action::PrevPrompt);
         sep(ui, l);
         changeable(ui, Action::NextPrompt);
-        for a in [Action::SwapPane, Action::Equalize, Action::PaneToTab, Action::Record, Action::CopyOutput] {
+        for a in [Action::SwapPane, Action::Equalize, Action::PaneToTab, Action::Record, Action::CopyOutput, Action::SaveOutput, Action::Changes, Action::ReadOnly, Action::SaveLayout] {
             sep(ui, l);
             changeable(ui, a);
         }
     });
     section(ui, l, tr("prefs.head.view"), |ui| {
-        for (k, a) in [Action::Help, Action::Overview, Action::FontBigger, Action::FontSmaller, Action::FontReset].into_iter().enumerate() {
+        for (k, a) in [Action::Help, Action::Overview, Action::FontBigger, Action::FontSmaller, Action::FontReset, Action::ClosedList, Action::RestartServer].into_iter().enumerate() {
             if k > 0 {
                 sep(ui, l);
             }

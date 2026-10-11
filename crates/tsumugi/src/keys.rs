@@ -84,6 +84,18 @@ pub enum Action {
     /// Letters on the screen's links, hashes and numbers: one typed copies
     /// it, with Shift opens it (WezTerm's Quick Select, kitty's hints).
     QuickSelect,
+    /// The sessions that ended, to open again.
+    ClosedList,
+    /// The changes not committed in the pane's folder (git diff).
+    Changes,
+    /// Turn away typing and pasting into the pane, or let them in again.
+    ReadOnly,
+    /// Keep the tab's panes and splits as a layout to open again.
+    SaveLayout,
+    /// Save the pane's output to a file.
+    SaveOutput,
+    /// Restart this machine's server (the Advanced page's Restart).
+    RestartServer,
 }
 
 /// The action for a key press, if it is one of the window's: a key the
@@ -116,7 +128,10 @@ fn action_with(key: Key, m: Modifiers, mac: bool, bound: &[(Action, Option<Chord
 
 /// The actions the settings can give another key, by the name `[keys]`
 /// uses, with their own keys (elsewhere, then on macOS).
-pub const NAMED: [(Action, &str, &str, &str); 33] = [
+///
+/// An empty own key is no key: the action has none until the settings give it
+/// one (the palette and the settings screen's button do it without a key).
+pub const NAMED: [(Action, &str, &str, &str); 39] = [
     (Action::NewTab, "new_tab", "Ctrl+Shift+T", "Cmd+T"),
     (Action::CloseTab, "close_tab", "Ctrl+Shift+W", "Cmd+W"),
     (Action::NextTab, "next_tab", "Ctrl+Tab", "Ctrl+Tab"),
@@ -167,6 +182,13 @@ pub const NAMED: [(Action, &str, &str, &str); 33] = [
     (Action::CopyOutput, "copy_output", "Ctrl+Shift+L", "Cmd+Shift+L"),
     // WezTerm's. Ctrl+Space alone stays the shell's (and an IME's).
     (Action::QuickSelect, "quick_select", "Ctrl+Shift+Space", "Cmd+Shift+Space"),
+    // No key of their own: they are on the palette and the settings screen.
+    (Action::ClosedList, "closed_sessions", "", ""),
+    (Action::Changes, "changes", "", ""),
+    (Action::ReadOnly, "read_only", "", ""),
+    (Action::SaveLayout, "save_layout", "", ""),
+    (Action::SaveOutput, "save_output", "", ""),
+    (Action::RestartServer, "restart_server", "", ""),
 ];
 
 /// The keys the settings cannot move, the window's and its boxes': (section,
@@ -262,6 +284,12 @@ pub fn title(a: Action) -> &'static str {
         Action::WorkLog => "Write a work log of the pane (text in Downloads)",
         Action::CopyOutput => "Copy the last command's output",
         Action::QuickSelect => "Quick select: copy a link, hash or number by its letters",
+        Action::ClosedList => "Recently closed sessions",
+        Action::Changes => "Changes not committed here (git diff)",
+        Action::ReadOnly => "Read-only: turn away typing into the pane (or let it in)",
+        Action::SaveLayout => "Save this tab's layout",
+        Action::SaveOutput => "Save the pane's output to a file",
+        Action::RestartServer => "Restart the server",
         Action::Tab(_) => "The Nth tab",
         Action::Move(_) => "Move between panes",
         Action::Resize(_) => "Resize the pane",
@@ -441,7 +469,8 @@ pub fn label(action: Action) -> String {
     if let Some((_, c)) = bindings().into_iter().find(|(a, _)| *a == action) {
         return c.map_or_else(|| "none".into(), |c| c.label());
     }
-    NAMED.iter().find(|(a, ..)| *a == action).map(|(_, _, win, m)| if mac { *m } else { *win }).unwrap_or_default().to_owned()
+    let own = NAMED.iter().find(|(a, ..)| *a == action).map(|(_, _, win, m)| if mac { *m } else { *win }).unwrap_or_default();
+    if own.is_empty() { "none".into() } else { own.to_owned() }
 }
 
 fn action_on(key: Key, m: Modifiers, mac: bool) -> Option<Action> {
@@ -674,9 +703,12 @@ mod tests {
         assert_eq!(clash(&Chord::parse("Ctrl+C").unwrap(), Action::NewTab), Some(Clash::Other("Claude Code's interrupt")));
         assert_eq!(clash(&Chord::parse("Ctrl+Shift+T").unwrap(), Action::NewTab), None, "its own key");
         assert_eq!(clash(&Chord::parse("Ctrl+Shift+K").unwrap(), Action::NewTab), None);
+        // The ones with no key of their own are none until given one.
+        assert_eq!(label(Action::RestartServer), "none");
+        assert_eq!(action_with(Key::K, Modifiers::NONE, false, &[(Action::Changes, Some(Chord::parse("Ctrl+Alt+K").unwrap()))]), None);
         // Every named action's own key reads.
         for (_, _, win, mac) in NAMED {
-            assert!(Chord::parse(win).is_ok() && Chord::parse(mac).is_ok(), "{win} {mac}");
+            assert!(win.is_empty() && mac.is_empty() || Chord::parse(win).is_ok() && Chord::parse(mac).is_ok(), "{win} {mac}");
         }
     }
 
