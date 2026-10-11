@@ -751,13 +751,15 @@ pub fn top_band(ui: &mut egui::Ui, pal: &Palette, tags: &[String], shown: usize,
     // An old server stays flagged right of the bell until it is restarted
     // (the toast alone was gone before it could be read).
     if let Some(build) = &frame.old_server {
-        let galley = p.layout_no_wrap(tr("title.old_server").to_owned(),FontId::proportional(11.0), Color32::WHITE);
-        let chip = egui::Rect::from_min_size(egui::pos2(left_edge - 6.0, rect.center().y - 8.0), egui::vec2(galley.size().x + 12.0, 16.0));
+        // Red and bold-sized: it asks for a restart, which is easy to miss.
+        let galley = p.layout_no_wrap(tr("title.old_server").to_owned(), FontId::proportional(12.0), Color32::WHITE);
+        let chip = egui::Rect::from_min_size(egui::pos2(left_edge - 6.0, rect.center().y - 9.0), egui::vec2(galley.size().x + 16.0, 18.0));
         if chip.right() + 12.0 < rect.right() {
             let resp = ui.interact(chip, ui.id().with("old-server"), egui::Sense::CLICK).on_hover_text(trf("title.old_server_hint", &[build, env!("CARGO_PKG_VERSION")]));
-            let fill = if resp.hovered() { gold() } else { gold().gamma_multiply(0.75) };
+            let fill = if resp.hovered() { red() } else { red().gamma_multiply(0.8) };
             p.rect_filled(chip, 4.0, fill);
-            p.galley(egui::pos2(chip.left() + 6.0, chip.center().y - galley.size().y / 2.0), galley, Color32::BLACK);
+            p.rect_stroke(chip, 4.0, egui::Stroke::new(1.0, Color32::WHITE), egui::StrokeKind::Inside);
+            p.galley(egui::pos2(chip.left() + 8.0, chip.center().y - galley.size().y / 2.0), galley, Color32::WHITE);
             out.restart_server = resp.clicked();
             left_edge = chip.right() + 12.0;
         }
@@ -770,8 +772,8 @@ pub fn top_band(ui: &mut egui::Ui, pal: &Palette, tags: &[String], shown: usize,
         if name.chars().count() < log.name.chars().count() {
             name.push('…');
         }
-        let text = if log.paused { format!("{name} · LOG ‖") } else { format!("● {name} · LOG") };
-        let ink = if log.paused { pal.fg_dim } else { Color32::BLACK };
+        let text = if log.paused { format!("{name} · LOG ‖") } else { format!("{name} · LOG") };
+        let ink = if log.paused { pal.fg_dim } else { Color32::WHITE };
         let galley = p.layout_no_wrap(text, FontId::proportional(11.0), ink);
         let chip = egui::Rect::from_min_size(egui::pos2(left_edge - 6.0, rect.center().y - 8.0), egui::vec2(galley.size().x + 12.0, 16.0));
         if chip.right() + 12.0 < rect.right() {
@@ -780,7 +782,7 @@ pub fn top_band(ui: &mut egui::Ui, pal: &Palette, tags: &[String], shown: usize,
             if log.paused {
                 p.rect_stroke(chip, 4.0, egui::Stroke::new(1.0, gold()), egui::StrokeKind::Inside);
             } else {
-                p.rect_filled(chip, 4.0, if resp.hovered() { gold() } else { gold().gamma_multiply(0.85) });
+                p.rect_filled(chip, 4.0, if resp.hovered() { gold() } else { gold().gamma_multiply(0.75) });
             }
             p.galley(egui::pos2(chip.left() + 6.0, chip.center().y - galley.size().y / 2.0), galley, ink);
             out.open_log = resp.clicked();

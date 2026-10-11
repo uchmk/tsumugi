@@ -4711,7 +4711,9 @@ impl App {
                         let paused = self.panes.get(id).is_some_and(|pane| ito_pane::Pane::screen(pane).alt_screen);
                         let ink = if paused { self.palette.fg_dim } else { chrome::ink(chrome::gold()) };
                         let r = p.text(egui::pos2(right_x, head.center().y), egui::Align2::RIGHT_CENTER, "LOG", egui::FontId::proportional(10.5), ink);
-                        right_x = r.left() - 10.0;
+                        // Boxed in the chip's colour, so the two read as one.
+                        p.rect_stroke(r.expand2(egui::vec2(4.0, 1.0)), 3.0, egui::Stroke::new(1.0, chrome::gold()), egui::StrokeKind::Outside);
+                        right_x = r.left() - 14.0;
                     }
                     // A character set other than UTF-8, said where it applies.
                     if !info.charset.is_empty() && info.charset != "UTF-8" {
