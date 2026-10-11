@@ -13,6 +13,7 @@ use ito_pane::Palette;
 use ito_prefs::{button, field, keycap, row, section, select, sep, status, switch, Drafts, Look, Words};
 
 use crate::facts::Facts;
+use crate::i18n::{tr, trf};
 use crate::sort::Sort;
 use crate::theme::{Colors, Theme};
 
@@ -36,136 +37,134 @@ impl Page {
 
     pub fn title(self) -> &'static str {
         match self {
-            Page::General => "General",
-            Page::Appearance => "Appearance",
-            Page::Keys => "Keys",
-            Page::Notifications => "Notifications",
-            Page::Sessions => "Sessions & profiles",
-            Page::Tags => "Tags",
-            Page::Theme => "Theme",
-            Page::Shell => "Shell & hooks",
-            Page::Advanced => "Advanced",
+            Page::General => tr("prefs.page.general"),
+            Page::Appearance => tr("prefs.page.appearance"),
+            Page::Keys => tr("prefs.page.keys"),
+            Page::Notifications => tr("prefs.page.notifications"),
+            Page::Sessions => tr("prefs.page.sessions"),
+            Page::Tags => tr("prefs.page.tags"),
+            Page::Theme => tr("prefs.page.theme"),
+            Page::Shell => tr("prefs.page.shell"),
+            Page::Advanced => tr("prefs.page.advanced"),
         }
     }
 
     fn lead(self) -> &'static str {
         match self {
-            Page::General => "Startup, what closing the window does, and the clock.",
-            Page::Appearance => "Type, window and motion. Colours are on the Theme page.",
-            Page::Keys => "Click a key, then press the new one. A clash with another key or with Claude Code is named.",
-            Page::Notifications => "Only while you are not at a tsumugi window. Inside it, rings and tabs say it.",
-            Page::Sessions => "What a new session runs, how waiting is told, saved sets of sessions and the tab's menu.",
-            Page::Tags => "Tags a session gets by itself, and their colours.",
-            Page::Theme => "Colours, applied as you pick.",
-            Page::Shell => "The shell inside panes, and how sessions tell tsumugi what they are doing.",
-            Page::Advanced => "Things to touch rarely.",
+            Page::General => tr("prefs.lead.general"),
+            Page::Appearance => tr("prefs.lead.appearance"),
+            Page::Keys => tr("prefs.lead.keys"),
+            Page::Notifications => tr("prefs.lead.notifications"),
+            Page::Sessions => tr("prefs.lead.sessions"),
+            Page::Tags => tr("prefs.lead.tags"),
+            Page::Theme => tr("prefs.lead.theme"),
+            Page::Shell => tr("prefs.lead.shell"),
+            Page::Advanced => tr("prefs.lead.advanced"),
         }
     }
 }
 
-/// The rows each page has, for the search field: a page is listed while the
-/// words are in one of its rows. The screen's own test checks that each is
-/// drawn on its page.
-pub const INDEX: &[(Page, &str)] = &[
-    (Page::General, "Language"),
-    (Page::General, "Scale"),
-    (Page::General, "On start"),
-    (Page::General, "Default folder"),
-    (Page::General, "Start the server at sign-in"),
-    (Page::General, "Keep sessions running when the window closes"),
-    (Page::General, "Ask before closing a running session"),
-    (Page::General, "Check for updates"),
-    (Page::General, "Restart the server after an update without asking"),
-    (Page::General, "Ask before pasting several lines"),
-    (Page::General, "Ask before a large paste"),
-    (Page::General, "Show the time in the status bar"),
-    (Page::General, "Time format"),
-    (Page::General, "Show the date"),
-    (Page::General, "Date format"),
-    (Page::General, "Show the weekday"),
-    (Page::General, "Copy a selection when the mouse lets go"),
-    (Page::Appearance, "Font"),
-    (Page::Appearance, "Size"),
-    (Page::Appearance, "Line height"),
-    (Page::Appearance, "Ligatures"),
-    (Page::Appearance, "Nerd Font icons"),
-    (Page::Appearance, "tsumugi's own title bar"),
-    (Page::Appearance, "Dim unfocused panes"),
-    (Page::Appearance, "Cursor"),
-    (Page::Appearance, "Animations"),
-    (Page::Appearance, "Window material"),
-    (Page::Appearance, "Opacity"),
-    (Page::Appearance, "Background image"),
-    (Page::Appearance, "Image strength"),
-    (Page::Appearance, "Quake mode key"),
-    (Page::Appearance, "Quake mode height"),
-    (Page::Keys, "Preset"),
-    (Page::Keys, "Use Cmd on macOS"),
-    (Page::Keys, "New session"),
-    (Page::Keys, "Close the session"),
-    (Page::Keys, "Rename the tab"),
-    (Page::Keys, "Duplicate in the same folder"),
-    (Page::Keys, "Next tab"),
-    (Page::Keys, "Previous tab"),
-    (Page::Keys, "Go to the session waiting longest"),
-    (Page::Keys, "The waiting sessions, answered together"),
-    (Page::Keys, "Type into every pane of the tab"),
-    (Page::Keys, "The Nth tab"),
-    (Page::Keys, "Split right"),
-    (Page::Keys, "Split down"),
-    (Page::Keys, "Move between panes"),
-    (Page::Keys, "Resize the pane"),
-    (Page::Keys, "Zoom"),
-    (Page::Notifications, "System notification"),
-    (Page::Notifications, "Taskbar count"),
-    (Page::Notifications, "Taskbar flash"),
-    (Page::Notifications, "Sound"),
-    (Page::Notifications, "Tell about a finish"),
-    (Page::Notifications, "Webhook"),
-    (Page::Notifications, "Webhook format"),
-    (Page::Notifications, "Send after waiting"),
-    (Page::Notifications, "Sound for waits"),
-    (Page::Notifications, "Sound for fails"),
-    (Page::Notifications, "focus mode"),
-    (Page::Notifications, "QUIET TAGS"),
-    (Page::Notifications, "Tell when the day costs"),
-    (Page::Notifications, "Tell when a 5-hour block costs"),
-    (Page::Sessions, "Default program"),
-    (Page::Sessions, "Claude Code command"),
-    (Page::Sessions, "Resume conversations after a restart"),
-    (Page::Sessions, "probably waiting"),
-    (Page::Sessions, "Sort"),
-    (Page::Sessions, "New profile"),
-    (Page::Sessions, "Editor command"),
-    (Page::Sessions, "kura command"),
-    (Page::Sessions, "TAB MENU"),
-    (Page::Sessions, "File command"),
-    (Page::Tags, "New rule"),
-    (Page::Tags, "Colour new tags"),
-    (Page::Tags, "Tags shown"),
-    (Page::Tags, "Edit a tag"),
-    (Page::Tags, "Quiet"),
-    (Page::Theme, "Mode"),
-    (Page::Theme, "PREVIEW"),
-    (Page::Shell, "Default shell"),
-    (Page::Shell, "Arguments"),
-    (Page::Shell, "Environment"),
-    (Page::Shell, "Claude Code hooks"),
-    (Page::Shell, "Shell integration"),
-    (Page::Shell, "The lines themselves"),
-    (Page::Shell, "ConPTY"),
-    (Page::Advanced, "Mux server"),
-    (Page::Advanced, "Restart the server"),
-    (Page::Advanced, "Graphics backend"),
-    (Page::Advanced, "Command there"),
-    (Page::Advanced, "Reached again on start"),
-    (Page::Advanced, "Scrollback"),
-    (Page::Advanced, "Log what each pane sends and receives"),
-    (Page::Advanced, "Settings folder"),
-    (Page::Advanced, "Export or import settings"),
-    (Page::Advanced, "Usage data"),
-    (Page::Advanced, "Saved tabs"),
+/// The rows each page has, for the search field, by their keys in the
+/// language tables: a page is listed while the words are in one of its rows.
+/// [`index`] adds the rows the shared parts draw. The screen's own test
+/// checks that each is drawn on its page.
+const INDEX: &[(Page, &str)] = &[
+    (Page::General, "prefs.general.on_start"),
+    (Page::General, "prefs.general.default_folder"),
+    (Page::General, "prefs.general.autostart"),
+    (Page::General, "prefs.general.keep_sessions"),
+    (Page::General, "prefs.general.ask_close"),
+    (Page::General, "prefs.general.check_updates"),
+    (Page::General, "prefs.general.restart_after_update"),
+    (Page::General, "prefs.general.copy_on_select"),
+    (Page::General, "prefs.general.warn_multiline"),
+    (Page::General, "prefs.general.warn_large"),
+    (Page::Appearance, "prefs.appearance.font"),
+    (Page::Appearance, "prefs.appearance.size"),
+    (Page::Appearance, "prefs.appearance.line_height"),
+    (Page::Appearance, "prefs.appearance.ligatures"),
+    (Page::Appearance, "prefs.appearance.nerd"),
+    (Page::Appearance, "prefs.appearance.titlebar"),
+    (Page::Appearance, "prefs.appearance.material"),
+    (Page::Appearance, "prefs.appearance.opacity"),
+    (Page::Appearance, "prefs.appearance.image"),
+    (Page::Appearance, "prefs.appearance.image_strength"),
+    (Page::Appearance, "prefs.appearance.quake_key"),
+    (Page::Appearance, "prefs.appearance.quake_height"),
+    (Page::Appearance, "prefs.appearance.dim"),
+    (Page::Appearance, "prefs.appearance.cursor"),
+    (Page::Appearance, "prefs.appearance.animations"),
+    (Page::Keys, "prefs.keys.preset"),
+    (Page::Keys, "prefs.keys.use_cmd"),
+    (Page::Keys, "prefs.keys.nth_tab"),
+    (Page::Keys, "prefs.keys.move"),
+    (Page::Keys, "prefs.keys.resize"),
+    (Page::Notifications, "prefs.notify.system"),
+    (Page::Notifications, "prefs.notify.taskbar"),
+    (Page::Notifications, "prefs.notify.flash"),
+    (Page::Notifications, "prefs.notify.sound"),
+    (Page::Notifications, "prefs.notify.long_run"),
+    (Page::Notifications, "prefs.notify.webhook"),
+    (Page::Notifications, "prefs.notify.webhook_format"),
+    (Page::Notifications, "prefs.notify.webhook_after"),
+    (Page::Notifications, "prefs.notify.sound_waiting"),
+    (Page::Notifications, "prefs.notify.sound_error"),
+    (Page::Notifications, "prefs.notify.focus"),
+    (Page::Notifications, "prefs.notify.spend_day"),
+    (Page::Notifications, "prefs.notify.spend_block"),
+    (Page::Notifications, "prefs.head.quiet_tags"),
+    (Page::Sessions, "prefs.sessions.default_program"),
+    (Page::Sessions, "prefs.sessions.claude_command"),
+    (Page::Sessions, "prefs.sessions.resume"),
+    (Page::Sessions, "prefs.sessions.quiet"),
+    (Page::Sessions, "prefs.sessions.sort"),
+    (Page::Sessions, "prefs.sessions.new_profile"),
+    (Page::Sessions, "prefs.open.editor"),
+    (Page::Sessions, "prefs.open.kura"),
+    (Page::Sessions, "prefs.open.file"),
+    (Page::Sessions, "prefs.head.tab_menu"),
+    (Page::Tags, "prefs.tags.new_rule"),
+    (Page::Tags, "prefs.tags.colour_new"),
+    (Page::Tags, "prefs.tags.shown"),
+    (Page::Tags, "prefs.tags.edit_tag"),
+    (Page::Tags, "prefs.tags.quiet"),
+    (Page::Shell, "prefs.shell.default_shell"),
+    (Page::Shell, "prefs.shell.arguments"),
+    (Page::Shell, "prefs.shell.environment"),
+    (Page::Shell, "prefs.shell.claude_hooks"),
+    (Page::Shell, "prefs.shell.integration"),
+    (Page::Shell, "prefs.shell.lines"),
+    (Page::Shell, "prefs.shell.conpty"),
+    (Page::Advanced, "prefs.advanced.mux"),
+    (Page::Advanced, "prefs.advanced.restart_server"),
+    (Page::Advanced, "prefs.advanced.backend"),
+    (Page::Advanced, "prefs.advanced.command_there"),
+    (Page::Advanced, "prefs.advanced.reached"),
+    (Page::Advanced, "prefs.advanced.scrollback"),
+    (Page::Advanced, "prefs.advanced.pane_log"),
+    (Page::Advanced, "prefs.advanced.settings_folder"),
+    (Page::Advanced, "prefs.advanced.export"),
+    (Page::Advanced, "prefs.advanced.usage"),
+    (Page::Advanced, "prefs.advanced.saved_tabs"),
 ];
+
+/// The words the search field looks in, page by page: [`INDEX`] in the
+/// language in force, the shared parts' rows (the language, the clock, the
+/// theme) and the keys' names; in English too, so either finds a row.
+pub fn index() -> Vec<(Page, &'static str)> {
+    use crate::keys::Action;
+    let w = words();
+    let keys = [Action::NewTab, Action::CloseTab, Action::Rename, Action::Duplicate, Action::NextTab, Action::PrevTab, Action::NextWaiting, Action::Waiting, Action::TypeAll, Action::SplitRight, Action::SplitDown, Action::Zoom];
+    let mut out: Vec<(Page, &'static str)> = INDEX.iter().map(|(p, k)| (*p, tr(k))).collect();
+    let shared = |w: &'static Words| [(Page::General, w.language), (Page::General, w.scale), (Page::General, w.show_time), (Page::General, w.time_format), (Page::General, w.show_date), (Page::General, w.date_format), (Page::General, w.weekday), (Page::Theme, w.mode), (Page::Theme, w.preview)];
+    out.extend(shared(w));
+    out.extend(keys.map(|a| (Page::Keys, crate::keys::title(a))));
+    if crate::i18n::current_language() != "en" {
+        out.extend(INDEX.iter().map(|(p, k)| (*p, crate::i18n::tr_en(k))));
+        out.extend(shared(&ito_prefs::EN));
+    }
+    out
+}
 
 /// The screen while it is open.
 #[derive(Default)]
@@ -324,7 +323,7 @@ fn words() -> &'static Words {
 pub fn show(ui: &mut egui::Ui, pal: &Palette, screen: &mut Screen, seen: &Seen) -> Vec<Change> {
     let mut out = Vec::new();
     let pages: Vec<(&str, &str)> = Page::ALL.iter().map(|p| (p.title(), p.lead())).collect();
-    let index: Vec<(usize, &str)> = INDEX.iter().map(|(p, words)| (Page::ALL.iter().position(|q| q == p).unwrap_or(0), *words)).collect();
+    let index: Vec<(usize, &str)> = index().into_iter().map(|(p, words)| (Page::ALL.iter().position(|q| *q == p).unwrap_or(0), words)).collect();
     let nav = ito_prefs::Nav { pages: &pages, index: &index, words: words(), file: "config.toml" };
     let page = Page::ALL.iter().position(|p| *p == screen.page).unwrap_or(0);
     let mut state = ito_prefs::State { page, query: std::mem::take(&mut screen.query), held: screen.held };
@@ -372,25 +371,25 @@ fn toml_key(name: &str) -> String {
 fn general(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut Vec<Change>) {
     let g = &seen.settings.general;
     let set = |key: &'static str, v: bool| Change::Set(Some("general"), key, v.to_string());
-    section(ui, l, "STARTUP", |ui| {
-        let note = "Shared with kura and yagura (common.toml); tsumugi's own menus are English for now";
+    section(ui, l, tr("prefs.head.startup"), |ui| {
+        let note = tr("prefs.general.language_note");
         out.extend(ito_prefs::language_row(ui, l, words(), seen.language, note).map(Change::Common));
         sep(ui, l);
-        let note = "The whole window, in every uchmk app (common.toml); Ctrl+= and Ctrl+- here change the panes' font size instead";
+        let note = tr("prefs.general.scale_note");
         out.extend(ito_prefs::scale_row(ui, l, words(), seen.scale, note).map(Change::Common));
         sep(ui, l);
-        let starts = [(true, "Restore the last sessions"), (false, "Ask (Welcome back)")];
-        if let Some(on) = row(ui, l, "On start", "What the window shows first after a restart", |ui| select(ui, "on-start", seen.always_restore, &starts)) {
+        let starts = [(true, tr("prefs.general.restore")), (false, tr("prefs.general.ask"))];
+        if let Some(on) = row(ui, l, tr("prefs.general.on_start"), tr("prefs.general.on_start_note"), |ui| select(ui, "on-start", seen.always_restore, &starts)) {
             out.push(Change::AlwaysRestore(on));
         }
         sep(ui, l);
         let home = if cfg!(windows) { "%USERPROFILE%" } else { "~" };
-        if let Some(t) = row(ui, l, "Default folder", "Where a new session starts when no pane is open", |ui| field(ui, &mut edit.drafts, "default-folder", &g.default_folder, home, 200.0)) {
+        if let Some(t) = row(ui, l, tr("prefs.general.default_folder"), tr("prefs.general.default_folder_note"), |ui| field(ui, &mut edit.drafts, "default-folder", &g.default_folder, home, 200.0)) {
             out.push(Change::Set(Some("general"), "default_folder", cfg::quote(t.trim())));
         }
         sep(ui, l);
         let on = seen.facts.map(|f| f.autostart);
-        if row(ui, l, "Start the server at sign-in", "Sessions are ready before you open the window", |ui| match on {
+        if row(ui, l, tr("prefs.general.autostart"), tr("prefs.general.autostart_note"), |ui| match on {
             Some(on) => switch(ui, l, on),
             None => {
                 status(ui, "…", l.c.dim);
@@ -400,34 +399,34 @@ fn general(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut V
             out.push(Change::Autostart(!on.unwrap_or(false)));
         }
     });
-    section(ui, l, "CLOSING", |ui| {
-        if row(ui, l, "Keep sessions running when the window closes", "The server keeps them; open the window to get them back. Off: closing the window stops them", |ui| switch(ui, l, g.keep_sessions)) {
+    section(ui, l, tr("prefs.head.closing"), |ui| {
+        if row(ui, l, tr("prefs.general.keep_sessions"), tr("prefs.general.keep_note"), |ui| switch(ui, l, g.keep_sessions)) {
             out.push(set("keep_sessions", !g.keep_sessions));
         }
         sep(ui, l);
-        if row(ui, l, "Ask before closing a running session", "Only when something is still running", |ui| switch(ui, l, g.ask_before_close)) {
+        if row(ui, l, tr("prefs.general.ask_close"), tr("prefs.general.ask_close_note"), |ui| switch(ui, l, g.ask_before_close)) {
             out.push(set("ask_before_close", !g.ask_before_close));
         }
         sep(ui, l);
-        if row(ui, l, "Check for updates", "At each start, from GitHub releases; a note when there is a newer one", |ui| switch(ui, l, g.check_updates)) {
+        if row(ui, l, tr("prefs.general.check_updates"), tr("prefs.general.updates_note"), |ui| switch(ui, l, g.check_updates)) {
             out.push(set("check_updates", !g.check_updates));
         }
         sep(ui, l);
-        if row(ui, l, "Restart the server after an update without asking", "The older version's server stops at once: running shells stop, the tabs come back. Off: the window asks", |ui| switch(ui, l, g.restart_after_update)) {
+        if row(ui, l, tr("prefs.general.restart_after_update"), tr("prefs.general.restart_note"), |ui| switch(ui, l, g.restart_after_update)) {
             out.push(set("restart_after_update", !g.restart_after_update));
         }
     });
-    section(ui, l, "COPY AND PASTE", |ui| {
-        let copy_key = if cfg!(target_os = "macos") { "Off: Cmd+C copies it" } else { "Off: Ctrl+Shift+C copies it" };
-        if row(ui, l, "Copy a selection when the mouse lets go", copy_key, |ui| switch(ui, l, g.copy_on_select)) {
+    section(ui, l, tr("prefs.head.copy_paste"), |ui| {
+        let copy_key = if cfg!(target_os = "macos") { tr("prefs.general.copy_cmd") } else { tr("prefs.general.copy_ctrl") };
+        if row(ui, l, tr("prefs.general.copy_on_select"), copy_key, |ui| switch(ui, l, g.copy_on_select)) {
             out.push(set("copy_on_select", !g.copy_on_select));
         }
         sep(ui, l);
-        if row(ui, l, "Ask before pasting several lines", "Only where the program would run them one by one (it did not ask for bracketed paste)", |ui| switch(ui, l, g.warn_multiline_paste)) {
+        if row(ui, l, tr("prefs.general.warn_multiline"), tr("prefs.general.multiline_note"), |ui| switch(ui, l, g.warn_multiline_paste)) {
             out.push(set("warn_multiline_paste", !g.warn_multiline_paste));
         }
         sep(ui, l);
-        if row(ui, l, "Ask before a large paste", "5 KB or more, wherever it goes", |ui| switch(ui, l, g.warn_large_paste)) {
+        if row(ui, l, tr("prefs.general.warn_large"), tr("prefs.general.large_note"), |ui| switch(ui, l, g.warn_large_paste)) {
             out.push(set("warn_large_paste", !g.warn_large_paste));
         }
     });
@@ -438,115 +437,115 @@ fn appearance(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mu
     let c = l.c;
     let f = &seen.settings.font;
     let a = &seen.settings.appearance;
-    section(ui, l, "TEXT", |ui| {
-        let mut families: Vec<(&str, &str)> = vec![("", "Automatic")];
+    section(ui, l, tr("prefs.head.text"), |ui| {
+        let mut families: Vec<(&str, &str)> = vec![("", tr("prefs.common.automatic"))];
         families.extend(seen.font_names.iter().map(|n| (n.as_str(), n.as_str())));
         if !f.family.is_empty() && !seen.font_names.contains(&f.family) {
             families.push((f.family.as_str(), f.family.as_str()));
         }
-        if let Some(family) = row(ui, l, "Font", "Monospace fonts installed; Automatic is the Nerd Font found, else the built-in one", |ui| select(ui, "font-family", f.family.as_str(), &families)) {
+        if let Some(family) = row(ui, l, tr("prefs.appearance.font"), tr("prefs.appearance.font_note"), |ui| select(ui, "font-family", f.family.as_str(), &families)) {
             out.push(Change::Set(Some("font"), "family", cfg::quote(family)));
         }
         let using = match &seen.font_file {
             Some(file) => {
-                let styles: Vec<&str> = ["bold", "italic", "bold italic"].into_iter().zip(seen.faces).filter(|(_, on)| *on).map(|(s, _)| s).collect();
-                let styles = if styles.is_empty() { "no bold or italic file beside it".to_owned() } else { format!("with {}", styles.join(", ")) };
+                let styles: Vec<&str> = [tr("prefs.appearance.bold"), tr("prefs.appearance.italic"), tr("prefs.appearance.bold_italic")].into_iter().zip(seen.faces).filter(|(_, on)| *on).map(|(s, _)| s).collect();
+                let styles = if styles.is_empty() { tr("prefs.appearance.no_styles").to_owned() } else { trf("prefs.appearance.with", &[&styles.join(tr("prefs.common.list_sep"))]) };
                 format!("{file} ({styles})")
             }
-            None if !f.family.is_empty() => format!("`{}` was not found: the built-in font", f.family),
-            None => "The built-in font".to_owned(),
+            None if !f.family.is_empty() => trf("prefs.appearance.not_found", &[&f.family]),
+            None => tr("prefs.appearance.builtin").to_owned(),
         };
         ui.label(RichText::new(using).size(11.5).color(c.dim));
         ui.add_space(6.0);
         sep(ui, l);
-        if let Some(t) = row(ui, l, "Size", "In points, 8 to 32", |ui| field(ui, &mut edit.drafts, "font-size", &f.size.to_string(), "13", 80.0)) {
+        if let Some(t) = row(ui, l, tr("prefs.appearance.size"), tr("prefs.appearance.size_note"), |ui| field(ui, &mut edit.drafts, "font-size", &f.size.to_string(), "13", 80.0)) {
             if let Ok(v) = t.trim().parse::<f32>() {
                 out.push(Change::Set(Some("font"), "size", v.clamp(8.0, 32.0).to_string()));
             }
         }
         sep(ui, l);
-        if let Some(t) = row(ui, l, "Line height", "The rows' height for the font's own, 0.8 to 2", |ui| field(ui, &mut edit.drafts, "line-height", &format!("{:.2}", f.line_height), "1.00", 80.0)) {
+        if let Some(t) = row(ui, l, tr("prefs.appearance.line_height"), tr("prefs.appearance.line_height_note"), |ui| field(ui, &mut edit.drafts, "line-height", &format!("{:.2}", f.line_height), "1.00", 80.0)) {
             if let Ok(v) = t.trim().parse::<f32>() {
                 out.push(Change::Set(Some("font"), "line_height", format!("{:.2}", v.clamp(0.8, 2.0))));
             }
         }
         sep(ui, l);
-        if row(ui, l, "Ligatures", "Draw -> and != as single shapes, in a font that has them (Fira Code, JetBrains Mono, Cascadia Code)", |ui| switch(ui, l, f.ligatures)) {
+        if row(ui, l, tr("prefs.appearance.ligatures"), tr("prefs.appearance.ligatures_note"), |ui| switch(ui, l, f.ligatures)) {
             out.push(Change::Set(Some("font"), "ligatures", (!f.ligatures).to_string()));
         }
         sep(ui, l);
-        let found = if seen.nerd { "A Nerd Font is installed" } else { "No Nerd Font is installed: the marks are drawn" };
-        if row(ui, l, "Nerd Font icons", &format!("The branch mark and others as the font's own icons. {found}"), |ui| switch(ui, l, a.nerd_icons)) {
+        let found = if seen.nerd { tr("prefs.appearance.nerd_found") } else { tr("prefs.appearance.nerd_missing") };
+        if row(ui, l, tr("prefs.appearance.nerd"), &trf("prefs.appearance.nerd_note", &[found]), |ui| switch(ui, l, a.nerd_icons)) {
             out.push(Change::Set(Some("appearance"), "nerd_icons", (!a.nerd_icons).to_string()));
         }
     });
     let w = &seen.settings.window;
-    section(ui, l, "WINDOW", |ui| {
+    section(ui, l, tr("prefs.head.window"), |ui| {
         let own = w.own_titlebar();
-        let note = if cfg!(target_os = "macos") { "The band runs under the traffic lights (when the window opens next)" } else { "The band is the title bar, with its own buttons; off is the system's frame" };
-        if row(ui, l, "tsumugi's own title bar", note, |ui| switch(ui, l, own)) {
+        let note = if cfg!(target_os = "macos") { tr("prefs.appearance.title_mac") } else { tr("prefs.appearance.title_other") };
+        if row(ui, l, tr("prefs.appearance.titlebar"), note, |ui| switch(ui, l, own)) {
             out.push(Change::Set(Some("window"), "titlebar", cfg::quote(if own { "system" } else { "tsumugi" })));
         }
         if cfg!(windows) || cfg!(target_os = "macos") {
             sep(ui, l);
             let (note, kinds): (&str, &[(&str, &str)]) = if cfg!(windows) {
-                ("Mica and Acrylic on Windows 11 (when the window opens next)", &[("none", "None"), ("mica", "Mica"), ("acrylic", "Acrylic")])
+                (tr("prefs.appearance.mica_note"), &[("none", tr("prefs.common.none")), ("mica", "Mica"), ("acrylic", "Acrylic")])
             } else {
-                ("The desktop shows through the band, sidebar and status bar (when the window opens next)", &[("none", "None"), ("vibrancy", "Vibrancy")])
+                (tr("prefs.appearance.vibrancy_note"), &[("none", tr("prefs.common.none")), ("vibrancy", "Vibrancy")])
             };
-            if let Some(m) = row(ui, l, "Window material", note, |ui| select(ui, "material", w.material.as_str(), kinds)) {
+            if let Some(m) = row(ui, l, tr("prefs.appearance.material"), note, |ui| select(ui, "material", w.material.as_str(), kinds)) {
                 out.push(Change::Set(Some("window"), "material", cfg::quote(m)));
             }
         }
         sep(ui, l);
-        let note = "How much of the window covers the desktop, 20 to 100 %. Below 100 it shows through (when the window opens next, if it opened at 100)";
-        if let Some(t) = row(ui, l, "Opacity", note, |ui| field(ui, &mut edit.drafts, "opacity", &w.opacity.to_string(), "100", 80.0)) {
+        let note = tr("prefs.appearance.opacity_note");
+        if let Some(t) = row(ui, l, tr("prefs.appearance.opacity"), note, |ui| field(ui, &mut edit.drafts, "opacity", &w.opacity.to_string(), "100", 80.0)) {
             if let Ok(v) = t.trim().trim_end_matches('%').trim().parse::<u8>() {
                 out.push(Change::Set(Some("window"), "opacity", v.clamp(20, 100).to_string()));
             }
         }
         sep(ui, l);
-        let note = "A png or jpeg behind the panes; ~/ is the home folder, a relative path is beside config.toml. Empty for none";
-        if let Some(t) = row(ui, l, "Background image", note, |ui| field(ui, &mut edit.drafts, "image", &w.image, "~/Pictures/bg.png", 220.0)) {
+        let note = tr("prefs.appearance.image_note");
+        if let Some(t) = row(ui, l, tr("prefs.appearance.image"), note, |ui| field(ui, &mut edit.drafts, "image", &w.image, "~/Pictures/bg.png", 220.0)) {
             out.push(Change::Set(Some("window"), "image", cfg::quote(t.trim())));
         }
         sep(ui, l);
-        if let Some(t) = row(ui, l, "Image strength", "How much of the background image shows through the panes, in %", |ui| field(ui, &mut edit.drafts, "image_opacity", &w.image_opacity.to_string(), "25", 80.0)) {
+        if let Some(t) = row(ui, l, tr("prefs.appearance.image_strength"), tr("prefs.appearance.image_strength_note"), |ui| field(ui, &mut edit.drafts, "image_opacity", &w.image_opacity.to_string(), "25", 80.0)) {
             if let Ok(v) = t.trim().trim_end_matches('%').trim().parse::<u8>() {
                 out.push(Change::Set(Some("window"), "image_opacity", v.min(100).to_string()));
             }
         }
         sep(ui, l);
-        let note = "A key held from any program (Ctrl+`, F12) that brings the window down from the top of the screen, and sends it away when it has the keys. Empty for none. Not on Wayland";
-        if let Some(t) = row(ui, l, "Quake mode key", note, |ui| field(ui, &mut edit.drafts, "quake", &w.quake, "Ctrl+`", 140.0)) {
+        let note = tr("prefs.appearance.quake_note");
+        if let Some(t) = row(ui, l, tr("prefs.appearance.quake_key"), note, |ui| field(ui, &mut edit.drafts, "quake", &w.quake, "Ctrl+`", 140.0)) {
             out.push(Change::Set(Some("window"), "quake", cfg::quote(t.trim())));
         }
         sep(ui, l);
-        if let Some(t) = row(ui, l, "Quake mode height", "How much of the screen's height it comes down to, in %", |ui| field(ui, &mut edit.drafts, "quake_height", &w.quake_height.to_string(), "50", 80.0)) {
+        if let Some(t) = row(ui, l, tr("prefs.appearance.quake_height"), tr("prefs.appearance.quake_height_note"), |ui| field(ui, &mut edit.drafts, "quake_height", &w.quake_height.to_string(), "50", 80.0)) {
             if let Ok(v) = t.trim().trim_end_matches('%').trim().parse::<u8>() {
                 out.push(Change::Set(Some("window"), "quake_height", v.clamp(20, 100).to_string()));
             }
         }
         sep(ui, l);
-        if let Some(t) = row(ui, l, "Dim unfocused panes", "How much darker the panes without the keys get, in %", |ui| field(ui, &mut edit.drafts, "dim", &a.dim.to_string(), "35", 80.0)) {
+        if let Some(t) = row(ui, l, tr("prefs.appearance.dim"), tr("prefs.appearance.dim_note"), |ui| field(ui, &mut edit.drafts, "dim", &a.dim.to_string(), "35", 80.0)) {
             if let Ok(v) = t.trim().trim_end_matches('%').trim().parse::<u8>() {
                 out.push(Change::Set(Some("appearance"), "dim", v.min(90).to_string()));
             }
         }
         sep(ui, l);
         let shapes = [
-            ("block-blink", "Block, blinking"),
-            ("block", "Block"),
-            ("bar-blink", "Bar, blinking"),
-            ("bar", "Bar"),
-            ("underline-blink", "Underline, blinking"),
-            ("underline", "Underline"),
+            ("block-blink", tr("prefs.appearance.block_blink")),
+            ("block", tr("prefs.appearance.block")),
+            ("bar-blink", tr("prefs.appearance.bar_blink")),
+            ("bar", tr("prefs.appearance.bar")),
+            ("underline-blink", tr("prefs.appearance.underline_blink")),
+            ("underline", tr("prefs.appearance.underline")),
         ];
-        if let Some(s) = row(ui, l, "Cursor", "In the pane with the keys; the others show an outline", |ui| select(ui, "cursor", a.cursor.as_str(), &shapes)) {
+        if let Some(s) = row(ui, l, tr("prefs.appearance.cursor"), tr("prefs.appearance.cursor_note"), |ui| select(ui, "cursor", a.cursor.as_str(), &shapes)) {
             out.push(Change::Set(Some("appearance"), "cursor", cfg::quote(s)));
         }
         sep(ui, l);
-        if row(ui, l, "Animations", "Breathing rings, the running line, tab moves", |ui| switch(ui, l, a.animations)) {
+        if row(ui, l, tr("prefs.appearance.animations"), tr("prefs.appearance.animations_note"), |ui| switch(ui, l, a.animations)) {
             out.push(Change::Set(Some("appearance"), "animations", (!a.animations).to_string()));
         }
     });
@@ -590,42 +589,42 @@ fn keys(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut Vec<
     }
     let mac = crate::keys::mac();
     let preset = if mac { "macOS" } else { "Windows Terminal" };
-    section(ui, l, "PRESET", |ui| {
-        row(ui, l, "Preset", "The set of keys to start from", |ui| {
+    section(ui, l, tr("prefs.head.preset"), |ui| {
+        row(ui, l, tr("prefs.keys.preset"), tr("prefs.keys.preset_note"), |ui| {
             select(ui, "preset", preset, &[(preset, preset)]);
         });
         sep(ui, l);
         let on = seen.settings.general.cmd_on_mac;
-        let note = if cfg!(target_os = "macos") { "Ctrl+Shift+T becomes Cmd+T, and so on" } else { "Ctrl+Shift+T becomes Cmd+T, and so on (on a Mac)" };
-        if row(ui, l, "Use Cmd on macOS", note, |ui| switch(ui, l, on)) {
+        let note = if cfg!(target_os = "macos") { tr("prefs.keys.cmd_note") } else { tr("prefs.keys.cmd_note_other") };
+        if row(ui, l, tr("prefs.keys.use_cmd"), note, |ui| switch(ui, l, on)) {
             out.push(Change::Set(Some("general"), "cmd_on_mac", (!on).to_string()));
         }
     });
-    let fixed = |win: &'static str, m: &'static str| if mac { m } else { win };
+    let fixed = |win: &str, m: &str| (if mac { m } else { win }).replace("{0}", tr("prefs.keys.arrows"));
     let mut changeable = |ui: &mut egui::Ui, a: Action| {
         let Some((_, name, win, m)) = NAMED.iter().find(|(x, ..)| *x == a) else { return };
         let own = if mac { *m } else { *win };
         let now = label(a);
         let clash = edit.clash.clone().filter(|(n, ..)| n == name);
         let note = match &clash {
-            Some((_, why, _)) => format!("{why}. Press another, or use it anyway"),
-            None if now != own => format!("Its own: {own}"),
+            Some((_, why, _)) => trf("prefs.keys.clash", &[why]),
+            None if now != own => trf("prefs.keys.own_note", &[own]),
             None => String::new(),
         };
         row(ui, l, crate::keys::title(a), &note, |ui| crate::chrome::in_order(ui, |ui| {
             let waiting = edit.capturing == Some(*name);
-            let text = if waiting { "Press a key… (Esc: leave it)".to_owned() } else { now.clone() };
-            if keycap(ui, l, &text, waiting).on_hover_text("Click, then press the key to use (Esc: leave it)").clicked() {
+            let text = if waiting { tr("prefs.keys.press").to_owned() } else { now.clone() };
+            if keycap(ui, l, &text, waiting).on_hover_text(tr("prefs.keys.press_hover")).clicked() {
                 edit.capturing = Some(name);
                 edit.clash = None;
             }
             if let Some((_, _, chord)) = &clash {
-                if ui.small_button("Use it anyway").clicked() {
+                if ui.small_button(tr("prefs.keys.use_anyway")).clicked() {
                     out.push(Change::Set(Some("keys"), name, cfg::quote(chord)));
                     edit.capturing = None;
                     edit.clash = None;
                 }
-            } else if now != own && ui.small_button("Its own").clicked() {
+            } else if now != own && ui.small_button(tr("prefs.keys.own")).clicked() {
                 out.push(Change::Set(Some("keys"), name, cfg::quote(own)));
             }
         }));
@@ -635,7 +634,7 @@ fn keys(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut Vec<
             ui.label(RichText::new(key).font(FontId::monospace(12.0)).color(c.dim));
         });
     };
-    section(ui, l, "SESSIONS", |ui| {
+    section(ui, l, tr("prefs.head.sessions"), |ui| {
         for (k, a) in [Action::NewTab, Action::CloseTab, Action::Rename, Action::Duplicate, Action::NextTab, Action::PrevTab, Action::NextWaiting, Action::Waiting, Action::Notices, Action::TypeAll, Action::Search, Action::Input, Action::Rail, Action::Settings].into_iter().enumerate() {
             if k > 0 {
                 sep(ui, l);
@@ -643,16 +642,16 @@ fn keys(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut Vec<
             changeable(ui, a);
         }
         sep(ui, l);
-        fixed_row(ui, "The Nth tab", fixed("Ctrl+Alt+1 … 9", "Cmd+1 … 9"));
+        fixed_row(ui, tr("prefs.keys.nth_tab"), &fixed("Ctrl+Alt+1 … 9", "Cmd+1 … 9"));
     });
-    section(ui, l, "PANES", |ui| {
+    section(ui, l, tr("prefs.head.panes"), |ui| {
         changeable(ui, Action::SplitRight);
         sep(ui, l);
         changeable(ui, Action::SplitDown);
         sep(ui, l);
-        fixed_row(ui, "Move between panes", fixed("Alt+Arrows", "Cmd+Option+Arrows"));
+        fixed_row(ui, tr("prefs.keys.move"), &fixed("Alt+{0}", "Cmd+Option+{0}"));
         sep(ui, l);
-        fixed_row(ui, "Resize the pane", fixed("Alt+Shift+Arrows", "Cmd+Ctrl+Arrows"));
+        fixed_row(ui, tr("prefs.keys.resize"), &fixed("Alt+Shift+{0}", "Cmd+Ctrl+{0}"));
         sep(ui, l);
         changeable(ui, Action::Zoom);
         sep(ui, l);
@@ -670,7 +669,7 @@ fn keys(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut Vec<
             changeable(ui, a);
         }
     });
-    section(ui, l, "VIEW", |ui| {
+    section(ui, l, tr("prefs.head.view"), |ui| {
         for (k, a) in [Action::Help, Action::Overview, Action::FontBigger, Action::FontSmaller, Action::FontReset].into_iter().enumerate() {
             if k > 0 {
                 sep(ui, l);
@@ -678,21 +677,34 @@ fn keys(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut Vec<
             changeable(ui, a);
         }
     });
-    ui.label(RichText::new("A key is written to [keys] in config.toml; \"none\" there gives it back to the shell.").size(12.0).color(c.dim));
+    ui.label(RichText::new(tr("prefs.keys.footer")).size(12.0).color(c.dim));
 }
 
 /// The sounds by what the list says.
-const SOUND_NAMES: [(&str, &str); 4] = [("chime", "Soft chime"), ("low", "Low tone"), ("alert", "Alert"), ("default", "System default")];
+/// A span of time as the lists say it: `90 s`, `5 min`, `5 min or more`.
+fn span(secs: u64, more: bool) -> String {
+    let (key, n) = match (secs >= 60 && secs.is_multiple_of(60), more) {
+        (true, true) => ("prefs.notify.mins_or_more", secs / 60),
+        (true, false) => ("prefs.notify.mins", secs / 60),
+        (false, true) => ("prefs.notify.secs_or_more", secs),
+        (false, false) => ("prefs.notify.secs", secs),
+    };
+    trf(key, &[&n.to_string()])
+}
+
+fn sound_names() -> [(&'static str, &'static str); 4] {
+    [("chime", tr("prefs.notify.chime")), ("low", tr("prefs.notify.low")), ("alert", tr("prefs.notify.alert")), ("default", tr("prefs.notify.default"))]
+}
 
 fn notifications(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut Vec<Change>) {
     let c = l.c;
     let n = &seen.settings.notify;
     ui.horizontal(|ui| {
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            if button(ui, l, "Send a test") {
+            if button(ui, l, tr("prefs.notify.test")) {
                 out.push(Change::TestNotification);
             }
-            if button(ui, l, "Reset to defaults") {
+            if button(ui, l, tr("prefs.notify.reset")) {
                 let d = cfg::Notify::default();
                 for (key, list) in [("system", d.system), ("taskbar", d.taskbar), ("flash", d.flash), ("sound", d.sound)] {
                     out.push(Change::Set(Some("notify"), key, cfg::quote_list(&list)));
@@ -701,11 +713,11 @@ fn notifications(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: 
         });
     });
     ui.add_space(8.0);
-    section(ui, l, "WHEN A SESSION…", |ui| {
+    section(ui, l, tr("prefs.head.when"), |ui| {
         // The design's table: the way to tell, then a column per state, the
         // label's column 1.6 times as wide as each state's, a line between
         // rows.
-        let states = [("waiting", "waits for you", c.wait), ("error", "fails", c.err), ("done", "finishes", c.done)];
+        let states = [("waiting", tr("prefs.notify.waits"), c.wait), ("error", tr("prefs.notify.fails"), c.err), ("done", tr("prefs.notify.finishes"), c.done)];
         let gap = 16.0;
         let width = ui.available_width();
         let unit = (width - 3.0 * gap) / 4.6;
@@ -728,10 +740,10 @@ fn notifications(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: 
             ui.painter().galley(egui::pos2(left + 14.0, r.center().y - text.size().y / 2.0), text, *color);
         }
         for (key, label, note, list) in [
-            ("system", "System notification", "The OS's own, which a click brings back here", &n.system),
-            ("taskbar", "Taskbar count", "A number on the window's taskbar button", &n.taskbar),
-            ("flash", "Taskbar flash", "The button lights up until you look", &n.flash),
-            ("sound", "Sound", "Once, the sound picked below", &n.sound),
+            ("system", tr("prefs.notify.system"), tr("prefs.notify.system_note"), &n.system),
+            ("taskbar", tr("prefs.notify.taskbar"), tr("prefs.notify.taskbar_note"), &n.taskbar),
+            ("flash", tr("prefs.notify.flash"), tr("prefs.notify.flash_note"), &n.flash),
+            ("sound", tr("prefs.notify.sound"), tr("prefs.notify.sound_note"), &n.sound),
         ] {
             sep(ui, l);
             // A line's height of room round the two lines of words, so the
@@ -760,20 +772,20 @@ fn notifications(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: 
             }
         }
     });
-    section(ui, l, "DETAILS", |ui| {
-        let mut lengths: Vec<(u64, String)> = [(0, "Any length"), (30, "30 s or more"), (60, "1 min or more"), (300, "5 min or more"), (600, "10 min or more")].iter().map(|(v, t)| (*v, t.to_string())).collect();
+    section(ui, l, tr("prefs.head.details"), |ui| {
+        let mut lengths: Vec<(u64, String)> = std::iter::once((0, tr("prefs.notify.any_length").to_owned())).chain([30, 60, 300, 600].map(|v| (v, span(v, true)))).collect();
         if !lengths.iter().any(|(v, _)| *v == n.long_run) {
-            lengths.push((n.long_run, format!("{} s or more", n.long_run)));
+            lengths.push((n.long_run, span(n.long_run, true)));
         }
         let lengths: Vec<(u64, &str)> = lengths.iter().map(|(v, t)| (*v, t.as_str())).collect();
-        if let Some(v) = row(ui, l, "Tell about a finish", "Only after a run this long, so a quick command says nothing", |ui| select(ui, "long-run", n.long_run, &lengths)) {
+        if let Some(v) = row(ui, l, tr("prefs.notify.long_run"), tr("prefs.notify.long_run_note"), |ui| select(ui, "long-run", n.long_run, &lengths)) {
             out.push(Change::Set(Some("notify"), "long_run", v.to_string()));
         }
-        for (key, label, now) in [("sound_waiting", "Sound for waits", &n.sound_waiting), ("sound_error", "Sound for fails", &n.sound_error)] {
+        for (key, label, now) in [("sound_waiting", tr("prefs.notify.sound_waiting"), &n.sound_waiting), ("sound_error", tr("prefs.notify.sound_error"), &n.sound_error)] {
             sep(ui, l);
             let picked = row(ui, l, label, "", |ui| crate::chrome::in_order(ui, |ui| {
-                let picked = select(ui, key, now.as_str(), &SOUND_NAMES);
-                if ui.small_button("▶").on_hover_text("Play it").clicked() {
+                let picked = select(ui, key, now.as_str(), &sound_names());
+                if ui.small_button("▶").on_hover_text(tr("prefs.notify.play")).clicked() {
                     out.push(Change::PlaySound(now.clone()));
                 }
                 picked
@@ -783,64 +795,64 @@ fn notifications(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: 
             }
         }
         sep(ui, l);
-        let note = if cfg!(windows) { "Nothing while focus mode, a presentation or a full-screen game is on; the bell still keeps them" } else { "Windows says when focus mode is on; this system does not tell tsumugi yet" };
-        if row(ui, l, "Respect Windows focus mode", note, |ui| switch(ui, l, n.focus_mode)) {
+        let note = if cfg!(windows) { tr("prefs.notify.focus_note_win") } else { tr("prefs.notify.focus_note_other") };
+        if row(ui, l, tr("prefs.notify.focus"), note, |ui| switch(ui, l, n.focus_mode)) {
             out.push(Change::Set(Some("notify"), "focus_mode", (!n.focus_mode).to_string()));
         }
     });
-    section(ui, l, "WHILE YOU ARE AWAY", |ui| {
-        if let Some(t) = row(ui, l, "Webhook", "A session waiting while no one is at the window is sent here: an ntfy topic for the phone, a Slack webhook, or any address taking JSON", |ui| field(ui, &mut edit.drafts, "webhook", &n.webhook, "https://ntfy.sh/my-topic", 260.0)) {
+    section(ui, l, tr("prefs.head.away"), |ui| {
+        if let Some(t) = row(ui, l, tr("prefs.notify.webhook"), tr("prefs.notify.webhook_note"), |ui| field(ui, &mut edit.drafts, "webhook", &n.webhook, "https://ntfy.sh/my-topic", 260.0)) {
             out.push(Change::Set(Some("notify"), "webhook", cfg::quote(t.trim())));
         }
         sep(ui, l);
         let formats = [("ntfy", "ntfy"), ("slack", "Slack"), ("json", "JSON")];
-        if let Some(v) = row(ui, l, "Webhook format", "What the address takes", |ui| select(ui, "webhook-format", n.webhook_format.as_str(), &formats)) {
+        if let Some(v) = row(ui, l, tr("prefs.notify.webhook_format"), tr("prefs.notify.webhook_format_note"), |ui| select(ui, "webhook-format", n.webhook_format.as_str(), &formats)) {
             out.push(Change::Set(Some("notify"), "webhook_format", cfg::quote(v)));
         }
         sep(ui, l);
-        let mut afters: Vec<(u64, String)> = [(30, "30 s"), (60, "1 min"), (120, "2 min"), (300, "5 min"), (900, "15 min")].iter().map(|(v, t)| (*v, t.to_string())).collect();
+        let mut afters: Vec<(u64, String)> = [30, 60, 120, 300, 900].map(|v| (v, span(v, false))).into_iter().collect();
         if !afters.iter().any(|(v, _)| *v == n.webhook_after) {
-            afters.push((n.webhook_after, format!("{} s", n.webhook_after)));
+            afters.push((n.webhook_after, span(n.webhook_after, false)));
         }
         let afters: Vec<(u64, &str)> = afters.iter().map(|(v, t)| (*v, t.as_str())).collect();
-        if let Some(v) = row(ui, l, "Send after waiting", "Once a wait, and not while you are at a tsumugi window", |ui| select(ui, "webhook-after", n.webhook_after, &afters)) {
+        if let Some(v) = row(ui, l, tr("prefs.notify.webhook_after"), tr("prefs.notify.webhook_after_note"), |ui| select(ui, "webhook-after", n.webhook_after, &afters)) {
             out.push(Change::Set(Some("notify"), "webhook_after", v.to_string()));
         }
     });
-    section(ui, l, "WHAT IT COSTS", |ui| {
+    section(ui, l, tr("prefs.head.costs"), |ui| {
         // Once a day, once a 5-hour block, at the estimate (API prices).
         let pick = |now: u64, lines: &[u64]| -> Vec<(u64, String)> {
-            let mut v: Vec<(u64, String)> = std::iter::once((0, "Never".to_owned())).chain(lines.iter().map(|d| (*d, format!("Past ${d}")))).collect();
+            let mut v: Vec<(u64, String)> = std::iter::once((0, tr("prefs.notify.never").to_owned())).chain(lines.iter().map(|d| (*d, trf("prefs.notify.past", &[&format!("${d}")])))).collect();
             if !v.iter().any(|(d, _)| *d == now) {
-                v.push((now, format!("Past ${now}")));
+                v.push((now, trf("prefs.notify.past", &[&format!("${now}")])));
             }
             v
         };
         let days = pick(n.spend_day, &[5, 10, 20, 50, 100, 200]);
         let days: Vec<(u64, &str)> = days.iter().map(|(v, t)| (*v, t.as_str())).collect();
-        if let Some(v) = row(ui, l, "Tell when the day costs", "Once a day, when the day's estimate at API prices passes it", |ui| select(ui, "spend-day", n.spend_day, &days)) {
+        if let Some(v) = row(ui, l, tr("prefs.notify.spend_day"), tr("prefs.notify.spend_day_note"), |ui| select(ui, "spend-day", n.spend_day, &days)) {
             out.push(Change::Set(Some("notify"), "spend_day", v.to_string()));
         }
         sep(ui, l);
         let blocks = pick(n.spend_block, &[5, 10, 20, 50]);
         let blocks: Vec<(u64, &str)> = blocks.iter().map(|(v, t)| (*v, t.as_str())).collect();
-        if let Some(v) = row(ui, l, "Tell when a 5-hour block costs", "Once a block, the same estimate", |ui| select(ui, "spend-block", n.spend_block, &blocks)) {
+        if let Some(v) = row(ui, l, tr("prefs.notify.spend_block"), tr("prefs.notify.spend_block_note"), |ui| select(ui, "spend-block", n.spend_block, &blocks)) {
             out.push(Change::Set(Some("notify"), "spend_block", v.to_string()));
         }
     });
-    section(ui, l, "QUIET TAGS", |ui| {
+    section(ui, l, tr("prefs.head.quiet_tags"), |ui| {
         ui.add_space(8.0);
         ui.horizontal(|ui| {
-            ui.label(RichText::new("Sessions with these tags tell you in the bell only. Click one to quiet it.").size(12.0).color(c.dim));
+            ui.label(RichText::new(tr("prefs.notify.quiet_line")).size(12.0).color(c.dim));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui.link("Edit tags…").clicked() {
+                if ui.link(tr("prefs.notify.edit_tags")).clicked() {
                     out.push(Change::GoTo(Page::Tags));
                 }
             });
         });
         ui.add_space(6.0);
         if seen.tags.is_empty() {
-            ui.label(RichText::new("No session has a tag yet.").color(c.dim));
+            ui.label(RichText::new(tr("prefs.notify.no_tags")).color(c.dim));
         }
         chips(ui, seen.tags, seen.muted_tags, |t, quiet| out.push(Change::MuteTag(t, !quiet)));
         ui.add_space(8.0);
@@ -860,33 +872,35 @@ fn chips(ui: &mut egui::Ui, tags: &[String], quiet: &[String], mut click: impl F
             if q {
                 ui.painter().line_segment([chip.left_center(), chip.right_center()], egui::Stroke::new(1.0, c.dim));
             }
-            if resp.on_hover_text(if q { "Quiet: click to tell again" } else { "Click to quiet" }).clicked() {
+            if resp.on_hover_text(if q { tr("prefs.notify.chip_quiet") } else { tr("prefs.notify.chip_click") }).clicked() {
                 click(t.clone(), q);
             }
         }
     });
 }
 
-const STARTS: [(&str, &str); 3] = [("claude", "Claude Code"), ("resume", "Resume the last conversation"), ("shell", "Shell")];
+fn starts() -> [(&'static str, &'static str); 3] {
+    [("claude", "Claude Code"), ("resume", tr("prefs.sessions.resume_last")), ("shell", tr("prefs.sessions.shell"))]
+}
 
 fn profile_words(p: &Profile) -> String {
     let short = |s: &str| match s {
-        "resume" => "Resume",
-        "shell" => "Shell",
+        "resume" => tr("prefs.sessions.resume_short"),
+        "shell" => tr("prefs.sessions.shell"),
         _ => "Claude Code",
     };
     let mut kinds = vec![short(&p.start)];
     kinds.extend(p.panes.iter().map(|s| short(s)));
     let mut s = kinds.join(" + ");
     if !p.panes.is_empty() {
-        s.push_str(", split");
+        s.push_str(tr("prefs.sessions.split"));
     }
     s.push_str(&format!(" · {}", p.folder));
     if !p.place.is_empty() {
-        s.push_str(&format!(" · on {}", p.place));
+        s.push_str(&format!(" · {}", trf("prefs.sessions.on", &[&p.place])));
     }
     if !p.tags.is_empty() {
-        s.push_str(&format!(" · {}", p.tags.join(", ")));
+        s.push_str(&format!(" · {}", p.tags.join(tr("prefs.common.list_sep"))));
     }
     s
 }
@@ -894,24 +908,24 @@ fn profile_words(p: &Profile) -> String {
 fn sessions(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut Vec<Change>) {
     let c = l.c;
     let s = &seen.settings.sessions;
-    section(ui, l, "NEW SESSIONS", |ui| {
-        if let Some(v) = row(ui, l, "Default program", "What the new-session dialog has picked first", |ui| select(ui, "start", s.start.as_str(), &STARTS)) {
+    section(ui, l, tr("prefs.head.new_sessions"), |ui| {
+        if let Some(v) = row(ui, l, tr("prefs.sessions.default_program"), tr("prefs.sessions.default_program_note"), |ui| select(ui, "start", s.start.as_str(), &starts())) {
             out.push(Change::Set(Some("sessions"), "start", cfg::quote(v)));
         }
         sep(ui, l);
-        if let Some(t) = row(ui, l, "Claude Code command", "The program, or a path to it", |ui| field(ui, &mut edit.drafts, "claude", &s.claude, "claude", 200.0)) {
+        if let Some(t) = row(ui, l, tr("prefs.sessions.claude_command"), tr("prefs.sessions.claude_command_note"), |ui| field(ui, &mut edit.drafts, "claude", &s.claude, "claude", 200.0)) {
             let t = t.trim();
             out.push(Change::Set(Some("sessions"), "claude", cfg::quote(if t.is_empty() { "claude" } else { t })));
         }
         sep(ui, l);
-        let note = format!("Runs {} --resume in each restored session that ran Claude Code", s.claude);
-        if row(ui, l, "Resume conversations after a restart", &note, |ui| switch(ui, l, s.resume)) {
+        let note = trf("prefs.sessions.resume_note", &[&s.claude]);
+        if row(ui, l, tr("prefs.sessions.resume"), &note, |ui| switch(ui, l, s.resume)) {
             out.push(Change::Set(Some("sessions"), "resume", (!s.resume).to_string()));
         }
     });
-    section(ui, l, "WAITING", |ui| {
+    section(ui, l, tr("prefs.head.waiting"), |ui| {
         let now = s.quiet.map_or_else(String::new, |q| q.to_string());
-        let quiet = row(ui, l, "Call a quiet session \u{201c}probably waiting\u{201d} after", "Seconds without output while a program runs; 0 turns it off; empty is 10", |ui| field(ui, &mut edit.drafts, "quiet", &now, "10", 80.0));
+        let quiet = row(ui, l, tr("prefs.sessions.quiet"), tr("prefs.sessions.quiet_note"), |ui| field(ui, &mut edit.drafts, "quiet", &now, "10", 80.0));
         if let Some(t) = quiet {
             let t = t.trim().trim_end_matches('s').trim();
             if t.is_empty() {
@@ -922,13 +936,13 @@ fn sessions(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut 
         }
         sep(ui, l);
         let sorts: Vec<(Sort, &str)> = Sort::ALL.iter().map(|s| (*s, s.label())).collect();
-        if let Some(v) = row(ui, l, "Sort", "Also the button beside SESSIONS", |ui| select(ui, "sort", seen.sort, &sorts)) {
+        if let Some(v) = row(ui, l, tr("prefs.sessions.sort"), tr("prefs.sessions.sort_note"), |ui| select(ui, "sort", seen.sort, &sorts)) {
             out.push(Change::Sort(v));
         }
     });
-    section(ui, l, "PROFILES", |ui| {
+    section(ui, l, tr("prefs.head.profiles"), |ui| {
         for p in seen.profiles {
-            let (e, d) = row(ui, l, &p.name, &profile_words(p), |ui| (button(ui, l, "Delete"), button(ui, l, "Edit")));
+            let (e, d) = row(ui, l, &p.name, &profile_words(p), |ui| (button(ui, l, tr("prefs.common.delete")), button(ui, l, tr("prefs.common.edit"))));
             if d {
                 edit.profile = Some(ProfileDraft::of(p));
             }
@@ -937,7 +951,7 @@ fn sessions(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut 
             }
             sep(ui, l);
         }
-        if row(ui, l, "New profile", "Or tick \u{201c}Save as a profile\u{201d} in the new-session dialog", |ui| button(ui, l, "Add")) {
+        if row(ui, l, tr("prefs.sessions.new_profile"), tr("prefs.sessions.new_profile_note"), |ui| button(ui, l, tr("prefs.common.add"))) {
             let home = cfg::home().map(|h| h.display().to_string()).unwrap_or_default();
             edit.profile = Some(ProfileDraft { was: None, name: String::new(), folder: home, start: "claude".into(), tags: String::new(), panes: Vec::new(), place: String::new() });
         }
@@ -945,34 +959,34 @@ fn sessions(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut 
         if let Some(d) = &mut edit.profile {
             sep(ui, l);
             ui.add_space(10.0);
-            let head = if d.was.is_some() { "Edit the profile" } else { "A new profile" };
+            let head = if d.was.is_some() { tr("prefs.sessions.edit_profile") } else { tr("prefs.sessions.a_new_profile") };
             ui.label(RichText::new(head).size(13.0).strong().color(c.strong()));
             egui::Grid::new("profile-edit").num_columns(2).spacing(egui::vec2(14.0, 8.0)).show(ui, |ui| {
-                ui.label(RichText::new("Name").color(c.dim));
+                ui.label(RichText::new(tr("prefs.sessions.name")).color(c.dim));
                 ui.add(egui::TextEdit::singleline(&mut d.name).desired_width(260.0));
                 ui.end_row();
-                ui.label(RichText::new("Folder").color(c.dim));
+                ui.label(RichText::new(tr("prefs.sessions.folder")).color(c.dim));
                 ui.add(egui::TextEdit::singleline(&mut d.folder).desired_width(360.0).font(FontId::monospace(12.5)));
                 ui.end_row();
-                ui.label(RichText::new("Starts").color(c.dim));
-                if let Some(v) = select(ui, "profile-start", d.start.as_str(), &STARTS) {
+                ui.label(RichText::new(tr("prefs.sessions.starts")).color(c.dim));
+                if let Some(v) = select(ui, "profile-start", d.start.as_str(), &starts()) {
                     d.start = v.to_owned();
                 }
                 ui.end_row();
-                ui.label(RichText::new("Tags").color(c.dim));
-                ui.add(egui::TextEdit::singleline(&mut d.tags).hint_text("comma between").desired_width(260.0));
+                ui.label(RichText::new(tr("prefs.common.tags")).color(c.dim));
+                ui.add(egui::TextEdit::singleline(&mut d.tags).hint_text(tr("prefs.sessions.comma_between")).desired_width(260.0));
                 ui.end_row();
-                ui.label(RichText::new("Runs on").color(c.dim));
-                ui.add(egui::TextEdit::singleline(&mut d.place).hint_text("this machine, or wsl:Ubuntu, ssh:host").font(FontId::monospace(12.5)).desired_width(260.0));
+                ui.label(RichText::new(tr("prefs.sessions.runs_on")).color(c.dim));
+                ui.add(egui::TextEdit::singleline(&mut d.place).hint_text(tr("prefs.sessions.place_hint")).font(FontId::monospace(12.5)).desired_width(260.0));
                 ui.end_row();
                 let mut gone = None;
                 for (k, pane) in d.panes.iter_mut().enumerate() {
-                    ui.label(RichText::new(["Pane on the right", "Pane below it", "Pane below the first"][k.min(2)]).color(c.dim));
+                    ui.label(RichText::new([tr("prefs.sessions.pane_right"), tr("prefs.sessions.pane_below"), tr("prefs.sessions.pane_below_first")][k.min(2)]).color(c.dim));
                     ui.horizontal(|ui| {
-                        if let Some(v) = select(ui, &format!("profile-pane-{k}"), pane.as_str(), &STARTS) {
+                        if let Some(v) = select(ui, &format!("profile-pane-{k}"), pane.as_str(), &starts()) {
                             *pane = v.to_owned();
                         }
-                        if ui.small_button("Remove").clicked() {
+                        if ui.small_button(tr("prefs.common.remove")).clicked() {
                             gone = Some(k);
                         }
                     });
@@ -982,7 +996,7 @@ fn sessions(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut 
                     d.panes.remove(k);
                 }
             });
-            if d.panes.len() < 3 && ui.small_button("Add a pane").clicked() {
+            if d.panes.len() < 3 && ui.small_button(tr("prefs.sessions.add_pane")).clicked() {
                 d.panes.push("shell".into());
             }
             ui.add_space(6.0);
@@ -991,9 +1005,9 @@ fn sessions(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut 
             ui.horizontal(|ui| {
                 let ok = !p.name.is_empty() && !p.folder.is_empty() && !taken;
                 if taken {
-                    ui.label(RichText::new("Another profile has that name").size(12.0).color(c.err));
+                    ui.label(RichText::new(tr("prefs.sessions.taken")).size(12.0).color(c.err));
                 }
-                let (save, cancel) = crate::chrome::foot(ui, egui::Button::new("Save"), ok, "Cancel");
+                let (save, cancel) = crate::chrome::foot(ui, egui::Button::new(tr("prefs.common.save")), ok, tr("prefs.common.cancel"));
                 if save.clicked() {
                     done = Some(Some(Change::SaveProfile(d.was.clone(), p)));
                 }
@@ -1009,12 +1023,12 @@ fn sessions(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut 
         }
     });
     let o = &seen.settings.open;
-    section(ui, l, "OPEN WITH", |ui| {
-        commands(ui, l, edit, out, "editor", "Editor command", "The tab menu's \u{201c}Open in the editor\u{201d}; {folder} is the session's folder", &o.editor, "code {folder}");
+    section(ui, l, tr("prefs.head.open_with"), |ui| {
+        commands(ui, l, edit, out, "editor", tr("prefs.open.editor"), tr("prefs.open.editor_note"), &o.editor, "code {folder}");
         sep(ui, l);
-        commands(ui, l, edit, out, "filer", "kura command", "The tab menu's \u{201c}Open the folder in kura\u{201d}", &o.filer, "kura {folder}");
+        commands(ui, l, edit, out, "filer", tr("prefs.open.kura"), tr("prefs.open.kura_note"), &o.filer, "kura {folder}");
         sep(ui, l);
-        if let Some(t) = row(ui, l, "File command", "A Ctrl+click on a file's path in a pane; {file}, {line} and {column}. Empty: the system's way", |ui| field(ui, &mut edit.drafts, "file", &o.file, "code --goto {file}:{line}:{column}", 220.0)) {
+        if let Some(t) = row(ui, l, tr("prefs.open.file"), tr("prefs.open.file_note"), |ui| field(ui, &mut edit.drafts, "file", &o.file, "code --goto {file}:{line}:{column}", 220.0)) {
             out.push(Change::Set(Some("open"), "file", cfg::quote(&t)));
         }
     });
@@ -1029,12 +1043,12 @@ fn commands(ui: &mut egui::Ui, l: Look, edit: &mut Edit, out: &mut Vec<Change>, 
     let write = |list: &[String]| Change::Set(Some("open"), key, cfg::quote_list(list));
     for (k, c) in now.iter().enumerate() {
         let (words, about) = if k == 0 {
-            (label.to_owned(), format!("{note}. The first is the click; more open beside it"))
+            (label.to_owned(), trf("prefs.open.first_note", &[note]))
         } else {
-            (format!("{label} {}", k + 1), format!("In the menu beside it as \u{201c}{}\u{201d}", tsumugi_mux::settings::program_name(c)))
+            (format!("{label} {}", k + 1), trf("prefs.open.beside_as", &[&tsumugi_mux::settings::program_name(c)]))
         };
         let (typed, gone) = row(ui, l, &words, &about, |ui| {
-            let gone = ui.small_button("×").on_hover_text("Take it out").clicked();
+            let gone = ui.small_button("×").on_hover_text(tr("prefs.open.take_out")).clicked();
             (field(ui, &mut edit.drafts, &format!("{key}-{k}"), c, hint, 220.0), gone)
         });
         let mut next = now.to_vec();
@@ -1051,8 +1065,8 @@ fn commands(ui: &mut egui::Ui, l: Look, edit: &mut Edit, out: &mut Vec<Change>, 
         }
     }
     let first = now.is_empty();
-    let words = if first { label.to_owned() } else { "Add another".to_owned() };
-    let about = if first { note.to_owned() } else { format!("Another to open with, beside \u{201c}{}\u{201d}", tsumugi_mux::settings::program_name(&now[0])) };
+    let words = if first { label.to_owned() } else { tr("prefs.open.add_another").to_owned() };
+    let about = if first { note.to_owned() } else { trf("prefs.open.another_note", &[&tsumugi_mux::settings::program_name(&now[0])]) };
     if let Some(t) = row(ui, l, &words, &about, |ui| field(ui, &mut edit.drafts, &format!("{key}-new"), "", if first { hint } else { "sakura {folder}" }, 220.0)) {
         if !t.trim().is_empty() {
             let mut next = now.to_vec();
@@ -1062,21 +1076,43 @@ fn commands(ui: &mut egui::Ui, l: Look, edit: &mut Edit, out: &mut Vec<Change>, 
     }
 }
 
+/// A built-in item of the tab's menu as the menu itself says it.
+fn menu_label(word: &str) -> &'static str {
+    match word {
+        "rename" => tr("prefs.common.rename"),
+        "note" => tr("prefs.menu.note"),
+        "tags" => tr("prefs.common.tags"),
+        "mute" => tr("tab.mute"),
+        "pin" => tr("tab.pin"),
+        "restart" => tr("tab.restart"),
+        "duplicate" => tr("tab.duplicate"),
+        "new-window" => tr("tab.new_window"),
+        "filer" => tr("tab.open_filer"),
+        "editor" => tr("tab.open_editor"),
+        "copy-path" => tr("tab.copy_path"),
+        "save-output" => tr("tab.save_output"),
+        "work-log" => tr("tab.work_log"),
+        "pr" => tr("tab.pr"),
+        "close" => tr("tab.close"),
+        _ => cfg::menu_label(word),
+    }
+}
+
 /// The tab's right-click menu: which items show, their order, and items of
 /// one's own.
 fn tab_menu(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut Vec<Change>) {
     let c = l.c;
     let m = &seen.settings.menu;
     let words = cfg::menu_words(&m.order);
-    section(ui, l, "TAB MENU", |ui| {
+    section(ui, l, tr("prefs.head.tab_menu"), |ui| {
         for (k, word) in words.iter().enumerate() {
             if k > 0 {
                 sep(ui, l);
             }
             let shown = !m.hide.iter().any(|h| h == word);
-            let (up, down, flip) = row(ui, l, cfg::menu_label(word), "", |ui| crate::chrome::in_order(ui, |ui| {
-                let up = ui.add_enabled(k > 0, egui::Button::new("↑").small()).on_hover_text("Higher in the menu").clicked();
-                let down = ui.add_enabled(k + 1 < words.len(), egui::Button::new("↓").small()).on_hover_text("Lower in the menu").clicked();
+            let (up, down, flip) = row(ui, l, menu_label(word), "", |ui| crate::chrome::in_order(ui, |ui| {
+                let up = ui.add_enabled(k > 0, egui::Button::new("↑").small()).on_hover_text(tr("prefs.menu.higher")).clicked();
+                let down = ui.add_enabled(k + 1 < words.len(), egui::Button::new("↓").small()).on_hover_text(tr("prefs.menu.lower")).clicked();
                 ui.add_space(8.0);
                 let flip = switch(ui, l, shown);
                 (up, down, flip)
@@ -1096,7 +1132,7 @@ fn tab_menu(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut 
         }
         for (k, item) in m.session.iter().enumerate() {
             sep(ui, l);
-            if row(ui, l, &item.name, &item.command, |ui| button(ui, l, "Remove")) {
+            if row(ui, l, &item.name, &item.command, |ui| button(ui, l, tr("prefs.common.remove"))) {
                 let mut next = m.session.clone();
                 next.remove(k);
                 out.push(Change::MenuItems(next));
@@ -1104,12 +1140,12 @@ fn tab_menu(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut 
         }
         sep(ui, l);
         ui.add_space(10.0);
-        ui.label(RichText::new("An item of your own, before \u{201c}Close the session\u{201d}: {folder} and {session} go into the command, which the system's shell runs.").size(12.0).color(c.dim));
+        ui.label(RichText::new(tr("prefs.menu.own_item")).size(12.0).color(c.dim));
         ui.horizontal(|ui| {
-            ui.add(egui::TextEdit::singleline(&mut edit.item.0).hint_text("Its words").desired_width(160.0));
+            ui.add(egui::TextEdit::singleline(&mut edit.item.0).hint_text(tr("prefs.menu.its_words")).desired_width(160.0));
             ui.add(egui::TextEdit::singleline(&mut edit.item.1).hint_text("lazygit -p {folder}").desired_width(260.0).font(FontId::monospace(12.5)));
             let ok = !edit.item.0.trim().is_empty() && !edit.item.1.trim().is_empty();
-            if ui.add_enabled(ok, egui::Button::new("Add")).clicked() {
+            if ui.add_enabled(ok, egui::Button::new(tr("prefs.common.add"))).clicked() {
                 let mut next = m.session.clone();
                 next.push(MenuItem { name: edit.item.0.trim().to_owned(), command: edit.item.1.trim().to_owned() });
                 out.push(Change::MenuItems(next));
@@ -1131,15 +1167,15 @@ fn tags(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut Vec<
     }
     // The tags themselves first (the one to edit, how they are coloured and
     // how many a session takes), then the rules that hand them out.
-    section(ui, l, "TAGS", |ui| {
+    section(ui, l, tr("prefs.head.tags"), |ui| {
         let names: Vec<(&str, &str)> = known.iter().map(|n| (n.as_str(), n.as_str())).collect();
         let now = edit.tag.clone().unwrap_or_default();
-        let picked = row(ui, l, "Edit a tag", "Rename, recolour, quiet", |ui| {
+        let picked = row(ui, l, tr("prefs.tags.edit_tag"), tr("prefs.tags.edit_tag_note"), |ui| {
             if names.is_empty() {
-                status(ui, "No tags yet", c.dim);
+                status(ui, tr("prefs.tags.none_yet"), c.dim);
                 None
             } else {
-                let mut all = vec![("", "Choose…")];
+                let mut all = vec![("", tr("prefs.tags.choose"))];
                 all.extend(names.iter().copied());
                 select(ui, "edit-tag", now.as_str(), &all)
             }
@@ -1156,7 +1192,7 @@ fn tags(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut Vec<
                 ui.add_space(12.0);
                 ui.add(egui::TextEdit::singleline(&mut edit.rename).desired_width(140.0));
                 let new = tsumugi_mux::proto::tag_name(&edit.rename);
-                if ui.add_enabled(new.as_ref().is_some_and(|n| *n != tag), egui::Button::new("Rename")).clicked() {
+                if ui.add_enabled(new.as_ref().is_some_and(|n| *n != tag), egui::Button::new(tr("prefs.common.rename"))).clicked() {
                     if let Some(new) = new {
                         out.push(Change::RenameTag(tag.clone(), new.clone()));
                         edit.tag = Some(new);
@@ -1165,9 +1201,9 @@ fn tags(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut Vec<
             });
             ui.add_space(6.0);
             ui.horizontal(|ui| {
-                ui.label(RichText::new("Colour").color(c.dim));
+                ui.label(RichText::new(tr("prefs.tags.colour")).color(c.dim));
                 let own = t.colors.get(&tag);
-                if ui.selectable_label(own.is_none(), "Automatic").clicked() && own.is_some() {
+                if ui.selectable_label(own.is_none(), tr("prefs.common.automatic")).clicked() && own.is_some() {
                     out.push(Change::SetIn("tags.colors".into(), toml_key(&tag), None));
                 }
                 for hex in crate::chrome::TAG_PALETTE {
@@ -1184,37 +1220,37 @@ fn tags(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut Vec<
             });
             ui.add_space(6.0);
             let quiet = seen.muted_tags.contains(&tag);
-            if row(ui, l, "Quiet", "Its sessions tell you in the bell only", |ui| switch(ui, l, quiet)) {
+            if row(ui, l, tr("prefs.tags.quiet"), tr("prefs.tags.quiet_note"), |ui| switch(ui, l, quiet)) {
                 out.push(Change::MuteTag(tag.clone(), !quiet));
             }
         }
         sep(ui, l);
-        row(ui, l, "Colour new tags", "Picked from the tag's name, so a tag is the same colour everywhere", |ui| {
-            select(ui, "tag-colour-kind", "auto", &[("auto", "Automatic")]);
+        row(ui, l, tr("prefs.tags.colour_new"), tr("prefs.tags.colour_new_note"), |ui| {
+            select(ui, "tag-colour-kind", "auto", &[("auto", tr("prefs.common.automatic"))]);
         });
         sep(ui, l);
-        row(ui, l, "Tags shown", &format!("How many of a session's tags the title bar and the cards show, then +N (a session has at most {})", tsumugi_mux::proto::MAX_TAGS), |ui| {
+        row(ui, l, tr("prefs.tags.shown"), &trf("prefs.tags.shown_note", &[&tsumugi_mux::proto::MAX_TAGS.to_string()]), |ui| {
             const COUNTS: [(usize, &str); 5] = [(1, "1"), (2, "2"), (3, "3"), (4, "4"), (5, "5")];
             if let Some(n) = select(ui, "tags-shown", t.shown(), &COUNTS[..tsumugi_mux::proto::MAX_TAGS]) {
                 out.push(Change::Set(Some("tags"), "shown", n.to_string()));
             }
         });
     });
-    section(ui, l, "AUTOMATIC TAGS", |ui| {
+    section(ui, l, tr("prefs.head.auto_tags"), |ui| {
         // The rule being edited went (the file changed under it).
         if edit.rule.at.is_some_and(|k| k >= t.rule.len()) {
             edit.rule = RuleDraft::default();
         }
         for (k, r) in t.rule.iter().enumerate() {
             let what = match (r.folder.is_empty(), r.branch.is_empty()) {
-                (false, true) => format!("Folder {}", r.folder),
-                (true, false) => format!("Branch {}", r.branch),
-                _ => format!("Folder {} on branch {}", r.folder, r.branch),
+                (false, true) => trf("prefs.tags.rule_folder", &[&r.folder]),
+                (true, false) => trf("prefs.tags.rule_branch", &[&r.branch]),
+                _ => trf("prefs.tags.rule_both", &[&r.folder, &r.branch]),
             };
             let (gone, change) = row(ui, l, &what, "", |ui| {
-                let gone = button(ui, l, "Remove");
+                let gone = button(ui, l, tr("prefs.common.remove"));
                 ui.add_space(4.0);
-                let change = edit.rule.at != Some(k) && button(ui, l, "Edit");
+                let change = edit.rule.at != Some(k) && button(ui, l, tr("prefs.common.edit"));
                 ui.add_space(8.0);
                 let w = ui.fonts_mut(|f| f.layout_no_wrap(r.tag.clone(), FontId::proportional(11.0), c.fg).size().x) + 12.0;
                 let (rect, _) = ui.allocate_exact_size(egui::vec2(w, 16.0), egui::Sense::hover());
@@ -1232,12 +1268,12 @@ fn tags(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut Vec<
             }
             sep(ui, l);
         }
-        let (title, verb) = if edit.rule.at.is_some() { ("Edit rule", "Save") } else { ("New rule", "Add") };
-        row(ui, l, title, "A folder (ending in * for each folder in it), a branch pattern, or both; then a tag ({name}: the folder's name)", |ui| crate::chrome::in_order(ui, |ui| {
+        let (title, verb) = if edit.rule.at.is_some() { (tr("prefs.tags.edit_rule"), tr("prefs.common.save")) } else { (tr("prefs.tags.new_rule"), tr("prefs.common.add")) };
+        row(ui, l, title, tr("prefs.tags.rule_note"), |ui| crate::chrome::in_order(ui, |ui| {
             let d = &mut edit.rule;
-            ui.add(egui::TextEdit::singleline(&mut d.folder).hint_text("folder: ~/dev/*").desired_width(130.0).font(FontId::monospace(12.5)));
-            ui.add(egui::TextEdit::singleline(&mut d.branch).hint_text("branch: claude/*").desired_width(110.0).font(FontId::monospace(12.5)));
-            ui.add(egui::TextEdit::singleline(&mut d.tag).hint_text("tag").desired_width(80.0));
+            ui.add(egui::TextEdit::singleline(&mut d.folder).hint_text(tr("prefs.tags.folder_hint")).desired_width(130.0).font(FontId::monospace(12.5)));
+            ui.add(egui::TextEdit::singleline(&mut d.branch).hint_text(tr("prefs.tags.branch_hint")).desired_width(110.0).font(FontId::monospace(12.5)));
+            ui.add(egui::TextEdit::singleline(&mut d.tag).hint_text(tr("prefs.tags.tag_hint")).desired_width(80.0));
             let ok = (!d.folder.trim().is_empty() || !d.branch.trim().is_empty()) && !d.tag.trim().is_empty();
             if ui.add_enabled(ok, egui::Button::new(verb)).clicked() {
                 let rule = TagRule { folder: d.folder.trim().to_owned(), branch: d.branch.trim().to_owned(), tag: d.tag.trim().to_owned() };
@@ -1249,7 +1285,7 @@ fn tags(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut Vec<
                 out.push(Change::Rules(next));
                 *d = RuleDraft::default();
             }
-            if d.at.is_some() && button(ui, l, "Cancel") {
+            if d.at.is_some() && button(ui, l, tr("prefs.common.cancel")) {
                 *d = RuleDraft::default();
             }
         }));
@@ -1259,8 +1295,8 @@ fn tags(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut Vec<
 fn shell(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut Vec<Change>) {
     let c = l.c;
     let sh = &seen.settings.shell;
-    section(ui, l, "SHELL", |ui| {
-        let auto = format!("Automatic ({})", ito_pane::shell_label(None));
+    section(ui, l, tr("prefs.head.shell"), |ui| {
+        let auto = trf("prefs.shell.auto", &[&ito_pane::shell_label(None)]);
         let mut shells: Vec<(&str, &str)> = vec![("", auto.as_str())];
         if let Some(f) = seen.facts {
             shells.extend(f.shells.iter().map(|(label, program)| (program.as_str(), label.as_str())));
@@ -1268,18 +1304,18 @@ fn shell(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut Vec
         if !sh.program.is_empty() && !shells.iter().any(|(p, _)| *p == sh.program) {
             shells.push((sh.program.as_str(), sh.program.as_str()));
         }
-        if let Some(p) = row(ui, l, "Default shell", "What a session runs when it is not Claude Code; a program or a path", |ui| select(ui, "shell", sh.program.as_str(), &shells)) {
+        if let Some(p) = row(ui, l, tr("prefs.shell.default_shell"), tr("prefs.shell.default_shell_note"), |ui| select(ui, "shell", sh.program.as_str(), &shells)) {
             out.push(Change::Set(Some("shell"), "program", cfg::quote(p)));
         }
         sep(ui, l);
         let args = sh.args.join(" ");
-        if let Some(t) = row(ui, l, "Arguments", "Separated by spaces", |ui| field(ui, &mut edit.drafts, "shell-args", &args, "-NoLogo", 200.0)) {
+        if let Some(t) = row(ui, l, tr("prefs.shell.arguments"), tr("prefs.shell.arguments_note"), |ui| field(ui, &mut edit.drafts, "shell-args", &args, "-NoLogo", 200.0)) {
             let list: Vec<String> = t.split_whitespace().map(str::to_owned).collect();
             out.push(Change::Set(Some("shell"), "args", cfg::quote_list(&list)));
         }
         sep(ui, l);
-        let words = if sh.env.is_empty() { "Edit".to_owned() } else { format!("Edit ({})", sh.env.len()) };
-        if row(ui, l, "Environment", "Variables every new session gets", |ui| button(ui, l, &words)) {
+        let words = if sh.env.is_empty() { tr("prefs.common.edit").to_owned() } else { trf("prefs.shell.edit_n", &[&sh.env.len().to_string()]) };
+        if row(ui, l, tr("prefs.shell.environment"), tr("prefs.shell.environment_note"), |ui| button(ui, l, &words)) {
             edit.env = match edit.env {
                 Some(_) => None,
                 None => Some(sh.env.iter().map(|(k, v)| (k.clone(), v.clone())).collect()),
@@ -1292,8 +1328,8 @@ fn shell(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut Vec
                 ui.horizontal(|ui| {
                     ui.add(egui::TextEdit::singleline(name).hint_text("NAME").desired_width(160.0).font(FontId::monospace(12.5)));
                     ui.label("=");
-                    ui.add(egui::TextEdit::singleline(value).hint_text("value").desired_width(280.0).font(FontId::monospace(12.5)));
-                    if ui.small_button("Remove").clicked() {
+                    ui.add(egui::TextEdit::singleline(value).hint_text(tr("prefs.shell.value")).desired_width(280.0).font(FontId::monospace(12.5)));
+                    if ui.small_button(tr("prefs.common.remove")).clicked() {
                         gone = Some(k);
                     }
                 });
@@ -1302,15 +1338,15 @@ fn shell(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut Vec
                 vars.remove(k);
             }
             ui.horizontal(|ui| {
-                if ui.small_button("Add a variable").clicked() {
+                if ui.small_button(tr("prefs.shell.add_variable")).clicked() {
                     vars.push((String::new(), String::new()));
                 }
                 let names: Vec<&str> = vars.iter().map(|(n, _)| n.trim()).filter(|n| !n.is_empty()).collect();
                 let bad = names.iter().any(|n| n.contains(['=', ' ']));
                 if bad {
-                    ui.label(RichText::new("A name has no = or space").size(12.0).color(c.err));
+                    ui.label(RichText::new(tr("prefs.shell.bad_name")).size(12.0).color(c.err));
                 }
-                let (save, cancel) = crate::chrome::foot(ui, egui::Button::new("Save"), !bad, "Cancel");
+                let (save, cancel) = crate::chrome::foot(ui, egui::Button::new(tr("prefs.common.save")), !bad, tr("prefs.common.cancel"));
                 if save.clicked() {
                     for old in sh.env.keys().filter(|k| !names.contains(&k.as_str())) {
                         out.push(Change::SetIn("shell.env".into(), toml_key(old), None));
@@ -1332,18 +1368,18 @@ fn shell(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut Vec
             edit.env = None;
         }
     });
-    section(ui, l, "HOOKS", |ui| {
+    section(ui, l, tr("prefs.head.hooks"), |ui| {
         let facts = seen.facts;
         let hooks = facts.map(|f| f.hooks);
-        let flip = row(ui, l, "Claude Code hooks", "Notification and Stop, in ~/.claude/settings.json: Claude Code says when it waits or is done, and which conversation to resume", |ui| {
+        let flip = row(ui, l, tr("prefs.shell.claude_hooks"), tr("prefs.shell.claude_hooks_note"), |ui| {
             let flip = match hooks {
-                Some(on) => button(ui, l, if on { "Remove" } else { "Add" }),
+                Some(on) => button(ui, l, if on { tr("prefs.common.remove") } else { tr("prefs.common.add") }),
                 None => false,
             };
             ui.add_space(8.0);
             match hooks {
-                Some(true) => status(ui, "Installed", c.done),
-                Some(false) => status(ui, "Not installed", c.dim),
+                Some(true) => status(ui, tr("prefs.common.installed"), c.done),
+                Some(false) => status(ui, tr("prefs.common.not_installed"), c.dim),
                 None => status(ui, "…", c.dim),
             }
             flip
@@ -1354,18 +1390,18 @@ fn shell(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut Vec
         sep(ui, l);
         let name = facts.map(|f| f.shell.clone()).unwrap_or_default();
         let shown = std::path::Path::new(&name).file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
-        let note = format!("Prompt marks (OSC 133) and folder (OSC 7) for {}, in its profile", if shown.is_empty() { "the shell" } else { &shown });
+        let note = trf("prefs.shell.integration_note", &[if shown.is_empty() { tr("prefs.shell.the_shell") } else { &shown }]);
         let hook = facts.map(|f| f.shell_hook);
-        let flip = row(ui, l, "Shell integration", &note, |ui| {
+        let flip = row(ui, l, tr("prefs.shell.integration"), &note, |ui| {
             let flip = match hook {
-                Some(Some(on)) => button(ui, l, if on { "Remove" } else { "Install" }),
+                Some(Some(on)) => button(ui, l, if on { tr("prefs.common.remove") } else { tr("prefs.common.install") }),
                 _ => false,
             };
             ui.add_space(8.0);
             match hook {
-                Some(Some(true)) => status(ui, "Installed", c.done),
-                Some(Some(false)) => status(ui, "Not installed", c.dim),
-                Some(None) => status(ui, &format!("No hook for {shown}"), c.dim),
+                Some(Some(true)) => status(ui, tr("prefs.common.installed"), c.done),
+                Some(Some(false)) => status(ui, tr("prefs.common.not_installed"), c.dim),
+                Some(None) => status(ui, &trf("prefs.shell.no_hook", &[&shown]), c.dim),
                 None => status(ui, "…", c.dim),
             }
             flip
@@ -1374,7 +1410,7 @@ fn shell(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut Vec
             out.push(Change::ShellHook(name.clone(), !matches!(hook, Some(Some(true)))));
         }
         sep(ui, l);
-        if row(ui, l, "The lines themselves", "To add them by hand, or somewhere else", |ui| button(ui, l, if edit.lines { "Hide" } else { "Show" })) {
+        if row(ui, l, tr("prefs.shell.lines"), tr("prefs.shell.lines_note"), |ui| button(ui, l, if edit.lines { tr("prefs.common.hide") } else { tr("prefs.common.show") })) {
             edit.lines = !edit.lines;
         }
         if edit.lines {
@@ -1382,23 +1418,23 @@ fn shell(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut Vec
             let json = crate::hooks::add("").unwrap_or_default();
             let json = json.trim_end();
             ui.label(RichText::new(json).font(FontId::monospace(11.5)).color(c.fg));
-            if ui.small_button("Copy").clicked() {
+            if ui.small_button(tr("prefs.shell.copy")).clicked() {
                 out.push(Change::Copy(json.to_owned()));
             }
             ui.add_space(6.0);
             let line = if cfg!(windows) { "tsumugi shell-hook pwsh >> $PROFILE" } else { "tsumugi shell-hook bash >> ~/.bashrc" };
             ui.label(RichText::new(line).font(FontId::monospace(12.0)).color(c.fg));
-            if ui.small_button("Copy ").clicked() {
+            if ui.small_button(format!("{} ", tr("prefs.shell.copy"))).clicked() {
                 out.push(Change::Copy(line.to_owned()));
             }
             ui.add_space(8.0);
         }
     });
     if cfg!(windows) {
-        section(ui, l, "WINDOWS", |ui| {
-            row(ui, l, "ConPTY", "The console host tsumugi talks to", |ui| match seen.facts.map(|f| f.conpty) {
-                Some(true) => status(ui, "Bundled", c.done),
-                Some(false) => status(ui, "The system's (older: lazygit and others can break)", c.wait),
+        section(ui, l, tr("prefs.head.windows"), |ui| {
+            row(ui, l, tr("prefs.shell.conpty"), tr("prefs.shell.conpty_note"), |ui| match seen.facts.map(|f| f.conpty) {
+                Some(true) => status(ui, tr("prefs.shell.bundled"), c.done),
+                Some(false) => status(ui, tr("prefs.shell.system_conpty"), c.wait),
                 None => status(ui, "…", c.dim),
             });
         });
@@ -1408,15 +1444,15 @@ fn shell(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut Vec
 fn advanced(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut Vec<Change>) {
     let c = l.c;
     let a = &seen.settings.advanced;
-    section(ui, l, "SERVER", |ui| {
-        row(ui, l, "Mux server", &seen.address, |ui| status(ui, &format!("Running · {}", seen.server_up), c.done));
+    section(ui, l, tr("prefs.head.server"), |ui| {
+        row(ui, l, tr("prefs.advanced.mux"), &seen.address, |ui| status(ui, &trf("prefs.advanced.running", &[&seen.server_up]), c.done));
         sep(ui, l);
-        if row(ui, l, "Restart the server", "Sessions are saved and come back around it", |ui| button(ui, l, "Restart")) {
+        if row(ui, l, tr("prefs.advanced.restart_server"), tr("prefs.advanced.restart_server_note"), |ui| button(ui, l, tr("prefs.common.restart"))) {
             out.push(Change::RestartServer);
         }
     });
-    section(ui, l, "DRAWING", |ui| {
-        let mut backends = vec![("auto", "Auto"), ("gl", "GL"), ("vulkan", "Vulkan")];
+    section(ui, l, tr("prefs.head.drawing"), |ui| {
+        let mut backends = vec![("auto", tr("prefs.advanced.auto")), ("gl", "GL"), ("vulkan", "Vulkan")];
         if cfg!(windows) {
             backends.push(("dx12", "DirectX 12"));
         }
@@ -1426,74 +1462,74 @@ fn advanced(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut 
         if !backends.iter().any(|(b, _)| *b == a.backend) {
             backends.push((a.backend.as_str(), a.backend.as_str()));
         }
-        let note = "Auto picks GL on Windows (AMD drivers spin a core under Vulkan); when the window opens next";
-        if let Some(b) = row(ui, l, "Graphics backend", note, |ui| select(ui, "backend", a.backend.as_str(), &backends)) {
+        let note = tr("prefs.advanced.backend_note");
+        if let Some(b) = row(ui, l, tr("prefs.advanced.backend"), note, |ui| select(ui, "backend", a.backend.as_str(), &backends)) {
             out.push(Change::Set(Some("advanced"), "backend", cfg::quote(b)));
         }
         sep(ui, l);
-        if let Some(t) = row(ui, l, "Scrollback", "Lines kept per pane, 100 to 1 000 000; for new sessions", |ui| field(ui, &mut edit.drafts, "scrollback", &a.scrollback.to_string(), "10000", 100.0)) {
+        if let Some(t) = row(ui, l, tr("prefs.advanced.scrollback"), tr("prefs.advanced.scrollback_note"), |ui| field(ui, &mut edit.drafts, "scrollback", &a.scrollback.to_string(), "10000", 100.0)) {
             if let Ok(v) = t.trim().replace(['_', ',', ' '], "").parse::<usize>() {
                 out.push(Change::Set(Some("advanced"), "scrollback", v.clamp(100, 1_000_000).to_string()));
             }
         }
     });
     let r = &seen.settings.remote;
-    section(ui, l, "OTHER MACHINES", |ui| {
-        let note = "What runs tsumugi there, over ssh: a program on the PATH or a full path. One machine's own goes in [remote.commands] in the file";
-        if let Some(t) = row(ui, l, "Command there", note, |ui| field(ui, &mut edit.drafts, "remote_command", &r.command, "tsumugi", 200.0)) {
+    section(ui, l, tr("prefs.head.machines"), |ui| {
+        let note = tr("prefs.advanced.remote_note");
+        if let Some(t) = row(ui, l, tr("prefs.advanced.command_there"), note, |ui| field(ui, &mut edit.drafts, "remote_command", &r.command, "tsumugi", 200.0)) {
             let t = t.trim();
             out.push(Change::Set(Some("remote"), "command", cfg::quote(if t.is_empty() { "tsumugi" } else { t })));
         }
         sep(ui, l);
-        let hosts = if r.hosts.is_empty() { "None yet".to_owned() } else { r.hosts.join(", ") };
-        row(ui, l, "Reached again on start", "The machines reached before; Forget in MACHINES takes one off", |ui| status(ui, &hosts, c.fg));
+        let hosts = if r.hosts.is_empty() { tr("prefs.advanced.none_yet").to_owned() } else { r.hosts.join(tr("prefs.common.list_sep")) };
+        row(ui, l, tr("prefs.advanced.reached"), tr("prefs.advanced.reached_note"), |ui| status(ui, &hosts, c.fg));
     });
-    section(ui, l, "FILES", |ui| {
-        if row(ui, l, "Log what each pane sends and receives", "For bug reports: pane-logs beside the saved tabs, for new sessions. Off by default", |ui| switch(ui, l, a.pane_log)) {
+    section(ui, l, tr("prefs.head.files"), |ui| {
+        if row(ui, l, tr("prefs.advanced.pane_log"), tr("prefs.advanced.pane_log_note"), |ui| switch(ui, l, a.pane_log)) {
             out.push(Change::Set(Some("advanced"), "pane_log", (!a.pane_log).to_string()));
         }
         sep(ui, l);
-        if row(ui, l, "Settings folder", &seen.settings_path, |ui| button(ui, l, "Open")) {
+        if row(ui, l, tr("prefs.advanced.settings_folder"), &seen.settings_path, |ui| button(ui, l, tr("prefs.common.open"))) {
             out.push(Change::OpenFolder);
         }
         sep(ui, l);
-        row(ui, l, "Saved tabs", &seen.state_path, |_| ());
+        row(ui, l, tr("prefs.advanced.saved_tabs"), &seen.state_path, |_| ());
         sep(ui, l);
-        if row(ui, l, "Export or import settings", "One file with the settings, themes and profiles, into Downloads", |ui| button(ui, l, "Export…")) {
+        if row(ui, l, tr("prefs.advanced.export"), tr("prefs.advanced.export_note"), |ui| button(ui, l, tr("prefs.advanced.export_button"))) {
             out.push(Change::Export);
         }
         ui.horizontal(|ui| {
-            ui.add(egui::TextEdit::singleline(&mut edit.import).hint_text("The export to read back, a full path").desired_width(360.0).font(FontId::monospace(12.5)));
-            if ui.add_enabled(!edit.import.trim().is_empty(), egui::Button::new("Import")).on_hover_text("The files there now are kept beside them as .bak").clicked() {
+            ui.add(egui::TextEdit::singleline(&mut edit.import).hint_text(tr("prefs.advanced.import_hint")).desired_width(360.0).font(FontId::monospace(12.5)));
+            if ui.add_enabled(!edit.import.trim().is_empty(), egui::Button::new(tr("prefs.advanced.import"))).on_hover_text(tr("prefs.advanced.import_hover")).clicked() {
                 out.push(Change::Import(edit.import.trim().to_owned()));
                 edit.import.clear();
             }
         });
         ui.add_space(8.0);
         sep(ui, l);
-        row(ui, l, "Usage data", "tsumugi sends nothing anywhere", |ui| status(ui, "None", c.fg));
+        row(ui, l, tr("prefs.advanced.usage"), tr("prefs.advanced.usage_note"), |ui| status(ui, tr("prefs.common.none"), c.fg));
     });
 }
 
 fn theme(ui: &mut egui::Ui, l: Look, pal: &Palette, seen: &Seen, out: &mut Vec<Change>) {
     let s = seen.settings;
-    let note = "Themes in themes/ beside the settings or in uchmk/themes/ show here too.";
+    let note = tr("prefs.theme.note");
     let mut more = None;
     let changes = ito_prefs::theme_page(ui, l, words(), seen.themes, seen.choice, note, |ui| {
         preview(ui, pal);
         // What else the window looks like, a click away on its page.
         let f = &s.font;
-        let family = if f.family.is_empty() { "Automatic" } else { f.family.as_str() };
+        let family = if f.family.is_empty() { tr("prefs.common.automatic") } else { f.family.as_str() };
         let material = match s.window.material.as_str() {
-            "none" => "None",
+            "none" => tr("prefs.common.none"),
             "mica" => "Mica",
             "acrylic" => "Acrylic",
             other => other,
         };
-        let motion = if s.appearance.animations { "On" } else { "Off" };
+        let motion = if s.appearance.animations { tr("prefs.common.on") } else { tr("prefs.common.off") };
         ui.add_space(6.0);
-        let line = format!("Font {family} {} · Window {material} · Motion {motion}", f.size);
-        if ui.add(egui::Label::new(RichText::new(line).size(12.0).color(l.c.dim)).sense(egui::Sense::click())).on_hover_text("On the Appearance page").clicked() {
+        let line = trf("prefs.theme.line", &[family, &f.size.to_string(), material, motion]);
+        if ui.add(egui::Label::new(RichText::new(line).size(12.0).color(l.c.dim)).sense(egui::Sense::click())).on_hover_text(tr("prefs.theme.hover")).clicked() {
             more = Some(Change::GoTo(Page::Appearance));
         }
     });
@@ -1696,13 +1732,16 @@ mod tests {
     #[test]
     fn every_row_is_in_the_search_index() {
         let source = include_str!("prefs.rs");
-        let needle = ["row(ui", ", l, \""].concat();
+        let needle = ["row(ui", ", l, tr(\""].concat();
+        let index = index();
         let missing: Vec<&str> = source
             .split(needle.as_str())
             .skip(1)
             .filter_map(|rest| rest.split('"').next())
-            .filter(|label| !INDEX.iter().any(|(_, words)| *label == *words || (words.len() >= 8 && label.contains(words))))
+            .map(tr)
+            .filter(|label| !index.iter().any(|(_, words)| *label == *words || (words.len() >= 8 && label.contains(words))))
             .collect();
+        assert!(source.split(needle.as_str()).count() > 60, "the rows' labels are looked up by key");
         assert!(missing.is_empty(), "rows the search cannot find: {missing:?}");
     }
 
@@ -1718,7 +1757,7 @@ mod tests {
             run.frame(&mut screen, Vec::new());
             let (_, texts) = run.frame(&mut screen, Vec::new());
             assert!(find(&texts, page.title()).is_some(), "{page:?}: its title");
-            for (_, words) in INDEX.iter().filter(|(p, words)| *p == page && !SOMETIMES.contains(words)) {
+            for (_, words) in index().into_iter().filter(|(p, words)| *p == page && !SOMETIMES.contains(words)) {
                 assert!(find(&texts, words).is_some(), "{page:?} has no `{words}`: {:?}", texts.iter().map(|t| &t.0).collect::<Vec<_>>());
             }
         }

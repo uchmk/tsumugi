@@ -40,8 +40,8 @@ pub fn current_language() -> &'static str {
     AVAILABLE[CHOSEN.load(Ordering::Relaxed).min(AVAILABLE.len() - 1)].0
 }
 
-fn get() -> &'static Table {
-    let all = TABLES.get_or_init(|| {
+fn tables() -> &'static Vec<Table> {
+    TABLES.get_or_init(|| {
         AVAILABLE
             .iter()
             .map(|(l, _)| {
@@ -52,8 +52,18 @@ fn get() -> &'static Table {
                 t
             })
             .collect()
-    });
+    })
+}
+
+fn get() -> &'static Table {
+    let all = tables();
     &all[CHOSEN.load(Ordering::Relaxed).min(all.len() - 1)]
+}
+
+/// The English text for `key` whatever the language in force: the
+/// settings' search finds a row by its English words too.
+pub fn tr_en(key: &str) -> &str {
+    tables()[0].tr(key)
 }
 
 /// The text for `key` in the chosen language; the key itself when no table
