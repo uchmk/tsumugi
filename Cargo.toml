@@ -4,7 +4,7 @@ members = ["crates/*"]
 
 # One version for the workspace: it is what CHANGELOG.md and the tags follow.
 [workspace.package]
-version = "0.94.1"
+version = "0.94.2"
 edition = "2021"
 rust-version = "1.95"
 license = "MIT OR Apache-2.0"
