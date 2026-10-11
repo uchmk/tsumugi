@@ -5,6 +5,12 @@
 
 ## [未リリース]
 
+## [0.103.3] - 2026-10-11
+
+### 修正
+- TESTING.md のトリガーの行（2.62〜2.65・2.75）が bash 前提で、Windows の既定の pwsh では `echo Build succeeded` が 2 行に割れて一致しなかった。
+  語を引用符で囲んだ形（`echo "Build succeeded"`）に直し、pwsh の形を併記し、bash の行は「What you need」に Git bash（WSL の stub ではない）・`tsumugi shell-hook bash`・`mkdir /tmp` を書いた（#33）。コードは変えていない。
+
 ## [0.103.2] - 2026-10-11
 
 ### 修正
