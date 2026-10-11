@@ -1734,6 +1734,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "ito-notify"
+version = "0.17.5"
+source = "git+https://github.com/uchmk/ito?rev=f6161d4#f6161d49c5042d1ff3a0719f37a3f1e0c4574af4"
+dependencies = [
+ "windows",
+]
+
+[[package]]
 name = "ito-pane"
 version = "0.17.5"
 source = "git+https://github.com/uchmk/ito?rev=f6161d4#f6161d49c5042d1ff3a0719f37a3f1e0c4574af4"
@@ -3512,7 +3520,7 @@ dependencies = [
 
 [[package]]
 name = "tsumugi"
-version = "0.104.2"
+version = "0.104.3"
 dependencies = [
  "arboard",
  "chrono",
@@ -3525,6 +3533,7 @@ dependencies = [
  "ito-keys",
  "ito-layout",
  "ito-mcp",
+ "ito-notify",
  "ito-pane",
  "ito-prefs",
  "ito-theme",
@@ -3539,12 +3548,13 @@ dependencies = [
 
 [[package]]
 name = "tsumugi-mux"
-version = "0.104.2"
+version = "0.104.3"
 dependencies = [
  "crossbeam-channel",
  "ito-common",
  "ito-ipc",
  "ito-layout",
+ "ito-notify",
  "ito-pane",
  "postcard",
  "serde",

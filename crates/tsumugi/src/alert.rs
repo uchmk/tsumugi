@@ -9,6 +9,8 @@ use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, mpsc};
 
 use tsumugi_mux::{Notice, SessionId, State};
+use ito_notify::notifier::{Action, Notifier, Toast};
+use ito_notify::toast::App;
 
 /// Which ways to tell, per state: `[notify]` in `config.toml`.
 #[derive(Clone, Copy, Debug)]
@@ -210,6 +212,42 @@ fn restore_window(handle: isize) {
     }
 }
 
+/// The app's id to the notification service: the taskbar groups the window
+/// under it too.
+const APP_ID: &str = "uchmk.tsumugi";
+
+/// The mark beside the name, as a picture file (Windows).
+fn logo() -> Option<fn() -> Option<std::path::PathBuf>> {
+    #[cfg(windows)]
+    return Some(os::write_logo);
+    #[cfg(not(windows))]
+    None
+}
+
+/// One session's notification. Open goes to the session, as a click on the
+/// notification does; Later is the system's own dismiss. One that wants a
+/// person, or failed, stays on screen until it is dealt with. A waiting
+/// session can be answered from it (`answer_buttons`): Allow presses Enter,
+/// Deny presses Esc, checked again when the click arrives.
+fn toast(session: SessionId, title: &str, body: &str, state: Option<State>) -> Toast {
+    let act = |label: &str, arg: &str, dismiss| Action { label: label.into(), arg: arg.into(), dismiss };
+    let waiting = matches!(state, Some(State::Waiting | State::MaybeWaiting));
+    let mut actions = Vec::new();
+    if waiting && ANSWER_BUTTONS.load(std::sync::atomic::Ordering::Relaxed) {
+        actions.extend([act("Allow", "allow", false), act("Deny", "deny", false)]);
+    }
+    actions.extend([act("Open", "open", false), act("Later", "dismiss", true)]);
+    Toast {
+        title: title.into(),
+        body: body.into(),
+        // One per session: a newer one replaces the last in the Action Center.
+        tag: session.to_string(),
+        urgent: waiting || state == Some(State::Error),
+        launch: "open".into(),
+        actions,
+    }
+}
+
 /// What a click on a notification asked for.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Reply {
@@ -248,9 +286,25 @@ impl Teller {
             }
             wake();
         });
+        let notifier = Notifier::new(
+            App { id: APP_ID, name: "tsumugi" },
+            logo(),
+            Arc::new(move |tag, arg| {
+                let Ok(session) = tag.parse::<SessionId>() else { return };
+                match arg {
+                    "open" => click(session, Reply::Open),
+                    "allow" => click(session, Reply::Allow),
+                    "deny" => click(session, Reply::Deny),
+                    _ => {}
+                }
+            }),
+        );
         let _ = std::thread::Builder::new().name("alerts".into()).spawn(move || {
-            let mut os = os::System::new(window, click);
+            let mut os = os::System::new(window);
             for out in rx {
+                if let Out::Notify { session, title, body, state } = &out {
+                    notifier.show(toast(*session, &mark(*state, title), body, *state));
+                }
                 os.tell(out);
             }
         });
@@ -324,42 +378,20 @@ pub fn badge_pixels(n: usize, error: bool) -> Vec<u32> {
     px
 }
 
-/// Text put inside the notification's XML (Windows).
-#[cfg_attr(not(windows), allow(dead_code))]
-fn xml_escape(s: &str) -> String {
-    s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;")
-}
-
-/// Text put inside an AppleScript string (macOS).
-#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
-fn applescript_string(s: &str) -> String {
-    format!("\"{}\"", s.replace('\\', "\\\\").replace('"', "\\\""))
-}
-
 #[cfg(windows)]
 mod os {
     //! A toast through the notification service, and the number as an
     //! overlay on the taskbar button (`ITaskbarList3`).
 
-    use super::{Click, Out, badge_pixels, xml_escape};
-    use std::collections::VecDeque;
-    use std::sync::mpsc;
-    use tsumugi_mux::SessionId;
-    use windows::Data::Xml::Dom::XmlDocument;
-    use windows::Foundation::TypedEventHandler;
-    use windows::UI::Notifications::{ToastActivatedEventArgs, ToastNotification, ToastNotificationManager};
+    use super::{Out, badge_pixels};
     use windows::Win32::Foundation::HWND;
     use windows::Win32::Graphics::Gdi::{BI_RGB, BITMAPINFO, BITMAPINFOHEADER, CreateBitmap, CreateDIBSection, DIB_RGB_COLORS, DeleteObject, HGDIOBJ};
-    use windows::Win32::System::Com::{CLSCTX_INPROC_SERVER, COINIT_APARTMENTTHREADED, COINIT_MULTITHREADED, CoCreateInstance, CoInitializeEx};
-    use windows::Win32::System::Registry::{HKEY, HKEY_CURRENT_USER, KEY_WRITE, REG_OPTION_NON_VOLATILE, REG_SZ, RegCloseKey, RegCreateKeyExW, RegSetValueExW};
+    use windows::Win32::System::Com::{CLSCTX_INPROC_SERVER, COINIT_APARTMENTTHREADED, CoCreateInstance, CoInitializeEx};
     use windows::Win32::UI::Shell::{ITaskbarList3, SetCurrentProcessExplicitAppUserModelID, TaskbarList};
     use windows::Win32::UI::WindowsAndMessaging::{CreateIconIndirect, DestroyIcon, HICON, ICONINFO};
-    use windows::core::{HSTRING, IInspectable, Interface, w};
+    use windows::core::{HSTRING, w};
 
-    /// The app's id to the notification service. It is registered under the
-    /// user's own keys (no installer, no shortcut needed), with the name the
-    /// notifications show.
-    const APP_ID: &str = "uchmk.tsumugi";
+    use super::APP_ID;
 
     /// Before the window shows: the taskbar groups the window under the id.
     pub fn name_process() {
@@ -369,55 +401,27 @@ mod os {
     }
 
     /// The taskbar is an apartment object and lives on this thread (single
-    /// threaded); the toasts live on one of their own (multithreaded), where
-    /// their `Activated` events can arrive while this one waits for work.
+    /// threaded). The toasts are `ito-notify`'s, on a thread of its own.
     pub struct System {
         window: Option<HWND>,
         taskbar: Option<ITaskbarList3>,
-        toasts: mpsc::Sender<(SessionId, String, String, Option<super::State>)>,
     }
 
     impl System {
-        pub fn new(window: Option<isize>, click: Click) -> Self {
+        pub fn new(window: Option<isize>) -> Self {
             unsafe {
                 let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
             }
             let taskbar = unsafe { CoCreateInstance::<_, ITaskbarList3>(&TaskbarList, None, CLSCTX_INPROC_SERVER) }.ok();
             let taskbar = taskbar.filter(|t| unsafe { t.HrInit() }.is_ok());
-            let (toasts, rx) = mpsc::channel::<(SessionId, String, String, Option<super::State>)>();
-            let _ = std::thread::Builder::new().name("toasts".into()).spawn(move || {
-                unsafe {
-                    let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
-                }
-                // Kept, so a click on one still reaches its handler.
-                let mut shown = VecDeque::new();
-                let mut registered = false;
-                let mut logo = None;
-                for (session, title, body, state) in rx {
-                    // The name and the logo, written at the first notification only.
-                    if !registered {
-                        logo = write_logo();
-                        register(logo.as_deref());
-                        registered = true;
-                    }
-                    if let Ok(t) = toast(&title, &body, session, state, logo.as_deref(), click.clone()) {
-                        shown.push_back(t);
-                        if shown.len() > 50 {
-                            shown.pop_front();
-                        }
-                    }
-                }
-            });
-            Self { window: window.map(|h| HWND(h as *mut _)), taskbar, toasts }
+            Self { window: window.map(|h| HWND(h as *mut _)), taskbar }
         }
 
         pub fn tell(&mut self, out: Out) {
             match out {
-                Out::Notify { session, title, body, state } => {
-                    let _ = self.toasts.send((session, super::mark(state, &title), body, state));
-                }
-                // The window does these itself (`RequestUserAttention`, `sound`).
-                Out::Flash | Out::Sound(_) => {}
+                // The notification is the notifier's; the window does the
+                // rest itself (`RequestUserAttention`, `sound`).
+                Out::Notify { .. } | Out::Flash | Out::Sound(_) => {}
                 Out::Badge(n, error) => self.badge(n, error),
             }
         }
@@ -440,71 +444,12 @@ mod os {
 
     /// The logo (`icon::pixels`) as a PNG in the user's local app data, for the
     /// notifications to show: its path, or None if it could not be written.
-    fn write_logo() -> Option<std::path::PathBuf> {
+    pub fn write_logo() -> Option<std::path::PathBuf> {
         let dir = std::env::var_os("LOCALAPPDATA").map_or_else(std::env::temp_dir, std::path::PathBuf::from).join("tsumugi");
         std::fs::create_dir_all(&dir).ok()?;
         let path = dir.join("logo.png");
         image::save_buffer(&path, &crate::icon::pixels(128), 128, 128, image::ColorType::Rgba8).ok()?;
         Some(path)
-    }
-
-    fn register(logo: Option<&std::path::Path>) {
-        let key = HSTRING::from(format!("Software\\Classes\\AppUserModelId\\{APP_ID}"));
-        unsafe {
-            let mut k = HKEY::default();
-            if RegCreateKeyExW(HKEY_CURRENT_USER, &key, None, None, REG_OPTION_NON_VOLATILE, KEY_WRITE, None, &mut k, None).is_ok() {
-                let name: Vec<u8> = "tsumugi\0".encode_utf16().flat_map(u16::to_le_bytes).collect();
-                let _ = RegSetValueExW(k, w!("DisplayName"), None, REG_SZ, Some(&name));
-                // The small mark beside the name in the notification's header.
-                if let Some(path) = logo {
-                    let uri: Vec<u8> = format!("{}\0", path.display()).encode_utf16().flat_map(u16::to_le_bytes).collect();
-                    let _ = RegSetValueExW(k, w!("IconUri"), None, REG_SZ, Some(&uri));
-                }
-                let _ = RegCloseKey(k);
-            }
-        }
-    }
-
-    fn toast(title: &str, body: &str, session: SessionId, state: Option<super::State>, logo: Option<&std::path::Path>, click: Click) -> windows::core::Result<ToastNotification> {
-        // The logo beside the words, if it was written.
-        let image = logo.map_or_else(String::new, |p| {
-            format!("<image placement=\"appLogoOverride\" src=\"file:///{}\"/>", xml_escape(&p.display().to_string().replace('\\', "/")))
-        });
-        // Open goes to the session, as a click on the toast does; Later is
-        // the system's own dismiss (the design's Notify).
-        // One that wants a person, or failed, stays on screen until it is
-        // dealt with; a finished one goes away by itself.
-        let waiting = super::ANSWER_BUTTONS.load(std::sync::atomic::Ordering::Relaxed) && matches!(state, Some(super::State::Waiting | super::State::MaybeWaiting));
-        // A waiting session can be answered from the toast: Allow presses
-        // Enter, Deny presses Esc (checked again when the click arrives).
-        let answers = if waiting { "<action content=\"Allow\" arguments=\"allow\"/><action content=\"Deny\" arguments=\"deny\"/>" } else { "" };
-        let scenario = if matches!(state, Some(super::State::Waiting | super::State::MaybeWaiting | super::State::Error)) { " scenario=\"reminder\"" } else { "" };
-        let xml = format!(
-            "<toast launch=\"open\"{scenario}><visual><binding template=\"ToastGeneric\">{image}<text>{}</text><text>{}</text></binding></visual>\
-             <actions>{answers}<action content=\"Open\" arguments=\"open\"/><action content=\"Later\" arguments=\"dismiss\" activationType=\"system\"/></actions></toast>",
-            xml_escape(title),
-            xml_escape(body)
-        );
-        let doc = XmlDocument::new()?;
-        doc.LoadXml(&HSTRING::from(xml))?;
-        let toast = ToastNotification::CreateToastNotification(&doc)?;
-        // One per session: a newer one replaces the last in the Action
-        // Center rather than piling up.
-        toast.SetTag(&HSTRING::from(session.to_string()))?;
-        toast.SetGroup(&HSTRING::from("sessions"))?;
-        // A click on it or on Open, while tsumugi runs, goes to the session.
-        toast.Activated(&TypedEventHandler::<ToastNotification, IInspectable>::new(move |_, args| {
-            let said = args.as_ref().and_then(|a| a.cast::<ToastActivatedEventArgs>().ok()).and_then(|a| a.Arguments().ok());
-            match said.as_ref().map(|a| a.to_string()).as_deref() {
-                None | Some("" | "open") => click(session, super::Reply::Open),
-                Some("allow") => click(session, super::Reply::Allow),
-                Some("deny") => click(session, super::Reply::Deny),
-                _ => {}
-            }
-            Ok(())
-        }))?;
-        ToastNotificationManager::CreateToastNotifierWithId(&HSTRING::from(APP_ID))?.Show(&toast)?;
-        Ok(toast)
     }
 
     /// A 16 × 16 icon from BGRA pixels.
@@ -537,104 +482,23 @@ mod os {
     }
 }
 
-/// The `notify-send --action` arguments for a notification: a click on its
-/// body is `default`; a session that waits (and `answer_buttons` is on) also
-/// gets Allow and Deny.
-#[cfg_attr(windows, allow(dead_code))]
-fn notify_send_actions(answerable: bool) -> Vec<&'static str> {
-    let mut out = vec!["--action=default=Open"];
-    if answerable {
-        out.extend(["--action=allow=Allow", "--action=deny=Deny"]);
-    }
-    out.push("--wait");
-    out
-}
-
-/// What `notify-send --wait` printed: the name of the action clicked.
-#[cfg_attr(windows, allow(dead_code))]
-fn reply_of(printed: &str) -> Option<Reply> {
-    match printed.trim() {
-        "default" | "open" => Some(Reply::Open),
-        "allow" => Some(Reply::Allow),
-        "deny" => Some(Reply::Deny),
-        _ => None,
-    }
-}
-
 #[cfg(not(windows))]
 mod os {
-    //! The notification through the desktop's own tool: `notify-send` on
-    //! Linux and the BSDs, AppleScript on macOS. Not there, nothing shows.
+    //! Nothing of its own: the notifications are `ito-notify`'s, and the
+    //! number is in the window's title.
 
-    use super::{Click, Out};
-    use std::process::{Command, Stdio};
+    use super::Out;
 
     pub fn name_process() {}
 
-    pub struct System {
-        click: Click,
-    }
+    pub struct System;
 
     impl System {
-        pub fn new(_window: Option<isize>, click: Click) -> Self {
-            Self { click }
+        pub fn new(_window: Option<isize>) -> Self {
+            Self
         }
 
-        pub fn tell(&mut self, out: Out) {
-            if let Out::Notify { session, title, body, state } = out {
-                let title = super::mark(state, &title);
-                let click = self.click.clone();
-                let answerable = super::ANSWER_BUTTONS.load(std::sync::atomic::Ordering::Relaxed) && matches!(state, Some(super::State::Waiting | super::State::MaybeWaiting));
-                // Each on a thread of its own: one that can say it was
-                // clicked waits until it is closed.
-                let _ = std::thread::Builder::new().name("notify".into()).spawn(move || {
-                    if let Some(reply) = show(&title, &body, answerable) {
-                        click(session, reply);
-                    }
-                });
-            }
-        }
-    }
-
-    /// Show it; what a click on it asked for.
-    #[cfg(target_os = "macos")]
-    fn show(title: &str, body: &str, _answerable: bool) -> Option<super::Reply> {
-        // AppleScript's notifications cannot say they were clicked; a click
-        // opens Script Editor. A signed app bundle would have its own.
-        use super::applescript_string;
-        let script = format!("display notification {} with title {}", applescript_string(body), applescript_string(title));
-        let _ = Command::new("osascript").arg("-e").arg(script).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).status();
-        None
-    }
-
-    /// Show it; what a click on it asked for. libnotify 0.7.12 and later can
-    /// wait for a click (`--action --wait`) and print the action's name (the
-    /// body is `default`; a waiting session's Allow and Deny are `allow` and
-    /// `deny`); an older `notify-send` does not know the options, and shows
-    /// it plainly.
-    #[cfg(not(target_os = "macos"))]
-    fn show(title: &str, body: &str, answerable: bool) -> Option<super::Reply> {
-        use std::sync::atomic::{AtomicBool, Ordering};
-        static PLAIN: AtomicBool = AtomicBool::new(false);
-        let run = |actions: bool| {
-            let mut cmd = Command::new("notify-send");
-            cmd.arg("--app-name=tsumugi");
-            if actions {
-                cmd.args(super::notify_send_actions(answerable));
-            }
-            cmd.args(["--", title, body]).stdin(Stdio::null()).stderr(Stdio::null());
-            cmd.output()
-        };
-        if !PLAIN.load(Ordering::Relaxed) {
-            match run(true) {
-                Ok(out) if out.status.success() => return super::reply_of(&String::from_utf8_lossy(&out.stdout)),
-                // Not there at all: nothing more to try.
-                Err(_) => return None,
-                Ok(_) => PLAIN.store(true, Ordering::Relaxed),
-            }
-        }
-        let _ = run(false);
-        None
+        pub fn tell(&mut self, _out: Out) {}
     }
 }
 
@@ -647,15 +511,6 @@ mod tests {
     fn seen<'a>(looking: bool, teller: bool, muted: &'a HashSet<SessionId>) -> Seen<'a> {
         static NONE: std::sync::OnceLock<HashMap<SessionId, String>> = std::sync::OnceLock::new();
         Seen { looking, teller, muted, places: NONE.get_or_init(HashMap::new), spent: NONE.get_or_init(HashMap::new) }
-    }
-
-    #[test]
-    fn notify_send_gets_allow_and_deny_only_for_a_wait() {
-        assert_eq!(notify_send_actions(false), ["--action=default=Open", "--wait"]);
-        assert_eq!(notify_send_actions(true), ["--action=default=Open", "--action=allow=Allow", "--action=deny=Deny", "--wait"]);
-        assert_eq!((reply_of("default
-"), reply_of("allow
-"), reply_of("deny"), reply_of("")), (Some(Reply::Open), Some(Reply::Allow), Some(Reply::Deny), None));
     }
 
     #[test]
@@ -782,8 +637,13 @@ mod tests {
     }
 
     #[test]
-    fn text_is_quoted_for_each_system() {
-        assert_eq!(xml_escape("a<b & \"c\""), "a&lt;b &amp; &quot;c&quot;");
-        assert_eq!(applescript_string(r#"say "hi" \ bye"#), r#""say \"hi\" \\ bye""#);
+    fn a_toast_has_allow_and_deny_only_for_a_wait() {
+        let args = |t: &Toast| t.actions.iter().map(|a| a.arg.clone()).collect::<Vec<_>>();
+        set_answer_buttons(true);
+        let wait = toast(3, "t", "b", Some(State::Waiting));
+        assert_eq!((args(&wait), wait.urgent, wait.tag.as_str(), wait.launch.as_str()), (["allow", "deny", "open", "dismiss"].map(String::from).to_vec(), true, "3", "open"));
+        let done = toast(3, "t", "b", Some(State::Done));
+        assert_eq!((args(&done), done.urgent), (["open", "dismiss"].map(String::from).to_vec(), false));
+        assert!(toast(3, "t", "b", Some(State::Error)).urgent);
     }
 }

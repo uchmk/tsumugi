@@ -30,6 +30,7 @@ ito-common = { git = "https://github.com/uchmk/ito", rev = "f6161d4", features =
 ito-theme = { git = "https://github.com/uchmk/ito", rev = "f6161d4", features = ["pane"] }
 # The settings screen, shared with every uchmk app: the nav, the rows and
 # their controls, and the pages for common.toml (language, clock, theme).
+ito-notify = { git = "https://github.com/uchmk/ito", rev = "f6161d4" }
 ito-prefs = { git = "https://github.com/uchmk/ito", rev = "f6161d4" }
 # The key notation of `--keys` scripts (`<C-a>`), the same as kura and yagura.
 ito-keys = { git = "https://github.com/uchmk/ito", rev = "f6161d4", features = ["egui"] }

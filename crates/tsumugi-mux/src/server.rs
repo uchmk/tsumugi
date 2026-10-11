@@ -1244,6 +1244,16 @@ fn end(shared: &Shared, mut sessions: std::sync::MutexGuard<'_, BTreeMap<Session
     }
 }
 
+/// The webhook's kind of notice for a session's state.
+fn level_of(state: State) -> ito_notify::webhook::Level {
+    use ito_notify::webhook::Level;
+    match state {
+        State::Error => Level::Error,
+        State::Done => Level::Done,
+        _ => Level::Waiting,
+    }
+}
+
 /// How many of an ended session's last lines go with `Ended`.
 const ENDED_LINES: usize = 12;
 
@@ -1373,7 +1383,7 @@ fn send_finished(shared: &Shared, s: &Session) {
     let folder = i.project.file_name().map(|f| f.to_string_lossy().into_owned()).unwrap_or_default();
     let name = if i.title.trim().is_empty() { i.command.clone() } else { i.title.clone() };
     let said = if i.note.is_empty() { name } else { format!("{}\n{name}", i.note) };
-    crate::webhook::send(url, format, i.state, format!("{folder} {what}"), said, i.cwd.display().to_string());
+    ito_notify::webhook::send(url, format, level_of(i.state), format!("{folder} {what}"), said, i.cwd.display().to_string());
 }
 
 /// How often one trigger tells of a session's lines at most.
@@ -1511,7 +1521,7 @@ fn send_webhooks(shared: &Shared, sessions: &mut BTreeMap<SessionId, Session>) {
         let said = if i.note.is_empty() { "Waiting for you".to_owned() } else { i.note.clone() };
         let name = if i.title.trim().is_empty() { i.command.clone() } else { i.title.clone() };
         let message = format!("{said}\n{name} · waiting {} s", now.saturating_sub(i.since_ms) / 1000);
-        crate::webhook::send(url.clone(), format.clone(), State::Waiting, format!("{folder} is waiting for you"), message, i.cwd.display().to_string());
+        ito_notify::webhook::send(url.clone(), format.clone(), ito_notify::webhook::Level::Waiting, format!("{folder} is waiting for you"), message, i.cwd.display().to_string());
     }
 }
 

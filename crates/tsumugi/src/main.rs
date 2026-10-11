@@ -41,7 +41,7 @@ mod palette;
 mod prefs;
 mod shellhook;
 mod sort;
-mod sound;
+use ito_notify::sound;
 mod spend;
 mod theme;
 mod usage;
