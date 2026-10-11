@@ -9,6 +9,7 @@ use tsumugi_mux::SessionId;
 use tsumugi_mux::settings::{General, LARGE_PASTE};
 
 use crate::chrome;
+use crate::i18n::{tr, trf};
 use crate::theme::Colors;
 
 /// Why a paste is held.
@@ -68,14 +69,14 @@ pub fn show(ctx: &egui::Context, held: &Held, c: &Colors) -> Option<bool> {
         egui::Frame::NONE.fill(c.panel).stroke(egui::Stroke::new(1.0, c.border_strong())).corner_radius(12.0).inner_margin(egui::Margin::symmetric(20, 16)).show(ui, |ui| {
             ui.set_max_width(520.0);
             let (title, words) = match held.why {
-                Why::Lines(n) => (format!("Paste {n} lines?"), "The program here did not ask for bracketed paste, so each line runs as it lands."),
-                Why::Large(n) => (format!("Paste {} KB?", n.div_ceil(1024)), "This is a long text to send to the program."),
+                Why::Lines(n) => (trf("paste.lines", &[&n.to_string()]), tr("paste.lines_lead")),
+                Why::Large(n) => (trf("paste.large", &[&n.div_ceil(1024).to_string()]), tr("paste.large_lead")),
             };
             ui.label(RichText::new(title).size(15.0).strong().color(c.strong()));
             ui.add_space(4.0);
             ui.label(RichText::new(words).size(12.5).color(c.dim));
             if held.to.len() > 1 {
-                ui.label(RichText::new(format!("It goes to all {} panes of the tab.", held.to.len())).size(12.5).color(c.dim));
+                ui.label(RichText::new(trf("paste.all_panes", &[&held.to.len().to_string()])).size(12.5).color(c.dim));
             }
             ui.add_space(8.0);
             egui::Frame::NONE.fill(c.bg).corner_radius(6.0).inner_margin(egui::Margin::symmetric(10, 8)).show(ui, |ui| {
@@ -83,11 +84,11 @@ pub fn show(ctx: &egui::Context, held: &Held, c: &Colors) -> Option<bool> {
                 ui.label(RichText::new(preview(&held.text)).monospace().size(12.0).color(c.fg));
             });
             ui.add_space(4.0);
-            ui.label(RichText::new("Turn this off in Settings, General, Copy and paste.").size(11.5).color(c.dim));
+            ui.label(RichText::new(tr("paste.turn_off")).size(11.5).color(c.dim));
             ui.add_space(10.0);
             ui.horizontal(|ui| {
-                let paste = egui::Button::new(RichText::new("Paste").color(c.on_accent()).strong()).fill(chrome::gold());
-                let (paste, cancel) = chrome::foot(ui, paste, true, "Cancel");
+                let paste = egui::Button::new(RichText::new(tr("paste.paste")).color(c.on_accent()).strong()).fill(chrome::gold());
+                let (paste, cancel) = chrome::foot(ui, paste, true, tr("dialog.cancel"));
                 if paste.clicked() {
                     answer = Some(true);
                 }

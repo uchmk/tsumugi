@@ -6,6 +6,7 @@ use std::path::PathBuf;
 
 use eframe::egui::{self, RichText};
 
+use crate::i18n::{tr, trf};
 use crate::theme::Colors;
 
 /// How many pieces of work at most.
@@ -85,8 +86,8 @@ pub fn show(ctx: &egui::Context, view: &mut View, c: &Colors) -> Option<Answer> 
     egui::Area::new(egui::Id::new("parallel")).order(egui::Order::Foreground).anchor(egui::Align2::CENTER_TOP, egui::vec2(0.0, 70.0)).show(ctx, |ui| {
         egui::Frame::NONE.fill(c.panel).stroke(egui::Stroke::new(1.0, c.border_strong())).corner_radius(12.0).inner_margin(egui::Margin::symmetric(20, 16)).show(ui, |ui| {
             ui.set_width((screen.width() - 40.0).clamp(300.0, 600.0));
-            ui.label(RichText::new("Start in parallel").size(16.0).strong().color(c.strong()));
-            ui.label(RichText::new("Each piece of work gets a git worktree beside the repository, on a branch of its own, and a tab with Claude Code started on its prompt.").size(12.0).color(c.dim));
+            ui.label(RichText::new(tr("parallel.title")).size(16.0).strong().color(c.strong()));
+            ui.label(RichText::new(tr("parallel.lead")).size(12.0).color(c.dim));
             ui.add_space(10.0);
             ui.label(RichText::new("REPOSITORY").size(11.0).color(c.faint()));
             ui.add(egui::TextEdit::singleline(&mut view.folder).font(egui::FontId::monospace(12.5)).desired_width(f32::INFINITY));
@@ -96,11 +97,11 @@ pub fn show(ctx: &egui::Context, view: &mut View, c: &Colors) -> Option<Answer> 
             for (k, t) in view.tasks.iter_mut().enumerate() {
                 ui.horizontal(|ui| {
                     ui.label(RichText::new(format!("{}", k + 1)).monospace().color(c.dim));
-                    let field = ui.add(egui::TextEdit::multiline(t).desired_rows(2).desired_width(ui.available_width() - 30.0).hint_text("What this one should do"));
+                    let field = ui.add(egui::TextEdit::multiline(t).desired_rows(2).desired_width(ui.available_width() - 30.0).hint_text(tr("parallel.hint")));
                     if first && k == 0 {
                         field.request_focus();
                     }
-                    if ui.small_button("×").on_hover_text("Take it out").clicked() {
+                    if ui.small_button("×").on_hover_text(tr("parallel.take_out")).clicked() {
                         gone = Some(k);
                     }
                 });
@@ -115,8 +116,8 @@ pub fn show(ctx: &egui::Context, view: &mut View, c: &Colors) -> Option<Answer> 
             let ready = view.start();
             ui.horizontal(|ui| {
                 let n = ready.as_ref().map_or(0, |s| s.tasks.len());
-                let go = egui::Button::new(RichText::new(format!("Start {n}")).color(c.on_accent()).strong()).fill(c.run);
-                let (go, cancel) = crate::chrome::foot(ui, go, ready.is_some(), "Cancel");
+                let go = egui::Button::new(RichText::new(trf("parallel.start", &[&n.to_string()])).color(c.on_accent()).strong()).fill(c.run);
+                let (go, cancel) = crate::chrome::foot(ui, go, ready.is_some(), tr("dialog.cancel"));
                 if go.clicked() {
                     answer = ready.clone().map(Answer::Start);
                 }

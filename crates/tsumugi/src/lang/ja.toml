@@ -63,6 +63,20 @@ forget = "忘れる"
 placeholders = "{folder}・{project}・{branch} はセッションごとの値になる"
 name_hint = "このプロンプトの名前"
 save = "保存"
+to = "宛先"
+to_hover = "キーのあるペイン"
+also_hover = "同じプロンプトを受け取ります。クリックで外す"
+tag_hover = "{0} のタグのセッションすべてに送る"
+queued = "{0} 件待ち"
+queued_hover = "セッションが次に終わったときに送るプロンプト"
+draft = "下書きを保存しました"
+draft_hover = "セッションごとに下書きを持ちます（開いていても閉じていても）"
+hint = "プロンプトを書く: Enter で改行、{0} で送る"
+queue = "並べる"
+send = "送る"
+when_done = "終わったら"
+when_done_hover = "プロンプトを並べる: セッションが今の仕事を終えたら送ります（{0} で 1 回だけ並べる）"
+foot = "↑ 履歴 · Enter で改行 · {0} で画像 · Esc でペインに戻る"
 
 # The settings screen (prefs.rs): page titles, leads, card heads, rows.
 [prefs.page]
@@ -603,6 +617,8 @@ old_server = "サーバーはまだ tsumugi {0} です（これは {1}）。設�
 permit = "Claude Code は {0} を尋ねずに動かすようになりました（{1}）"
 worktree_made = "worktree を作りました: {0}"
 worktree_removed = "worktree を消しました: {0}（ブランチは残ります）"
+spend_day = "今日の Claude Code の使用が ${0} を超えました: API の値段で約 {1}"
+spend_block = "この 5 時間の枠が ${0} を超えました: API の値段で約 {1}"
 
 [pane]
 swap = "入れ替える"
@@ -611,6 +627,61 @@ copy_marking = "コピーモード · 選択中 · y でコピー · v でやめ
 copy_mode = "コピーモード · 矢印か hjkl で動く · v で選ぶ · y で行をコピー · Esc で出る"
 quick_none = "クイック選択 · 画面に選べるものがありません · Esc で出る"
 quick_select = "クイック選択 · ラベルでコピー · Shift とラベルで開く · Esc で出る"
+
+[dialog]
+hooks_title = "Claude Code が待つときに tsumugi に知らせる"
+hooks_lead = "~/.claude/settings.json にフックを 2 つ足します。無くても tsumugi は出力が止まったことから推し量りますが、フックは確かですぐに届き、再起動のあとに会話を再開できます。"
+hooks_add = "フックを足す"
+hooks_never = "もう尋ねない"
+not_now = "今はしない"
+worktree_title = "worktree を消しますか？"
+worktree_lead = "{0} の最後のセッションが終わりました。ブランチは残ります。コミットしていないものがあれば git が断ります。"
+worktree_remove = "消す"
+worktree_keep = "残す"
+close_one = "まだ動いているセッションがあります"
+close_many = "まだ {0} 個のセッションが動いています"
+close_keep = "後ろで動き続けます。tsumugi をまた開けば見られます。"
+close_stop = "閉じると止まります。動かし続けるには、設定の「{0}」をオンにします。"
+close = "閉じる"
+cancel = "やめる"
+first_title = "最初のセッションを始める"
+first_claude = "フォルダーを選んでください。そこで Claude Code が起動し、この窓を閉じても動き続けます。"
+first_shell = "フォルダーを選んでください。そこでシェルが起動し、この窓を閉じても動き続けます。"
+first_other = "ほかのフォルダーを選ぶ…"
+updated_title = "tsumugi が新しくなりました"
+updated_lead = "セッションは前の版のサーバーで動いたままで、この版はそのサーバーと話せません。ここで開くにはサーバーを再起動します: シェルは止まり、タブはそれぞれのフォルダーで戻り、Claude Code は会話を再開します。"
+restarting = "サーバーを再起動しています…"
+restart = "サーバーを再起動   {0}"
+not_now_key = "今はしない   {0}"
+not_now_hover = "この窓を閉じます。セッションは動き続けます"
+
+[parallel]
+title = "並べて始める"
+lead = "仕事ごとに、リポジトリの横の git worktree（それぞれのブランチ）と、そのプロンプトで Claude Code を起動したタブを作ります。"
+hint = "これにやらせること"
+take_out = "外す"
+start = "{0} 個を始める"
+
+[find]
+no_match = "見つかりません"
+wrapped = "端から戻りました"
+hint = "ペインの中を探す"
+older = "前の一致（Shift+Enter）"
+newer = "次の一致（Enter）"
+
+[paste]
+lines = "{0} 行を貼り付けますか？"
+lines_lead = "ここのプログラムはブラケットペーストを頼んでいないので、行ごとに届いたそばから実行されます。"
+large = "{0} KB を貼り付けますか？"
+large_lead = "プログラムに送るには長い文です。"
+all_panes = "タブの {0} 個のペインすべてに送ります。"
+turn_off = "設定の General のコピーと貼り付けで切れます。"
+paste = "貼り付ける"
+
+[diff]
+title = "変更 · {0}"
+reading = "変更を読んでいます…"
+nothing = "最後のコミットから何も変わっていません。"
 
 # keys.rs's English texts (the names of the keys, the help's lines, whose a
 # key is) in Japanese; keys.rs stays English for TESTING-KEYS.md.

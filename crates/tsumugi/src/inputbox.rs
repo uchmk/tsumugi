@@ -11,7 +11,7 @@ use std::path::PathBuf;
 use eframe::egui::{self, FontId, RichText};
 use tsumugi_mux::SessionId;
 
-use crate::i18n::tr;
+use crate::i18n::{tr, trf};
 use crate::theme::Colors;
 
 /// How many prompts the history keeps.
@@ -271,9 +271,9 @@ impl InputBox {
             ui.set_width(ui.available_width());
             // Where it goes: the pane, or tags instead.
             ui.horizontal(|ui| {
-                ui.label(RichText::new("To").size(12.0).color(c.dim));
+                ui.label(RichText::new(tr("inputbox.to")).size(12.0).color(c.dim));
                 let pane_on = self.to_tags.is_empty();
-                if ui.selectable_label(pane_on, RichText::new(name).size(12.0)).on_hover_text("The pane with the keys").clicked() {
+                if ui.selectable_label(pane_on, RichText::new(name).size(12.0)).on_hover_text(tr("inputbox.to_hover")).clicked() {
                     self.to_tags.clear();
                 }
                 // Others picked to get the same prompt, each taken off by a click.
@@ -281,7 +281,7 @@ impl InputBox {
                     let mut gone = None;
                     for s in &self.to_also {
                         let n = others.iter().find(|(o, _)| o == s).map_or("", |(_, n)| n.as_str());
-                        if ui.selectable_label(true, RichText::new(format!("+ {n}")).size(12.0)).on_hover_text("Gets the same prompt: click to take it off").clicked() {
+                        if ui.selectable_label(true, RichText::new(format!("+ {n}")).size(12.0)).on_hover_text(tr("inputbox.also_hover")).clicked() {
                             gone = Some(*s);
                         }
                     }
@@ -335,7 +335,7 @@ impl InputBox {
                     if on {
                         ui.painter().rect_stroke(r.expand(1.5), 5.0, egui::Stroke::new(1.0, c.strong()), egui::StrokeKind::Outside);
                     }
-                    if resp.on_hover_text(format!("Send to every session tagged {t}")).clicked() {
+                    if resp.on_hover_text(trf("inputbox.tag_hover", &[t])).clicked() {
                         if on {
                             self.to_tags.retain(|x| x != t);
                         } else {
@@ -394,10 +394,10 @@ impl InputBox {
                     }
                     menus_open |= menu.1.is_some();
                     if queued > 0 {
-                        ui.label(RichText::new(format!("{queued} queued")).size(11.5).color(c.wait)).on_hover_text("Prompts that go when the session is next done");
+                        ui.label(RichText::new(trf("inputbox.queued", &[&queued.to_string()])).size(11.5).color(c.wait)).on_hover_text(tr("inputbox.queued_hover"));
                     }
                     // The design's: every session keeps its draft.
-                    ui.label(RichText::new("Draft saved").size(11.5).color(c.faint())).on_hover_text("Each session keeps its own draft, open or closed");
+                    ui.label(RichText::new(tr("inputbox.draft")).size(11.5).color(c.faint())).on_hover_text(tr("inputbox.draft_hover"));
                 });
             });
             // A line under where it goes (the design's).
@@ -405,7 +405,7 @@ impl InputBox {
             ui.painter().hline(line.x_range().expand(12.0), line.center().y, egui::Stroke::new(1.0, c.border));
             let edit = egui::TextEdit::multiline(&mut draft.text)
                 .id(id)
-                .hint_text("Write a prompt: Enter is a new line, Ctrl+Enter sends")
+                .hint_text(trf("inputbox.hint", &[if cfg!(target_os = "macos") { "Cmd+Enter" } else { "Ctrl+Enter" }]))
                 .desired_rows(4)
                 .desired_width(f32::INFINITY)
                 .font(FontId::proportional(14.0))
@@ -435,13 +435,12 @@ impl InputBox {
                 }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     let key = if cfg!(target_os = "macos") { "Cmd+Enter" } else { "Ctrl+Enter" };
-                    let label = if self.later { "Queue" } else { "Send" };
+                    let label = if self.later { tr("inputbox.queue") } else { tr("inputbox.send") };
                     let button = egui::Button::new(RichText::new(format!("{label}   {key}")).color(c.on_accent()).strong()).fill(if self.later { c.wait } else { c.run }).min_size(egui::vec2(110.0, 28.0));
                     let empty = draft.text.trim().is_empty() && draft.files.is_empty();
                     let clicked = ui.add_enabled(!empty, button).clicked();
                     let shift = if cfg!(target_os = "macos") { "Cmd+Shift+Enter" } else { "Ctrl+Shift+Enter" };
-                    ui.toggle_value(&mut self.later, RichText::new("When done").size(12.0))
-                        .on_hover_text(format!("Queue the prompt: it goes when the session has finished what it is doing ({shift} queues once)"));
+                    ui.toggle_value(&mut self.later, RichText::new(tr("inputbox.when_done")).size(12.0)).on_hover_text(trf("inputbox.when_done_hover", &[shift]));
                     if (clicked || send || later_key) && !empty {
                         let text = Self::prompt(&draft);
                         let to = if !self.to_tags.is_empty() {
@@ -457,7 +456,7 @@ impl InputBox {
                         draft = Draft::default();
                     }
                     let paste = if cfg!(target_os = "macos") { "Cmd+V" } else { "Ctrl+V" };
-                    ui.label(RichText::new(format!("↑ history · Enter new line · {paste} an image · Esc back to the pane")).size(11.5).color(c.faint()));
+                    ui.label(RichText::new(trf("inputbox.foot", &[paste])).size(11.5).color(c.faint()));
                 });
             });
         });

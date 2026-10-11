@@ -660,10 +660,10 @@ fn hooks_card(ui: &mut egui::Ui, width: f32, full: bool) -> Option<u8> {
             ui.horizontal(|ui| {
                 let (dot, _) = ui.allocate_exact_size(egui::vec2(8.0, 8.0), egui::Sense::hover());
                 ui.painter().circle_filled(dot.center(), 4.0, c.wait);
-                ui.label(egui::RichText::new("Let Claude Code tell tsumugi when it waits").size(15.0).strong().color(c.strong()));
+                ui.label(egui::RichText::new(tr("dialog.hooks_title")).size(15.0).strong().color(c.strong()));
             });
             ui.add_space(4.0);
-            ui.label(egui::RichText::new("Adds two hooks to ~/.claude/settings.json. Without them tsumugi still guesses from quiet output, but a hook is certain and instant, and lets a restart resume the conversation.").size(13.0).color(c.dim));
+            ui.label(egui::RichText::new(tr("dialog.hooks_lead")).size(13.0).color(c.dim));
             ui.add_space(6.0);
             if full {
                 egui::Frame::NONE.fill(c.side).corner_radius(8.0).inner_margin(egui::Margin::symmetric(12, 10)).show(ui, |ui| {
@@ -674,15 +674,15 @@ fn hooks_card(ui: &mut egui::Ui, width: f32, full: bool) -> Option<u8> {
             }
             ui.add_space(8.0);
             ui.horizontal(|ui| {
-                let add = egui::Button::new(egui::RichText::new("Add the hooks").color(c.on_accent()).strong()).fill(c.wait).min_size(egui::vec2(0.0, 34.0));
+                let add = egui::Button::new(egui::RichText::new(tr("dialog.hooks_add")).color(c.on_accent()).strong()).fill(c.wait).min_size(egui::vec2(0.0, 34.0));
                 if ui.add(add).clicked() {
                     answer = Some(0);
                 }
-                if ui.add(egui::Button::new("Not now").min_size(egui::vec2(0.0, 34.0))).clicked() {
+                if ui.add(egui::Button::new(tr("dialog.not_now")).min_size(egui::vec2(0.0, 34.0))).clicked() {
                     answer = Some(1);
                 }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if ui.add(egui::Button::new(egui::RichText::new("Don't ask again").size(12.5).color(c.dim)).frame(false)).clicked() {
+                    if ui.add(egui::Button::new(egui::RichText::new(tr("dialog.hooks_never")).size(12.5).color(c.dim)).frame(false)).clicked() {
                         answer = Some(2);
                     }
                 });
@@ -3400,13 +3400,13 @@ impl App {
                 .inner_margin(egui::Margin::symmetric(20, 16))
                 .show(ui, |ui| {
                     ui.set_max_width(460.0);
-                    ui.label(egui::RichText::new("Remove the worktree?").size(15.0).strong().color(crate::theme::colors().strong()));
+                    ui.label(egui::RichText::new(tr("dialog.worktree_title")).size(15.0).strong().color(crate::theme::colors().strong()));
                     ui.add_space(4.0);
-                    ui.label(egui::RichText::new(format!("The last session in {} has ended. Its branch stays; git refuses if anything is not committed.", home_short(&path))).size(12.5).color(crate::theme::colors().dim));
+                    ui.label(egui::RichText::new(trf("dialog.worktree_lead", &[&home_short(&path)])).size(12.5).color(crate::theme::colors().dim));
                     ui.add_space(10.0);
                     ui.horizontal(|ui| {
-                        let remove = egui::Button::new(egui::RichText::new("Remove").color(crate::theme::colors().on_accent()).strong()).fill(chrome::red());
-                        let (remove, keep) = chrome::foot(ui, remove, true, "Keep");
+                        let remove = egui::Button::new(egui::RichText::new(tr("dialog.worktree_remove")).color(crate::theme::colors().on_accent()).strong()).fill(chrome::red());
+                        let (remove, keep) = chrome::foot(ui, remove, true, tr("dialog.worktree_keep"));
                         if remove.clicked() {
                             answer = Some(true);
                         }
@@ -3458,20 +3458,16 @@ impl App {
                 .inner_margin(egui::Margin::symmetric(20, 16))
                 .show(ui, |ui| {
                     ui.set_max_width(460.0);
-                    let title = if running == 1 { "A session is still running".to_string() } else { format!("{running} sessions are still running") };
+                    let title = if running == 1 { tr("dialog.close_one").to_owned() } else { trf("dialog.close_many", &[&running.to_string()]) };
                     ui.label(egui::RichText::new(title).size(15.0).strong().color(crate::theme::colors().strong()));
                     ui.add_space(4.0);
-                    let words = if general.keep_sessions {
-                        "They go on in the background; open tsumugi again to see them."
-                    } else {
-                        "Closing stops them. Turn on \"Keep sessions running\" in Settings to keep them going."
-                    };
+                    let words = if general.keep_sessions { tr("dialog.close_keep").to_owned() } else { trf("dialog.close_stop", &[tr("prefs.general.keep_sessions")]) };
                     ui.label(egui::RichText::new(words).size(12.5).color(crate::theme::colors().dim));
                     ui.add_space(10.0);
                     ui.horizontal(|ui| {
                         let fill = if general.keep_sessions { chrome::gold() } else { chrome::red() };
-                        let close = egui::Button::new(egui::RichText::new("Close").color(crate::theme::colors().on_accent()).strong()).fill(fill);
-                        let (close, cancel) = chrome::foot(ui, close, true, "Cancel");
+                        let close = egui::Button::new(egui::RichText::new(tr("dialog.close")).color(crate::theme::colors().on_accent()).strong()).fill(fill);
+                        let (close, cancel) = chrome::foot(ui, close, true, tr("dialog.cancel"));
                         if close.clicked() {
                             answer = Some(true);
                         }
@@ -3633,11 +3629,11 @@ impl App {
         egui::ScrollArea::vertical().id_salt("first-run").show(&mut inner, |ui| {
             ui.vertical_centered(|ui| {
                 ui.add_space((rect.height() * 0.12).min(80.0));
-                ui.label(egui::RichText::new("Start your first session").size(26.0).strong().color(c.strong()));
+                ui.label(egui::RichText::new(tr("dialog.first_title")).size(26.0).strong().color(c.strong()));
                 ui.add_space(6.0);
                 let what = match start {
-                    newsession::Start::Shell => "Pick a folder. A shell starts there, and keeps running even when this window closes.",
-                    _ => "Pick a folder. Claude Code starts there, and keeps running even when this window closes.",
+                    newsession::Start::Shell => tr("dialog.first_shell"),
+                    _ => tr("dialog.first_claude"),
                 };
                 ui.label(egui::RichText::new(what).size(14.0).color(c.dim));
                 ui.add_space(24.0);
@@ -3661,7 +3657,7 @@ impl App {
                     let (r, resp) = ui.allocate_exact_size(egui::vec2(520.0, 40.0), egui::Sense::click());
                     let p = ui.painter();
                     chrome::dashed_outline(p, r, if resp.hovered() { c.dim } else { c.border_strong() });
-                    p.text(egui::pos2(r.left() + 14.0, r.center().y), egui::Align2::LEFT_CENTER, "Choose another folder…", egui::FontId::proportional(13.0), c.dim);
+                    p.text(egui::pos2(r.left() + 14.0, r.center().y), egui::Align2::LEFT_CENTER, tr("dialog.first_other"), egui::FontId::proportional(13.0), c.dim);
                     other = resp.clicked();
                 });
                 if self.hooks_offered {
@@ -6086,13 +6082,11 @@ impl App {
         // this version's, which offers them back.
         let c = theme::colors();
         inner.add_space((rect.height() / 2.0 - 140.0).max(0.0));
-        inner.label(egui::RichText::new("tsumugi was updated").size(20.0).strong().color(c.strong()));
+        inner.label(egui::RichText::new(tr("dialog.updated_title")).size(20.0).strong().color(c.strong()));
         inner.add_space(10.0);
         inner.scope(|ui| {
             ui.set_max_width(560.0);
-            let words = "Your sessions are still running in the server of the version you had before, which this version cannot talk to. \
-                         Restart the server to open them here: their shells stop, and the tabs come back in their folders, \
-                         Claude Code resuming its conversations.";
+            let words = tr("dialog.updated_lead");
             ui.label(egui::RichText::new(words).size(13.5).color(c.dim));
         });
         inner.add_space(18.0);
@@ -6100,19 +6094,19 @@ impl App {
         let unasked = !std::mem::replace(&mut self.replaced_unasked, true) && restart_after_update();
         if self.replacing.is_some() {
             inner.ctx().request_repaint_after(Duration::from_millis(200));
-            inner.label(egui::RichText::new("Restarting the server…").size(13.5).color(c.dim));
+            inner.label(egui::RichText::new(tr("dialog.restarting")).size(13.5).color(c.dim));
         } else if unasked {
             let ctx = inner.ctx().clone();
             self.replacing = Some(replace_server(move || ctx.request_repaint()));
         } else {
             let (enter, esc) = inner.input(|i| (i.key_pressed(egui::Key::Enter), i.key_pressed(egui::Key::Escape)));
-            let restart = inner.add(egui::Button::new(egui::RichText::new("Restart the server   Enter").color(c.on_accent()).strong()).fill(c.run).min_size(egui::vec2(220.0, 32.0)));
+            let restart = inner.add(egui::Button::new(egui::RichText::new(trf("dialog.restart", &["Enter"])).color(c.on_accent()).strong()).fill(c.run).min_size(egui::vec2(220.0, 32.0)));
             inner.add_space(6.0);
-            let later = inner.add(egui::Button::new(egui::RichText::new("Not now   Esc").size(12.5)).frame(false));
+            let later = inner.add(egui::Button::new(egui::RichText::new(trf("dialog.not_now_key", &["Esc"])).size(12.5)).frame(false));
             if restart.clicked() || enter {
                 let ctx = inner.ctx().clone();
                 self.replacing = Some(replace_server(move || ctx.request_repaint()));
-            } else if later.on_hover_text("Close this window; the sessions go on running").clicked() || esc {
+            } else if later.on_hover_text(tr("dialog.not_now_hover")).clicked() || esc {
                 inner.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
             }
         }

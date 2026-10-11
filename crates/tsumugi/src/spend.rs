@@ -4,6 +4,7 @@
 //! figure, after `[prices]` changed, is no new day), the block's again only
 //! in the next block.
 
+use crate::i18n::trf;
 use crate::usage::Usage;
 
 #[derive(Default)]
@@ -26,12 +27,12 @@ impl Watch {
         let mut out = Vec::new();
         if day > 0 && self.day_told != Some(today) && used.today_cost >= day as f64 {
             self.day_told = Some(today);
-            out.push(format!("Today's Claude Code use passed ${day}: about {} at API prices", crate::price::dollars(used.today_cost)));
+            out.push(trf("toast.spend_day", &[&day.to_string(), &crate::price::dollars(used.today_cost)]));
         }
         if let Some(b) = &used.block {
             if block > 0 && self.block_told != Some(b.start_ms) && b.cost >= block as f64 {
                 self.block_told = Some(b.start_ms);
-                out.push(format!("This 5-hour block passed ${block}: about {} at API prices", crate::price::dollars(b.cost)));
+                out.push(trf("toast.spend_block", &[&block.to_string(), &crate::price::dollars(b.cost)]));
             }
         }
         out
