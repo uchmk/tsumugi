@@ -35,7 +35,7 @@
 - [~] **2.7** Split right until a pane is narrower than 20 columns → It folds into a strip with its state's dot and its name (on its side when tall); a click gives it the keys, a drag carries it
 - [x] **2.8** `exit` in one pane of a split → The pane goes and its neighbour takes its room
 - [x] **2.9** `lazygit` in a pane, move with `j`/`k`, `?` then `Esc`, then `q` → It draws, takes the keys, its menu closes on `Esc`, and quitting leaves a working prompt
-- [ ] **2.10** A person: type Japanese with the IME in a pane → The candidate window sits at the cursor and the committed text arrives once
+- [ ] **2.10** A person: type Japanese with the IME in a pane → The candidate window sits at the cursor; the committed text stays where it was composed (no gap, no retyping from the left) and arrives once
 - [x] **2.11** On a JIS keyboard: `Alt+Shift+;` (`+`), then `Alt+Shift+-` → To the right, then below: neither is taken for the other
 - [~] **2.12** Drag a pane of a split by its header onto the sidebar → The sidebar lights up, **A tab of its own**, the pane's name with the pointer; dropped, the pane is a tab of its own after the one it left
 - [~] **2.13** One pane alone, and each pane of a split → Every pane is a card with room round it and a 30px heading: the state's mark, the name, the folder, short words on the right (none for a shell); its ring in the state's colour, the one with the keys too; the heading is not lit for the keys
