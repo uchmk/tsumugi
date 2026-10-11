@@ -5713,7 +5713,10 @@ impl App {
                 // An answer from the toast, only to a session still waiting:
                 // the prompt it was about may be gone by now.
                 alert::Reply::Allow | alert::Reply::Deny => {
-                    if sessions.iter().any(|i| i.id == id && matches!(i.state, State::Waiting | State::MaybeWaiting)) {
+                    let state = sessions.iter().find(|i| i.id == id).map(|i| i.state);
+                    let waiting = matches!(state, Some(State::Waiting | State::MaybeWaiting));
+                    eprintln!("toast answer {reply:?} for session {id}: state {state:?}, sent {waiting}");
+                    if waiting {
                         client.input(id, if reply == alert::Reply::Allow { vec![13] } else { vec![0x1b] });
                     }
                 }
