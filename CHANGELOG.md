@@ -5,6 +5,24 @@
 
 ## [未リリース]
 
+## [0.94.0] - 2026-10-11
+
+実機のレーンの所見・再テスト・確認事項を GitHub の issue に移し、レーンの共通のスクリプトを ito から写す形にした。ARM64 のテストを GitHub の ARM64 ランナーでも回す。
+
+### 変更
+
+- 所見は `finding`、再テストは `retest`、確認事項は `question` の issue にする（フォーム `.github/ISSUE_TEMPLATE/`）。QUESTIONS.md は Q1-Q16 の archive にし、未回答の Q12 は #15 に移した。TODO.md の「実機のレーンから」の残りは #16・#17 にした。
+- x64 のレーンは、いちばん古い開いている `retest` の issue の行を押し、PR に `Closes #N` を書く。所見は `gh issue create -l finding,lane:win` で直接立て、`vote` の質問に `vote[win]:` で票を入れる。ARM64 のレーンは再テストを取らず、自分の節（2・4・12・1）だけを押す。
+- ワークフロー `Merge lanes` は、報告に残った Proposals・Queue を `finding` の issue 1 つに、`### Votes` を質問へのコメントにし、PR に `lane-review` を付ける。TODO.md と再テストの表にはもう書かない。毎時、ラベルをそろえ、質問の票を数え（`vote-decided`・`needs-owner`・`answered`）、3 時間より起動していないレーンの状態の issue に `lane-stalled` を付ける。
+- タスクは `scripts/lane-boot.ps1` を起動する。origin/main の `scripts/` を状態フォルダに取り出して実行するので、作業フォルダが汚れていても最新のスクリプトが走る。汚れた作業フォルダは `rescue/<lane>-<日時>` ブランチに残して push してから origin/main に戻す。**タスクの登録し直しが要る**（`auto-wintest.ps1` の頭の手順）。
+- レーンの共通のスクリプト（`merge-lanes.py`・`lane-status.ps1`・`lane-marks.ps1`・`lane-boot.ps1`・`labels.sh`・`todo-open.sh`・`check-ps1.ps1`）の正は ito の `scripts/lanes/`。`scripts/lanes.sh sync` が `rev` の ito から写し、`scripts/verify.sh` が `check` で違いを見る。tsumugi の値は `scripts/lanes.conf`、tsumugi だけの確認は `scripts/check-ps1-app.ps1`。
+- ito の `rev` を v0.8.0 に上げた。
+- マージの Routine（`.claude/merge-routine.md`）は、止めた PR を `question` / `finding` の issue にし、`lane-review` の PR を読んでラベルを外す。
+
+### 追加
+
+- `.github/workflows/arm64.yml`: `windows-11-arm` と `ubuntu-24.04-arm` で `cargo test` を回す。CI が main への push と手で起動したときに呼び、リリースはこれが緑でないと何も出さない。
+
 ## [0.93.0] - 2026-10-11
 
 一覧のページを開くキーでそのページを閉じられるようにし、サーバーの再起動が古いサーバーにつなぎ直してしまう競り合いを直した（実機 #12 の 5.8・17.26）。

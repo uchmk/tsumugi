@@ -48,6 +48,13 @@ jobs:
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo clippy --workspace --all-targets --all-features --target x86_64-pc-windows-msvc -- -D warnings
 
+  # ARM64, Windows and Linux (v0.94.0): the tests on GitHub's ARM64 runners.
+  # On a push to main and by hand, not on a pull request -- the x64 jobs gate
+  # those, and this would add its wait to every one.
+  arm64:
+    if: github.event_name != 'pull_request'
+    uses: ./.github/workflows/arm64.yml
+
   powershell:
     # The Windows test lane's scripts parse, and its chunk picker picks right.
     runs-on: ubuntu-latest

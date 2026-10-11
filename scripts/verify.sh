@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Every check a push to main must pass, from a Linux machine (a cloud
 # session). The first failure stops with its output; the last line is
-# `ALL OK: ...` when everything passed. The same as filer's scripts/verify.sh.
+# `ALL OK: ...` when everything passed. Like kura's scripts/verify.sh.
 #
 # The Windows clippy is a type check only -- it never runs Windows code, so
 # read path strings by eye. Never add `cargo fmt` here.
@@ -35,6 +35,8 @@ run cargo run -q -p tsumugi --example make-testcheck -- --check
 run cargo run -q -p tsumugi --example make-keycheck -- --check
 # The rules the Merge lanes workflow merges the lanes' pull requests by.
 run python3 scripts/merge-lanes.py --self-test
+# The lanes' shared scripts are ito's (scripts/lanes.conf's files=).
+run scripts/lanes.sh check
 # The Windows test lane's scripts (scripts/check-ps1.ps1; CI runs it too).
 if command -v pwsh >/dev/null; then
     run pwsh -NoProfile -File scripts/check-ps1.ps1
