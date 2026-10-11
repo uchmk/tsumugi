@@ -584,6 +584,10 @@ fn window() -> std::process::ExitCode {
     // The design's logo as the window's and the taskbar's icon.
     let icon = egui::IconData { rgba: icon::pixels(256), width: 256, height: 256 };
     let mut viewport = egui::ViewportBuilder::default().with_title("tsumugi").with_inner_size([1280.0, 800.0]).with_min_inner_size([420.0, 260.0]).with_icon(icon);
+    // A tab dropped outside another window opens there.
+    if let Some(at) = menu::window_at() {
+        viewport = viewport.with_position(at);
+    }
     if first.window.own_titlebar() {
         // macOS keeps its traffic lights, over the band; elsewhere the band
         // draws its own buttons (chrome::top_band).
@@ -1166,8 +1170,11 @@ struct App {
     /// What the sidebar shows, and in what order (the design's 1a and 1b).
     filter: sort::Filter,
     view: View,
-    /// A tab being dragged to another place in the sidebar.
+    /// A tab being dragged to another place in the sidebar, or out of the
+    /// window into one of its own.
     dragging_tab: Option<WorkspaceId>,
+    /// Where the pointer was last seen during that drag, in the window.
+    drag_seen: Option<egui::Pos2>,
     /// The search box, while it is open (the design's 1c).
     search: Option<palette::View>,
     /// What is being typed into a tab menu's "Add a tag".
@@ -1351,6 +1358,16 @@ enum SideOp {
 
 /// Where in the server's order a tab dropped at `gap` among the rows shown
 /// goes (the server takes it out, then puts it in); `None` when it stays.
+/// Where on the screen a window torn off at `p` (in this window's points)
+/// opens: its top left a little up and left of the pointer, so the pointer
+/// is over its band. None where the system does not say where windows are
+/// (Wayland).
+fn torn_at(ctx: &egui::Context, p: egui::Pos2) -> Option<[f32; 2]> {
+    let inner = ctx.input(|i| i.viewport().inner_rect)?;
+    let at = (inner.min + p.to_vec2() - egui::vec2(60.0, 16.0)) * ctx.zoom_factor();
+    Some([at.x, at.y])
+}
+
 fn drop_index(workspaces: &[Workspace], rows: &[(WorkspaceId, egui::Rect)], dragged: WorkspaceId, gap: usize) -> Option<usize> {
     let at = |id: WorkspaceId| workspaces.iter().position(|w| w.id == id);
     let from = at(dragged)?;
@@ -1526,6 +1543,7 @@ impl App {
             filter: sort::Filter::default(),
             view: View::load(),
             dragging_tab: None,
+            drag_seen: None,
             search: None,
             tag_input: String::new(),
             settings: settings_rx,
@@ -2610,9 +2628,9 @@ impl App {
             });
         }
         // Rows can be dragged into another order in `Manual` only: in the
-        // others the order is the rule's.
+        // others the order is the rule's. Out of the window, in any order.
         let manual = self.view.sort == sort::Sort::Manual;
-        let sense = if manual { egui::Sense::click_and_drag() } else { egui::Sense::click() };
+        let sense = egui::Sense::click_and_drag();
         let mut rows: Vec<(WorkspaceId, egui::Rect)> = Vec::new();
         // No scrollbar: every card at full size while they fit, and the last
         // ones as lines when they do not (the wheel still moves a list too
@@ -3143,7 +3161,7 @@ impl App {
                             }
                             "new-window" => {
                                 if ui.button(tr("tab.new_window")).clicked() {
-                                    menu::new_window(w.id);
+                                    menu::new_window(w.id, None);
                                     ui.close();
                                 }
                             }
@@ -3202,25 +3220,35 @@ impl App {
             }
         });
         // A tab being dragged: a line where it would go, and there on release.
+        // Let go outside the window, it opens in a window of its own there
+        // (Q16); the system keeps telling where the pointer is while a
+        // button is held, even off the window.
         if let Some(dragged) = self.dragging_tab {
             let pointer = ui.ctx().pointer_latest_pos();
-            let gap = pointer.map(|p| rows.iter().take_while(|(_, r)| p.y > r.center().y).count());
+            if pointer.is_some() {
+                self.drag_seen = pointer;
+            }
+            let screen = ui.ctx().content_rect();
+            let out = self.drag_seen.is_some_and(|p| !screen.contains(p));
+            let gap = pointer.filter(|_| manual && !out).map(|p| rows.iter().take_while(|(_, r)| p.y > r.center().y).count());
+            ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
             if let (Some(gap), Some((_, first))) = (gap, rows.first()) {
                 let y = match rows.get(gap) {
                     Some((_, r)) => r.top(),
                     None => rows.last().map_or(first.bottom(), |(_, r)| r.bottom()),
                 };
                 let x = first.x_range();
-                ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
                 ui.painter().line_segment([egui::pos2(x.min + 8.0, y), egui::pos2(x.max - 8.0, y)], egui::Stroke::new(2.0, chrome::cyan()));
             }
             if ui.input(|i| !i.pointer.any_down()) {
-                if let Some(gap) = gap {
+                if out {
+                    menu::new_window(dragged, self.drag_seen.and_then(|p| torn_at(ui.ctx(), p)));
+                } else if let Some(gap) = gap {
                     if let Some(to) = drop_index(workspaces, &rows, dragged, gap) {
                         ops.push(SideOp::Move(dragged, to));
                     }
                 }
-                self.dragging_tab = None;
+                (self.dragging_tab, self.drag_seen) = (None, None);
             }
         }
         let mut toasts = Vec::new();
@@ -3921,7 +3949,7 @@ impl App {
         (self.dragging, self.moving, self.copy_mode, self.find, self.quick) = (None, None, None, None, None);
         (self.peek, self.renaming_card, self.noting_card, self.renaming) = (None, None, None, None);
         (self.opening, self.lists, self.diff, self.restore, self.paste_ask) = (None, None, None, None, None);
-        (self.shown_tab, self.dragging_tab, self.close_armed) = (None, None, None);
+        (self.shown_tab, self.dragging_tab, self.drag_seen, self.close_armed) = (None, None, None, None);
         self.shown_panes.clear();
         self.pane_at.clear();
         self.queue.clear();
@@ -4301,10 +4329,17 @@ impl App {
         self.faces_at(self.font.size)
     }
 
+    /// The cursor as the appearance settings draw it; it glides only while
+    /// animations are on.
+    fn cursor_style(&self) -> ito_pane::CursorStyle {
+        let a = &self.settings_now.appearance;
+        ito_pane::CursorStyle { glide: a.cursor_glide && a.animations, ..ito_pane::CursorStyle::from_word(&a.cursor) }
+    }
+
     fn faces_at(&self, size: f32) -> ito_pane::Faces {
         let face = |k: usize, name: &str| self.faces_found[k].then(|| egui::FontId::new(size, egui::FontFamily::Name(name.into())));
         let shaper = self.shaper.clone().filter(|_| self.settings_now.font.ligatures);
-        ito_pane::Faces { regular: egui::FontId::monospace(size), bold: face(0, fonts::BOLD), italic: face(1, fonts::ITALIC), bold_italic: face(2, fonts::BOLD_ITALIC), shaper, cursor: ito_pane::CursorStyle::from_word(&self.settings_now.appearance.cursor) }
+        ito_pane::Faces { regular: egui::FontId::monospace(size), bold: face(0, fonts::BOLD), italic: face(1, fonts::ITALIC), bold_italic: face(2, fonts::BOLD_ITALIC), shaper, cursor: self.cursor_style() }
     }
 
     /// The palettes and font sizes of the profiles the shown sessions were

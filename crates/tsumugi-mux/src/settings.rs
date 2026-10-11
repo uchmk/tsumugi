@@ -20,11 +20,13 @@
 //!
 //! # How much a pane without the keys is dimmed, in percent (1e), whether
 //! # waiting rings breathe and running tabs show a moving line, and whether
-//! # a pane flashes when its program rings the bell (BEL).
+//! # a pane flashes when its program rings the bell (BEL). `cursor_glide`
+//! # slides the cursor to where it moved instead of jumping (with animations).
 //! [appearance]
 //! dim = 35
 //! animations = true
 //! visual_bell = true
+//! cursor_glide = false
 //!
 //! # The window's frame: "tsumugi" draws its own title bar along the band
 //! # (Windows and Linux; on macOS the band runs under the traffic lights), or
@@ -458,6 +460,9 @@ pub struct Appearance {
     pub cursor: String,
     /// A pane flashes when its program rings the bell (BEL).
     pub visual_bell: bool,
+    /// The cursor slides to where it moved rather than jumping, while
+    /// animations are on.
+    pub cursor_glide: bool,
 }
 
 /// The window's frame.
@@ -525,7 +530,7 @@ impl Default for Font {
 
 impl Default for Appearance {
     fn default() -> Self {
-        Self { dim: 35, animations: true, nerd_icons: true, cursor: "block-blink".into(), visual_bell: true }
+        Self { dim: 35, animations: true, nerd_icons: true, cursor: "block-blink".into(), visual_bell: true, cursor_glide: false }
     }
 }
 
