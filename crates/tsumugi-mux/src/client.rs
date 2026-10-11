@@ -68,6 +68,10 @@ struct State {
     looking: bool,
     teller: bool,
     muted_tags: Vec<String>,
+    /// Asks to type into a session that this window is to put a box up for.
+    asks: Vec<(u64, SessionId, String)>,
+    /// The answer to `ask_send`, taken by it.
+    ask_done: Option<Result<(), String>>,
     /// The connection is gone (the server stopped, or never answered).
     lost: bool,
 }
@@ -386,6 +390,50 @@ impl Client {
         self.0.send(ToServer::Input { id, bytes: b"\r".to_vec() });
     }
 
+    /// Say this client is a window, which is to show the boxes MCP clients'
+    /// asks to type into a session come as (`asks`).
+    pub fn judge(&self) {
+        self.0.send(ToServer::Judge);
+    }
+
+    /// The asks to type into a session that wait for this window's answer.
+    pub fn asks(&self) -> Vec<(u64, SessionId, String)> {
+        self.0.lock().asks.clone()
+    }
+
+    /// Answer an ask: allow typing the text, or refuse. The first window to
+    /// answer settles it.
+    pub fn decide(&self, n: u64, allow: bool) {
+        self.0.lock().asks.retain(|a| a.0 != n);
+        self.0.send(ToServer::Decide { n, allow });
+    }
+
+    /// Ask the windows whether `text` may be typed into a session and sent
+    /// with Enter, and wait up to `wait` for a window's answer. `Ok` means it
+    /// was typed; the error says why not (refused, no window, a session that
+    /// is read-only or gone, or no answer in time).
+    pub fn ask_send(&self, id: SessionId, text: String, wait: Duration) -> Result<(), String> {
+        self.0.lock().ask_done = None;
+        self.0.send(ToServer::AskSend { id, text });
+        let deadline = std::time::Instant::now() + wait;
+        let mut st = self.0.lock();
+        loop {
+            if let Some(r) = st.ask_done.take() {
+                return r;
+            }
+            if st.lost {
+                return Err("the tsumugi server went away".into());
+            }
+            let left = deadline.saturating_duration_since(std::time::Instant::now());
+            if left.is_zero() {
+                drop(st);
+                self.0.send(ToServer::AskCancel);
+                return Err("the user did not answer in time: nothing was typed".into());
+            }
+            st = self.0.answered.wait_timeout(st, left).unwrap_or_else(|e| e.into_inner()).0;
+        }
+    }
+
     /// Send raw bytes to a session as if typed (a notification's Allow is
     /// Enter, its Deny Esc).
     pub fn input(&self, id: SessionId, bytes: Vec<u8>) {
@@ -568,6 +616,9 @@ fn receive(inner: &Inner, msg: ToClient) {
         ToClient::Attention { looking, teller } => (st.looking, st.teller) = (looking, teller),
         ToClient::MutedTags(list) => st.muted_tags = list,
         ToClient::Bell { id } => st.screens.entry(id).or_default().rang = Some(std::time::Instant::now()),
+        ToClient::Asked { n, id, text } => st.asks.push((n, id, text)),
+        ToClient::AskGone { n } => st.asks.retain(|a| a.0 != n),
+        ToClient::AskDone(r) => st.ask_done = Some(r),
         // An error answers the request waiting on one (a spawn), if any.
         ToClient::Error(e) => st.spawned.push_back(Err(e)),
     }
@@ -825,7 +876,7 @@ pub fn explain(host: &str, command: &str, e: &io::Error, code: Option<i32>, said
 
 /// What typing `text` sends, if it is one line: no line break, no control
 /// characters but Tab (which a paste drops too).
-fn typed_line(text: &str) -> Option<Vec<u8>> {
+pub(crate) fn typed_line(text: &str) -> Option<Vec<u8>> {
     if text.is_empty() || text.chars().any(|c| c != '\t' && c.is_control()) {
         return None;
     }

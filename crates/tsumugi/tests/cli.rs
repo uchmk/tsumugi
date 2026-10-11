@@ -224,6 +224,59 @@ fn send_to_a_read_only_session_is_refused() {
     assert!(!s.dir.join("no.txt").exists(), "the refused line ran");
 }
 
+/// kura #315 option 1, tsumugi's half: an MCP client's `ask_send` types
+/// nothing until a window allows it. With no window it is refused at once; a
+/// window's Refuse and the asker's own timeout type nothing; Allow types the
+/// line and runs it.
+#[test]
+fn an_ask_to_type_waits_for_a_window_and_a_refusal_types_nothing() {
+    let s = Server::new("ask");
+    let id = s.new_session(&[]);
+    let n: u64 = id.parse().unwrap();
+    let at = Address(s.address.clone());
+    let asker = Client::connect(&at, || {}).expect("an asker connects");
+    let err = asker.ask_send(n, "echo none > none.txt".into(), Duration::from_secs(5)).unwrap_err();
+    assert!(err.contains("no tsumugi window"), "{err}");
+
+    let window = Client::connect(&at, || {}).expect("a window connects");
+    window.judge();
+    let answer = |allow: bool, text: &str| {
+        let asker = asker.clone();
+        let sent = text.to_owned();
+        let t = std::thread::spawn(move || asker.ask_send(n, sent, Duration::from_secs(20)));
+        let deadline = Instant::now() + PATIENCE;
+        let ask = loop {
+            if let Some(a) = window.asks().into_iter().next() {
+                break a;
+            }
+            assert!(Instant::now() < deadline, "the window was never asked");
+            std::thread::sleep(Duration::from_millis(50));
+        };
+        assert_eq!((ask.1, ask.2.as_str()), (n, text));
+        window.decide(ask.0, allow);
+        t.join().unwrap()
+    };
+    let refused = answer(false, "echo refused > no.txt").unwrap_err();
+    assert!(refused.contains("refused"), "{refused}");
+    answer(true, "echo allowed > yes.txt").expect("allowed");
+    let deadline = Instant::now() + PATIENCE;
+    while !s.dir.join("yes.txt").exists() {
+        assert!(Instant::now() < deadline, "no yes.txt; the session shows:
+{}", s.ok(&["read", &id, "--all"]));
+        std::thread::sleep(Duration::from_millis(200));
+    }
+    assert!(!s.dir.join("no.txt").exists() && !s.dir.join("none.txt").exists(), "a line that was not allowed ran");
+
+    // Nobody answers: the asker gives up, and a late answer does nothing.
+    let t = asker.ask_send(n, "echo late > late.txt".into(), Duration::from_millis(500)).unwrap_err();
+    assert!(t.contains("did not answer"), "{t}");
+    std::thread::sleep(Duration::from_millis(300));
+    assert!(window.asks().is_empty(), "the box stayed after the asker gave up");
+    window.decide(1000, true);
+    std::thread::sleep(Duration::from_millis(500));
+    assert!(!s.dir.join("late.txt").exists());
+}
+
 /// 2.70's last clause, and starting a work log without the key: `log N
 /// PATH` (relative to where it is run) prints the file, a second start is
 /// refused while one runs, `--stop` finishes it, and a log started again at

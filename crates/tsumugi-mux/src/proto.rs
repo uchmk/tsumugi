@@ -7,7 +7,7 @@ use ito_pane::Size;
 
 /// Bumped whenever a message changes shape: a client and a server that
 /// disagree say so at `Hello` instead of misreading each other.
-pub const VERSION: u32 = 38;
+pub const VERSION: u32 = 39;
 
 /// A `Hello` with this version asks the server to stop, writing down its
 /// tabs first so the next window can bring them back. `Hello` stays the
@@ -285,6 +285,16 @@ pub enum ToServer {
     /// Say which profile a session was started from (empty for none): the
     /// windows draw it in that profile's theme and font size.
     Profile { id: SessionId, name: String },
+    /// This client is a window: it shows the boxes of `Asked`.
+    Judge,
+    /// An MCP client asks to type `text` into a session and press Enter. The
+    /// windows are asked; answered with `AskDone` once one of them has
+    /// decided (or at once, when none can be asked).
+    AskSend { id: SessionId, text: String },
+    /// The asker stopped waiting: its box goes away.
+    AskCancel,
+    /// A window's answer to `Asked`: the first one counts.
+    Decide { n: u64, allow: bool },
 }
 
 /// A line `SearchAll` found.
@@ -351,4 +361,12 @@ pub enum ToClient {
     Primary(String),
     /// The program in a session the window watches rang the bell (BEL).
     Bell { id: SessionId },
+    /// To the windows: an MCP client asks to type `text` into a session
+    /// (`n` names the ask for `Decide`).
+    Asked { n: u64, id: SessionId, text: String },
+    /// To the windows: the ask `n` is settled, by another window or by the
+    /// asker giving up; its box goes away.
+    AskGone { n: u64 },
+    /// To the asker: whether the text was typed.
+    AskDone(Result<(), String>),
 }

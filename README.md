@@ -952,16 +952,21 @@ stdout, so Claude Code (or another MCP client) can read your sessions as tools:
 | --- | --- |
 | `tsumugi_sessions` | The sessions: number, state, command, folder, branch, title, note, tags (`tsumugi ls --json`) |
 | `tsumugi_screen` | One session's last lines (`lines`, 40) or whole scrollback (`all`), by number or name (`tsumugi read`) |
+| `tsumugi_send` | Types `text` into a session and presses Enter (`tsumugi send`), only after you press Allow in a box in a tsumugi window |
 
 ```sh
 claude mcp add tsumugi -- tsumugi mcp          # the full path to tsumugi(.exe) if it is not on PATH
 ```
 
-It only reads, and only from this machine's server, which it never starts:
-with none running, the tools say tsumugi is not running. What they return
+It talks only to this machine's server, which it never starts: with none
+running, the tools say tsumugi is not running. What the reading tools return
 (the sessions' folders and screens) goes to the model like anything else
-Claude Code reads. Typing into a session from Claude Code will come later,
-behind a confirmation in the window.
+Claude Code reads. `tsumugi_send` is the one that changes anything, and it
+asks you each time: a box in the window names the session and shows the exact
+text, and nothing is typed unless you press Allow. The box starts on Refuse
+(Esc refuses too), there is no "don't ask again", and with no window open, or
+a read-only session, it refuses without asking. With no answer in two minutes
+nothing is typed.
 
 The terminal pane is the crate `ito-pane`, in [ito](https://github.com/uchmk/ito),
 the crates uchmk's apps share: [kura](https://github.com/uchmk/kura) (the

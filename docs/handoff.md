@@ -25,7 +25,7 @@
   filer 側は `chords_back`（Ctrl+Shift+C / X）・素の `\x03`・Shift+Enter の CSI-u を合わせ、ペインの節（1・19・29・40・49）を両方のレーンの再テストに積んだ。
 - **LLM との連携**（計画は filer の `docs/llm-integration.md`）: 段 1〜4 は済み（filer の 50 節は x64 #303・ARM64 #302 で通った）。
   tsumugi の TESTING.md 18.10（`tsumugi mcp` を Claude Code に登録して呼ぶ）はまだ `[ ]` で、x64 のレーンの節の順（1 → 18）で回ってくる。
-  段 5（書く道具。窓の確認の箱つき）は filer の QUESTIONS.md **Q97** で持ち主に聞いている（推奨は 1: filer のファイル操作とセッションへの入力、1 回ごとの確認の箱）。
+  段 5（書く道具。窓の確認の箱つき）は持ち主が選択肢 1 に決め（kura #315）、kura は v0.109.0、tsumugi の `tsumugi_send` は v0.105.0 で入った。実機の確認は TESTING.md 18.10a。
 
 ## 次の手順
 

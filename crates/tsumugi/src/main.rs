@@ -722,6 +722,14 @@ fn wgpu_options(backend: &str) -> eframe::WgpuConfiguration {
     options
 }
 
+/// [`connect`] for a window: the server tells it of the asks MCP clients make
+/// to type into a session, for it to put a box up for.
+fn connect_window(wake: impl Fn() + Send + Sync + Clone + 'static) -> Result<Client, String> {
+    let c = connect(wake)?;
+    c.judge();
+    Ok(c)
+}
+
 /// Connect to this user's server, starting one if none answers.
 fn connect(wake: impl Fn() + Send + Sync + Clone + 'static) -> Result<Client, String> {
     let at = tsumugi_mux::address();
@@ -846,7 +854,7 @@ fn replace_server(old: Option<Client>, wake: impl Fn() + Send + Sync + Clone + '
             std::thread::sleep(Duration::from_millis(100));
         };
         let answer = if stopped {
-            connect(wake)
+            connect_window(wake)
         } else if restarting {
             let by_hand = if cfg!(windows) { "Stop-Process -Name tsumugi" } else { "pkill -f 'tsumugi server'" };
             Err(trf("dialog.not_stopped", &[by_hand]))
@@ -863,7 +871,7 @@ fn replace_server(old: Option<Client>, wake: impl Fn() + Send + Sync + Clone + '
 fn spawn_connect(wake: impl Fn() + Send + Sync + Clone + 'static) -> std::sync::mpsc::Receiver<Result<Client, String>> {
     let (tx, rx) = std::sync::mpsc::channel();
     let _ = std::thread::Builder::new().name("connect".into()).spawn(move || {
-        let _ = tx.send(connect(wake));
+        let _ = tx.send(connect_window(wake));
     });
     rx
 }
@@ -1510,7 +1518,7 @@ impl App {
         let os_ctx = cc.egui_ctx.clone();
         let os_light = ito_common::OsLight::watch(Duration::from_secs(2), move || os_ctx.request_repaint());
         let ctx = cc.egui_ctx.clone();
-        let (client, failed, restore) = match connect(move || ctx.request_repaint()) {
+        let (client, failed, restore) = match connect_window(move || ctx.request_repaint()) {
             Ok(client) => match first_session(&client) {
                 Ok(restore) => (Some(client), None, restore),
                 Err(e) => (Some(client), Some(e), None),
@@ -3725,6 +3733,46 @@ impl App {
             }
             Some(false) => self.closing = None,
             None => {}
+        }
+    }
+
+    /// An MCP client asks to type into a session (`tsumugi_send`): a box with
+    /// the session and the exact text, Refuse the default. The first window to
+    /// answer settles it; the server takes the box away from the others.
+    fn send_asks(&mut self, ctx: &egui::Context, client: &Client, sessions: &[Info]) {
+        let Some((n, id, text)) = client.asks().into_iter().next() else { return };
+        let name = sessions.iter().find(|s| s.id == id).map_or_else(|| format!("#{id}"), |s| format!("#{id} {} · {}", s.command, s.cwd.display()));
+        let mut answer = None;
+        egui::Area::new(egui::Id::new("send-ask")).order(egui::Order::Foreground).anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0)).show(ctx, |ui| {
+            egui::Frame::NONE
+                .fill(crate::theme::colors().panel)
+                .stroke(egui::Stroke::new(1.0, crate::theme::colors().border_strong()))
+                .corner_radius(12.0)
+                .inner_margin(egui::Margin::symmetric(20, 16))
+                .show(ui, |ui| {
+                    ui.set_max_width(520.0);
+                    ui.label(egui::RichText::new(trf("dialog.send_title", &[&name])).size(15.0).strong().color(crate::theme::colors().strong()));
+                    ui.add_space(6.0);
+                    egui::ScrollArea::vertical().max_height(220.0).show(ui, |ui| {
+                        ui.label(egui::RichText::new(&text).monospace().size(12.5).color(crate::theme::colors().strong()));
+                    });
+                    ui.add_space(4.0);
+                    ui.label(egui::RichText::new(tr("dialog.send_note")).size(12.0).color(crate::theme::colors().dim));
+                    ui.add_space(10.0);
+                    ui.horizontal(|ui| {
+                        let allow = egui::Button::new(egui::RichText::new(tr("dialog.send_allow")).color(crate::theme::colors().on_accent()).strong()).fill(chrome::red());
+                        let (allow, refuse) = chrome::foot(ui, allow, true, tr("dialog.send_refuse"));
+                        if allow.clicked() {
+                            answer = Some(true);
+                        }
+                        if refuse.clicked() || ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+                            answer = Some(false);
+                        }
+                    });
+                });
+        });
+        if let Some(allow) = answer {
+            client.decide(n, allow);
         }
     }
 
@@ -6176,6 +6224,7 @@ impl App {
         }
         self.worktrees(&ctx, &client, &sessions, current.as_ref());
         self.close_window(&ctx, &client, &sessions);
+        self.send_asks(&ctx, &client, &sessions);
         if let Some(held) = &self.paste_ask {
             if let Some(yes) = paste::show(&ctx, held, &theme::colors()) {
                 let held = self.paste_ask.take().expect("shown");

@@ -88,6 +88,13 @@ struct Shared {
     /// Tags muted (`ToServer::MuteTag`), kept across a restart.
     muted_tags: Mutex<BTreeSet<String>>,
     next: AtomicU64,
+    /// The windows (`ToServer::Judge`), which are asked before an MCP client
+    /// types into a session. Locked after `sessions`.
+    judges: Mutex<BTreeSet<ClientId>>,
+    /// The asks waiting for a window: its number, who asked, the session and
+    /// the text. Locked after `sessions`, before `clients`.
+    asks: Mutex<BTreeMap<u64, (ClientId, SessionId, String)>>,
+    ask_next: AtomicU64,
     /// A session to look at: its shell said something, or a client asked.
     dirty: Sender<SessionId>,
     /// Told once, when the last session has ended.
@@ -190,6 +197,9 @@ pub fn start_with(at: &Address, options: Options) -> io::Result<ServerHandle> {
         order: Mutex::new(Vec::new()),
         muted_tags: Mutex::new(BTreeSet::new()),
         next: AtomicU64::new(1),
+        judges: Mutex::new(BTreeSet::new()),
+        asks: Mutex::new(BTreeMap::new()),
+        ask_next: AtomicU64::new(1),
         dirty: dirty_tx,
         done: done_tx,
         ever: false.into(),
@@ -281,6 +291,8 @@ fn serve(shared: Arc<Shared>, client: ClientId, conn: Conn) {
     // Gone: it watches nothing now, and its writer ends with the channel.
     lock(&shared.clients).remove(&client);
     lock(&shared.paced).remove(&client);
+    lock(&shared.judges).remove(&client);
+    drop_asks_of(&shared, client);
     {
         let mut a = lock(&shared.attention);
         a.order.retain(|c| *c != client);
@@ -296,6 +308,30 @@ fn serve(shared: Arc<Shared>, client: ClientId, conn: Conn) {
     let _ = writer.join();
 }
 
+/// Take back the asks `client` has waiting: their boxes go away.
+fn drop_asks_of(shared: &Shared, client: ClientId) {
+    let gone: Vec<u64> = {
+        let mut asks = lock(&shared.asks);
+        let gone: Vec<u64> = asks.iter().filter(|(_, a)| a.0 == client).map(|(n, _)| *n).collect();
+        for n in &gone {
+            asks.remove(n);
+        }
+        gone
+    };
+    if gone.is_empty() {
+        return;
+    }
+    let judges = lock(&shared.judges).clone();
+    let clients = lock(&shared.clients);
+    for j in judges {
+        if let Some(tx) = clients.get(&j) {
+            for n in &gone {
+                let _ = tx.send(ToClient::AskGone { n: *n });
+            }
+        }
+    }
+}
+
 /// How many lines a search across sessions gives back from one, and in all.
 const SEARCH_PER_SESSION: usize = 30;
 const SEARCH_MOST: usize = 200;
@@ -304,6 +340,64 @@ fn handle(shared: &Arc<Shared>, client: ClientId, tx: &Sender<ToClient>, msg: To
     let mut sessions = lock(&shared.sessions);
     match msg {
         ToServer::Hello { .. } => {}
+        ToServer::Judge => {
+            lock(&shared.judges).insert(client);
+        }
+        ToServer::AskSend { id, text } => {
+            let refuse = |why: &str| {
+                let _ = tx.send(ToClient::AskDone(Err(why.to_owned())));
+            };
+            match sessions.get(&id) {
+                None => refuse("no such session"),
+                Some(s) if s.info.read_only => refuse("the session is read-only: nothing was typed"),
+                Some(_) => {
+                    let judges = lock(&shared.judges).clone();
+                    let clients = lock(&shared.clients);
+                    let windows: Vec<&Sender<ToClient>> = judges.iter().filter_map(|j| clients.get(j)).collect();
+                    if windows.is_empty() {
+                        refuse("no tsumugi window is open to ask the user in: nothing was typed");
+                    } else {
+                        let n = shared.ask_next.fetch_add(1, Ordering::Relaxed);
+                        lock(&shared.asks).insert(n, (client, id, text.clone()));
+                        for w in windows {
+                            let _ = w.send(ToClient::Asked { n, id, text: text.clone() });
+                        }
+                    }
+                }
+            }
+        }
+        ToServer::AskCancel => {
+            drop(sessions);
+            drop_asks_of(shared, client);
+        }
+        ToServer::Decide { n, allow } => {
+            let Some((asker, id, text)) = lock(&shared.asks).remove(&n) else { return };
+            let result = match sessions.get_mut(&id) {
+                _ if !allow => Err("the user refused: nothing was typed".to_owned()),
+                None => Err("no such session".to_owned()),
+                Some(s) if s.info.read_only => Err("the session is read-only: nothing was typed".to_owned()),
+                Some(s) => {
+                    match crate::client::typed_line(&text) {
+                        Some(bytes) => s.term.send(bytes),
+                        None => s.term.paste(&text),
+                    }
+                    s.term.send(b"\r".to_vec());
+                    read_notices_of(shared, id);
+                    let _ = shared.dirty.send(id);
+                    Ok(())
+                }
+            };
+            let judges = lock(&shared.judges).clone();
+            let clients = lock(&shared.clients);
+            if let Some(tx) = clients.get(&asker) {
+                let _ = tx.send(ToClient::AskDone(result));
+            }
+            for j in judges {
+                if let Some(tx) = clients.get(&j) {
+                    let _ = tx.send(ToClient::AskGone { n });
+                }
+            }
+        }
         ToServer::SetCharset { id, name } => {
             if let Some(s) = sessions.get_mut(&id) {
                 if s.term.set_charset(&name) {
