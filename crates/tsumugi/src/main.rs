@@ -5731,7 +5731,30 @@ impl App {
             }
         }
         alert::set_answer_buttons(self.settings_now.notify.answer_buttons);
-        let outs = self.alerts.decide(&client.notices(), seen);
+        let notices = client.notices();
+        if self.key_log {
+            // `TSUMUGI_KEYLOG=1` also says why a notice was or was not
+            // told, once for each new one (a toast that never came).
+            static LOGGED: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+            let unread = notices.iter().filter(|n| !n.read).count();
+            if LOGGED.swap(unread, std::sync::atomic::Ordering::Relaxed) != unread {
+                let (here_now, teller_now) = (here, seen.teller);
+                eprintln!(
+                    "alert: {unread} unread; looking {} (here {here_now}, anyone {anyone}), teller {teller_now}, muted {:?}, notify rules waiting {} error {} done {}, focus_mode {} quiet_time {}",
+                    seen.looking,
+                    seen.muted,
+                    self.alerts.rules.notify.waiting,
+                    self.alerts.rules.notify.error,
+                    self.alerts.rules.notify.done,
+                    self.settings_now.notify.focus_mode,
+                    sound::quiet_time()
+                );
+            }
+        }
+        let outs = self.alerts.decide(&notices, seen);
+        if self.key_log && !outs.is_empty() {
+            eprintln!("alert: asked for {outs:?}");
+        }
         self.run_base.retain(|id, _| sessions.iter().any(|i| i.id == *id && i.state == State::Running));
         // Focus mode on: the number on the taskbar only (`[notify] focus_mode`).
         let hush = !outs.is_empty() && self.settings_now.notify.focus_mode && sound::quiet_time();
