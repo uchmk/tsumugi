@@ -1121,6 +1121,33 @@ pub enum BellAction {
 pub fn bell_list(ctx: &egui::Context, pal: &Palette, at: egui::Pos2, notices: &[Notice]) -> Option<BellAction> {
     let mut action = None;
     let now = now_ms();
+    // The row the keys are on (0 is the newest), kept between frames; ↑↓ move
+    // it, Enter opens it, Esc closes the list. None until a key is pressed.
+    let sel_id = egui::Id::new("bell-list-row");
+    let mut sel = ctx.data(|d| d.get_temp::<Option<usize>>(sel_id)).flatten();
+    let mut moved = false;
+    if !notices.is_empty() {
+        let last = notices.len() - 1;
+        ctx.input_mut(|i| {
+            if i.consume_key(egui::Modifiers::NONE, egui::Key::ArrowDown) {
+                sel = Some(sel.map_or(0, |s| (s + 1).min(last)));
+                moved = true;
+            }
+            if i.consume_key(egui::Modifiers::NONE, egui::Key::ArrowUp) {
+                sel = Some(sel.map_or(0, |s| s.saturating_sub(1)));
+                moved = true;
+            }
+        });
+        if let Some(s) = sel.filter(|_| ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Enter))) {
+            if let Some(n) = notices.iter().rev().nth(s) {
+                action = Some(BellAction::Open(n.session, n.id));
+            }
+        }
+    }
+    if ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape)) {
+        action = Some(BellAction::Close);
+    }
+    ctx.data_mut(|d| d.insert_temp(sel_id, sel));
     let area = egui::Area::new(egui::Id::new("bell-list")).order(egui::Order::Foreground).fixed_pos(at);
     let resp = area.show(ctx, |ui| {
         egui::Frame::NONE
@@ -1148,11 +1175,15 @@ pub fn bell_list(ctx: &egui::Context, pal: &Palette, at: egui::Pos2, notices: &[
                 // frame's size: a list that gained an entry stayed at 1.5 rows.
                 let rows = notices.len() as f32 * (46.0 + ui.spacing().item_spacing.y);
                 egui::ScrollArea::vertical().max_height(rows.min(420.0)).min_scrolled_height(rows.min(420.0)).auto_shrink([false, false]).show(ui, |ui| {
-                    for n in notices.iter().rev() {
+                    for (row, n) in notices.iter().rev().enumerate() {
                         let text_color = if n.read { pal.fg_dim } else { pal.fg };
                         let (rect, resp) = ui.allocate_exact_size(egui::vec2(ui.available_width(), 46.0), egui::Sense::click());
                         let p = ui.painter_at(rect);
-                        if resp.hovered() {
+                        let keyed = sel == Some(row);
+                        if keyed && moved {
+                            resp.scroll_to_me(None);
+                        }
+                        if resp.hovered() || keyed {
                             p.rect_filled(rect, 6.0, pal.selection.gamma_multiply(0.6));
                         }
                         let dot = rect.left_top() + egui::vec2(10.0, 14.0);
