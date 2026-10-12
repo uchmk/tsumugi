@@ -270,7 +270,7 @@
 ## 10. Themes
 
 - [ ] **10.1** Settings → Theme, walk the thirteen → The window and the panes recolour at once; states stay readable (gold, cyan, red, green)
-- [ ] **10.2** `theme = "system"` in `common.toml` (`%APPDATA%\uchmk`), then switch Windows between dark and light several times → tsumugi follows within seconds each time, not a switch behind
+- [x] **10.2** `theme = "system"` in `common.toml` (`%APPDATA%\uchmk`), then switch Windows between dark and light several times → tsumugi follows within seconds each time, not a switch behind
 - [ ] **10.3** Save a Windows Terminal scheme `.json` in `themes\` → It is in the list under its name; chosen, `ls` colours match Windows Terminal's with that scheme
 - [ ] **10.4** The same with an iTerm2 `.itermcolors` → As 10.3
 - [ ] **10.5** `theme.toml` with one colour → Only that colour changes in the theme in force
