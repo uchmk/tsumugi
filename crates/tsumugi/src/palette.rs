@@ -41,6 +41,8 @@ pub enum Command {
     Closed,
     /// The changes not committed in the pane's folder.
     Changes,
+    /// The page of a port the tab listens on.
+    Browser,
     /// Type into every pane of the tab, or stop.
     TypeAll,
     /// Save the pane's output to a file.
@@ -69,7 +71,7 @@ pub enum Command {
 }
 
 impl Command {
-    pub const ALL: [Command; 28] = [
+    pub const ALL: [Command; 29] = [
         Command::NewSession,
         Command::SplitRight,
         Command::SplitDown,
@@ -81,6 +83,7 @@ impl Command {
         Command::Notices,
         Command::Closed,
         Command::Changes,
+        Command::Browser,
         Command::TypeAll,
         Command::SaveOutput,
         Command::WorkLog,
@@ -115,6 +118,7 @@ impl Command {
             Command::Waiting => tr("palette.waiting").into(),
             Command::Closed => tr("palette.closed").into(),
             Command::Changes => tr("palette.changes").into(),
+            Command::Browser => tr("palette.browser").into(),
             Command::TypeAll => tr("palette.type_all").into(),
             Command::SaveOutput => tr("palette.save_output").into(),
             Command::Parallel => tr("palette.parallel").into(),
@@ -152,6 +156,7 @@ impl Command {
             Command::WorkLog => Action::WorkLog,
             Command::Closed => Action::ClosedList,
             Command::Changes => Action::Changes,
+            Command::Browser => Action::Browser,
             Command::SaveOutput => Action::SaveOutput,
             Command::SaveLayout => Action::SaveLayout,
             Command::ReadOnly => Action::ReadOnly,

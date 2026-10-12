@@ -88,6 +88,8 @@ pub enum Action {
     ClosedList,
     /// The changes not committed in the pane's folder (git diff).
     Changes,
+    /// A dev server's page beside the panes (the system's WebView; the browser on Linux).
+    Browser,
     /// Turn away typing and pasting into the pane, or let them in again.
     ReadOnly,
     /// Keep the tab's panes and splits as a layout to open again.
@@ -131,7 +133,7 @@ fn action_with(key: Key, m: Modifiers, mac: bool, bound: &[(Action, Option<Chord
 ///
 /// An empty own key is no key: the action has none until the settings give it
 /// one (the palette and the settings screen's button do it without a key).
-pub const NAMED: [(Action, &str, &str, &str); 39] = [
+pub const NAMED: [(Action, &str, &str, &str); 40] = [
     (Action::NewTab, "new_tab", "Ctrl+Shift+T", "Cmd+T"),
     (Action::CloseTab, "close_tab", "Ctrl+Shift+W", "Cmd+W"),
     (Action::NextTab, "next_tab", "Ctrl+Tab", "Ctrl+Tab"),
@@ -187,6 +189,7 @@ pub const NAMED: [(Action, &str, &str, &str); 39] = [
     // No key of their own: they are on the palette and the settings screen.
     (Action::ClosedList, "closed_sessions", "", ""),
     (Action::Changes, "changes", "", ""),
+    (Action::Browser, "browser", "", ""),
     (Action::ReadOnly, "read_only", "", ""),
     (Action::SaveOutput, "save_output", "", ""),
     (Action::RestartServer, "restart_server", "", ""),
@@ -287,6 +290,7 @@ pub fn title(a: Action) -> &'static str {
         Action::QuickSelect => "Quick select: copy a link, hash or number by its letters",
         Action::ClosedList => "Recently closed sessions",
         Action::Changes => "Changes not committed here (git diff)",
+        Action::Browser => "Browser: the page of a port this tab listens on",
         Action::ReadOnly => "Read-only: turn away typing into the pane (or let it in)",
         Action::SaveLayout => "Save this tab's layout",
         Action::SaveOutput => "Save the pane's output to a file",

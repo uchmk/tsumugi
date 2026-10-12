@@ -468,6 +468,7 @@ input_box = "入力欄: プロンプトを書く"
 waiting = "待っているセッション: まとめて答える"
 closed = "最近閉じたセッション"
 changes = "ここのコミットしていない変更（git diff）"
+browser = "ブラウザ: このタブが待ち受けているポートのページ"
 type_all = "タブのすべてのペインに打つ（または止める）"
 save_output = "ペインの出力をファイルに保存"
 parallel = "並べて始める: worktree ごとにプロンプトを 1 つ…"
@@ -719,6 +720,12 @@ all_panes = "タブの {0} 個のペインすべてに送ります。"
 turn_off = "設定の General のコピーと貼り付けで切れます。"
 paste = "貼り付ける"
 
+[browser]
+reload = "再読み込み"
+external = "システムのブラウザで開く"
+close = "ブラウザを閉じる"
+failed = "ページを表示できませんでした"
+
 [diff]
 title = "変更 · {0}"
 reading = "変更を読んでいます…"
@@ -813,6 +820,7 @@ closed = "閉じた"
 [keydesc]
 "Recently closed sessions" = "最近閉じたセッション"
 "Changes not committed here (git diff)" = "ここでまだコミットしていない変更（git diff）"
+"Browser: the page of a port this tab listens on" = "ブラウザ: このタブが待ち受けているポートのページ"
 "Read-only: turn away typing into the pane (or let it in)" = "読み取り専用: ペインに打っても届かなくする（または戻す）"
 "Save this tab's layout" = "このタブの並びを保存"
 "Save the pane's output to a file" = "ペインの出力をファイルに保存"

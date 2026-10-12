@@ -19,6 +19,7 @@
 #![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 
 mod alert;
+mod browser;
 mod answer;
 mod chrome;
 mod cli;
@@ -1194,6 +1195,9 @@ struct App {
     ended: Vec<history::Closed>,
     /// A tab's changes not committed, over the window.
     diff: Option<diffview::View>,
+    /// The built-in browser beside the panes (Windows and macOS).
+    #[cfg(any(windows, target_os = "macos"))]
+    browser: Option<browser::Browser>,
     /// A menu of the window's was open as the frame began.
     menu_open: bool,
     /// "Start in parallel", while open; and the worktrees being made for it,
@@ -1605,6 +1609,8 @@ impl App {
             help: None,
             ended: history::load(),
             diff: None,
+            #[cfg(any(windows, target_os = "macos"))]
+            browser: None,
             typing_all: std::collections::HashSet::new(),
             saving: HashMap::new(),
             parallel: None,
@@ -1905,6 +1911,10 @@ impl App {
                     let ctx = self.ctx.clone();
                     self.diff = Some(diffview::View::open(sort::display_title(&i.title, &i.command), i.cwd.clone(), move || ctx.request_repaint()));
                 }
+            }
+            keys::Action::Browser => {
+                let ports = sessions.iter().find(|i| i.id == w.focus).map(|i| i.ports.clone()).unwrap_or_default();
+                self.show_page(&browser::start_url(&ports));
             }
             keys::Action::ReadOnly => {
                 if let Some(i) = sessions.iter().find(|i| i.id == w.focus) {
@@ -2436,6 +2446,7 @@ impl App {
                     palette::Command::WorkLog => keys::Action::WorkLog,
                     palette::Command::Closed => keys::Action::ClosedList,
                     palette::Command::Changes => keys::Action::Changes,
+                    palette::Command::Browser => keys::Action::Browser,
                     palette::Command::SaveOutput => keys::Action::SaveOutput,
                     palette::Command::SaveLayout => keys::Action::SaveLayout,
                     palette::Command::ReadOnly => keys::Action::ReadOnly,
@@ -3066,7 +3077,7 @@ impl App {
                         painter.rect_filled(r, 4.0, if b.hovered() { crate::theme::colors().hover() } else { crate::theme::colors().panel });
                         painter.galley(egui::pos2(r.left() + 4.0, r.top() + 1.0), g, chrome::ink(chrome::cyan()));
                         if b.clicked() {
-                            menu::open_url(&format!("http://localhost:{port}"));
+                            self.show_page(&format!("http://localhost:{port}"));
                         }
                         x = r.right() + 5.0;
                     }
@@ -5567,7 +5578,28 @@ impl App {
         Some(ui.input(|i| i.time))
     }
 
-    fn frame(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+    /// A page of a dev server: beside the panes in the built-in browser, or
+    /// (Linux has none) in the system's.
+    fn show_page(&mut self, url: &str) {
+        #[cfg(any(windows, target_os = "macos"))]
+        {
+            match &mut self.browser {
+                Some(b) => b.go(url.to_owned()),
+                None => self.browser = Some(browser::Browser::new(url.to_owned())),
+            }
+        }
+        #[cfg(not(any(windows, target_os = "macos")))]
+        menu::open_url(url);
+    }
+
+    /// Something drawn by egui is to be seen: the page's view, always above
+    /// what egui paints, steps aside.
+    #[cfg(any(windows, target_os = "macos"))]
+    fn over_browser(&self) -> bool {
+        self.new_session.is_some() || self.search.is_some() || self.lists.is_some() || self.help.is_some() || self.diff.is_some() || self.parallel.is_some() || self.menu_open || self.bell_open.is_some() || self.closing.is_some() || self.paste_ask.is_some()
+    }
+
+    fn frame(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
         // A menu open as the frame begins has the keys: an Esc closing it,
         // or what is typed in it, does not reach the shell.
@@ -6301,6 +6333,30 @@ impl App {
         // See-through: the panes draw the window's colour round themselves
         // (backdrop::around), so it is not twice under them.
         let main_fill = if self.transparent { egui::Color32::TRANSPARENT } else { self.palette.on_cursor };
+        #[cfg(any(windows, target_os = "macos"))]
+        if self.browser.is_some() {
+            if self.failed.is_some() || self.restore.is_some() || self.prefs.is_some() {
+                if let Some(b) = &self.browser {
+                    b.hide();
+                }
+            } else {
+                let hidden = self.over_browser();
+                let shown = egui::Panel::right("browser")
+                    .resizable(true)
+                    .default_size(480.0)
+                    .size_range(280.0..=1400.0)
+                    .frame(egui::Frame::NONE.fill(crate::theme::colors().side).inner_margin(6))
+                    .show(ui, |ui| self.browser.as_mut().map(|b| b.show(ui, frame, hidden)));
+                if let Some(a) = shown.inner {
+                    if let Some(url) = a.external {
+                        menu::open_url(&url);
+                    }
+                    if a.close {
+                        self.browser = None;
+                    }
+                }
+            }
+        }
         egui::CentralPanel::default().frame(egui::Frame::NONE.fill(main_fill)).show(ui, |ui| {
             if self.transparent && (self.failed.is_some() || self.restore.is_some() || self.prefs.is_some() || current.is_none()) {
                 ui.painter().rect_filled(ui.max_rect(), 0.0, self.palette.on_cursor.gamma_multiply(self.alpha()));

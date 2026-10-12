@@ -46,6 +46,7 @@ Windows and Linux keys first; the macOS key is after `·`.
 - [x] `Ctrl+Shift+Space` · `Cmd+Shift+Space` — Quick select: copy a link, hash or number by its letters · `quick_select`
 - [~] `none (give one)` · `none (give one)` — Recently closed sessions · `closed_sessions`
 - [~] `none (give one)` · `none (give one)` — Changes not committed here (git diff) · `changes`
+- [ ] `none (give one)` · `none (give one)` — Browser: the page of a port this tab listens on · `browser`
 - [x] `none (give one)` · `none (give one)` — Read-only: turn away typing into the pane (or let it in) · `read_only`
 - [x] `none (give one)` · `none (give one)` — Save the pane's output to a file · `save_output`
 - [x] `none (give one)` · `none (give one)` — Restart the server · `restart_server`

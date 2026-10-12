@@ -21,7 +21,7 @@ pub struct Group {
 /// The changeable keys, by kind, in the order they read.
 const KINDS: [(&str, &[Action]); 4] = [
     ("Sessions and tabs", &[Action::NewTab, Action::CloseTab, Action::Rename, Action::Duplicate, Action::NextTab, Action::PrevTab, Action::NextWaiting]),
-    ("Panes", &[Action::SplitRight, Action::SplitDown, Action::Zoom, Action::TypeAll, Action::CopyMode, Action::QuickSelect, Action::Find, Action::PrevPrompt, Action::NextPrompt, Action::SwapPane, Action::Equalize, Action::PaneToTab, Action::Record, Action::WorkLog, Action::CopyOutput, Action::SaveOutput, Action::Changes, Action::ReadOnly, Action::SaveLayout]),
+    ("Panes", &[Action::SplitRight, Action::SplitDown, Action::Zoom, Action::TypeAll, Action::CopyMode, Action::QuickSelect, Action::Find, Action::PrevPrompt, Action::NextPrompt, Action::SwapPane, Action::Equalize, Action::PaneToTab, Action::Record, Action::WorkLog, Action::CopyOutput, Action::SaveOutput, Action::Changes, Action::Browser, Action::ReadOnly, Action::SaveLayout]),
     ("Lists and boxes", &[Action::Search, Action::Waiting, Action::Overview, Action::Notices, Action::Input, Action::Settings, Action::Help, Action::ClosedList]),
     ("The view", &[Action::Rail, Action::FontBigger, Action::FontSmaller, Action::FontReset, Action::RestartServer]),
 ];

@@ -371,6 +371,12 @@ under the pointer; a click there (or **Changes not committed here** in the
 search box) shows the diff, each file under its heading, added lines green
 and removed ones red, the files git does not know yet at the end.
 
+A port chip on a card (`:3000`), or **Browser** in the search box, opens that
+server's page in a panel beside the panes -- the system's WebView, so on
+Windows and macOS only; Linux opens the system's browser. The panel has an
+address bar (`3000` means `http://localhost:3000`), reload, open-outside and
+close, and its edge drags.
+
 **Start in parallel** (the search box) takes a repository and a prompt for
 each piece of work: each gets a git worktree beside the repository on a
 branch of its own (`tsumugi/1007-1432-1`, `-2`, …) and a tab where Claude

@@ -475,6 +475,7 @@ input_box = "Input box: write a prompt"
 waiting = "Waiting sessions: answer them together"
 closed = "Recently closed sessions"
 changes = "Changes not committed here (git diff)"
+browser = "Browser: the page of a port this tab listens on"
 type_all = "Type into every pane of the tab (or stop)"
 save_output = "Save the pane's output to a file"
 parallel = "Start in parallel: worktrees, one prompt each…"
@@ -725,6 +726,12 @@ large_lead = "This is a long text to send to the program."
 all_panes = "It goes to all {0} panes of the tab."
 turn_off = "Turn this off in Settings, General, Copy and paste."
 paste = "Paste"
+
+[browser]
+reload = "Reload"
+external = "Open in the system's browser"
+close = "Close the browser"
+failed = "The page could not be shown"
 
 [diff]
 title = "Changes · {0}"
