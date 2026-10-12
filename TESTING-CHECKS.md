@@ -123,9 +123,9 @@
 - [ ] **3.13** Theme tsumugi Light (and each light theme) → The waiting and error words and counts read clearly on white (WCAG 4.5 or more)
 - [ ] **3.14** A tab on a branch with an open pull request (`gh` signed in) → `· PR #N` after the branch on the second line, green when its checks pass, red when they fail, cyan while they run, grey with none; its tooltip says which
 - [ ] **3.15** The card of the tab with the keys, Claude Code talked to a few times → A line `N prompts · 12m · 3.4k tokens`; the other cards have none. A running card's third line ends with `· N tokens`
-- [ ] **3.16** `F2` → A field on the card with the name selected; Enter renames, Esc leaves it as it was
+- [~] **3.16** `F2` → A field on the card with the name selected; Enter renames, Esc leaves it as it was
 - [ ] **3.17** `Ctrl+Shift+D` (macOS `Cmd+Option+D`) in a Claude Code pane, then in a shell → A new tab in the same folder: `claude` typed in the first, a shell in the second
-- [ ] **3.18** Look at the sidebar on first start → 288px wide
+- [~] **3.18** Look at the sidebar on first start → 288px wide
 - [ ] **3.19** Right-click a card → Note…, type `the release`, Enter; restart the machine (or the server) → `“the release”` on the card under the folder; Edit the note… and an empty Enter takes it off; after the restart the note is back
 - [ ] **3.20** A tab with uncommitted changes: click its `+N −M` (or search `changes`) → The diff over the window: each file under its name, added lines green, removed red, hunks cyan, new files at the end; Esc or a click outside closes it; a lock file's large diff is cut at 512 KB
 - [ ] **3.21** Right-click a card → Save the output to a file (or search `save the pane`) → A toast names `Downloads\tsumugi-<name>-<date>-<time>.txt`; it holds the whole scrollback as the program wrote it, Japanese whole, long lines unbroken
@@ -135,7 +135,7 @@
 - [ ] **3.25** A card with tags and a PR (and a note), a card with neither → The extra lines (note, agent and ports, numbers) under the tags, or under the third line; none over another
 - [ ] **3.26** Claude Code working (its title `✳ …` or a braille spinner), and pwsh → The card's and pane heading's name without the `✳` or spinner: one mark only, the card's own on the left
 - [ ] **3.27** Click a waiting card, then a running one, then a shell → The card's ground stays dark (no fill): its ring in its state's colour, brighter, with a soft glow past it (cyan for a shell); a running card's line still runs along its top edge
-- [ ] **3.28** A plain shell's card beside an agent's → The shell's card is a line shorter: no empty third line
+- [~] **3.28** A plain shell's card beside an agent's → The shell's card is a line shorter: no empty third line
 - [ ] **3.29** Claude Code working in a tab: `F2`, type, `Esc`; right-click → Note…, type, `Esc`; and `F2` on a tab, then pick a tag filter that hides it → Each field closes as it was and Claude Code keeps working (no Esc reached it, `TSUMUGI_PTY_LOG` has no `in key` line); a hidden card's field is let go and the pane gets keys again
 - [ ] **3.30** With the Japanese IME on: right-click a card → Note…, type `にほんご`, convert with Space, Enter to commit, Enter again; the same in `F2`'s field, the menu's Rename… and the search box (`Ctrl+Shift+P`) → The reading stays underlined as it is typed and the candidates come up; the first Enter only commits the conversion, the second keeps the note (or name); `日本語` arrives whole, nothing lost or doubled
 - [ ] **3.31** Sort → Folder with three running, one waiting and one done tab in a folder → Every tab under its heading as a full card, none as one line, no "+ N more"; a click on the heading closes and opens it
