@@ -17,27 +17,30 @@ name = "make-keycheck"
 test = true
 
 [build-dependencies]
-ito-winres = { git = "https://github.com/uchmk/ito", rev = "45c4e79349df8aa0324a6f5fbd8c8f6f45f3365f" }
+ito-winres = { git = "https://github.com/uchmk/ito", rev = "279137f4366ee64ce30331f72e7fa6b9285b4236" }
 
 [dependencies]
-ito-pane = { git = "https://github.com/uchmk/ito", rev = "45c4e79349df8aa0324a6f5fbd8c8f6f45f3365f", features = ["egui", "wgpu"] }
+ito-pane = { git = "https://github.com/uchmk/ito", rev = "279137f4366ee64ce30331f72e7fa6b9285b4236", features = ["egui", "wgpu"] }
 tsumugi-mux = { path = "../tsumugi-mux" }
-ito-mcp = { git = "https://github.com/uchmk/ito", rev = "45c4e79349df8aa0324a6f5fbd8c8f6f45f3365f" }
-ito-layout = { git = "https://github.com/uchmk/ito", rev = "45c4e79349df8aa0324a6f5fbd8c8f6f45f3365f", features = ["egui"] }
+ito-mcp = { git = "https://github.com/uchmk/ito", rev = "279137f4366ee64ce30331f72e7fa6b9285b4236" }
+ito-layout = { git = "https://github.com/uchmk/ito", rev = "279137f4366ee64ce30331f72e7fa6b9285b4236", features = ["egui"] }
 # The language uchmk's apps share (common.toml), set from the settings screen.
-ito-i18n = { git = "https://github.com/uchmk/ito", rev = "45c4e79349df8aa0324a6f5fbd8c8f6f45f3365f", features = ["edit"] }
+ito-i18n = { git = "https://github.com/uchmk/ito", rev = "279137f4366ee64ce30331f72e7fa6b9285b4236", features = ["edit"] }
 # What every uchmk app shares: common.toml (the theme and the clock too),
 # editing a settings file in place, watching it.
-ito-common = { git = "https://github.com/uchmk/ito", rev = "45c4e79349df8aa0324a6f5fbd8c8f6f45f3365f", features = ["clock"] }
+ito-common = { git = "https://github.com/uchmk/ito", rev = "279137f4366ee64ce30331f72e7fa6b9285b4236", features = ["clock"] }
 # The themes, shared with every uchmk app; `pane` for the terminal's colours.
-ito-theme = { git = "https://github.com/uchmk/ito", rev = "45c4e79349df8aa0324a6f5fbd8c8f6f45f3365f", features = ["pane"] }
+ito-theme = { git = "https://github.com/uchmk/ito", rev = "279137f4366ee64ce30331f72e7fa6b9285b4236", features = ["pane"] }
 # The settings screen, shared with every uchmk app: the nav, the rows and
 # their controls, and the pages for common.toml (language, clock, theme).
-ito-notify = { git = "https://github.com/uchmk/ito", rev = "45c4e79349df8aa0324a6f5fbd8c8f6f45f3365f" }
-ito-prefs = { git = "https://github.com/uchmk/ito", rev = "45c4e79349df8aa0324a6f5fbd8c8f6f45f3365f" }
+ito-notify = { git = "https://github.com/uchmk/ito", rev = "279137f4366ee64ce30331f72e7fa6b9285b4236" }
+ito-prefs = { git = "https://github.com/uchmk/ito", rev = "279137f4366ee64ce30331f72e7fa6b9285b4236" }
 # The key notation of `--keys` scripts (`<C-a>`), the same as kura and yagura.
-ito-keyscript = { git = "https://github.com/uchmk/ito", rev = "45c4e79349df8aa0324a6f5fbd8c8f6f45f3365f" }
-ito-keys = { git = "https://github.com/uchmk/ito", rev = "45c4e79349df8aa0324a6f5fbd8c8f6f45f3365f", features = ["egui"] }
+ito-keyscript = { git = "https://github.com/uchmk/ito", rev = "279137f4366ee64ce30331f72e7fa6b9285b4236" }
+ito-keys = { git = "https://github.com/uchmk/ito", rev = "279137f4366ee64ce30331f72e7fa6b9285b4236", features = ["egui"] }
+# The built-in browser (issue #66, option 2): the OS's own WebView (WebView2,
+# WKWebView) as a child of the window. Linux has none; it opens the browser.
+ito-browser = { git = "https://github.com/uchmk/ito", rev = "279137f4366ee64ce30331f72e7fa6b9285b4236" }
 # eframe's own defaults, but for `winit/default`: that draws the title on
 # Wayland's window frame with ab_glyph, which brings the unmaintained
 # ttf-parser (RUSTSEC-2026-0192, QUESTIONS.md Q10). winit below keeps the
@@ -61,11 +64,6 @@ window-vibrancy = "0.8"
 arboard = { version = "3.6", default-features = false, features = ["image-data"] }
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
 global-hotkey = "0.8"
-
-# The built-in browser (issue #66, option 2): the OS's own WebView (WebView2,
-# WKWebView) as a child of the window. Linux has none; it opens the browser.
-[target.'cfg(any(windows, target_os = "macos"))'.dependencies]
-wry = { version = "0.57", default-features = false }
 
 [target."cfg(windows)".dependencies]
 windows ={ version = "0.62", features = [

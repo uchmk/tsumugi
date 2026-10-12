@@ -19,7 +19,6 @@
 #![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 
 mod alert;
-mod browser;
 mod answer;
 mod chrome;
 mod cli;
@@ -1195,9 +1194,9 @@ struct App {
     ended: Vec<history::Closed>,
     /// A tab's changes not committed, over the window.
     diff: Option<diffview::View>,
-    /// The built-in browser beside the panes (Windows and macOS).
-    #[cfg(any(windows, target_os = "macos"))]
-    browser: Option<browser::Browser>,
+    /// The built-in browser beside the panes (Windows and macOS; Linux opens
+    /// the system's, `ito_browser::EMBEDDED`).
+    browser: Option<ito_browser::Browser>,
     /// A menu of the window's was open as the frame began.
     menu_open: bool,
     /// "Start in parallel", while open; and the worktrees being made for it,
@@ -1914,7 +1913,7 @@ impl App {
             }
             keys::Action::Browser => {
                 let ports = sessions.iter().find(|i| i.id == w.focus).map(|i| i.ports.clone()).unwrap_or_default();
-                self.show_page(&browser::start_url(&ports));
+                self.show_page(&ito_browser::start_url(&ports));
             }
             keys::Action::ReadOnly => {
                 if let Some(i) = sessions.iter().find(|i| i.id == w.focus) {
@@ -5581,20 +5580,18 @@ impl App {
     /// A page of a dev server: beside the panes in the built-in browser, or
     /// (Linux has none) in the system's.
     fn show_page(&mut self, url: &str) {
-        #[cfg(any(windows, target_os = "macos"))]
-        {
-            match &mut self.browser {
-                Some(b) => b.go(url.to_owned()),
-                None => self.browser = Some(browser::Browser::new(url.to_owned())),
-            }
+        if !ito_browser::EMBEDDED {
+            menu::open_url(url);
+            return;
         }
-        #[cfg(not(any(windows, target_os = "macos")))]
-        menu::open_url(url);
+        match &mut self.browser {
+            Some(b) => b.go(url.to_owned()),
+            None => self.browser = Some(ito_browser::Browser::new(url.to_owned())),
+        }
     }
 
     /// Something drawn by egui is to be seen: the page's view, always above
     /// what egui paints, steps aside.
-    #[cfg(any(windows, target_os = "macos"))]
     fn over_browser(&self) -> bool {
         self.new_session.is_some() || self.search.is_some() || self.lists.is_some() || self.help.is_some() || self.diff.is_some() || self.parallel.is_some() || self.menu_open || self.bell_open.is_some() || self.closing.is_some() || self.paste_ask.is_some()
     }
@@ -6333,7 +6330,6 @@ impl App {
         // See-through: the panes draw the window's colour round themselves
         // (backdrop::around), so it is not twice under them.
         let main_fill = if self.transparent { egui::Color32::TRANSPARENT } else { self.palette.on_cursor };
-        #[cfg(any(windows, target_os = "macos"))]
         if self.browser.is_some() {
             if self.failed.is_some() || self.restore.is_some() || self.prefs.is_some() {
                 if let Some(b) = &self.browser {
@@ -6341,12 +6337,13 @@ impl App {
                 }
             } else {
                 let hidden = self.over_browser();
+                let words = ito_browser::Words { reload: tr("browser.reload"), external: tr("browser.external"), close: tr("browser.close"), failed: tr("browser.failed") };
                 let shown = egui::Panel::right("browser")
                     .resizable(true)
                     .default_size(480.0)
                     .size_range(280.0..=1400.0)
                     .frame(egui::Frame::NONE.fill(crate::theme::colors().side).inner_margin(6))
-                    .show(ui, |ui| self.browser.as_mut().map(|b| b.show(ui, frame, hidden)));
+                    .show(ui, |ui| self.browser.as_mut().map(|b| b.show(ui, &*frame, hidden, &words)));
                 if let Some(a) = shown.inner {
                     if let Some(url) = a.external {
                         menu::open_url(&url);
