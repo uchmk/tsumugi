@@ -79,35 +79,35 @@ Windows and Linux keys first; the macOS key is after `·`.
 
 ## The input box
 
-- [ ] `Ctrl+Enter` · `Cmd+Enter` — Send the prompt
-- [ ] `Ctrl+Shift+Enter` · `Cmd+Shift+Enter` — Queue the prompt for when the session is done
-- [ ] `Enter` · `Enter` — A new line, not sent
-- [ ] `Up / Down` · `Up / Down` — The prompts sent before (in an empty box, or one showing a sent one)
-- [ ] `Esc` · `Esc` — Close the box, the keys back to the pane, the draft kept
+- [x] `Ctrl+Enter` · `Cmd+Enter` — Send the prompt
+- [x] `Ctrl+Shift+Enter` · `Cmd+Shift+Enter` — Queue the prompt for when the session is done
+- [x] `Enter` · `Enter` — A new line, not sent
+- [x] `Up / Down` · `Up / Down` — The prompts sent before (in an empty box, or one showing a sent one)
+- [~] `Esc` · `Esc` — Close the box, the keys back to the pane, the draft kept
 
 ## The command palette
 
-- [ ] `Up / Down` · `Up / Down` — Walk the entries
-- [ ] `Enter` · `Enter` — Do the entry picked
-- [ ] `Esc` · `Esc` — Close it
+- [x] `Up / Down` · `Up / Down` — Walk the entries
+- [x] `Enter` · `Enter` — Do the entry picked
+- [x] `Esc` · `Esc` — Close it
 
 ## All sessions
 
-- [ ] `Letters` · `Letters` — Narrow the sessions; 3 letters or more also list the lines of every scrollback that hold them
-- [ ] `Up / Down` · `Up / Down` — Walk the sessions, then the scrollback lines
-- [ ] `Enter` · `Enter` — Go to the session (a line: go there and show it)
-- [ ] `Left / Right` · `Left / Right` — The page beside it, while nothing is typed
-- [ ] `Esc` · `Esc` — Close it
+- [~] `Letters` · `Letters` — Narrow the sessions; 3 letters or more also list the lines of every scrollback that hold them
+- [~] `Up / Down` · `Up / Down` — Walk the sessions, then the scrollback lines
+- [x] `Enter` · `Enter` — Go to the session (a line: go there and show it)
+- [~] `Left / Right` · `Left / Right` — The page beside it, while nothing is typed
+- [x] `Esc` · `Esc` — Close it
 
 ## Copy mode
 
-- [ ] `Arrows / h j k l` · `Arrows / h j k l` — Move the cursor; past the top or bottom, the output moves
-- [ ] `PageUp / PageDown` · `PageUp / PageDown` — A page through the scrollback
-- [ ] `g / G` · `g / G` — The oldest line / the newest
-- [ ] `0 / $ (Home / End)` · `0 / $ (Home / End)` — The start / the end of the line
-- [ ] `v / Space` · `v / Space` — Start a selection at the cursor, or drop it
-- [ ] `y / Enter` · `y / Enter` — Copy the selection (none: the cursor's line) and leave
-- [ ] `Esc / q` · `Esc / q` — Leave without copying
+- [x] `Arrows / h j k l` · `Arrows / h j k l` — Move the cursor; past the top or bottom, the output moves
+- [x] `PageUp / PageDown` · `PageUp / PageDown` — A page through the scrollback
+- [x] `g / G` · `g / G` — The oldest line / the newest
+- [x] `0 / $ (Home / End)` · `0 / $ (Home / End)` — The start / the end of the line
+- [x] `v / Space` · `v / Space` — Start a selection at the cursor, or drop it
+- [x] `y / Enter` · `y / Enter` — Copy the selection (none: the cursor's line) and leave
+- [x] `Esc / q` · `Esc / q` — Leave without copying
 
 ## Quick select
 
