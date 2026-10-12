@@ -247,7 +247,7 @@
 ## 8. Restoring after a restart
 
 - [ ] **8.1** Split tabs with Claude conversations, then reboot (or stop the server) and start tsumugi → **Welcome back** lists the tabs; Restore brings their splits and folders back
-- [ ] **8.2** A restored Claude Code pane → `claude --resume <id>` was typed: the conversation is back
+- [~] **8.2** A restored Claude Code pane → `claude --resume <id>` was typed: the conversation is back
 - [~] **8.3** Settings → General → On start → Restore the last sessions, then 8.1 → No Welcome back; the tabs simply return
 - [~] **8.4** 8.1 with fourteen or more tabs → The list scrolls; Restore and Start fresh stay in sight; the time reads `today at …` or `yesterday at …`
 - [ ] **8.5** A session where `codex` ran; restart the machine (or the server) → The restored tab types `codex resume --last`; with `[agents.gemini] resume = "…"`, a Gemini session types that
