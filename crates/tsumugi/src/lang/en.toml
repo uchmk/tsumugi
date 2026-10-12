@@ -728,6 +728,7 @@ turn_off = "Turn this off in Settings, General, Copy and paste."
 paste = "Paste"
 
 [browser]
+back = "Back"
 reload = "Reload"
 external = "Open in the system's browser"
 close = "Close the browser"

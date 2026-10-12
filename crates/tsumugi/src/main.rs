@@ -5586,7 +5586,7 @@ impl App {
         }
         match &mut self.browser {
             Some(b) => b.go(url.to_owned()),
-            None => self.browser = Some(ito_browser::Browser::new(url.to_owned())),
+            None => self.browser = Some(ito_browser::Browser::new(url.to_owned()).with_data_dir(web_dir())),
         }
     }
 
@@ -6337,7 +6337,7 @@ impl App {
                 }
             } else {
                 let hidden = self.over_browser();
-                let words = ito_browser::Words { reload: tr("browser.reload"), external: tr("browser.external"), close: tr("browser.close"), failed: tr("browser.failed") };
+                let words = ito_browser::Words { back: tr("browser.back"), reload: tr("browser.reload"), external: tr("browser.external"), close: tr("browser.close"), failed: tr("browser.failed") };
                 let shown = egui::Panel::right("browser")
                     .resizable(true)
                     .default_size(480.0)
@@ -6724,6 +6724,13 @@ impl App {
             Err(e) => self.failed = Some(e),
         }
     }
+}
+
+/// Where the built-in browser keeps its cookies and cache (a sign-in lasts
+/// from one start to the next): `webview` in the state folder, not beside
+/// the exe.
+fn web_dir() -> Option<std::path::PathBuf> {
+    Some(ito_common::env_dir("TSUMUGI_STATE_HOME").or_else(|| ito_common::state_dir("tsumugi"))?.join("webview"))
 }
 
 #[cfg(test)]

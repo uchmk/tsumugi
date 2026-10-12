@@ -721,6 +721,7 @@ turn_off = "設定の General のコピーと貼り付けで切れます。"
 paste = "貼り付ける"
 
 [browser]
+back = "戻る"
 reload = "再読み込み"
 external = "システムのブラウザで開く"
 close = "ブラウザを閉じる"
