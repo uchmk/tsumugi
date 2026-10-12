@@ -77,9 +77,9 @@
 - [ ] **2.49** Windows, PowerShell 7 in tsumugi: `wsl img2sixel some.png`, and yazi in a pane with a picture selected → Both show the picture (ConPTY passes the sequences through); yazi's preview changes with the selection and leaves nothing behind
 - [~] **2.50** After 2.46: scroll the pane up and down, then `clear` (`cls`) → The picture moves with its lines, half shown at the top edge, cut at the pane's edges; `clear` takes it away
 - [~] **2.51** After 2.46: close the window (the server keeps running), open it again → The picture is back where it was; a second pane or a split shows its own
-- [ ] **2.52** In PowerShell 7: ``"$($PSStyle.OutputRendering) NO_COLOR=$env:NO_COLOR TERM=$env:TERM"``, then ``Write-Host "a `e[4mu`e[0m `e[4:2mdd`e[0m `e[4:3;58;2;255;0;0mcurl`e[0m `e[4:4mdots`e[0m `e[4:5mdash`e[0m `e[9mstrike`e[0m [`e[8mhid`e[0m]"``; then in Git Bash: `printf 'a \e[4mu\e[0m \e[4:2mdd\e[0m \e[4:3;58;2;255;0;0mcurl\e[0m \e[4:4mdots\e[0m \e[4:5mdash\e[0m \e[9mstrike\e[0m [\e[8mhid\e[0m]\n'`; then close the window and open it again → In both shells: a single and a double line, a red wave under **curl**, dots and dashes under the next two, a line through **strike**, and `[   ]` with nothing between; the lines run unbroken under each word and come back the same after reopening. If either is not so, turn on **Log what each pane sends and receives** (Settings → Advanced), run both again and put the log's `out` lines for each shell in the report, with whether `OpenConsole.exe` sits beside the `tsumugi.exe` the server runs from (the ConPTY that rewrote them). If PowerShell's log lacks the plain ones (`4m`, `9m`, `8m`, `0m`) but has the ones with a colon, PowerShell dropped them, not ConPTY (`$PSStyle.OutputRendering` strips the escapes it knows, and its pattern has no colon): put that first line in the report too
+- [~] **2.52** In PowerShell 7: ``"$($PSStyle.OutputRendering) NO_COLOR=$env:NO_COLOR TERM=$env:TERM"``, then ``Write-Host "a `e[4mu`e[0m `e[4:2mdd`e[0m `e[4:3;58;2;255;0;0mcurl`e[0m `e[4:4mdots`e[0m `e[4:5mdash`e[0m `e[9mstrike`e[0m [`e[8mhid`e[0m]"``; then in Git Bash: `printf 'a \e[4mu\e[0m \e[4:2mdd\e[0m \e[4:3;58;2;255;0;0mcurl\e[0m \e[4:4mdots\e[0m \e[4:5mdash\e[0m \e[9mstrike\e[0m [\e[8mhid\e[0m]\n'`; then close the window and open it again → In both shells: a single and a double line, a red wave under **curl**, dots and dashes under the next two, a line through **strike**, and `[   ]` with nothing between; the lines run unbroken under each word and come back the same after reopening. If either is not so, turn on **Log what each pane sends and receives** (Settings → Advanced), run both again and put the log's `out` lines for each shell in the report, with whether `OpenConsole.exe` sits beside the `tsumugi.exe` the server runs from (the ConPTY that rewrote them). If PowerShell's log lacks the plain ones (`4m`, `9m`, `8m`, `0m`) but has the ones with a colon, PowerShell dropped them, not ConPTY (`$PSStyle.OutputRendering` strips the escapes it knows, and its pattern has no colon): put that first line in the report too
 - [x] **2.53** In a split, run `nvim` (or `vim` with `set autoread` and `au FocusGained * checktime`) on a file in the left pane; in the right pane `echo x >> thatfile`; click the left pane again. Then switch to another app and back (Alt+Tab) → vim reloads the file as soon as its pane is clicked, without a keypress; no stray `^[[I` / `^[[O` appears in the right pane's shell or in vim's text
-- [ ] **2.54** In bash: `printf '\e[>q\e[c'; read -rs -d c r; echo "${r@Q}"`; then in nvim `:checkhealth` (its terminal section); then start `claude` and let it stream a long answer → The reply holds `tsumugi` and tsumugi's own version, the one `tsumugi --version` prints (`\EP>|tsumugi X.Y.Z\E\\`; ito's 0.x before v0.96.0) and then `\E[?62;4;22`; nvim names the terminal; Claude's long answer scrolls without tearing or half-drawn lines
+- [~] **2.54** In bash: `printf '\e[>q\e[c'; read -rs -d c r; echo "${r@Q}"`; then in nvim `:checkhealth` (its terminal section); then start `claude` and let it stream a long answer → The reply holds `tsumugi` and tsumugi's own version, the one `tsumugi --version` prints (`\EP>|tsumugi X.Y.Z\E\\`; ito's 0.x before v0.96.0) and then `\E[?62;4;22`; nvim names the terminal; Claude's long answer scrolls without tearing or half-drawn lines
 - [x] **2.55** In bash: `printf '\e[>1u'; IFS= read -rsn7 a; printf '\e[<u'; echo "${a@Q}"`, then press `Shift+Enter`. Then in nvim (0.10 or later) insert mode `:imap <S-CR> X`, press `Shift+Enter`; quit and press `Shift+Enter` at the shell prompt. On Windows also try it in WSL and in a pane on an SSH machine → bash prints `$'\E[13;2u'`; nvim types `X` (not a new line); at the prompt `Shift+Enter` runs the line as `Enter` does. Windows's local pane gives the code too (ConPTY made it a plain Enter before); note whether WSL does
 - [~] **2.56** `git log --oneline -3; echo https://example.com src/main.rs:3 127.0.0.1:8080 12345`, then `Ctrl+Shift+Space` (`Cmd+Shift+Space`); type the label on the address; paste in Notepad. Again, `Shift` and the label on `src/main.rs:3` (in a folder that has it). Again, `Esc` → Gold labels on the hashes, the address, the path, the IP and the number, the bottom ones `a`, `s`, …; the address on the clipboard and the labels gone; the file opens in the editor at line 3; `Esc` leaves and keys reach the shell again
 - [x] **2.57** `echo hello world`; drag over `hello` and paste in Notepad. Then turn off **Copy a selection when the mouse lets go** (Settings → General → Copy and paste), drag over `world`, paste; then `Ctrl+Shift+C` (`Cmd+C`), paste → `hello` on the clipboard as soon as the button lets go; with the switch off the clipboard still holds `hello` after the drag, and `world` after `Ctrl+Shift+C`
@@ -112,9 +112,9 @@
 - [ ] **3.2** The **+** beside SESSIONS, and the one at the top of the rail → The new-session dialog opens with the focused pane's folder
 - [ ] **3.3** Sort button → each of the five orders → The cards reorder accordingly; **Manual** keeps a dragged order across restarts
 - [ ] **3.4** Drag a card in Manual order → The grip shows on hover; the card lands where it is dropped
-- [ ] **3.5** The state and folder filters at the foot → Only matching cards; the heading reads `SESSIONS  N of M` (also `5 of 5` with no filter), then the order button, then **+**
+- [~] **3.5** The state and folder filters at the foot → Only matching cards; the heading reads `SESSIONS  N of M` (also `5 of 5` with no filter), then the order button, then **+**
 - [ ] **3.6** Right-click a card: rename, tag, mute, pin, restart, duplicate, new window, open in editor / filer, copy path, close → Each does what it says; close is red and last; Rename, Duplicate and Close show their keys on the right, in grey
-- [ ] **3.7** Sort → One line each; then `Ctrl+Shift+B` → One line per tab; then the 60px rail with first letters and state rings
+- [~] **3.7** Sort → One line each; then `Ctrl+Shift+B` → One line per tab; then the 60px rail with first letters and state rings
 - [ ] **3.8** Rest the pointer on a card of another tab → Its last 12 lines in a box, the waiting pane's in a tab of several
 - [ ] **3.9** A tab in a repository with uncommitted changes → `+N −M` (or `N new`) on the card's second line; on hover, the files as `git status` lists them
 - [ ] **3.10** Drag the sidebar's edge left past 120px, and back → It becomes the rail; dragged back out, the sidebar
@@ -123,19 +123,19 @@
 - [ ] **3.13** Theme tsumugi Light (and each light theme) → The waiting and error words and counts read clearly on white (WCAG 4.5 or more)
 - [ ] **3.14** A tab on a branch with an open pull request (`gh` signed in) → `· PR #N` after the branch on the second line, green when its checks pass, red when they fail, cyan while they run, grey with none; its tooltip says which
 - [ ] **3.15** The card of the tab with the keys, Claude Code talked to a few times → A line `N prompts · 12m · 3.4k tokens`; the other cards have none. A running card's third line ends with `· N tokens`
-- [ ] **3.16** `F2` → A field on the card with the name selected; Enter renames, Esc leaves it as it was
+- [~] **3.16** `F2` → A field on the card with the name selected; Enter renames, Esc leaves it as it was
 - [ ] **3.17** `Ctrl+Shift+D` (macOS `Cmd+Option+D`) in a Claude Code pane, then in a shell → A new tab in the same folder: `claude` typed in the first, a shell in the second
-- [ ] **3.18** Look at the sidebar on first start → 288px wide
-- [ ] **3.19** Right-click a card → Note…, type `the release`, Enter; restart the machine (or the server) → `“the release”` on the card under the folder; Edit the note… and an empty Enter takes it off; after the restart the note is back
+- [~] **3.18** Look at the sidebar on first start → 288px wide
+- [~] **3.19** Right-click a card → Note…, type `the release`, Enter; restart the machine (or the server) → `“the release”` on the card under the folder; Edit the note… and an empty Enter takes it off; after the restart the note is back
 - [ ] **3.20** A tab with uncommitted changes: click its `+N −M` (or search `changes`) → The diff over the window: each file under its name, added lines green, removed red, hunks cyan, new files at the end; Esc or a click outside closes it; a lock file's large diff is cut at 512 KB
 - [ ] **3.21** Right-click a card → Save the output to a file (or search `save the pane`) → A toast names `Downloads\tsumugi-<name>-<date>-<time>.txt`; it holds the whole scrollback as the program wrote it, Japanese whole, long lines unbroken
 - [ ] **3.22** A tab on a branch other than main (a worktree's), right-click → Create a pull request (`gh` signed in) → The branch pushed, a pull request made from its commits and opened in the browser; a toast with its address; on `main` the item is not there; without `gh`, a toast says why
 - [ ] **3.23** Run `codex` (or `gemini`, `opencode`) in a session → The card is an agent's, not a grey shell: its name (`codex`) on a line under the folder, its states shown; on Windows, Gemini CLI (run by node) stays a shell
-- [ ] **3.24** `npm run dev` (or `python -m http.server 8123`) in a session → `:3000` (`:8123`) on its card within a few seconds; a click opens `http://localhost:3000` in the browser; gone when the server stops
+- [x] **3.24** `npm run dev` (or `python -m http.server 8123`) in a session → `:3000` (`:8123`) on its card within a few seconds; a click opens `http://localhost:3000` in the browser; gone when the server stops
 - [ ] **3.25** A card with tags and a PR (and a note), a card with neither → The extra lines (note, agent and ports, numbers) under the tags, or under the third line; none over another
 - [ ] **3.26** Claude Code working (its title `✳ …` or a braille spinner), and pwsh → The card's and pane heading's name without the `✳` or spinner: one mark only, the card's own on the left
 - [ ] **3.27** Click a waiting card, then a running one, then a shell → The card's ground stays dark (no fill): its ring in its state's colour, brighter, with a soft glow past it (cyan for a shell); a running card's line still runs along its top edge
-- [ ] **3.28** A plain shell's card beside an agent's → The shell's card is a line shorter: no empty third line
+- [~] **3.28** A plain shell's card beside an agent's → The shell's card is a line shorter: no empty third line
 - [ ] **3.29** Claude Code working in a tab: `F2`, type, `Esc`; right-click → Note…, type, `Esc`; and `F2` on a tab, then pick a tag filter that hides it → Each field closes as it was and Claude Code keeps working (no Esc reached it, `TSUMUGI_PTY_LOG` has no `in key` line); a hidden card's field is let go and the pane gets keys again
 - [ ] **3.30** With the Japanese IME on: right-click a card → Note…, type `にほんご`, convert with Space, Enter to commit, Enter again; the same in `F2`'s field, the menu's Rename… and the search box (`Ctrl+Shift+P`) → The reading stays underlined as it is typed and the candidates come up; the first Enter only commits the conversion, the second keeps the note (or name); `日本語` arrives whole, nothing lost or doubled
 - [ ] **3.31** Sort → Folder with three running, one waiting and one done tab in a folder → Every tab under its heading as a full card, none as one line, no "+ N more"; a click on the heading closes and opens it
@@ -186,7 +186,7 @@
 - [ ] **5.5** `Esc`, and a click outside → Closes without doing anything
 - [ ] **5.6** Keep a prompt `Say {project}` in the input box's **Prompts…**; in the search box type `send`, pick **Send prompt: …**; then `Ctrl+Shift+I` in a split tab and pick it again → It is sent to the pane with the keys, the project's name in it; the second time every pane of the tab gets it
 - [ ] **5.7** A tab of three panes (Claude Code, a shell beside, one below), dividers moved; **Save this tab's layout**; close it; **Open layout: …** from another pane → `layouts.toml` beside the settings has it; a new tab opens in that pane's folder with the same splits and shares, Claude Code and the shells started as they were
-- [ ] **5.8** `Ctrl+Shift+O` with sessions waiting, running and done, on a 1280 × 800 window; arrows, `Enter`; a click on another; `Ctrl+Shift+O` again; then `Ctrl+Tab` twice, `Ctrl+Shift+Tab`, `Right`, `Left` → **All sessions** across most of the window, several rows at once, with the waiting first, each row's state, folder, branch, tags, tokens and last two lines; Enter and the click go to that session; the key closes it (with the filter field focused too; `Ctrl+Shift+Y` turns to Waiting and closes it the same way); the keys turn to Waiting, Recently closed, back to Waiting, and so on, round the three
+- [~] **5.8** `Ctrl+Shift+O` with sessions waiting, running and done, on a 1280 × 800 window; arrows, `Enter`; a click on another; `Ctrl+Shift+O` again; then `Ctrl+Tab` twice, `Ctrl+Shift+Tab`, `Right`, `Left` → **All sessions** across most of the window, several rows at once, with the waiting first, each row's state, folder, branch, tags, tokens and last two lines; Enter and the click go to that session; the key closes it (with the filter field focused too; `Ctrl+Shift+Y` turns to Waiting and closes it the same way); the keys turn to Waiting, Recently closed, back to Waiting, and so on, round the three
 - [ ] **5.9** Give the tab with the keys five tags, `[tags] shown = 3`; make the window narrower step by step; move the keys to a tab without tags → The search box and the bell stay in the middle of the band; three tags and `+2` on the right, fewer and a bigger `+N` as it narrows, never over the box; the box shrinks to its magnifier last
 - [ ] **5.10** `F1` on a 1280 × 800 window; then a 1000 × 700 one; `F1` again, `Esc`, a click outside → Every key by kind, in the middle of the window, in three columns or more (smaller letters on the smaller window), all of it with no scrollbar; a key moved in the settings shows its new key; each closes it
 - [x] **5.11** `Ctrl+Shift+O`, type `abc`, then `Left` and `Right`; clear the box, `Left` and `Right` again; type `zzzzqqq` → While typing the arrows move in the box and the page stays All; with it empty they turn the page; the last says Nothing matches
@@ -199,10 +199,10 @@
 ## 6. New sessions
 
 - [ ] **6.1** `Ctrl+Shift+T`, Enter → Claude Code starts in a new tab in the focused pane's folder
-- [ ] **6.2** `Ctrl+Shift+T`, Shell, `Alt+Enter` → A shell split to the right instead of a tab
-- [ ] **6.3** Type part of a folder, `Tab` → Completes from the folders listed, including **closed** ones from sessions that ended; the cursor at its end; a second `Tab` moves on
+- [~] **6.2** `Ctrl+Shift+T`, Shell, `Alt+Enter` → A shell split to the right instead of a tab
+- [~] **6.3** Type part of a folder, `Tab` → Completes from the folders listed, including **closed** ones from sessions that ended; the cursor at its end; a second `Tab` moves on
 - [ ] **6.4** Add a tag, and take a dashed (folder rule) tag off → The new session wears exactly what the dialog showed
-- [ ] **6.5** Beside it → + Pane twice (Claude Code, Shell), Create → One tab of three panes: the first, one to its right, one below that
+- [~] **6.5** Beside it → + Pane twice (Claude Code, Shell), Create → One tab of three panes: the first, one to its right, one below that
 - [ ] **6.6** Tick Save as a profile, name it; next time Profile… → it → The folder, start, tags and panes come back
 - [ ] **6.7** Tick In a new git worktree in a repository, Create → A folder `<repo>-tsumugi-MMDD-HHMM` beside the repository on its own branch, and the session in it; a toast says so
 - [ ] **6.8** `exit` the last session in that worktree → **Remove the worktree?**; Remove takes the folder (the branch stays); with uncommitted changes git refuses and the toast says why
@@ -247,15 +247,15 @@
 ## 8. Restoring after a restart
 
 - [ ] **8.1** Split tabs with Claude conversations, then reboot (or stop the server) and start tsumugi → **Welcome back** lists the tabs; Restore brings their splits and folders back
-- [ ] **8.2** A restored Claude Code pane → `claude --resume <id>` was typed: the conversation is back
-- [ ] **8.3** Settings → General → On start → Restore the last sessions, then 8.1 → No Welcome back; the tabs simply return
-- [ ] **8.4** 8.1 with fourteen or more tabs → The list scrolls; Restore and Start fresh stay in sight; the time reads `today at …` or `yesterday at …`
+- [~] **8.2** A restored Claude Code pane → `claude --resume <id>` was typed: the conversation is back
+- [~] **8.3** Settings → General → On start → Restore the last sessions, then 8.1 → No Welcome back; the tabs simply return
+- [~] **8.4** 8.1 with fourteen or more tabs → The list scrolls; Restore and Start fresh stay in sight; the time reads `today at …` or `yesterday at …`
 - [ ] **8.5** A session where `codex` ran; restart the machine (or the server) → The restored tab types `codex resume --last`; with `[agents.gemini] resume = "…"`, a Gemini session types that
-- [ ] **8.6** 8.1 with some sessions that had finished (`exit` in them first); click **Select all**, then again, then tick one row by hand → The box above the rows is half-filled while some are ticked; the first click ticks every row (the finished ones now say `new shell in …`) and Restore counts them all; the second clears them all and Restore is greyed; one row ticked makes the box half-filled again
+- [~] **8.6** 8.1 with some sessions that had finished (`exit` in them first); click **Select all**, then again, then tick one row by hand → The box above the rows is half-filled while some are ticked; the first click ticks every row (the finished ones now say `new shell in …`) and Restore counts them all; the second clears them all and Restore is greyed; one row ticked makes the box half-filled again
 
 ## 9. The settings screen
 
-- [ ] **9.1** `Ctrl+,` → The screen with its nine pages and the search field over them; the band says Settings in the middle with an X; no sidebar or status bar; `Esc` and the X close it
+- [~] **9.1** `Ctrl+,` → The screen with its nine pages and the search field over them; the band says Settings in the middle with an X; no sidebar or status bar; `Esc` and the X close it
 - [ ] **9.2** Change something on each page → Only that line of `config.toml` changes (diff the file); comments stay. Language, the clock and the theme change that line of `common.toml` in the uchmk folder instead
 - [ ] **9.3** Write a mistake into `config.toml` by hand → A red line above the status bar says what and where, until it is fixed; nothing else changes
 - [ ] **9.4** Open config.toml / Open the settings folder → The system's editor / file manager opens
@@ -263,8 +263,8 @@
 - [ ] **9.6** Next to the design's "Settings: every page" → The same pages, sections and rows in the same order
 - [ ] **9.7** Only the keyboard: `Ctrl+Tab` / `Ctrl+Shift+Tab` through the pages, `Tab` through a page, `Space` on a switch, `Esc` twice → A cyan ring on the control with the keys; Tab never stops on the top band or the list of pages; Space flips the switch (the file changes); the first Esc leaves the control, the second closes the screen; nothing typed reaches the shell behind it
 - [ ] **9.8** Notifications → WHEN A SESSION… → A line between rows; the three state columns the same width, each switch in the middle of its column and row, under its heading's dot
-- [ ] **9.9** `Ctrl+,` (macOS `Cmd+,`) with the settings open → They close and stay closed (not reopened on their first page)
-- [ ] **9.10** Settings → General → Scale, pick 150% → The whole window (bands, sidebar, settings and panes) grows at once; `scale = 1.5` in `common.toml`, `config.toml` unchanged; `Ctrl+=` and `Ctrl+-` still change only the panes' font size
+- [~] **9.9** `Ctrl+,` (macOS `Cmd+,`) with the settings open → They close and stay closed (not reopened on their first page)
+- [~] **9.10** Settings → General → Scale, pick 150% → The whole window (bands, sidebar, settings and panes) grows at once; `scale = 1.5` in `common.toml`, `config.toml` unchanged; `Ctrl+=` and `Ctrl+-` still change only the panes' font size
 - [ ] **9.11** With tsumugi and kura (or yagura) open, write `scale = 1.25` into `common.toml` by hand → Both windows grow to 125% within a couple of seconds; Settings → General → Scale shows 125%
 
 ## 10. Themes
@@ -340,7 +340,7 @@
 - [ ] **15.8** Windows: the `UTF-8` in the status bar → Only a label with its tooltip: no menu
 - [ ] **15.9** Claude Code used today (Opus 5.5, say) → `≈$0.39` after the conversation's tokens and today's, and in the 5h window; the tooltip says it is the API's price; `[prices."claude-opus-5-5"] input = 8.0` doubles the input's share; a closed session's line in Recently closed has its own
 - [ ] **15.10** Settings → General → CLOCK: Show the date off, then 12-hour; with mimamori open → The status bar's clock drops the date, then reads `2:32 PM`; `common.toml` has `[clock] date = false` and `hour24 = false`; mimamori's clock does the same
-- [ ] **15.11** `language = "ja"` in `common.toml`, the weekday on; rest the pointer on the clock → The clock reads `2026/10/11 (日) 14:32`; the tooltip `2026年10月11日 日曜日`; with yagura open, both clocks read the same
+- [~] **15.11** `language = "ja"` in `common.toml`, the weekday on; rest the pointer on the clock → The clock reads `2026/10/11 (日) 14:32`; the tooltip `2026年10月11日 日曜日`; with yagura open, both clocks read the same
 
 ## 16. Keys
 
@@ -357,19 +357,19 @@
 - [x] **17.2** Keep sessions running off; close the window with a shell open → `tsumugi ls` is empty afterwards
 - [x] **17.3** Ask before closing on; `sleep 100` in a pane; close the window → "A session is still running"; Cancel keeps the window; Close closes it
 - [ ] **17.4** Check for updates on, with a build older than the latest release → A toast names the newer version, once a start
-- [ ] **17.5** Default folder `~/dev`; start with no session → The first shell starts in `~/dev`
+- [~] **17.5** Default folder `~/dev`; start with no session → The first shell starts in `~/dev`
 - [ ] **17.6** Appearance → Cursor, each of the six → The focused pane's cursor is a block, a bar or a line under, blinking when asked; a pane without the keys shows an outline
 - [ ] **17.7** Nerd Font icons off, with a Nerd Font installed → The branch mark is drawn, not the font's icon
 - [ ] **17.8** Keys → New session → press `Ctrl+Shift+W`, then `Ctrl+C` → The row says whose each is; nothing written; another key, or Use it anyway, writes it
-- [ ] **17.9** `Alt+Shift+Arrows` in a split → The nearest divider moves that way a step at a time; the split is kept after a restart
+- [~] **17.9** `Alt+Shift+Arrows` in a split → The nearest divider moves that way a step at a time; the split is kept after a restart
 - [ ] **17.10** Notifications → ▶ beside each sound, each of the four → Four different system sounds
 - [ ] **17.11** Focus mode on in Windows; a session waits while the window is behind → No sound, flash or toast; the taskbar number still comes
 - [ ] **17.12** Tell about a finish → 5 min; a 1-minute command finishes behind → No notice for it
 - [x] **17.13** Sessions → Default program → Shell → The new-session dialog opens with Shell picked
 - [x] **17.14** Claude Code command: a full path to `claude` → New Claude Code sessions run that program
-- [ ] **17.15** Resume conversations off; restart with a Claude Code pane → It comes back as a plain shell, nothing typed
+- [~] **17.15** Resume conversations off; restart with a Claude Code pane → It comes back as a plain shell, nothing typed
 - [x] **17.16** "Probably waiting" after 3; a program that prints nothing → Its card turns to probably waiting after about 3 s
-- [ ] **17.18** Profiles → Edit: another folder and a pane on the right; Add a new one → `profiles.toml` has them; the new-session dialog's profile opens both panes
+- [~] **17.18** Profiles → Edit: another folder and a pane on the right; Add a new one → `profiles.toml` has them; the new-session dialog's profile opens both panes
 - [x] **17.19** Tab menu: hide Pin, move Close the session up, add `lazygit -p {folder}` → The right-click menu follows; the item runs lazygit in the session's folder
 - [x] **17.20** Open with → Editor command `code {folder}` → Open in the editor opens VS Code in the session's folder; with one command the menu item has no ▶
 - [x] **17.21** Tags → New rule → Branch `claude/*`, tag `claude` → A session on a `claude/…` branch gets the tag
@@ -378,7 +378,7 @@
 - [ ] **17.24** Shell integration → Install, then Remove (pwsh) → A marked block appears in `$PROFILE`, and goes; a new session with it reports its folder
 - [ ] **17.25** Windows → ConPTY → Bundled, with the zip's build; the system's, with a bare exe
 - [ ] **17.26** Advanced → Restart the server → The window says it is restarting; the tabs come back (or Welcome back); the uptime starts again; if the new server cannot start, the window says why
-- [ ] **17.27** Graphics backend → Vulkan, then a name the machine has no adapter for, restart → Draws with it; for the missing one, the automatic choice and a line on stderr
+- [~] **17.27** Graphics backend → Vulkan, then a name the machine has no adapter for, restart → Draws with it; for the missing one, the automatic choice and a line on stderr
 - [x] **17.28** Scrollback 200; a new session; `seq 1000` → Only about 200 lines to scroll back
 - [ ] **17.29** Log what each pane sends and receives on; a new session → `pane-logs/session-N.log` beside the saved tabs grows as it runs
 - [ ] **17.30** Export…, then Import on another machine (or after changing things) → One file in Downloads; importing brings the settings, themes and profiles back, the old ones kept as `.bak`
