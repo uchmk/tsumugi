@@ -126,7 +126,7 @@
 - [~] **3.16** `F2` → A field on the card with the name selected; Enter renames, Esc leaves it as it was
 - [ ] **3.17** `Ctrl+Shift+D` (macOS `Cmd+Option+D`) in a Claude Code pane, then in a shell → A new tab in the same folder: `claude` typed in the first, a shell in the second
 - [~] **3.18** Look at the sidebar on first start → 288px wide
-- [ ] **3.19** Right-click a card → Note…, type `the release`, Enter; restart the machine (or the server) → `“the release”` on the card under the folder; Edit the note… and an empty Enter takes it off; after the restart the note is back
+- [~] **3.19** Right-click a card → Note…, type `the release`, Enter; restart the machine (or the server) → `“the release”` on the card under the folder; Edit the note… and an empty Enter takes it off; after the restart the note is back
 - [ ] **3.20** A tab with uncommitted changes: click its `+N −M` (or search `changes`) → The diff over the window: each file under its name, added lines green, removed red, hunks cyan, new files at the end; Esc or a click outside closes it; a lock file's large diff is cut at 512 KB
 - [ ] **3.21** Right-click a card → Save the output to a file (or search `save the pane`) → A toast names `Downloads\tsumugi-<name>-<date>-<time>.txt`; it holds the whole scrollback as the program wrote it, Japanese whole, long lines unbroken
 - [ ] **3.22** A tab on a branch other than main (a worktree's), right-click → Create a pull request (`gh` signed in) → The branch pushed, a pull request made from its commits and opened in the browser; a toast with its address; on `main` the item is not there; without `gh`, a toast says why
