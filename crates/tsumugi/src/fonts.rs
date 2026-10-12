@@ -5,31 +5,7 @@
 //! (`ito_common::fonts`).
 
 use eframe::egui;
-use ito_common::fonts::{JAPANESE, JAPANESE_BOLD, NERD_FONTS, find_file, font_dirs, nerd_font, read_first};
-
-/// The window's own words (titles, buttons) in a proportional face, as the
-/// design has them (IBM Plex Sans JP): the first of these found in the font
-/// folders, else egui's own. Then their bold, for titles.
-const UI_REGULAR: &[&str] = &[
-    "IBMPlexSansJP-Regular.ttf",
-    "IBMPlexSansJP-Regular.otf",
-    "IBMPlexSans-Regular.ttf",
-    "IBMPlexSans-Regular.otf",
-    "segoeui.ttf",
-    "NotoSans-Regular.ttf",
-    "DejaVuSans.ttf",
-];
-const UI_BOLD: &[&str] = &[
-    "IBMPlexSansJP-SemiBold.ttf",
-    "IBMPlexSansJP-SemiBold.otf",
-    "IBMPlexSansJP-Bold.ttf",
-    "IBMPlexSans-SemiBold.ttf",
-    "IBMPlexSans-SemiBold.otf",
-    "seguisb.ttf",
-    "segoeuib.ttf",
-    "NotoSans-SemiBold.ttf",
-    "DejaVuSans-Bold.ttf",
-];
+use ito_common::fonts::{JAPANESE, JAPANESE_BOLD, NERD_FONTS, UI_BOLD, UI_REGULAR, find_file, font_dirs, nerd_font, read_first};
 
 /// The family the window's titles are drawn in: bold, proportional.
 pub const UI_BOLD_FAMILY: &str = "ui-bold";
