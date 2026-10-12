@@ -773,7 +773,7 @@ pub struct Notify {
     pub sound: Vec<String>,
     /// A session done is told only after a run this many seconds long.
     pub long_run: u64,
-    /// The sounds for one that waits and one that fails: see [`SOUNDS`].
+    /// The sounds for one that waits and one that fails: see [`ito_notify::SOUNDS`].
     pub sound_waiting: String,
     pub sound_error: String,
     /// Windows: nothing shows or sounds while focus mode (do not disturb) is on.
@@ -801,9 +801,6 @@ pub struct Notify {
     /// The same for Claude Code's 5-hour block; 0: never.
     pub spend_block: u64,
 }
-
-/// The sounds `sound_waiting` and `sound_error` name.
-pub const SOUNDS: [&str; 4] = ["chime", "low", "alert", "default"];
 
 impl Default for Notify {
     /// The design's 1h: notifications for all three, the number for the
@@ -888,22 +885,22 @@ pub fn parse(text: &str) -> Result<Settings, String> {
     if !shapes.contains(&s.appearance.cursor.trim_end_matches("-blink")) {
         return Err(format!("appearance.cursor: `{}` is not block, bar or underline (with -blink to blink)", s.appearance.cursor));
     }
-    if !["ntfy", "slack", "json"].contains(&s.notify.webhook_format.as_str()) {
+    if !ito_notify::FORMATS.contains(&s.notify.webhook_format.as_str()) {
         return Err(format!("notify.webhook_format: `{}` is not ntfy, slack or json", s.notify.webhook_format));
     }
     if let Some(w) = s.notify.webhook_states.iter().find(|w| !["waiting", "error", "done"].contains(&w.as_str())) {
         return Err(format!("notify.webhook_states: `{w}` is not waiting, error or done"));
     }
     let webhook = s.notify.webhook.trim();
-    if !webhook.is_empty() && !(webhook.starts_with("https://") || webhook.starts_with("http://")) {
+    if !webhook.is_empty() && !ito_notify::is_http(webhook) {
         return Err(format!("notify.webhook: `{webhook}` is not an http(s) address"));
     }
     if let Some((model, _)) = s.prices.iter().find(|(_, p)| p.input < 0.0 || p.output < 0.0 || p.cache_read.is_some_and(|r| r < 0.0)) {
         return Err(format!("prices.{model}: a price below zero"));
     }
     for (key, v) in [("notify.sound_waiting", &s.notify.sound_waiting), ("notify.sound_error", &s.notify.sound_error)] {
-        if !SOUNDS.contains(&v.as_str()) {
-            return Err(format!("{key}: `{v}` is not one of {}", SOUNDS.join(", ")));
+        if !ito_notify::SOUNDS.contains(&v.as_str()) {
+            return Err(format!("{key}: `{v}` is not one of {}", ito_notify::SOUNDS.join(", ")));
         }
     }
     if let Some(w) = s.menu.order.iter().find(|w| !MENU_ITEMS.contains(&w.as_str())) {
