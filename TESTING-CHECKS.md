@@ -367,7 +367,7 @@
 - [ ] **17.12** Tell about a finish → 5 min; a 1-minute command finishes behind → No notice for it
 - [x] **17.13** Sessions → Default program → Shell → The new-session dialog opens with Shell picked
 - [x] **17.14** Claude Code command: a full path to `claude` → New Claude Code sessions run that program
-- [ ] **17.15** Resume conversations off; restart with a Claude Code pane → It comes back as a plain shell, nothing typed
+- [~] **17.15** Resume conversations off; restart with a Claude Code pane → It comes back as a plain shell, nothing typed
 - [x] **17.16** "Probably waiting" after 3; a program that prints nothing → Its card turns to probably waiting after about 3 s
 - [~] **17.18** Profiles → Edit: another folder and a pane on the right; Add a new one → `profiles.toml` has them; the new-session dialog's profile opens both panes
 - [x] **17.19** Tab menu: hide Pin, move Close the session up, add `lazygit -p {folder}` → The right-click menu follows; the item runs lazygit in the session's folder
