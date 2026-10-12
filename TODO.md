@@ -154,3 +154,7 @@ v0.74.2 で 8 件のうち 7 件を、v0.74.3 で残りを直した（kitty の�
 - [x] （v0.104.12）トーストの Allow / Deny を実機で確かめたので、`main.rs` の `toast answer` の `eprintln!`（v0.104.1 の仮の診断）を外した。
 - [x] （v0.103.15）トーストの Allow / Deny を切る設定 `[notify] answer_buttons`（設定の Notifications にも）。
 - [x] （v0.103.20）Linux の通知にも Allow / Deny（`notify-send --action`）。macOS は osascript が押したことを取れないので、署名したアプリの通知まで待つ。
+
+## 内蔵ブラウザ（2026-10-12、持ち主の発案）
+
+- [ ] ペインの横に開発サーバーのページ（`http://localhost:...`）を描く内蔵ブラウザを持つか決める。作らなければ今のまま（ポートのチップから外部のブラウザ）（要確認: #66）
