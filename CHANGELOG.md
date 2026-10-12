@@ -5,6 +5,12 @@
 
 ## [未リリース]
 
+## [0.105.15] - 2026-10-12
+
+### 変更
+
+- 実機（x64）で `Ctrl+Enter`・`Ctrl+Shift+Enter`・`Enter`・`Up / Down`・`Up / Down`・`Enter`・`Esc`・`Enter`・`Esc`・`Arrows / h j k l`・`PageUp / PageDown`・`g / G`・`0 / $ (Home / End)`・`v / Space`・`y / Enter`・`Esc / q` を確かめ、`Esc`・`Letters`・`Up / Down`・`Left / Right` を画面の画像で見た（#58）。
+
 ## [0.105.14] - 2026-10-12
 
 ### 変更
