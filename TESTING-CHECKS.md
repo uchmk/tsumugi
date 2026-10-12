@@ -357,7 +357,7 @@
 - [x] **17.2** Keep sessions running off; close the window with a shell open → `tsumugi ls` is empty afterwards
 - [x] **17.3** Ask before closing on; `sleep 100` in a pane; close the window → "A session is still running"; Cancel keeps the window; Close closes it
 - [ ] **17.4** Check for updates on, with a build older than the latest release → A toast names the newer version, once a start
-- [ ] **17.5** Default folder `~/dev`; start with no session → The first shell starts in `~/dev`
+- [~] **17.5** Default folder `~/dev`; start with no session → The first shell starts in `~/dev`
 - [ ] **17.6** Appearance → Cursor, each of the six → The focused pane's cursor is a block, a bar or a line under, blinking when asked; a pane without the keys shows an outline
 - [ ] **17.7** Nerd Font icons off, with a Nerd Font installed → The branch mark is drawn, not the font's icon
 - [ ] **17.8** Keys → New session → press `Ctrl+Shift+W`, then `Ctrl+C` → The row says whose each is; nothing written; another key, or Use it anyway, writes it
