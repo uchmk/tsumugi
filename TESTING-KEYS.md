@@ -111,21 +111,21 @@ Windows and Linux keys first; the macOS key is after `·`.
 
 ## Quick select
 
-- [ ] `a … z` · `a … z` — Copy the thing with that label and leave
-- [ ] `Shift+a … z` · `Shift+a … z` — Open the link with that label (a file in the editor, an address in the browser)
-- [ ] `Backspace` · `Backspace` — Take back the letter typed
-- [ ] `Esc` · `Esc` — Leave without copying
+- [x] `a … z` · `a … z` — Copy the thing with that label and leave
+- [x] `Shift+a … z` · `Shift+a … z` — Open the link with that label (a file in the editor, an address in the browser)
+- [x] `Backspace` · `Backspace` — Take back the letter typed
+- [x] `Esc` · `Esc` — Leave without copying
 
 ## The settings screen
 
-- [ ] `Esc` · `Esc` — Leave the control that has the keys (a field as it was); with none, close the screen
-- [ ] `Ctrl+Tab / Ctrl+PageDown` · `Ctrl+Tab / Cmd+PageDown` — The next page
-- [ ] `Ctrl+Shift+Tab / Ctrl+PageUp` · `Ctrl+Shift+Tab / Cmd+PageUp` — The page before
-- [ ] `Ctrl+F` · `Cmd+F` — To the search
-- [ ] `Tab / Shift+Tab` · `Tab / Shift+Tab` — The search, the page's controls one by one, then Open config.toml
-- [ ] `Space / Enter` · `Space / Enter` — Flip the switch or press the button that has the keys
-- [ ] `Ctrl+,` · `Cmd+,` — Open it (the changeable key above, while not moved)
+- [x] `Esc` · `Esc` — Leave the control that has the keys (a field as it was); with none, close the screen
+- [x] `Ctrl+Tab / Ctrl+PageDown` · `Ctrl+Tab / Cmd+PageDown` — The next page
+- [x] `Ctrl+Shift+Tab / Ctrl+PageUp` · `Ctrl+Shift+Tab / Cmd+PageUp` — The page before
+- [x] `Ctrl+F` · `Cmd+F` — To the search
+- [x] `Tab / Shift+Tab` · `Tab / Shift+Tab` — The search, the page's controls one by one, then Open config.toml
+- [x] `Space / Enter` · `Space / Enter` — Flip the switch or press the button that has the keys
+- [x] `Ctrl+,` · `Cmd+,` — Open it (the changeable key above, while not moved)
 
 ## The help
 
-- [ ] `Esc / F1` · `Esc / F1` — Close it
+- [x] `Esc / F1` · `Esc / F1` — Close it
