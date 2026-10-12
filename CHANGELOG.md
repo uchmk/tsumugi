@@ -5,6 +5,12 @@
 
 ## [未リリース]
 
+## [0.105.20] - 2026-10-12
+
+### 変更
+
+- 実機（x64）で `a … z`・`Shift+a … z`・`Backspace`・`Esc`・`Esc`・`Ctrl+Tab / Ctrl+PageDown`・`Ctrl+Shift+Tab / Ctrl+PageUp`・`Ctrl+F`・`Tab / Shift+Tab`・`Space / Enter`・`Ctrl+,`・`Esc / F1` を確かめた（#62）。
+
 ## [0.105.19] - 2026-10-12
 
 ### 変更
