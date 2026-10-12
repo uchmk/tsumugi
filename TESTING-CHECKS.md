@@ -345,10 +345,10 @@
 
 ## 16. Keys
 
-- [ ] **16.1** Settings → Keys → click New session, press `Ctrl+Shift+K` → `[keys] new_tab = "Ctrl+Shift+K"` in the file; `Ctrl+Shift+K` opens the dialog; `Ctrl+Shift+T` goes to the shell
-- [ ] **16.2** Its own → The key goes back; the search box and the dialog name the key in force
-- [ ] **16.3** `zoom = "none"` → `Ctrl+Shift+Z` reaches the shell
-- [ ] **16.4** Press only Ctrl while a key is being changed → Nothing is written until a real key comes
+- [x] **16.1** Settings → Keys → click New session, press `Ctrl+Shift+K` → `[keys] new_tab = "Ctrl+Shift+K"` in the file; `Ctrl+Shift+K` opens the dialog; `Ctrl+Shift+T` goes to the shell
+- [x] **16.2** Its own → The key goes back; the search box and the dialog name the key in force
+- [x] **16.3** `zoom = "none"` → `Ctrl+Shift+Z` reaches the shell
+- [x] **16.4** Press only Ctrl while a key is being changed → Nothing is written until a real key comes
 - [ ] **16.5** Settings → Keys, each section → Every row's key button lines up in one column at the right, also after a key is changed; the VIEW section has Keys (F1), the overview and the font sizes
 - [ ] **16.6** Switch to a Japanese IME, click a pane (or a Claude Code prompt), type `nihongo` and Space, Enter → The composition shows underlined at the cursor, the candidate window opens beside it; Enter types the converted text (`日本語`) into the session; a settings field still takes Japanese on its own
 
