@@ -1037,17 +1037,17 @@ dependencies = [
  "emath",
  "epaint_default_fonts",
  "font-types",
- "harfrust",
+ "harfrust 0.12.0",
  "log",
  "nohash-hasher",
  "parking_lot",
  "profiling",
  "self_cell",
- "skrifa",
+ "skrifa 0.44.0",
  "smallvec",
  "unicode-general-category",
  "unicode-segmentation",
- "vello_cpu",
+ "vello_cpu 0.1.0",
 ]
 
 [[package]]
@@ -1133,6 +1133,12 @@ name = "fearless_simd"
 version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b97b65636e5b9ef369943878ac74335ba1c55c1cb6adbf1e2c293c624248d693"
+
+[[package]]
+name = "fearless_simd"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f4beca3cb2444e3304ac30843cc091f44ed58932353cd492ce740067bfce6b12"
 
 [[package]]
 name = "find-msvc-tools"
@@ -1322,9 +1328,25 @@ dependencies = [
  "hashbrown 0.17.1",
  "log",
  "peniko",
- "skrifa",
+ "skrifa 0.44.0",
  "smallvec",
- "vello_common",
+ "vello_common 0.1.0",
+]
+
+[[package]]
+name = "glifo"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9f1218dedd5348c1b166ec3b8b3cbca49d2f527bd43b3fa072ea5123c523ed3f"
+dependencies = [
+ "bytemuck",
+ "foldhash",
+ "hashbrown 0.17.1",
+ "log",
+ "peniko",
+ "skrifa 0.44.0",
+ "smallvec",
+ "vello_common 0.3.0",
 ]
 
 [[package]]
@@ -1465,7 +1487,19 @@ checksum = "c03d949a14aa089bbb282f7dd76a498a7f684428e4257202efc119ec010376f9"
 dependencies = [
  "bitflags 2.13.2",
  "bytemuck",
- "read-fonts",
+ "read-fonts 0.41.0",
+ "smallvec",
+]
+
+[[package]]
+name = "harfrust"
+version = "0.14.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "86aa776d6d32b072119e1f1650f4db843ff4382a4aaa6a2c9c4e35703cd377cb"
+dependencies = [
+ "bitflags 2.13.2",
+ "bytemuck",
+ "read-fonts 0.45.0",
  "smallvec",
 ]
 
@@ -1677,40 +1711,40 @@ dependencies = [
 
 [[package]]
 name = "ito-common"
-version = "0.21.0"
-source = "git+https://github.com/uchmk/ito?rev=9d88cd3#9d88cd348839f07c07046ab94af60294e1dc32b1"
+version = "0.21.4"
+source = "git+https://github.com/uchmk/ito?rev=5996866e59f37873d6d01f68468606a2712890bf#5996866e59f37873d6d01f68468606a2712890bf"
 dependencies = [
  "chrono",
  "serde",
  "serde_json",
  "sys-locale",
  "toml",
- "toml_edit 0.23.10+spec-1.0.0",
+ "toml_edit",
  "windows",
 ]
 
 [[package]]
 name = "ito-gpu"
-version = "0.21.0"
-source = "git+https://github.com/uchmk/ito?rev=9d88cd3#9d88cd348839f07c07046ab94af60294e1dc32b1"
+version = "0.21.4"
+source = "git+https://github.com/uchmk/ito?rev=5996866e59f37873d6d01f68468606a2712890bf#5996866e59f37873d6d01f68468606a2712890bf"
 dependencies = [
  "egui-wgpu",
 ]
 
 [[package]]
 name = "ito-i18n"
-version = "0.21.0"
-source = "git+https://github.com/uchmk/ito?rev=9d88cd3#9d88cd348839f07c07046ab94af60294e1dc32b1"
+version = "0.21.4"
+source = "git+https://github.com/uchmk/ito?rev=5996866e59f37873d6d01f68468606a2712890bf#5996866e59f37873d6d01f68468606a2712890bf"
 dependencies = [
  "ito-common",
  "toml",
- "toml_edit 0.23.10+spec-1.0.0",
+ "toml_edit",
 ]
 
 [[package]]
 name = "ito-ipc"
-version = "0.21.0"
-source = "git+https://github.com/uchmk/ito?rev=9d88cd3#9d88cd348839f07c07046ab94af60294e1dc32b1"
+version = "0.21.4"
+source = "git+https://github.com/uchmk/ito?rev=5996866e59f37873d6d01f68468606a2712890bf#5996866e59f37873d6d01f68468606a2712890bf"
 dependencies = [
  "postcard",
  "serde",
@@ -1719,16 +1753,16 @@ dependencies = [
 
 [[package]]
 name = "ito-keys"
-version = "0.21.0"
-source = "git+https://github.com/uchmk/ito?rev=9d88cd3#9d88cd348839f07c07046ab94af60294e1dc32b1"
+version = "0.21.4"
+source = "git+https://github.com/uchmk/ito?rev=5996866e59f37873d6d01f68468606a2712890bf#5996866e59f37873d6d01f68468606a2712890bf"
 dependencies = [
  "egui",
 ]
 
 [[package]]
 name = "ito-keyscript"
-version = "0.21.0"
-source = "git+https://github.com/uchmk/ito?rev=9d88cd3#9d88cd348839f07c07046ab94af60294e1dc32b1"
+version = "0.21.4"
+source = "git+https://github.com/uchmk/ito?rev=5996866e59f37873d6d01f68468606a2712890bf#5996866e59f37873d6d01f68468606a2712890bf"
 dependencies = [
  "egui",
  "ito-keys",
@@ -1737,8 +1771,8 @@ dependencies = [
 
 [[package]]
 name = "ito-layout"
-version = "0.21.0"
-source = "git+https://github.com/uchmk/ito?rev=9d88cd3#9d88cd348839f07c07046ab94af60294e1dc32b1"
+version = "0.21.4"
+source = "git+https://github.com/uchmk/ito?rev=5996866e59f37873d6d01f68468606a2712890bf#5996866e59f37873d6d01f68468606a2712890bf"
 dependencies = [
  "egui",
  "serde",
@@ -1746,46 +1780,46 @@ dependencies = [
 
 [[package]]
 name = "ito-mcp"
-version = "0.21.0"
-source = "git+https://github.com/uchmk/ito?rev=9d88cd3#9d88cd348839f07c07046ab94af60294e1dc32b1"
+version = "0.21.4"
+source = "git+https://github.com/uchmk/ito?rev=5996866e59f37873d6d01f68468606a2712890bf#5996866e59f37873d6d01f68468606a2712890bf"
 dependencies = [
  "serde_json",
 ]
 
 [[package]]
 name = "ito-notify"
-version = "0.21.0"
-source = "git+https://github.com/uchmk/ito?rev=9d88cd3#9d88cd348839f07c07046ab94af60294e1dc32b1"
+version = "0.21.4"
+source = "git+https://github.com/uchmk/ito?rev=5996866e59f37873d6d01f68468606a2712890bf#5996866e59f37873d6d01f68468606a2712890bf"
 dependencies = [
  "windows",
 ]
 
 [[package]]
 name = "ito-pane"
-version = "0.21.0"
-source = "git+https://github.com/uchmk/ito?rev=9d88cd3#9d88cd348839f07c07046ab94af60294e1dc32b1"
+version = "0.21.4"
+source = "git+https://github.com/uchmk/ito?rev=5996866e59f37873d6d01f68468606a2712890bf#5996866e59f37873d6d01f68468606a2712890bf"
 dependencies = [
  "alacritty_terminal",
  "crossbeam-channel",
  "egui",
  "encoding_rs",
- "harfrust",
+ "harfrust 0.14.0",
  "image",
  "ito-gpu",
- "miniz_oxide 0.8.9",
+ "miniz_oxide 0.9.1",
  "polling",
  "regex",
  "serde",
- "skrifa",
+ "skrifa 0.48.0",
  "unicode-bidi",
- "vello_cpu",
+ "vello_cpu 0.3.0",
  "windows",
 ]
 
 [[package]]
 name = "ito-prefs"
-version = "0.21.0"
-source = "git+https://github.com/uchmk/ito?rev=9d88cd3#9d88cd348839f07c07046ab94af60294e1dc32b1"
+version = "0.21.4"
+source = "git+https://github.com/uchmk/ito?rev=5996866e59f37873d6d01f68468606a2712890bf#5996866e59f37873d6d01f68468606a2712890bf"
 dependencies = [
  "egui",
  "ito-common",
@@ -1795,8 +1829,8 @@ dependencies = [
 
 [[package]]
 name = "ito-theme"
-version = "0.21.0"
-source = "git+https://github.com/uchmk/ito?rev=9d88cd3#9d88cd348839f07c07046ab94af60294e1dc32b1"
+version = "0.21.4"
+source = "git+https://github.com/uchmk/ito?rev=5996866e59f37873d6d01f68468606a2712890bf#5996866e59f37873d6d01f68468606a2712890bf"
 dependencies = [
  "egui",
  "ito-pane",
@@ -2758,7 +2792,7 @@ version = "3.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e67ba7e9b2b56446f1d419b1d807906278ffa1a658a8a5d8a39dcb1f5a78614f"
 dependencies = [
- "toml_edit 0.25.15+spec-1.1.0",
+ "toml_edit",
 ]
 
 [[package]]
@@ -2851,6 +2885,18 @@ dependencies = [
  "bytemuck",
  "font-types",
  "once_cell",
+]
+
+[[package]]
+name = "read-fonts"
+version = "0.45.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8a5b7bed3d16ab428d8fa533640ab805ff50e7ad8a4d00649de1259e70023282"
+dependencies = [
+ "bytemuck",
+ "font-types",
+ "once_cell",
+ "yoke",
 ]
 
 [[package]]
@@ -3147,7 +3193,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "819ab7d62b1d3e72d9d9dea5650bac30424f9111364bb94928dbf5ecad1baa68"
 dependencies = [
  "bytemuck",
- "read-fonts",
+ "read-fonts 0.41.0",
+]
+
+[[package]]
+name = "skrifa"
+version = "0.48.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a5213b4825bac3587046330052d61bfac7bd3bd0d203c758d7c2ef726fcea034"
+dependencies = [
+ "bytemuck",
+ "read-fonts 0.45.0",
 ]
 
 [[package]]
@@ -3441,19 +3497,10 @@ dependencies = [
  "indexmap",
  "serde_core",
  "serde_spanned",
- "toml_datetime 1.1.1+spec-1.1.0",
+ "toml_datetime",
  "toml_parser",
  "toml_writer",
- "winnow 1.0.4",
-]
-
-[[package]]
-name = "toml_datetime"
-version = "0.7.5+spec-1.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "92e1cfed4a3038bc5a127e35a2d360f145e1f4b971b551a2ba5fd7aedf7e1347"
-dependencies = [
- "serde_core",
+ "winnow",
 ]
 
 [[package]]
@@ -3467,27 +3514,15 @@ dependencies = [
 
 [[package]]
 name = "toml_edit"
-version = "0.23.10+spec-1.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "84c8b9f757e028cee9fa244aea147aab2a9ec09d5325a9b01e0a49730c2b5269"
-dependencies = [
- "indexmap",
- "toml_datetime 0.7.5+spec-1.1.0",
- "toml_parser",
- "toml_writer",
- "winnow 0.7.15",
-]
-
-[[package]]
-name = "toml_edit"
 version = "0.25.15+spec-1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1340ea94a5856333492c9064b02c778b191dd2c853778d9609debdcdfea3a614"
 dependencies = [
  "indexmap",
- "toml_datetime 1.1.1+spec-1.1.0",
+ "toml_datetime",
  "toml_parser",
- "winnow 1.0.4",
+ "toml_writer",
+ "winnow",
 ]
 
 [[package]]
@@ -3496,7 +3531,7 @@ version = "1.1.3+spec-1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1d38ac1cf9b95face32296c0a3ede1fdc270627c9d9c02a7274dd6d960dc4d56"
 dependencies = [
- "winnow 1.0.4",
+ "winnow",
 ]
 
 [[package]]
@@ -3539,7 +3574,7 @@ dependencies = [
 
 [[package]]
 name = "tsumugi"
-version = "0.105.12"
+version = "0.105.13"
 dependencies = [
  "arboard",
  "chrono",
@@ -3568,7 +3603,7 @@ dependencies = [
 
 [[package]]
 name = "tsumugi-mux"
-version = "0.105.12"
+version = "0.105.13"
 dependencies = [
  "crossbeam-channel",
  "ito-common",
@@ -3668,7 +3703,22 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b2e9aed918117e8152c9eddfd8362d73c465c23f26c44786aa331707b8a64fa2"
 dependencies = [
  "bytemuck",
- "fearless_simd",
+ "fearless_simd 0.4.1",
+ "guillotiere",
+ "log",
+ "peniko",
+ "smallvec",
+ "thiserror 2.0.21",
+]
+
+[[package]]
+name = "vello_common"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "73c2fbe53548bcd25c8ff42f75a93770a8611a16b37bee56d7ef7b44e36027f1"
+dependencies = [
+ "bytemuck",
+ "fearless_simd 0.7.0",
  "guillotiere",
  "log",
  "peniko",
@@ -3683,9 +3733,21 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ac7349e1f55f6b801c7c277958df4ea53e7f20f21e8014910ad888b2ecda93ea"
 dependencies = [
  "bytemuck",
- "glifo",
+ "glifo 0.2.0",
  "hashbrown 0.17.1",
- "vello_common",
+ "vello_common 0.1.0",
+]
+
+[[package]]
+name = "vello_cpu"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ed1fec424fbba6acf6cbc78bb526447eb77590d95f40419d598870fe37535212"
+dependencies = [
+ "bytemuck",
+ "glifo 0.4.0",
+ "hashbrown 0.17.1",
+ "vello_common 0.3.0",
 ]
 
 [[package]]
@@ -4432,15 +4494,6 @@ dependencies = [
 
 [[package]]
 name = "winnow"
-version = "0.7.15"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "df79d97927682d2fd8adb29682d1140b343be4ac0f08fd68b7765d9c059d3945"
-dependencies = [
- "memchr",
-]
-
-[[package]]
-name = "winnow"
 version = "1.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "23b97319f7b8343df12cc98938e5c3eb436064524c8d2b4e30a1d3a36eecdf81"
@@ -4575,7 +4628,7 @@ dependencies = [
  "uds_windows",
  "uuid",
  "windows-sys 0.61.2",
- "winnow 1.0.4",
+ "winnow",
  "zbus_macros",
  "zbus_names",
  "zvariant",
@@ -4627,7 +4680,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d8bf88b4a3ff53e883001e0e0115b297a9d53c31b9c1edd2bfdd853e3428624e"
 dependencies = [
  "serde",
- "winnow 1.0.4",
+ "winnow",
  "zvariant",
 ]
 
@@ -4638,7 +4691,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d1586c021a01ca0a9216dcd874e546382e156a5cbab5fab6cb5f10087e22682a"
 dependencies = [
  "serde",
- "winnow 1.0.4",
+ "winnow",
  "zbus_names",
  "zvariant",
 ]
@@ -4762,7 +4815,7 @@ dependencies = [
  "endi",
  "enumflags2",
  "serde",
- "winnow 1.0.4",
+ "winnow",
  "zcheapstr",
  "zvariant_derive",
  "zvariant_utils",
@@ -4791,5 +4844,5 @@ dependencies = [
  "quote",
  "serde",
  "syn 3.0.6",
- "winnow 1.0.4",
+ "winnow",
 ]
