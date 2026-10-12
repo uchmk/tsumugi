@@ -1620,7 +1620,7 @@ impl App {
             update_asked: false,
             build_told: false,
             close_ok: false,
-            script: KEYS.get().map(|steps| keyscript::Runner::new(steps.clone(), std::env::var_os("TSUMUGI_KEYS_DONE").filter(|p| !p.is_empty()).map(std::path::PathBuf::from))),
+            script: KEYS.get().map(|steps| keyscript::runner(steps.clone(), std::env::var_os("TSUMUGI_KEYS_DONE").filter(|p| !p.is_empty()).map(std::path::PathBuf::from))),
             script_todo: Vec::new(),
             worktree_removing: None,
             toast: None,
@@ -5485,6 +5485,8 @@ impl App {
             let (path, tail) = match d {
                 keyscript::Do::State(name) => (Some(script.dir.join(format!("{name}.txt"))), ""),
                 keyscript::Do::Done => (script.done.clone(), "keys: done\n"),
+                // tsumugi defines no readings of its own.
+                keyscript::Do::Read { .. } => (None, ""),
                 keyscript::Do::Quit => {
                     // Asked for by the script: no question about the
                     // sessions still running.

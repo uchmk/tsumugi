@@ -431,7 +431,7 @@ fn help_names_the_folders() {
 #[test]
 fn keys_refuses_a_bad_script() {
     let s = Server::new("keys");
-    for (args, says) in [(&["--keys"][..], "usage"), (&["--keys", "echo hi"], "<Space>"), (&["--keys", "<Shot:../up>"], "a name is"), (&["--keys", "<Wait:soon>"], "milliseconds"), (&["--keys", "j", "k"], "usage")] {
+    for (args, says) in [(&["--keys"][..], "usage"), (&["--keys", "echo hi"], "<Space>"), (&["--keys", "<Shot:../up>"], "letters, digits"), (&["--keys", "<Wait:soon>"], "milliseconds"), (&["--keys", "j", "k"], "usage")] {
         let out = s.run(args);
         let err = String::from_utf8_lossy(&out.stderr);
         assert_eq!(out.status.code(), Some(2), "tsumugi {args:?}: {err}");
