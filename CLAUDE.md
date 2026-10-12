@@ -71,7 +71,7 @@ kura と同じ。`Cargo.toml` の `version` が正、版の繰り上げと CHANG
 
 ## Windows 実機のセッション
 
-- 役割は [.claude/windows-role.md](.claude/windows-role.md)。タスク スケジューラが毎時 :50 に `scripts/lane-boot.ps1` を回す
+- 役割は [.claude/windows-role.md](.claude/windows-role.md)。タスク スケジューラが毎時 :41 に `scripts/lane-boot.ps1` を回す
   （x64 と ARM64 の `-Lane arm`）。lane-boot は fetch したあと origin/main の `scripts/` を状態フォルダ（`%LOCALAPPDATA%\tsumugi-wintest`）に
   取り出して `auto-wintest.ps1` を実行するので、作業フォルダが汚れていても最新のスクリプトが走る（v0.94.0 から）。
   汚れた作業フォルダは `rescue/<lane>-<日時>` ブランチにコミットして push してから origin/main に戻す（救ったことは状態の issue に書く）。
