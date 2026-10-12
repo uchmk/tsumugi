@@ -5,6 +5,12 @@
 
 ## [未リリース]
 
+## [0.105.5] - 2026-10-12
+
+### 変更
+
+- 実機（x64）で 5.14（待ちのページの上下・Enter・左右）と 5.15（Ctrl+Shift+G での並びの保存、並びのページの Enter・Delete）を画像で確かめ、`[~]` を付けた。`tsumugi split -p` と `-n` は cli.rs のテスト（`layout_opens_a_saved_layout_and_split_takes_a_share`）が Windows でも通る。5.16 は古いサーバが無く未確認。
+
 ## [0.105.4] - 2026-10-12
 
 ### 変更
