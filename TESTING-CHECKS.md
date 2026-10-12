@@ -361,7 +361,7 @@
 - [ ] **17.6** Appearance → Cursor, each of the six → The focused pane's cursor is a block, a bar or a line under, blinking when asked; a pane without the keys shows an outline
 - [ ] **17.7** Nerd Font icons off, with a Nerd Font installed → The branch mark is drawn, not the font's icon
 - [ ] **17.8** Keys → New session → press `Ctrl+Shift+W`, then `Ctrl+C` → The row says whose each is; nothing written; another key, or Use it anyway, writes it
-- [ ] **17.9** `Alt+Shift+Arrows` in a split → The nearest divider moves that way a step at a time; the split is kept after a restart
+- [~] **17.9** `Alt+Shift+Arrows` in a split → The nearest divider moves that way a step at a time; the split is kept after a restart
 - [ ] **17.10** Notifications → ▶ beside each sound, each of the four → Four different system sounds
 - [ ] **17.11** Focus mode on in Windows; a session waits while the window is behind → No sound, flash or toast; the taskbar number still comes
 - [ ] **17.12** Tell about a finish → 5 min; a 1-minute command finishes behind → No notice for it
