@@ -255,7 +255,7 @@
 
 ## 9. The settings screen
 
-- [ ] **9.1** `Ctrl+,` → The screen with its nine pages and the search field over them; the band says Settings in the middle with an X; no sidebar or status bar; `Esc` and the X close it
+- [~] **9.1** `Ctrl+,` → The screen with its nine pages and the search field over them; the band says Settings in the middle with an X; no sidebar or status bar; `Esc` and the X close it
 - [ ] **9.2** Change something on each page → Only that line of `config.toml` changes (diff the file); comments stay. Language, the clock and the theme change that line of `common.toml` in the uchmk folder instead
 - [ ] **9.3** Write a mistake into `config.toml` by hand → A red line above the status bar says what and where, until it is fixed; nothing else changes
 - [ ] **9.4** Open config.toml / Open the settings folder → The system's editor / file manager opens
@@ -263,8 +263,8 @@
 - [ ] **9.6** Next to the design's "Settings: every page" → The same pages, sections and rows in the same order
 - [ ] **9.7** Only the keyboard: `Ctrl+Tab` / `Ctrl+Shift+Tab` through the pages, `Tab` through a page, `Space` on a switch, `Esc` twice → A cyan ring on the control with the keys; Tab never stops on the top band or the list of pages; Space flips the switch (the file changes); the first Esc leaves the control, the second closes the screen; nothing typed reaches the shell behind it
 - [ ] **9.8** Notifications → WHEN A SESSION… → A line between rows; the three state columns the same width, each switch in the middle of its column and row, under its heading's dot
-- [ ] **9.9** `Ctrl+,` (macOS `Cmd+,`) with the settings open → They close and stay closed (not reopened on their first page)
-- [ ] **9.10** Settings → General → Scale, pick 150% → The whole window (bands, sidebar, settings and panes) grows at once; `scale = 1.5` in `common.toml`, `config.toml` unchanged; `Ctrl+=` and `Ctrl+-` still change only the panes' font size
+- [~] **9.9** `Ctrl+,` (macOS `Cmd+,`) with the settings open → They close and stay closed (not reopened on their first page)
+- [~] **9.10** Settings → General → Scale, pick 150% → The whole window (bands, sidebar, settings and panes) grows at once; `scale = 1.5` in `common.toml`, `config.toml` unchanged; `Ctrl+=` and `Ctrl+-` still change only the panes' font size
 - [ ] **9.11** With tsumugi and kura (or yagura) open, write `scale = 1.25` into `common.toml` by hand → Both windows grow to 125% within a couple of seconds; Settings → General → Scale shows 125%
 
 ## 10. Themes
