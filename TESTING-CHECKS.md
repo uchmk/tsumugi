@@ -365,8 +365,8 @@
 - [ ] **17.10** Notifications → ▶ beside each sound, each of the four → Four different system sounds
 - [ ] **17.11** Focus mode on in Windows; a session waits while the window is behind → No sound, flash or toast; the taskbar number still comes
 - [ ] **17.12** Tell about a finish → 5 min; a 1-minute command finishes behind → No notice for it
-- [ ] **17.13** Sessions → Default program → Shell → The new-session dialog opens with Shell picked
-- [ ] **17.14** Claude Code command: a full path to `claude` → New Claude Code sessions run that program
+- [x] **17.13** Sessions → Default program → Shell → The new-session dialog opens with Shell picked
+- [x] **17.14** Claude Code command: a full path to `claude` → New Claude Code sessions run that program
 - [ ] **17.15** Resume conversations off; restart with a Claude Code pane → It comes back as a plain shell, nothing typed
 - [x] **17.16** "Probably waiting" after 3; a program that prints nothing → Its card turns to probably waiting after about 3 s
 - [ ] **17.18** Profiles → Edit: another folder and a pane on the right; Add a new one → `profiles.toml` has them; the new-session dialog's profile opens both panes
