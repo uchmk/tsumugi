@@ -199,10 +199,10 @@
 ## 6. New sessions
 
 - [ ] **6.1** `Ctrl+Shift+T`, Enter → Claude Code starts in a new tab in the focused pane's folder
-- [ ] **6.2** `Ctrl+Shift+T`, Shell, `Alt+Enter` → A shell split to the right instead of a tab
-- [ ] **6.3** Type part of a folder, `Tab` → Completes from the folders listed, including **closed** ones from sessions that ended; the cursor at its end; a second `Tab` moves on
+- [~] **6.2** `Ctrl+Shift+T`, Shell, `Alt+Enter` → A shell split to the right instead of a tab
+- [~] **6.3** Type part of a folder, `Tab` → Completes from the folders listed, including **closed** ones from sessions that ended; the cursor at its end; a second `Tab` moves on
 - [ ] **6.4** Add a tag, and take a dashed (folder rule) tag off → The new session wears exactly what the dialog showed
-- [ ] **6.5** Beside it → + Pane twice (Claude Code, Shell), Create → One tab of three panes: the first, one to its right, one below that
+- [~] **6.5** Beside it → + Pane twice (Claude Code, Shell), Create → One tab of three panes: the first, one to its right, one below that
 - [ ] **6.6** Tick Save as a profile, name it; next time Profile… → it → The folder, start, tags and panes come back
 - [ ] **6.7** Tick In a new git worktree in a repository, Create → A folder `<repo>-tsumugi-MMDD-HHMM` beside the repository on its own branch, and the session in it; a toast says so
 - [ ] **6.8** `exit` the last session in that worktree → **Remove the worktree?**; Remove takes the folder (the branch stays); with uncommitted changes git refuses and the toast says why
