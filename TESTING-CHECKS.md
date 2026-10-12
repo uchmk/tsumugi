@@ -368,13 +368,13 @@
 - [ ] **17.13** Sessions → Default program → Shell → The new-session dialog opens with Shell picked
 - [ ] **17.14** Claude Code command: a full path to `claude` → New Claude Code sessions run that program
 - [ ] **17.15** Resume conversations off; restart with a Claude Code pane → It comes back as a plain shell, nothing typed
-- [ ] **17.16** "Probably waiting" after 3; a program that prints nothing → Its card turns to probably waiting after about 3 s
+- [x] **17.16** "Probably waiting" after 3; a program that prints nothing → Its card turns to probably waiting after about 3 s
 - [ ] **17.18** Profiles → Edit: another folder and a pane on the right; Add a new one → `profiles.toml` has them; the new-session dialog's profile opens both panes
 - [ ] **17.19** Tab menu: hide Pin, move Close the session up, add `lazygit -p {folder}` → The right-click menu follows; the item runs lazygit in the session's folder
 - [ ] **17.20** Open with → Editor command `code {folder}` → Open in the editor opens VS Code in the session's folder; with one command the menu item has no ▶
 - [ ] **17.21** Tags → New rule → Branch `claude/*`, tag `claude` → A session on a `claude/…` branch gets the tag
 - [ ] **17.22** Edit a tag: rename it, pick a colour, Quiet → Renamed on the sessions and in the rules; the chip recoloured everywhere; its notices go to the bell only
-- [ ] **17.23** Shell → Default shell, Arguments `-NoLogo`, Environment `FOO=1` → A new shell session runs that shell with the argument; `echo $env:FOO` prints 1
+- [x] **17.23** Shell → Default shell, Arguments `-NoLogo`, Environment `FOO=1` → A new shell session runs that shell with the argument; `echo $env:FOO` prints 1
 - [ ] **17.24** Shell integration → Install, then Remove (pwsh) → A marked block appears in `$PROFILE`, and goes; a new session with it reports its folder
 - [ ] **17.25** Windows → ConPTY → Bundled, with the zip's build; the system's, with a bare exe
 - [ ] **17.26** Advanced → Restart the server → The window says it is restarting; the tabs come back (or Welcome back); the uptime starts again; if the new server cannot start, the window says why
