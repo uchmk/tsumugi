@@ -156,8 +156,8 @@
 - [ ] **4.8** Settings → Notifications: flash and sound on for waiting, then 4.5 again → The taskbar button flashes and the system's message sound plays once (the error sound for an error)
 - [ ] **4.9** Right-click a tag chip → mute → Sessions with the tag tell only in the bell
 - [ ] **4.10** The bell, right of the search box at the top; then `Ctrl+Shift+N` (macOS `Cmd+Shift+N`) twice in a shell → The list of notices under it, newest first, its names without Claude Code's `✳`; a click goes to the session and marks it read; no bell in the sidebar's heading. The key opens the same list and closes it, and nothing reaches the shell. With the list open, `Down` / `Up` move a highlight over the rows (the list scrolls to it), `Enter` goes to that session and marks it read, `Esc` closes the list; none of them reach the shell
-- [ ] **4.11** `printf '\e]9;hello\a'` in a pane → Marked waiting with `hello`, no hooks needed
-- [ ] **4.12** `Ctrl+Shift+U` with two waiting → The one waiting longest first, then the other
+- [x] **4.11** `printf '\e]9;hello\a'` in a pane → Marked waiting with `hello`, no hooks needed
+- [x] **4.12** `Ctrl+Shift+U` with two waiting → The one waiting longest first, then the other
 - [ ] **4.13** Two Claude Code sessions asking permission, then `Ctrl+Shift+Y` (or **List ›** at the sidebar's foot) → A panel: each waiting session with what it said, how long, its choices as buttons and a tick; a choice's button types its number there
 - [ ] **4.14** In that panel, **Yes to 2** → Both go on as if `1` were typed in each; untick one first and only the other is answered; **No to N** types each menu's "No" choice
 - [ ] **4.15** A session waiting with a menu of other words (no "Yes"/"No") → Not counted in Yes to N / No to N; its own buttons still work
