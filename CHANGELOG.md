@@ -5,6 +5,12 @@
 
 ## [未リリース]
 
+## [0.105.14] - 2026-10-12
+
+### 変更
+
+- 実機（x64）で `Ctrl+Shift+P`・`Ctrl+Shift+S`・`Ctrl+Shift+G`・`none (give one)`・`none (give one)`・`none (give one)`・`Alt+Shift+Down`・`Enter`・`Tab`・`Shift+Tab`・`Left / Right` を確かめ、`Ctrl+=`・`Ctrl+Shift+O`・`none (give one)`・`none (give one)`・`Alt+Enter`・`Space`・`Up / Down`・`Esc` を画面の画像で見た（#56）。
+
 ## [0.105.13] - 2026-10-12
 
 ### 変更
