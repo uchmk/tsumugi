@@ -6,7 +6,7 @@ tsumugi のやること。`【人】` は持ち主の作業、`【金】` は 20
 ## 金曜日から（2026-10-09 以降）
 
 - [x] （2026-10-09 に x64、2026-10-10 に ARM64 のレーンが回り始めた）【人】【金】Windows 実機のテストを始める。`C:\dev\tsumugi` から worktree（`C:\dev\tsumugi-wintest`）を作り、`-DryRun` で塊を見てから 1 回手で回し、
-      スクリプトの冒頭のとおりタスク スケジューラに毎時 :50 で登録する。役割は `.claude/windows-role.md`、チェック表は TESTING-CHECKS.md（303 行）と
+      スクリプトの冒頭のとおりタスク スケジューラに毎時 :41 で登録する。役割は `.claude/windows-role.md`、チェック表は TESTING-CHECKS.md（303 行）と
       TESTING-KEYS.md（77 個）。CLI とサーバの行は `tests/cli.rs` で CI に移した（TESTING.md の「Covered by tests」）。
   - [x] （2026-10-10、持ち主が用意し、ARM64 のレーンも回っている）【人】ARM64 のノート PC も使うなら `-Lane arm`（`C:\dev\tsumugi-armtest`、タスク名 `tsumugi-auto-wintest-arm`）。
   - [x] （v0.74.4、クラウドのマージの Routine が毎時 :40 にマージする。手順は v0.74.5 の `.claude/merge-routine.md`）実機の PR（`test/win-*`・`test/arm-*`）をマージする側を決める。

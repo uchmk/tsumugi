@@ -28,7 +28,7 @@
 #      the newest release below the version built (gh release download, kept
 #      in %LOCALAPPDATA%\tsumugi-wintest\old), copied into the run's kit.
 #
-# Register it with Task Scheduler every hour at :50 (filer's runs at :20), as
+# Register it with Task Scheduler every hour at :41 (filer's runs at :20), as
 # you, "only when the user is logged on" (the run drives a real window). The
 # task runs scripts/lane-boot.ps1 (ito's, the same as kura's), which fetches
 # main and runs main's copy of this script from the state folder
