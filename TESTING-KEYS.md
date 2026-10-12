@@ -18,7 +18,7 @@ Windows and Linux keys first; the macOS key is after `·`.
 - [x] `Alt+Shift++` · `Cmd+D` — Split right · `split_right`
 - [x] `Alt+Shift+-` · `Cmd+Shift+D` — Split down · `split_down`
 - [x] `Ctrl+Shift+Z` · `Cmd+Shift+Z` — Zoom one pane · `zoom`
-- [ ] `Ctrl+Shift+P` · `Cmd+Shift+P` — Command palette: commands, prompts, layouts, folders · `search`
+- [x] `Ctrl+Shift+P` · `Cmd+Shift+P` — Command palette: commands, prompts, layouts, folders · `search`
 - [x] `Ctrl+Shift+B` · `Cmd+Shift+B` — Narrow rail · `rail`
 - [x] `Ctrl+,` · `Cmd+,` — Settings · `settings`
 - [x] `Ctrl+I` · `Cmd+I` — Input box · `input`
@@ -27,10 +27,10 @@ Windows and Linux keys first; the macOS key is after `·`.
 - [x] `Ctrl+Shift+Y` · `Cmd+Shift+Y` — The waiting sessions, answered together · `waiting_list`
 - [x] `Ctrl+Shift+I` · `Cmd+Shift+I` — Type into every pane of the tab · `type_into_all`
 - [x] `Ctrl+Shift+N` · `Cmd+Shift+N` — Notifications (the bell) · `notifications`
-- [ ] `Ctrl+=` · `Cmd+=` — Bigger letters (= or +) · `font_bigger`
+- [~] `Ctrl+=` · `Cmd+=` — Bigger letters (= or +) · `font_bigger`
 - [x] `Ctrl+-` · `Cmd+-` — Smaller letters · `font_smaller`
 - [x] `Ctrl+0` · `Cmd+0` — Letters as the settings have them · `font_reset`
-- [ ] `Ctrl+Shift+O` · `Cmd+Shift+O` — All sessions: find a session or a line in any scrollback, or open a saved layout or script · `overview`
+- [~] `Ctrl+Shift+O` · `Cmd+Shift+O` — All sessions: find a session or a line in any scrollback, or open a saved layout or script · `overview`
 - [x] `Ctrl+Shift+M` · `Cmd+Shift+M` — Copy mode: select the output with the keys · `copy_mode`
 - [x] `Ctrl+Shift+Up` · `Cmd+Shift+Up` — To the prompt above · `prev_prompt`
 - [x] `Ctrl+Shift+Down` · `Cmd+Shift+Down` — To the prompt below · `next_prompt`
@@ -40,15 +40,15 @@ Windows and Linux keys first; the macOS key is after `·`.
 - [x] `Ctrl+Shift+E` · `Cmd+Shift+E` — Give every pane the same room · `equalize`
 - [x] `Ctrl+Shift+J` · `Cmd+Shift+J` — The pane to a tab of its own · `pane_to_tab`
 - [x] `Ctrl+Shift+R` · `Cmd+Shift+R` — Record the pane (asciinema .cast) · `record`
-- [ ] `Ctrl+Shift+S` · `Cmd+Shift+S` — Write a work log of the pane (text in Downloads) · `work_log`
-- [ ] `Ctrl+Shift+G` · `Cmd+Shift+G` — Save this tab's layout · `save_layout`
+- [x] `Ctrl+Shift+S` · `Cmd+Shift+S` — Write a work log of the pane (text in Downloads) · `work_log`
+- [x] `Ctrl+Shift+G` · `Cmd+Shift+G` — Save this tab's layout · `save_layout`
 - [x] `Ctrl+Shift+L` · `Cmd+Shift+L` — Copy the last command's output · `copy_output`
 - [x] `Ctrl+Shift+Space` · `Cmd+Shift+Space` — Quick select: copy a link, hash or number by its letters · `quick_select`
-- [ ] `none (give one)` · `none (give one)` — Recently closed sessions · `closed_sessions`
-- [ ] `none (give one)` · `none (give one)` — Changes not committed here (git diff) · `changes`
-- [ ] `none (give one)` · `none (give one)` — Read-only: turn away typing into the pane (or let it in) · `read_only`
-- [ ] `none (give one)` · `none (give one)` — Save the pane's output to a file · `save_output`
-- [ ] `none (give one)` · `none (give one)` — Restart the server · `restart_server`
+- [~] `none (give one)` · `none (give one)` — Recently closed sessions · `closed_sessions`
+- [~] `none (give one)` · `none (give one)` — Changes not committed here (git diff) · `changes`
+- [x] `none (give one)` · `none (give one)` — Read-only: turn away typing into the pane (or let it in) · `read_only`
+- [x] `none (give one)` · `none (give one)` — Save the pane's output to a file · `save_output`
+- [x] `none (give one)` · `none (give one)` — Restart the server · `restart_server`
 
 ## The window, fixed
 
@@ -60,7 +60,7 @@ Windows and Linux keys first; the macOS key is after `·`.
 - [x] `Alt+Shift+Left` · `Cmd+Ctrl+Left` — Move the divider nearest the pane with the keys to the left
 - [x] `Alt+Shift+Right` · `Cmd+Ctrl+Right` — Move the divider nearest the pane with the keys to the right
 - [x] `Alt+Shift+Up` · `Cmd+Ctrl+Up` — Move the divider nearest the pane with the keys up
-- [ ] `Alt+Shift+Down` · `Cmd+Ctrl+Down` — Move the divider nearest the pane with the keys down
+- [x] `Alt+Shift+Down` · `Cmd+Ctrl+Down` — Move the divider nearest the pane with the keys down
 
 ## Panes
 
@@ -68,14 +68,14 @@ Windows and Linux keys first; the macOS key is after `·`.
 
 ## The new-session dialog
 
-- [ ] `Enter` · `Enter` — Create in a new tab (on a button: press it)
-- [ ] `Alt+Enter` · `Option+Enter` — Create split to the right of the pane with the keys
-- [ ] `Tab` · `Tab` — In the folder: complete it from the list; complete, or elsewhere: the next field
-- [ ] `Shift+Tab` · `Shift+Tab` — The field before
-- [ ] `Left / Right` · `Left / Right` — On a way to start: the one beside it
-- [ ] `Space` · `Space` — Press the button that has the keys
-- [ ] `Up / Down` · `Up / Down` — Walk the folder list
-- [ ] `Esc` · `Esc` — Cancel
+- [x] `Enter` · `Enter` — Create in a new tab (on a button: press it)
+- [~] `Alt+Enter` · `Option+Enter` — Create split to the right of the pane with the keys
+- [x] `Tab` · `Tab` — In the folder: complete it from the list; complete, or elsewhere: the next field
+- [x] `Shift+Tab` · `Shift+Tab` — The field before
+- [x] `Left / Right` · `Left / Right` — On a way to start: the one beside it
+- [~] `Space` · `Space` — Press the button that has the keys
+- [~] `Up / Down` · `Up / Down` — Walk the folder list
+- [~] `Esc` · `Esc` — Cancel
 
 ## The input box
 
