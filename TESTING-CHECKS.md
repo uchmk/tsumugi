@@ -381,7 +381,7 @@
 - [ ] **17.26** Advanced → Restart the server → The window says it is restarting; the tabs come back (or Welcome back); the uptime starts again; if the new server cannot start, the window says why
 - [~] **17.27** Graphics backend → Vulkan, then a name the machine has no adapter for, restart → Draws with it; for the missing one, the automatic choice and a line on stderr
 - [x] **17.28** Scrollback 200; a new session; `seq 1000` → Only about 200 lines to scroll back
-- [ ] **17.29** Log what each pane sends and receives on; a new session → `pane-logs/session-N.log` beside the saved tabs grows as it runs
+- [x] **17.29** Log what each pane sends and receives on; a new session → `pane-logs/session-N.log` beside the saved tabs grows as it runs
 - [ ] **17.30** Export…, then Import on another machine (or after changing things) → One file in Downloads; importing brings the settings, themes and profiles back, the old ones kept as `.bak`
 - [ ] **17.31** Keys → set a key to `Ctrl+[` by hand in `config.toml`, then change another key and a font size in Settings → `config.toml` still has every table and comment it had; only the changed lines differ
 - [ ] **17.32** Put a mistake in `config.toml` (`[broken`), then change anything in Settings → A toast says the file does not read and is left as it is; the file is unchanged
