@@ -354,8 +354,8 @@
 ## 17. What the settings' rows do
 
 - [ ] **17.1** General → Start the server at sign-in on; sign out and in → `tsumugi ls` answers before the window is opened; the `tsumugi` value under `HKCU\…\Run` (macOS: the LaunchAgent; Linux: `~/.config/autostart/tsumugi-server.desktop`); off takes it away
-- [ ] **17.2** Keep sessions running off; close the window with a shell open → `tsumugi ls` is empty afterwards
-- [ ] **17.3** Ask before closing on; `sleep 100` in a pane; close the window → "A session is still running"; Cancel keeps the window; Close closes it
+- [x] **17.2** Keep sessions running off; close the window with a shell open → `tsumugi ls` is empty afterwards
+- [x] **17.3** Ask before closing on; `sleep 100` in a pane; close the window → "A session is still running"; Cancel keeps the window; Close closes it
 - [ ] **17.4** Check for updates on, with a build older than the latest release → A toast names the newer version, once a start
 - [ ] **17.5** Default folder `~/dev`; start with no session → The first shell starts in `~/dev`
 - [ ] **17.6** Appearance → Cursor, each of the six → The focused pane's cursor is a block, a bar or a line under, blinking when asked; a pane without the keys shows an outline
@@ -379,7 +379,7 @@
 - [ ] **17.25** Windows → ConPTY → Bundled, with the zip's build; the system's, with a bare exe
 - [ ] **17.26** Advanced → Restart the server → The window says it is restarting; the tabs come back (or Welcome back); the uptime starts again; if the new server cannot start, the window says why
 - [ ] **17.27** Graphics backend → Vulkan, then a name the machine has no adapter for, restart → Draws with it; for the missing one, the automatic choice and a line on stderr
-- [ ] **17.28** Scrollback 200; a new session; `seq 1000` → Only about 200 lines to scroll back
+- [x] **17.28** Scrollback 200; a new session; `seq 1000` → Only about 200 lines to scroll back
 - [ ] **17.29** Log what each pane sends and receives on; a new session → `pane-logs/session-N.log` beside the saved tabs grows as it runs
 - [ ] **17.30** Export…, then Import on another machine (or after changing things) → One file in Downloads; importing brings the settings, themes and profiles back, the old ones kept as `.bak`
 - [ ] **17.31** Keys → set a key to `Ctrl+[` by hand in `config.toml`, then change another key and a font size in Settings → `config.toml` still has every table and comment it had; only the changed lines differ
@@ -411,7 +411,7 @@
 ## 19. Keys through every screen
 
 - [ ] **19.1** The new-session dialog: `Tab` all the way round, then `Shift+Tab` all the way back → The folder, the way picked in START (one stop), + Pane, the tag, the two ticks, Cancel, Create, the folder again; the log's positions go left to right, top to bottom; back the same in reverse
-- [ ] **19.2** In START, `→` four times, then `←` four times → Claude Code, Resume last, Shell, Profile…, round to Claude Code; one button lit at a time: the way picked, filled, with the ring; on Profile… it is filled with the ring, as the others, and nothing else is lit; back on Shell it is filled again
+- [x] **19.2** In START, `→` four times, then `←` four times → Claude Code, Resume last, Shell, Profile…, round to Claude Code; one button lit at a time: the way picked, filled, with the ring; on Profile… it is filled with the ring, as the others, and nothing else is lit; back on Shell it is filled again
 - [ ] **19.3** Settings, each page in turn: `Tab` through it → Every switch, list, field and button on the page, in reading order; inside a row of several (Tags' New rule, a key and Its own, a sound and ▶, the menu's ↑ ↓ and switch) left to right
 - [ ] **19.4** The search box (`Ctrl+Shift+P`), the waiting list (`Ctrl+Shift+Y`), the bell's list (`Ctrl+Shift+N`), Start in parallel → Each opens with the keys in its first field or line; `Tab` walks it in reading order; `Esc` closes it and the keys go back to the pane they came from
 - [ ] **19.5** Every dialog and list in 19.1 to 19.4: `Enter` on a field, and on each button → As the dialog's foot says: Enter in a field does the main thing; on a button it presses that button; nothing reaches the shell behind
