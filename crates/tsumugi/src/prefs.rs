@@ -413,16 +413,19 @@ pub fn show(ui: &mut egui::Ui, pal: &Palette, screen: &mut Screen, seen: &Seen) 
     let busy = state.busy(ui) || screen.edit.capturing.is_some();
     let pressed = ito_prefs::Keys::standard(ui, busy);
     let edit = &mut screen.edit;
-    let done = ito_prefs::show(ui, seen.current, &mut state, &nav, pressed, |ui, page, l| match Page::ALL[page] {
-        Page::General => general(ui, l, seen, edit, &mut out),
-        Page::Appearance => appearance(ui, l, seen, edit, &mut out),
-        Page::Keys => keys(ui, l, seen, edit, &mut out),
-        Page::Notifications => notifications(ui, l, seen, edit, &mut out),
-        Page::Sessions => sessions(ui, l, seen, edit, &mut out),
-        Page::Tags => tags(ui, l, seen, edit, &mut out),
-        Page::Theme => theme(ui, l, pal, seen, &mut out),
-        Page::Shell => shell(ui, l, seen, edit, &mut out),
-        Page::Advanced => advanced(ui, l, seen, edit, &mut out),
+    let done = ito_prefs::show(ui, seen.current, &mut state, &nav, pressed, |ui, page, l| {
+        match Page::ALL[page] {
+            Page::General => general(ui, l, seen, edit, &mut out),
+            Page::Appearance => appearance(ui, l, seen, edit, &mut out),
+            Page::Keys => keys(ui, l, seen, edit, &mut out),
+            Page::Notifications => notifications(ui, l, seen, edit, &mut out),
+            Page::Sessions => sessions(ui, l, seen, edit, &mut out),
+            Page::Tags => tags(ui, l, seen, edit, &mut out),
+            Page::Theme => theme(ui, l, pal, seen, &mut out),
+            Page::Shell => shell(ui, l, seen, edit, &mut out),
+            Page::Advanced => advanced(ui, l, seen, edit, &mut out),
+        }
+        follow_focus(ui);
     });
     (screen.page, screen.query, screen.held) = (Page::ALL[state.page], state.query, state.held);
     if done.close {
@@ -883,15 +886,17 @@ fn notifications(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: 
     let n = &seen.settings.notify;
     ui.horizontal(|ui| {
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            if button(ui, l, tr("prefs.notify.test")) {
-                out.push(Change::TestNotification);
-            }
-            if button(ui, l, tr("prefs.notify.reset")) {
-                let d = cfg::Notify::default();
-                for (key, list) in [("system", d.system), ("taskbar", d.taskbar), ("flash", d.flash), ("sound", d.sound)] {
-                    out.push(Change::Set(Some("notify"), key, cfg::quote_list(&list)));
+            reading_order(ui, egui::Id::new("notify-buttons"), |ui| {
+                if button(ui, l, tr("prefs.notify.reset")) {
+                    let d = cfg::Notify::default();
+                    for (key, list) in [("system", d.system), ("taskbar", d.taskbar), ("flash", d.flash), ("sound", d.sound)] {
+                        out.push(Change::Set(Some("notify"), key, cfg::quote_list(&list)));
+                    }
                 }
-            }
+                if button(ui, l, tr("prefs.notify.test")) {
+                    out.push(Change::TestNotification);
+                }
+            });
         });
     });
     ui.add_space(8.0);
@@ -1297,6 +1302,39 @@ fn sessions(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut 
     tab_menu(ui, l, seen, edit, out);
 }
 
+/// Scrolls the page to the control Tab just moved to, when it is below the
+/// fold (#60).
+fn follow_focus(ui: &mut egui::Ui) {
+    let ctx = ui.ctx().clone();
+    let now = ctx.memory(|m| m.focused());
+    let key = egui::Id::new("prefs-focused");
+    let was = ctx.data(|d| d.get_temp::<Option<egui::Id>>(key)).flatten();
+    if now != was {
+        ctx.data_mut(|d| d.insert_temp(key, now));
+        if let Some(rect) = now.and_then(|id| ctx.read_response(id)).map(|r| r.rect) {
+            ui.scroll_to_rect(rect, None);
+        }
+    }
+}
+
+/// Controls that sit at the right of a row, added left to right: egui's Tab
+/// follows the order they are added in, so a row laid out right to left
+/// would be walked backwards (#47). The width is the last frame's, so the
+/// first frame of a row shows it a little to the left.
+fn reading_order<R>(ui: &mut egui::Ui, id: egui::Id, add: impl FnOnce(&mut egui::Ui) -> R) -> R {
+    let was = ui.data(|d| d.get_temp::<f32>(id)).unwrap_or(0.0);
+    let free = ui.available_rect_before_wrap();
+    let at = egui::pos2((free.right() - was).max(free.left()), free.top());
+    let layout = egui::Layout::left_to_right(egui::Align::Center);
+    let shown = ui.scope_builder(egui::UiBuilder::new().max_rect(egui::Rect::from_min_max(at, free.max)).layout(layout), add);
+    let now = shown.response.rect.width();
+    if (now - was).abs() > 0.5 {
+        ui.data_mut(|d| d.insert_temp(id, now));
+        ui.ctx().request_repaint();
+    }
+    shown.inner
+}
+
 /// `[open] editor` or `filer`: a field for each command, the first the one
 /// a click runs, and an empty one under them to add another (more than one
 /// opens beside the menu's item).
@@ -1320,8 +1358,10 @@ fn commands(
             (format!("{label} {}", k + 1), trf("prefs.open.beside_as", &[&tsumugi_mux::settings::program_name(c)]))
         };
         let (typed, gone) = row(ui, l, &words, &about, |ui| {
-            let gone = ui.small_button("×").on_hover_text(tr("prefs.open.take_out")).clicked();
-            (field(ui, &mut edit.drafts, &format!("{key}-{k}"), c, hint, 220.0), gone)
+            reading_order(ui, egui::Id::new(("open-with-row", key, k)), |ui| {
+                let typed = field(ui, &mut edit.drafts, &format!("{key}-{k}"), c, hint, 220.0);
+                (typed, ui.small_button("×").on_hover_text(tr("prefs.open.take_out")).clicked())
+            })
         });
         let mut next = now.to_vec();
         if gone {

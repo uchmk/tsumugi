@@ -571,4 +571,6 @@ cyan ring on the one the log names and on no other (a screenshot, `[~]`).
 | 19.10 | The new-session dialog, Remove the worktree?, closing a running tab: `Tab` past the last control, `Shift+Tab` before the first | The focus wraps inside the dialog and never reaches a control behind it; a click on the dim behind the new-session dialog still cancels |
 | 19.11 | Quick select (`Ctrl+Shift+Space` or the palette) on a screen with a branch name or a number; type `Shift`+its letter | The text is copied and a toast says there was nothing to open and that it was copied instead; a real file path or address still opens |
 | 19.12 | Settings: click the last control of a page, then `Tab`; then `Shift+Tab` from the search | `Tab` goes straight to the search box with no frame of nothing focused; `Shift+Tab` and `Tab` walk the same ring |
+| 19.13 | Settings → Notifications: `Tab` from the search to the two buttons at the top; Sessions & profiles → Open with: `Tab` through a command row | The focus goes left to right: *Restore defaults* before *Send a test*; the command field before its × |
+| 19.14 | Settings → General, `Tab` past the 11th control | The page scrolls so the focused control is on screen |
 
