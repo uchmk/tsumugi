@@ -240,6 +240,10 @@ fn an_ask_to_type_waits_for_a_window_and_a_refusal_types_nothing() {
 
     let window = Client::connect(&at, || {}).expect("a window connects");
     window.judge();
+    // Judge goes down the window's own connection while the asker's ask goes
+    // down another: a round trip on the window's returns once the server has
+    // read the Judge, so the ask below cannot overtake it ("no window").
+    window.list().expect("the server answers the window");
     let answer = |allow: bool, text: &str| {
         let asker = asker.clone();
         let sent = text.to_owned();
