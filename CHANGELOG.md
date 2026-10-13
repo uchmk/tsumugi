@@ -5,6 +5,13 @@
 
 ## [未リリース]
 
+## [0.107.10] - 2026-10-14
+
+### 変更
+
+- `cargo fmt --all` で整形する（ito・yagura と同じ。`rustfmt.toml`）。整形だけのコミットは `.git-blame-ignore-revs` に書いた。
+  `scripts/verify.sh` と CI に `cargo fmt --all --check` を足した（#97）。
+
 ## [0.107.9] - 2026-10-14
 
 ### 変更

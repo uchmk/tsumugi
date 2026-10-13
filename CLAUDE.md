@@ -29,7 +29,7 @@ Claude Code などの AI CLI のセッションを何本も並べて動かすた
 - 票を入れてよい質問はラベル `vote`。票はコメント `vote[cloud]: 2 — 理由`（クラウド）と `vote[win]: 2 — 理由`（x64 のレーン）で、
   取り消しは `uncount[cloud]:`。ワークフロー `Merge lanes` が数え、2 者が同じなら `vote-decided`、割れたら `needs-owner` を付ける。
   持ち主のコメント `回答: …` がいつも優先し、`answered` になる。回答を反映したら issue を閉じる。
-- **`cargo fmt` は走らせない。**kura と同じく手で整形する（`Self { a, b, c }` を 1 行に収める書き方）。整形の確認は `cargo fmt --check` で見るだけ。
+- **`cargo fmt --all` で整形する。**設定は `rustfmt.toml`（`max_width = 140`、`use_small_heuristics = "Max"`。ito・yagura と同じ）。CI と `scripts/verify.sh` が `cargo fmt --all --check` で確かめる。整形だけのコミットは `.git-blame-ignore-revs` に書く。
 - clippy は `--all-targets -- -D warnings` で警告ゼロを保つ。検証は CI と同じ stable で回す。
 
 ## 共有のクレート（ito）
@@ -44,7 +44,7 @@ Claude Code などの AI CLI のセッションを何本も並べて動かすた
   ```
 
   確かめ終えたら ito を push し、ここの `rev` を上げてから push する。
-- ito は `cargo fmt` で整形する（ここと違う）。ito のファイルを直すときは ito の CLAUDE.md に従う。
+- ito のファイルを直すときは ito の CLAUDE.md に従う。
 
 ## 実機のテスト（TESTING.md）
 
