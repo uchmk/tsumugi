@@ -2600,7 +2600,16 @@ impl App {
                 .size_range(RAIL..=RAIL_AT + 40.0)
                 .frame(side)
                 .show(ui, |ui| self.rail(ui, workspaces, sessions));
-            if shown.response.rect.width() > RAIL_AT {
+            // Also by the pointer: a drag that began on the rail's edge and
+            // is now past `RAIL_AT`, whatever width the panel itself took
+            // (#94: synthetic drags never widened it).
+            let edge = shown.response.rect.right();
+            let dragged_out = ui.input(|i| {
+                i.pointer.primary_down()
+                    && i.pointer.press_origin().is_some_and(|o| (o.x - edge).abs() <= 8.0)
+                    && i.pointer.latest_pos().is_some_and(|p| p.x - shown.response.rect.left() > RAIL_AT)
+            });
+            if shown.response.rect.width() > RAIL_AT || dragged_out {
                 self.view.rail = false;
                 self.side_gen += 1;
                 self.view.save();
