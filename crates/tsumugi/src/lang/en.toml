@@ -711,6 +711,9 @@ lead = "Each piece of work gets a git worktree beside the repository, on a branc
 hint = "What this one should do"
 take_out = "Take it out"
 start = "Start {0}"
+repo = "REPOSITORY"
+work = "WORK, ONE PROMPT EACH"
+another = "+ Another"
 
 [find]
 no_match = "No match"

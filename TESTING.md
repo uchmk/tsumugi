@@ -573,4 +573,5 @@ cyan ring on the one the log names and on no other (a screenshot, `[~]`).
 | 19.12 | Settings: click the last control of a page, then `Tab`; then `Shift+Tab` from the search | `Tab` goes straight to the search box with no frame of nothing focused; `Shift+Tab` and `Tab` walk the same ring |
 | 19.13 | Settings → Notifications: `Tab` from the search to the two buttons at the top; Sessions & profiles → Open with: `Tab` through a command row | The focus goes left to right: *Restore defaults* before *Send a test*; the command field before its × |
 | 19.14 | Settings → General, `Tab` past the 11th control | The page scrolls so the focused control is on screen |
+| 19.15 | Start in parallel (the palette) with the language set to Japanese; Settings → Sessions & profiles | The *REPOSITORY* and *WORK* headings and the *+ Another* button are Japanese; the profile hints name「プロファイルとして保存」and「セッション」as the dialogs do |
 

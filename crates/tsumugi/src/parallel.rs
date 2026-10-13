@@ -96,10 +96,10 @@ pub fn show(ctx: &egui::Context, view: &mut View, c: &Colors) -> Option<Answer> 
                     ui.label(RichText::new(tr("parallel.title")).size(16.0).strong().color(c.strong()));
                     ui.label(RichText::new(tr("parallel.lead")).size(12.0).color(c.dim));
                     ui.add_space(10.0);
-                    ui.label(RichText::new("REPOSITORY").size(11.0).color(c.faint()));
+                    ui.label(RichText::new(tr("parallel.repo")).size(11.0).color(c.faint()));
                     ui.add(egui::TextEdit::singleline(&mut view.folder).font(egui::FontId::monospace(12.5)).desired_width(f32::INFINITY));
                     ui.add_space(8.0);
-                    ui.label(RichText::new("WORK, ONE PROMPT EACH").size(11.0).color(c.faint()));
+                    ui.label(RichText::new(tr("parallel.work")).size(11.0).color(c.faint()));
                     let mut gone = None;
                     for (k, t) in view.tasks.iter_mut().enumerate() {
                         ui.horizontal(|ui| {
@@ -121,7 +121,7 @@ pub fn show(ctx: &egui::Context, view: &mut View, c: &Colors) -> Option<Answer> 
                     if let Some(k) = gone {
                         view.tasks.remove(k);
                     }
-                    if view.tasks.len() < MOST && ui.button("+ Another").clicked() {
+                    if view.tasks.len() < MOST && ui.button(tr("parallel.another")).clicked() {
                         view.tasks.push(String::new());
                     }
                     ui.add_space(10.0);
