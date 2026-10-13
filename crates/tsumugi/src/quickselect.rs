@@ -37,6 +37,9 @@ pub enum Step {
     Wait,
     /// Put the text on the clipboard and leave.
     Copy(String),
+    /// Shift asked to open, but the hit is no link: copied instead, and the
+    /// window says so.
+    CopyUnopened(String),
     /// Open the link and leave (a hit that is no link is copied instead).
     Open(Link),
     Exit,
@@ -118,6 +121,7 @@ impl QuickSelect {
                 }
                 match (&hit.link, self.open.contains(&true)) {
                     (Some(link), true) => Step::Open(link.clone()),
+                    (None, true) => Step::CopyUnopened(hit.text.clone()),
                     _ => Step::Copy(hit.text.clone()),
                 }
             }
@@ -162,7 +166,7 @@ mod tests {
         assert_eq!(q.typed, "");
         assert_eq!(q.press(Key::Letter('S', true)), Step::Open(Link::Url("https://x.dev/a".into())));
         let mut q = QuickSelect::new(&rows);
-        assert_eq!(q.press(Key::Letter('A', true)), Step::Copy("12345".into()), "a number has nothing to open");
+        assert_eq!(q.press(Key::Letter('A', true)), Step::CopyUnopened("12345".into()), "a number has nothing to open");
     }
 
     #[test]

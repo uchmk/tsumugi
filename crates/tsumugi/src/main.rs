@@ -6613,6 +6613,7 @@ impl App {
             }
             let copying = self.copy_mode.is_some();
             let mut quick_open = None;
+            let mut quick_said = None;
             let mut fed: Vec<SessionId> = Vec::new();
             if let Some(pane) = self.panes.get(&w.focus).filter(|_| self.quick.is_some() && !field && !prefs_were_open) {
                 // Quick select has the keys: letters pick, the rest wait.
@@ -6633,6 +6634,11 @@ impl App {
                         quickselect::Step::Copy(text) => {
                             ctx.copy_text(text);
                             self.quick = None;
+                        }
+                        quickselect::Step::CopyUnopened(text) => {
+                            ctx.copy_text(text.clone());
+                            self.quick = None;
+                            quick_said = Some(trf("toast.quick_unopened", &[&text]));
                         }
                         quickselect::Step::Open(link) => {
                             self.quick = None;
@@ -6737,6 +6743,9 @@ impl App {
                         None => drop(ito_pane::input::forget(id)),
                     }
                 }
+            }
+            if let Some(words) = quick_said {
+                self.say(words, false);
             }
             if let Some(link) = quick_open {
                 let cwd = sessions.iter().find(|i| i.id == w.focus).map(|i| i.cwd.clone()).unwrap_or_default();
