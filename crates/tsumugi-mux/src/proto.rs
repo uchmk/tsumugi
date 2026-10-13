@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 
 /// Bumped whenever a message changes shape: a client and a server that
 /// disagree say so at `Hello` instead of misreading each other.
-pub const VERSION: u32 = 39;
+pub const VERSION: u32 = 40;
 
 /// A `Hello` with this version asks the server to stop, writing down its
 /// tabs first so the next window can bring them back. `Hello` stays the

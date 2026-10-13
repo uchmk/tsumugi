@@ -15,6 +15,8 @@ pub struct Update {
     /// The rows that changed, by number from the top.
     pub rows: Vec<(u32, Vec<CellView>)>,
     pub cursor: (usize, usize),
+    /// The program hid the cursor.
+    pub cursor_hidden: bool,
     pub app_cursor: bool,
     pub alt_screen: bool,
     pub mouse: MouseReport,
@@ -62,8 +64,8 @@ pub fn diff(old: Option<(&Screen, &Extra)>, new: &Screen, extra: &Extra) -> Opti
     };
     if let (false, Some((o, e))) = (full, old) {
         let same = rows.is_empty()
-            && (o.cursor, o.app_cursor, o.alt_screen, o.mouse, o.focus_report, o.kitty)
-                == (new.cursor, new.app_cursor, new.alt_screen, new.mouse, new.focus_report, new.kitty)
+            && (o.cursor, o.cursor_hidden, o.app_cursor, o.alt_screen, o.mouse, o.focus_report, o.kitty)
+                == (new.cursor, new.cursor_hidden, new.app_cursor, new.alt_screen, new.mouse, new.focus_report, new.kitty)
             && e == extra;
         if same {
             return None;
@@ -74,6 +76,7 @@ pub fn diff(old: Option<(&Screen, &Extra)>, new: &Screen, extra: &Extra) -> Opti
         lines: new.rows.len() as u32,
         rows,
         cursor: new.cursor,
+        cursor_hidden: new.cursor_hidden,
         app_cursor: new.app_cursor,
         alt_screen: new.alt_screen,
         mouse: new.mouse,
@@ -102,6 +105,7 @@ pub fn apply(screen: &mut Screen, extra: &mut Extra, u: Update) {
         }
     }
     screen.cursor = u.cursor;
+    screen.cursor_hidden = u.cursor_hidden;
     screen.app_cursor = u.app_cursor;
     screen.alt_screen = u.alt_screen;
     screen.mouse = u.mouse;
@@ -206,6 +210,19 @@ mod tests {
         let (mut have, mut extra) = (a.clone(), Extra::default());
         apply(&mut have, &mut extra, u);
         assert_eq!(have.kitty, 0b11);
+    }
+
+    /// A program hiding the cursor changes no cell; the client's input
+    /// method still has to hear of it.
+    #[test]
+    fn a_hidden_cursor_goes_on_its_own() {
+        let a = screen(&["one"]);
+        let b = Screen { cursor_hidden: true, ..a.clone() };
+        let e = Extra::default();
+        let u = diff(Some((&a, &e)), &b, &e).expect("the cursor was hidden");
+        let (mut have, mut extra) = (a.clone(), Extra::default());
+        apply(&mut have, &mut extra, u);
+        assert!(have.cursor_hidden);
     }
 
     #[test]
