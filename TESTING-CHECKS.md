@@ -306,13 +306,13 @@
 
 ## 13. The window's frame
 
-- [ ] **13.1** Look at the window (Windows) → No system title bar: the band carries minimize, maximize and close on the right
-- [ ] **13.2** Drag the band's empty part → The window moves; drag it to the screen's top: it maximizes (Aero Snap)
-- [ ] **13.3** Double-click the band → Maximizes; again, restores
+- [~] **13.1** Look at the window (Windows) → No system title bar: the band carries minimize, maximize and close on the right
+- [x] **13.2** Drag the band's empty part → The window moves; drag it to the screen's top: it maximizes (Aero Snap)
+- [x] **13.3** Double-click the band → Maximizes; again, restores
 - [ ] **13.4** Each of the three buttons → Minimize, maximize/restore (its icon changes), close; close turns red under the pointer
 - [ ] **13.5** Each edge and corner → The pointer changes and dragging resizes; not while maximized
 - [ ] **13.6** Hover the maximize button (Windows 11) → Note whether Snap Layouts appear (they may not: the button is tsumugi's own)
-- [ ] **13.7** Settings → Appearance → tsumugi's own title bar off → The system's frame comes back at once; on again, gone
+- [x] **13.7** Settings → Appearance → tsumugi's own title bar off → The system's frame comes back at once; on again, gone
 - [ ] **13.8** Material → mica, restart → The desktop's colour through the band, sidebar and status bar; the panes stay solid
 - [ ] **13.9** Material → acrylic, restart → A blurred desktop instead; moving the window may lag (Windows' own limit)
 - [ ] **13.10** macOS: Material → vibrancy, restart → The sidebar's frosted material behind the band and sidebar; the sidebar runs up to the window's top and the traffic lights sit on it; the band starts to its right, and its empty top drags the window
@@ -320,8 +320,8 @@
 - [ ] **13.12** Settings → Appearance → Opacity 80, restart; then 60 without restarting → The desktop shows through the whole window -- band, sidebar, panes and the gaps between them -- evenly, no darker bands where the panes are; text stays solid (a reversed status line in vim or htop too); 60 thins it at once
 - [ ] **13.13** Opacity 80 with Material mica (Windows 11) or vibrancy (macOS), restart → The material behind the chrome as before, the panes see-through to it; nothing goes fully clear at a pane's corners
 - [ ] **13.14** Background image → a large png or jpeg (`~/…` and a name beside config.toml); Image strength 25, then 60 → The picture fills each pane cut to its shape (not stretched), faint behind the text; 60 brings it forward; a pane split or resized refits it; a name that is not a picture toasts why; empty takes it away
-- [ ] **13.15** Settings → Appearance → Quake mode key `` Ctrl+` `` (no restart); go to another program and press it; press it again; again from another program → The window comes down at the top of the screen, the screen's width and half its height, with the keys; the second press hides it, off the taskbar (Dock stays on macOS); the third brings it back with the sessions as they were
-- [ ] **13.16** Quake mode key set to a key another program holds (or `Ctrl+Nothing`) → A toast says it could not be taken (or is not a key); the window works on
+- [x] **13.15** Settings → Appearance → Quake mode key `` Ctrl+` `` (no restart); go to another program and press it; press it again; again from another program → The window comes down at the top of the screen, the screen's width and half its height, with the keys; the second press hides it, off the taskbar (Dock stays on macOS); the third brings it back with the sessions as they were
+- [x] **13.16** Quake mode key set to a key another program holds (or `Ctrl+Nothing`) → A toast says it could not be taken (or is not a key); the window works on
 
 ## 14. Motion
 
