@@ -3955,6 +3955,7 @@ impl App {
         }
         let Some(path) = self.worktree_ask.clone() else { return };
         let mut answer = None;
+        chrome::modal(ctx, egui::LayerId::new(egui::Order::Foreground, egui::Id::new("worktree-ask")));
         egui::Area::new(egui::Id::new("worktree-ask"))
             .order(egui::Order::Foreground)
             .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
@@ -4025,6 +4026,7 @@ impl App {
         }
         let Some(running) = self.closing else { return };
         let mut answer = None;
+        chrome::modal(ctx, egui::LayerId::new(egui::Order::Foreground, egui::Id::new("close-ask")));
         egui::Area::new(egui::Id::new("close-ask"))
             .order(egui::Order::Foreground)
             .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
@@ -4085,6 +4087,7 @@ impl App {
         let name =
             sessions.iter().find(|s| s.id == id).map_or_else(|| format!("#{id}"), |s| format!("#{id} {} · {}", s.command, s.cwd.display()));
         let mut answer = None;
+        chrome::modal(ctx, egui::LayerId::new(egui::Order::Foreground, egui::Id::new("send-ask")));
         egui::Area::new(egui::Id::new("send-ask"))
             .order(egui::Order::Foreground)
             .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))

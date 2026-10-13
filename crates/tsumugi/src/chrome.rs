@@ -1269,6 +1269,13 @@ pub enum BellAction {
     Close,
 }
 
+/// Makes `layer` modal for this frame: Tab and Shift+Tab wrap inside it and
+/// the controls behind never take the focus. Call it every frame the dialog
+/// is open, after its area is shown.
+pub fn modal(ctx: &egui::Context, layer: egui::LayerId) {
+    ctx.memory_mut(|m| m.set_modal_layer(layer));
+}
+
 /// Keeps the keys inside a panel drawn over the window: when they are on
 /// nothing, or on a control behind it (the panel's last control and Tab came
 /// round to the window's first), they go to `first`.

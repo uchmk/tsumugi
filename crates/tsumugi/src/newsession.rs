@@ -411,6 +411,7 @@ pub fn show(
             answer = Some(Answer::Cancel);
         }
     });
+    chrome::modal(ctx, egui::LayerId::new(egui::Order::Middle, egui::Id::new("new-session-dim")));
     let label = |t: &str| RichText::new(t).size(11.0).strong().color(crate::theme::colors().dim);
     egui::Area::new(egui::Id::new("new-session"))
         .order(egui::Order::Foreground)
