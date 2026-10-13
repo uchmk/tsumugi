@@ -1608,7 +1608,6 @@ impl App {
             help: None,
             ended: history::load(),
             diff: None,
-            #[cfg(any(windows, target_os = "macos"))]
             browser: None,
             typing_all: std::collections::HashSet::new(),
             saving: HashMap::new(),
