@@ -1269,6 +1269,16 @@ pub enum BellAction {
     Close,
 }
 
+/// Keeps the keys inside a panel drawn over the window: when they are on
+/// nothing, or on a control behind it (the panel's last control and Tab came
+/// round to the window's first), they go to `first`.
+pub fn hold_tab(ctx: &egui::Context, layer: egui::LayerId, first: Option<egui::Id>) {
+    let inside = ctx.memory(|m| m.focused()).and_then(|id| ctx.read_response(id)).is_some_and(|r| r.layer_id == layer);
+    if let (false, Some(id)) = (inside, first) {
+        ctx.memory_mut(|m| m.request_focus(id));
+    }
+}
+
 /// The list the bell opens (1h, the user's ask of 2026-10-06): newest first,
 /// unread ones bright, each opening its session; "Mark all read" on top.
 pub fn bell_list(ctx: &egui::Context, pal: &Palette, at: egui::Pos2, notices: &[Notice]) -> Option<BellAction> {
@@ -1302,6 +1312,7 @@ pub fn bell_list(ctx: &egui::Context, pal: &Palette, at: egui::Pos2, notices: &[
     }
     ctx.data_mut(|d| d.insert_temp(sel_id, sel));
     let area = egui::Area::new(egui::Id::new("bell-list")).order(egui::Order::Foreground).fixed_pos(at);
+    let mut first = None;
     let resp = area.show(ctx, |ui| {
         egui::Frame::NONE
             .fill(crate::theme::colors().panel)
@@ -1314,7 +1325,11 @@ pub fn bell_list(ctx: &egui::Context, pal: &Palette, at: egui::Pos2, notices: &[
                     let unread = notices.iter().filter(|n| !n.read).count();
                     ui.label(RichText::new(trf("notices.title", &[&unread.to_string()])).strong().color(pal.fg));
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if ui.add_enabled(unread > 0, egui::Button::new(tr("notices.mark_read")).small()).clicked() {
+                        let mark = ui.add_enabled(unread > 0, egui::Button::new(tr("notices.mark_read")).small());
+                        if unread > 0 {
+                            first = Some(mark.id);
+                        }
+                        if mark.clicked() {
                             action = Some(BellAction::ReadAll);
                         }
                     });
@@ -1335,6 +1350,7 @@ pub fn bell_list(ctx: &egui::Context, pal: &Palette, at: egui::Pos2, notices: &[
                         for (row, n) in notices.iter().rev().enumerate() {
                             let text_color = if n.read { pal.fg_dim } else { pal.fg };
                             let (rect, resp) = ui.allocate_exact_size(egui::vec2(ui.available_width(), 46.0), egui::Sense::click());
+                            first = first.or(Some(resp.id));
                             let p = ui.painter_at(rect);
                             let keyed = sel == Some(row);
                             if keyed && moved {
@@ -1382,6 +1398,7 @@ pub fn bell_list(ctx: &egui::Context, pal: &Palette, at: egui::Pos2, notices: &[
                     });
             });
     });
+    hold_tab(ctx, resp.response.layer_id, first);
     if resp.response.clicked_elsewhere() && action.is_none() {
         action = Some(BellAction::Close);
     }

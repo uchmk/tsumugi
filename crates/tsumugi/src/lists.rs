@@ -254,9 +254,11 @@ pub fn show(
     // 400 tall, the list showed one session at a time (the owner,
     // 2026-10-10). The scroll areas' `min_scrolled_height` lets it grow.
     let width = (screen.width() - 32.0).clamp(280.0, 960.0);
-    egui::Area::new(egui::Id::new("lists")).order(egui::Order::Foreground).anchor(egui::Align2::CENTER_TOP, egui::vec2(0.0, 24.0)).show(
-        ctx,
-        |ui| {
+    let mut first_tab = None;
+    let shown = egui::Area::new(egui::Id::new("lists"))
+        .order(egui::Order::Foreground)
+        .anchor(egui::Align2::CENTER_TOP, egui::vec2(0.0, 24.0))
+        .show(ctx, |ui| {
             egui::Frame::NONE
                 .fill(c.panel)
                 .stroke(egui::Stroke::new(1.0, c.border_strong()))
@@ -271,11 +273,11 @@ pub fn show(
                             (Page::Closed, trf("lists.closed", &[&closed.len().to_string()])),
                             (Page::Layouts, trf("lists.layouts", &[&templates.len().to_string()])),
                         ] {
-                            if ui
-                                .selectable_label(view.page == page, RichText::new(title).size(14.0).strong())
-                                .on_hover_text(tr("lists.page_hover"))
-                                .clicked()
-                            {
+                            let tab = ui.selectable_label(view.page == page, RichText::new(title).size(14.0).strong());
+                            if view.page == page {
+                                first_tab = Some(tab.id);
+                            }
+                            if tab.on_hover_text(tr("lists.page_hover")).clicked() {
                                 view.page = page;
                             }
                         }
@@ -297,8 +299,12 @@ pub fn show(
                         Page::Layouts => layouts_page(ui, view, templates, c, max, &mut out),
                     }
                 });
-        },
-    );
+        });
+    // The overview's field holds the keys itself; the other pages have none,
+    // so the page's tab takes them, and Tab stays inside the panel.
+    if view.page != Page::All {
+        crate::chrome::hold_tab(ctx, shown.response.layer_id, first_tab);
+    }
     out
 }
 
