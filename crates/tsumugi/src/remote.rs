@@ -149,7 +149,12 @@ pub fn find(into: Arc<Mutex<Vec<Where>>>, ctx: eframe::egui::Context) {
 fn wsl_list() -> Vec<String> {
     use std::os::windows::process::CommandExt;
     const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-    let out = std::process::Command::new("wsl.exe").args(["-l", "-q"]).stdin(std::process::Stdio::null()).stderr(std::process::Stdio::null()).creation_flags(CREATE_NO_WINDOW).output();
+    let out = std::process::Command::new("wsl.exe")
+        .args(["-l", "-q"])
+        .stdin(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .creation_flags(CREATE_NO_WINDOW)
+        .output();
     match out {
         Ok(o) if o.status.success() => wsl_distros(&o.stdout),
         _ => Vec::new(),
@@ -167,11 +172,20 @@ mod tests {
 
     #[test]
     fn a_place_keeps_as_a_word() {
-        for w in [Where::Here, Where::Wsl("Ubuntu-24.04".into()), Where::Ssh("box".into()), Where::Mux("box".into()), Where::Serial("COM3@9600,7E1".into())] {
+        for w in [
+            Where::Here,
+            Where::Wsl("Ubuntu-24.04".into()),
+            Where::Ssh("box".into()),
+            Where::Mux("box".into()),
+            Where::Serial("COM3@9600,7E1".into()),
+        ] {
             assert_eq!(Where::from_word(&w.word()), w);
         }
         assert_eq!(Where::Mux("box".into()).shell(), None, "the server there runs its own shell");
-        assert_eq!(Where::with_kept(&[Where::Wsl("D".into()), Where::Ssh("box".into())]), vec![Where::Wsl("D".into()), Where::Ssh("box".into()), Where::Mux("box".into())]);
+        assert_eq!(
+            Where::with_kept(&[Where::Wsl("D".into()), Where::Ssh("box".into())]),
+            vec![Where::Wsl("D".into()), Where::Ssh("box".into()), Where::Mux("box".into())]
+        );
         assert_eq!(Where::from_word("ssh:"), Where::Here);
         assert_eq!(Where::from_word("nonsense"), Where::Here);
         assert_eq!(Where::Ssh("box".into()).shell(), Some(("ssh".into(), vec!["box".into()])));
@@ -183,7 +197,8 @@ mod tests {
 
     #[test]
     fn only_named_hosts_are_offered() {
-        let config = "# mine\nHost box build\n  HostName 10.0.0.2\nhost=pi\nHost *.corp !bad gpu?\nMatch host x\n  Host  \"quoted\"\nHost box\n";
+        let config =
+            "# mine\nHost box build\n  HostName 10.0.0.2\nhost=pi\nHost *.corp !bad gpu?\nMatch host x\n  Host  \"quoted\"\nHost box\n";
         assert_eq!(ssh_hosts(config), ["box", "build", "pi", "quoted"]);
     }
 

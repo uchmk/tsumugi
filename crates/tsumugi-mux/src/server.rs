@@ -142,7 +142,8 @@ impl ServerHandle {
     pub fn wait(&self, idle: Duration) {
         loop {
             match self.done.recv_timeout(idle) {
-                Err(crossbeam_channel::RecvTimeoutError::Timeout) if self.shared.ever.load(Ordering::Relaxed) || !lock(&self.shared.clients).is_empty() => {}
+                Err(crossbeam_channel::RecvTimeoutError::Timeout)
+                    if self.shared.ever.load(Ordering::Relaxed) || !lock(&self.shared.clients).is_empty() => {}
                 _ => break,
             }
         }
@@ -211,9 +212,7 @@ pub fn start_with(at: &Address, options: Options) -> io::Result<ServerHandle> {
         save_due: Mutex::new(None),
         rules: Mutex::new(Rules::read(options.settings.as_deref())),
         settings: options.settings,
-        quiet: Duration::from_secs(
-            std::env::var("TSUMUGI_QUIET_SECS").ok().and_then(|s| s.parse().ok()).unwrap_or(10),
-        ),
+        quiet: Duration::from_secs(std::env::var("TSUMUGI_QUIET_SECS").ok().and_then(|s| s.parse().ok()).unwrap_or(10)),
         git: Mutex::new(BTreeMap::new()),
         git_ask: git_tx,
     });
@@ -483,7 +482,8 @@ fn handle(shared: &Arc<Shared>, client: ClientId, tx: &Sender<ToClient>, msg: To
             // moved could otherwise put one session in two tabs (the
             // source review, 2026-10-07).
             let mut workspaces = lock(&shared.workspaces);
-            let elsewhere: std::collections::HashSet<SessionId> = workspaces.iter().filter(|(k, _)| **k != id).flat_map(|(_, w)| w.layout.leaves()).collect();
+            let elsewhere: std::collections::HashSet<SessionId> =
+                workspaces.iter().filter(|(k, _)| **k != id).flat_map(|(_, w)| w.layout.leaves()).collect();
             let leaves = layout.leaves();
             let twice = leaves.iter().enumerate().any(|(k, s)| leaves[..k].contains(s));
             let layout = if twice { None } else { layout.retain(&|s| sessions.contains_key(s) && !elsewhere.contains(s)) };
@@ -1037,12 +1037,47 @@ fn spawn_session(
     shared.ever.store(true, Ordering::Relaxed);
     let (branch, project) = git(&cwd);
     let branch = branch.unwrap_or_default();
-    let mut info = Info { id, cwd, title: String::new(), command, state: State::Running, note: String::new(), since_ms: now_ms(), branch, project, muted: false, tags: Vec::new(), claude: false, conversation: String::new(), charset: "UTF-8".into(), agent: String::new(), ports: Vec::new(), recording: String::new(), logging: String::new(), read_only: false, profile: String::new() };
+    let mut info = Info {
+        id,
+        cwd,
+        title: String::new(),
+        command,
+        state: State::Running,
+        note: String::new(),
+        since_ms: now_ms(),
+        branch,
+        project,
+        muted: false,
+        tags: Vec::new(),
+        claude: false,
+        conversation: String::new(),
+        charset: "UTF-8".into(),
+        agent: String::new(),
+        ports: Vec::new(),
+        recording: String::new(),
+        logging: String::new(),
+        read_only: false,
+        profile: String::new(),
+    };
     lock(&shared.rules).apply(&mut info);
     let watchers: BTreeSet<ClientId> = client.into_iter().collect();
     sessions.insert(
         id,
-        Session { term, info, notice: None, fresh: watchers.clone(), watchers, sent: None, shell, claude: None, pending: None, webhooked: None, screen: None, slow: BTreeMap::new(), told: BTreeMap::new() },
+        Session {
+            term,
+            info,
+            notice: None,
+            fresh: watchers.clone(),
+            watchers,
+            sent: None,
+            shell,
+            claude: None,
+            pending: None,
+            webhooked: None,
+            screen: None,
+            slow: BTreeMap::new(),
+            told: BTreeMap::new(),
+        },
     );
     Ok(id)
 }
@@ -1159,7 +1194,11 @@ fn here(cwd: PathBuf, home: Option<PathBuf>) -> PathBuf {
         Some(r) => home.join(r.trim_start_matches(['/', '\\'])),
         None => cwd,
     };
-    if cwd.is_dir() { cwd } else { home }
+    if cwd.is_dir() {
+        cwd
+    } else {
+        home
+    }
 }
 
 /// The terminal's name and version as a program looks them up: nvim 0.12's
@@ -1254,7 +1293,8 @@ fn restore(shared: &Arc<Shared>, sessions: &mut BTreeMap<SessionId, Session>, on
         let layout = layout.map(&mut |old| ids[&old]);
         let focus = ids.get(&w.focus).copied().unwrap_or_else(|| layout.leaves()[0]);
         let ws = shared.next.fetch_add(1, Ordering::Relaxed);
-        workspaces.insert(ws, Workspace { name: w.name.clone(), pinned: w.pinned, note: w.note.clone(), ..Workspace::new(ws, layout, focus) });
+        workspaces
+            .insert(ws, Workspace { name: w.name.clone(), pinned: w.pinned, note: w.note.clone(), ..Workspace::new(ws, layout, focus) });
     }
     broadcast_workspaces(shared, &workspaces);
     drop(workspaces);
@@ -1384,7 +1424,9 @@ fn settle(s: &mut Session, quiet: Duration) -> Option<(State, u64)> {
         Some((state, at)) if after_input(Some(at)) => state,
         _ if !busy && after_input(s.term.last_prompt()) => State::Done,
         _ if !busy && s.term.quiet_for(Duration::from_secs(2)) => State::Done,
-        _ if busy && !quiet.is_zero() && after_input(s.term.last_output()) && (s.term.quiet_for(quiet) || screen_still_for(s, quiet)) => State::MaybeWaiting,
+        _ if busy && !quiet.is_zero() && after_input(s.term.last_output()) && (s.term.quiet_for(quiet) || screen_still_for(s, quiet)) => {
+            State::MaybeWaiting
+        }
         _ => State::Running,
     };
     if state == s.info.state {
@@ -1444,7 +1486,16 @@ fn record_notice(shared: &Shared, s: &Session, (was, since): (State, u64)) {
     let id = notices.0;
     notices.0 += 1;
     let title = if s.info.title.is_empty() { s.info.command.clone() } else { s.info.title.clone() };
-    notices.1.push_back(Notice { id, session: s.info.id, state: s.info.state, title, note: s.info.note.clone(), at_ms: now_ms(), read: false, trigger: false });
+    notices.1.push_back(Notice {
+        id,
+        session: s.info.id,
+        state: s.info.state,
+        title,
+        note: s.info.note.clone(),
+        at_ms: now_ms(),
+        read: false,
+        trigger: false,
+    });
     while notices.1.len() > 200 {
         notices.1.pop_front();
     }
@@ -1498,7 +1549,8 @@ fn record_triggered(shared: &Shared, s: &mut Session) {
     let mut notices = lock(&shared.notices);
     let mut any = false;
     for hit in hits {
-        let fresh: Vec<usize> = hit.rules.iter().copied().filter(|r| s.told.get(r).is_none_or(|at| now.duration_since(*at) >= TRIGGER_GAP)).collect();
+        let fresh: Vec<usize> =
+            hit.rules.iter().copied().filter(|r| s.told.get(r).is_none_or(|at| now.duration_since(*at) >= TRIGGER_GAP)).collect();
         if fresh.is_empty() {
             continue;
         }
@@ -1509,7 +1561,16 @@ fn record_triggered(shared: &Shared, s: &mut Session) {
         notices.0 += 1;
         let title = if s.info.title.is_empty() { s.info.command.clone() } else { s.info.title.clone() };
         let note: String = hit.line.chars().take(200).collect();
-        notices.1.push_back(Notice { id, session: s.info.id, state: s.info.state, title, note, at_ms: now_ms(), read: false, trigger: true });
+        notices.1.push_back(Notice {
+            id,
+            session: s.info.id,
+            state: s.info.state,
+            title,
+            note,
+            at_ms: now_ms(),
+            read: false,
+            trigger: true,
+        });
         any = true;
     }
     if !any {
@@ -1615,7 +1676,14 @@ fn send_webhooks(shared: &Shared, sessions: &mut BTreeMap<SessionId, Session>) {
         let said = if i.note.is_empty() { "Waiting for you".to_owned() } else { i.note.clone() };
         let name = if i.title.trim().is_empty() { i.command.clone() } else { i.title.clone() };
         let message = format!("{said}\n{name} · waiting {} s", now.saturating_sub(i.since_ms) / 1000);
-        ito_notify::webhook::send(url.clone(), format.clone(), ito_notify::webhook::Level::Waiting, format!("{folder} is waiting for you"), message, i.cwd.display().to_string());
+        ito_notify::webhook::send(
+            url.clone(),
+            format.clone(),
+            ito_notify::webhook::Level::Waiting,
+            format!("{folder} is waiting for you"),
+            message,
+            i.cwd.display().to_string(),
+        );
     }
 }
 
@@ -1794,7 +1862,8 @@ fn run_pump(shared: Arc<Shared>, dirty: Receiver<SessionId>) {
             // listens on.
             if last_look.elapsed() >= Duration::from_secs(2) {
                 last_look = std::time::Instant::now();
-                let shells: Vec<(SessionId, u32, bool)> = sessions.iter().filter_map(|(id, s)| s.term.shell_pid().map(|p| (*id, p, s.info.claude))).collect();
+                let shells: Vec<(SessionId, u32, bool)> =
+                    sessions.iter().filter_map(|(id, s)| s.term.shell_pid().map(|p| (*id, p, s.info.claude))).collect();
                 drop(sessions);
                 let seen = look_at_processes(&shared, &shells);
                 sessions = lock(&shared.sessions);
@@ -1809,10 +1878,15 @@ fn run_pump(shared: Arc<Shared>, dirty: Receiver<SessionId>) {
             let clipboard = s.term.drain();
             let rang = std::mem::take(&mut s.term.bells) > 0;
             s.term.log_step();
-            let noticed = s.term.take_notices().pop().map(|note| {
-                s.notice = Some((State::Waiting, std::time::Instant::now()));
-                s.info.note = note;
-            }).is_some();
+            let noticed = s
+                .term
+                .take_notices()
+                .pop()
+                .map(|note| {
+                    s.notice = Some((State::Waiting, std::time::Instant::now()));
+                    s.info.note = note;
+                })
+                .is_some();
             let before = (s.info.title.clone(), s.info.cwd.clone());
             let was = lock(&shared.rules).given(&s.info.cwd, &s.info.branch);
             s.info.title = s.term.title.clone();
@@ -1922,7 +1996,11 @@ mod branch {
         std::fs::create_dir_all(dir.join(".git")).unwrap();
         std::fs::create_dir_all(dir.join("src/deep")).unwrap();
         std::fs::write(dir.join(".git/HEAD"), "ref: refs/heads/claude/task-09\n").unwrap();
-        assert_eq!(super::git(&dir.join("src/deep")), (Some("claude/task-09".to_owned()), dir.clone()), "the branch, and the repository's top");
+        assert_eq!(
+            super::git(&dir.join("src/deep")),
+            (Some("claude/task-09".to_owned()), dir.clone()),
+            "the branch, and the repository's top"
+        );
         std::fs::write(dir.join(".git/HEAD"), "0123456789abcdef\n").unwrap();
         assert_eq!(super::git(&dir).0.as_deref(), Some("0123456"), "a detached HEAD by its commit");
         let outside = std::env::temp_dir();
@@ -2004,7 +2082,28 @@ mod tags {
     }
 
     fn info(cwd: &str, tags: &[&str]) -> Info {
-        Info { id: 1, cwd: PathBuf::from(cwd), title: String::new(), command: String::new(), state: State::Running, note: String::new(), since_ms: 0, branch: String::new(), project: PathBuf::new(), muted: false, tags: tags.iter().map(|t| t.to_string()).collect(), claude: false, conversation: String::new(), charset: String::new(), agent: String::new(), ports: Vec::new(), recording: String::new(), logging: String::new(), read_only: false, profile: String::new() }
+        Info {
+            id: 1,
+            cwd: PathBuf::from(cwd),
+            title: String::new(),
+            command: String::new(),
+            state: State::Running,
+            note: String::new(),
+            since_ms: 0,
+            branch: String::new(),
+            project: PathBuf::new(),
+            muted: false,
+            tags: tags.iter().map(|t| t.to_string()).collect(),
+            claude: false,
+            conversation: String::new(),
+            charset: String::new(),
+            agent: String::new(),
+            ports: Vec::new(),
+            recording: String::new(),
+            logging: String::new(),
+            read_only: false,
+            profile: String::new(),
+        }
     }
 
     /// Going back and forth between two folders with a rule each swaps the

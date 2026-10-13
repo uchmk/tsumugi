@@ -21,7 +21,10 @@ pub const HOOKS: [(&str, &str); 2] = [("Notification", "notify --stdin"), ("Stop
 
 /// Claude Code's own settings (`CLAUDE_CONFIG_DIR` moves them).
 pub fn settings_path() -> Option<PathBuf> {
-    let base = std::env::var_os("CLAUDE_CONFIG_DIR").filter(|v| !v.is_empty()).map(PathBuf::from).or_else(|| tsumugi_mux::settings::home().map(|h| h.join(".claude")))?;
+    let base = std::env::var_os("CLAUDE_CONFIG_DIR")
+        .filter(|v| !v.is_empty())
+        .map(PathBuf::from)
+        .or_else(|| tsumugi_mux::settings::home().map(|h| h.join(".claude")))?;
     Some(base.join("settings.json"))
 }
 
@@ -74,7 +77,9 @@ fn program(command: &str) -> (String, &str) {
         match c {
             '\'' if !double => single = !single,
             '"' if !single => double = !double,
-            '\\' if !single && it.peek().is_some_and(|(_, n)| matches!(*n, '\'' | '"' | ' ' | '\\')) => out.push(it.next().map_or(c, |(_, n)| n)),
+            '\\' if !single && it.peek().is_some_and(|(_, n)| matches!(*n, '\'' | '"' | ' ' | '\\')) => {
+                out.push(it.next().map_or(c, |(_, n)| n))
+            }
             c if c.is_whitespace() && !single && !double => return (out, &s[at..]),
             c => out.push(c),
         }
@@ -92,7 +97,11 @@ fn ours(command: &str) -> bool {
 
 /// Whether the program of a hook's command is there to run.
 fn runs(program: &str) -> bool {
-    if program.contains(['/', '\\']) { Path::new(program).is_file() } else { crate::facts::locate(program) }
+    if program.contains(['/', '\\']) {
+        Path::new(program).is_file()
+    } else {
+        crate::facts::locate(program)
+    }
 }
 
 /// Whether the settings run `tsumugi notify` on both events already.
@@ -133,7 +142,11 @@ pub fn add(text: &str) -> Result<String, String> {
 }
 
 fn add_these(text: &str, commands: &[String; 2]) -> Result<String, String> {
-    let mut v = if text.trim().is_empty() { Json::Object(Vec::new()) } else { Json::parse(text).map_err(|e| format!("Claude Code's settings.json does not read: {e}"))? };
+    let mut v = if text.trim().is_empty() {
+        Json::Object(Vec::new())
+    } else {
+        Json::parse(text).map_err(|e| format!("Claude Code's settings.json does not read: {e}"))?
+    };
     let Json::Object(top) = &mut v else { return Err("Claude Code's settings.json is not an object".into()) };
     let hooks = entry(top, "hooks", Json::Object(Vec::new()));
     let Json::Object(events) = hooks else { return Err("`hooks` in Claude Code's settings.json is not an object".into()) };
@@ -287,7 +300,15 @@ mod tests {
 
     #[test]
     fn tsumugis_commands_are_known_however_written() {
-        for mine in ["tsumugi notify --stdin", "tsumugi notify", "/opt/tsumugi/tsumugi notify --state done", "'C:/Program Files/tsumugi/tsumugi.exe' notify --stdin", r#""C:\Program Files\tsumugi\TSUMUGI.EXE" notify --stdin"#, r"C:\tools\tsumugi.exe notify --stdin", "/home/me/tsumugi-x86_64.AppImage notify --stdin"] {
+        for mine in [
+            "tsumugi notify --stdin",
+            "tsumugi notify",
+            "/opt/tsumugi/tsumugi notify --state done",
+            "'C:/Program Files/tsumugi/tsumugi.exe' notify --stdin",
+            r#""C:\Program Files\tsumugi\TSUMUGI.EXE" notify --stdin"#,
+            r"C:\tools\tsumugi.exe notify --stdin",
+            "/home/me/tsumugi-x86_64.AppImage notify --stdin",
+        ] {
             assert!(ours(mine), "{mine}");
         }
         for not in ["say done", "tsumugi ls", "notify tsumugi", "/usr/bin/notify-send tsumugi notify", ""] {
@@ -316,7 +337,11 @@ mod tests {
         let other = add_these("", &these("/home/me/dev/tsumugi")).unwrap();
         assert_eq!(repair(&other, &ours, &|p| p == "/home/me/dev/tsumugi"), None, "another tsumugi that runs: left");
         assert!(repair(&other, &ours, &|_| false).is_some(), "one since moved: pointed here");
-        assert_eq!(repair(r#"{"hooks": {"Stop": [{"hooks": [{"type": "command", "command": "say done"}]}]}}"#, &ours, &|_| false), None, "none of tsumugi's: left");
+        assert_eq!(
+            repair(r#"{"hooks": {"Stop": [{"hooks": [{"type": "command", "command": "say done"}]}]}}"#, &ours, &|_| false),
+            None,
+            "none of tsumugi's: left"
+        );
         assert_eq!(repair("{not json", &ours, &|_| false), None);
     }
 }

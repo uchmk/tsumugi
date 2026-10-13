@@ -7,8 +7,8 @@
 use std::path::PathBuf;
 
 use eframe::egui::{self, Color32, FontId, RichText};
-use tsumugi_mux::settings::{Profile, TagRule};
 use ito_pane::Palette;
+use tsumugi_mux::settings::{Profile, TagRule};
 
 use crate::chrome;
 use crate::i18n::tr;
@@ -221,9 +221,24 @@ impl Dialog {
         let save_as = (self.save && !self.name.trim().is_empty()).then(|| self.name.trim().to_owned());
         let worktree = self.worktree.then(|| {
             let b = self.branch.trim();
-            if b.is_empty() { crate::worktree::default_branch(chrono::Local::now()) } else { b.to_owned() }
+            if b.is_empty() {
+                crate::worktree::default_branch(chrono::Local::now())
+            } else {
+                b.to_owned()
+            }
         });
-        Answer::Create(Box::new(Create { folder: self.folder_path(), start: self.start, tags, dropped: self.dropped.clone(), split, save_as, worktree, more: self.more.clone(), on: self.on.clone(), profile: self.profile.clone() }))
+        Answer::Create(Box::new(Create {
+            folder: self.folder_path(),
+            start: self.start,
+            tags,
+            dropped: self.dropped.clone(),
+            split,
+            save_as,
+            worktree,
+            more: self.more.clone(),
+            on: self.on.clone(),
+            profile: self.profile.clone(),
+        }))
     }
 }
 
@@ -240,11 +255,19 @@ pub fn expand(text: &str) -> PathBuf {
 }
 
 /// The dialog over the window, everything behind it dimmed.
-pub fn show(ctx: &egui::Context, pal: &Palette, d: &mut Dialog, recents: &[Recent], profiles: &[Profile], rules: &[TagRule]) -> Option<Answer> {
+pub fn show(
+    ctx: &egui::Context,
+    pal: &Palette,
+    d: &mut Dialog,
+    recents: &[Recent],
+    profiles: &[Profile],
+    rules: &[TagRule],
+) -> Option<Answer> {
     // The folders that match what is typed; all of them before any typing.
     let typed = d.folder.trim().to_lowercase();
     let exact = recents.iter().any(|r| crate::home_short(&r.folder).to_lowercase() == typed);
-    let mut shown: Vec<&Recent> = recents.iter().filter(|r| crate::palette::score(&typed, &crate::home_short(&r.folder).to_lowercase()).is_some()).collect();
+    let mut shown: Vec<&Recent> =
+        recents.iter().filter(|r| crate::palette::score(&typed, &crate::home_short(&r.folder).to_lowercase()).is_some()).collect();
     if exact || typed.is_empty() {
         shown = recents.iter().collect();
     }
@@ -317,7 +340,8 @@ pub fn show(ctx: &egui::Context, pal: &Palette, d: &mut Dialog, recents: &[Recen
             None => focus(d.profile_id),
         }
     }
-    let enter_creates = focused.is_none() || on_start.is_some() || ["ns-folder", "ns-branch", "ns-name", "ns-tag"].iter().any(|n| in_field(n));
+    let enter_creates =
+        focused.is_none() || on_start.is_some() || ["ns-folder", "ns-branch", "ns-name", "ns-tag"].iter().any(|n| in_field(n));
     // Alt+Enter before Enter: egui's plain Enter also matches it.
     let (esc, alt_enter, enter, up, down, back, tab) = ctx.input_mut(|i| {
         (
@@ -327,7 +351,12 @@ pub fn show(ctx: &egui::Context, pal: &Palette, d: &mut Dialog, recents: &[Recen
             in_folder && i.consume_key(egui::Modifiers::NONE, egui::Key::ArrowUp),
             in_folder && i.consume_key(egui::Modifiers::NONE, egui::Key::ArrowDown),
             in_folder && completion.is_some() && i.consume_key(egui::Modifiers::SHIFT, egui::Key::Tab),
-            in_folder && !i.events.iter().any(|e| matches!(e, egui::Event::Key { key: egui::Key::Tab, pressed: true, modifiers, .. } if modifiers.shift)) && i.consume_key(egui::Modifiers::NONE, egui::Key::Tab),
+            in_folder
+                && !i
+                    .events
+                    .iter()
+                    .any(|e| matches!(e, egui::Event::Key { key: egui::Key::Tab, pressed: true, modifiers, .. } if modifiers.shift))
+                && i.consume_key(egui::Modifiers::NONE, egui::Key::Tab),
         )
     });
     // The folder holds on to Tab while it has something to complete (its
@@ -383,226 +412,254 @@ pub fn show(ctx: &egui::Context, pal: &Palette, d: &mut Dialog, recents: &[Recen
         }
     });
     let label = |t: &str| RichText::new(t).size(11.0).strong().color(crate::theme::colors().dim);
-    egui::Area::new(egui::Id::new("new-session")).order(egui::Order::Foreground).anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0)).show(ctx, |ui| {
-        egui::Frame::NONE
-            .fill(crate::theme::colors().panel)
-            .stroke(egui::Stroke::new(1.0, crate::theme::colors().border_strong()))
-            .corner_radius(12.0)
-            .inner_margin(egui::Margin::symmetric(20, 16))
-            .show(ui, |ui| {
-                ui.set_width(560.0);
-                ui.spacing_mut().item_spacing = egui::vec2(6.0, 6.0);
-                ui.horizontal(|ui| {
-                    ui.label(RichText::new(tr("newsession.title")).size(16.0).strong().color(crate::theme::colors().strong()));
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        let key = crate::keys::label(crate::keys::Action::NewTab);
-                        ui.label(RichText::new(key).font(FontId::monospace(11.5)).color(chrome::grey()));
+    egui::Area::new(egui::Id::new("new-session"))
+        .order(egui::Order::Foreground)
+        .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
+        .show(ctx, |ui| {
+            egui::Frame::NONE
+                .fill(crate::theme::colors().panel)
+                .stroke(egui::Stroke::new(1.0, crate::theme::colors().border_strong()))
+                .corner_radius(12.0)
+                .inner_margin(egui::Margin::symmetric(20, 16))
+                .show(ui, |ui| {
+                    ui.set_width(560.0);
+                    ui.spacing_mut().item_spacing = egui::vec2(6.0, 6.0);
+                    ui.horizontal(|ui| {
+                        ui.label(RichText::new(tr("newsession.title")).size(16.0).strong().color(crate::theme::colors().strong()));
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            let key = crate::keys::label(crate::keys::Action::NewTab);
+                            ui.label(RichText::new(key).font(FontId::monospace(11.5)).color(chrome::grey()));
+                        });
                     });
-                });
-                ui.add_space(8.0);
+                    ui.add_space(8.0);
 
-                ui.label(label(tr("newsession.folder")));
-                // Tab stays in the field while there is a folder to complete
-                // it to (egui moves the keys on Tab before the dialog reads
-                // it otherwise); the arrows always stay, for the list.
-                let filter = egui::EventFilter { tab: completion.is_some(), horizontal_arrows: true, vertical_arrows: true, escape: false };
-                let field = egui::TextEdit::singleline(&mut d.folder).id(egui::Id::new("ns-folder")).font(FontId::monospace(13.0)).desired_width(f32::INFINITY).event_filter(filter);
-                let f = ui.add(field);
-                if d.opening {
-                    f.request_focus();
-                }
-                if f.changed() {
-                    d.selected = None;
-                    d.dropped.clear();
-                }
-                for (k, r) in shown.iter().enumerate() {
-                    // The arrows walk these from the folder; Tab passes them by.
-                    let (rect, resp) = ui.allocate_exact_size(egui::vec2(ui.available_width(), 26.0), egui::Sense::CLICK);
-                    let p = ui.painter();
-                    if d.selected == Some(k) || resp.hovered() {
-                        p.rect_filled(rect, 6.0, crate::theme::colors().chosen());
+                    ui.label(label(tr("newsession.folder")));
+                    // Tab stays in the field while there is a folder to complete
+                    // it to (egui moves the keys on Tab before the dialog reads
+                    // it otherwise); the arrows always stay, for the list.
+                    let filter =
+                        egui::EventFilter { tab: completion.is_some(), horizontal_arrows: true, vertical_arrows: true, escape: false };
+                    let field = egui::TextEdit::singleline(&mut d.folder)
+                        .id(egui::Id::new("ns-folder"))
+                        .font(FontId::monospace(13.0))
+                        .desired_width(f32::INFINITY)
+                        .event_filter(filter);
+                    let f = ui.add(field);
+                    if d.opening {
+                        f.request_focus();
                     }
-                    let name = p.layout_no_wrap(crate::home_short(&r.folder), FontId::monospace(12.5), crate::theme::colors().strong());
-                    let w = name.size().x;
-                    p.galley(egui::pos2(rect.left() + 10.0, rect.center().y - name.size().y / 2.0), name, Color32::WHITE);
-                    let note = p.layout_no_wrap(r.note.clone(), FontId::proportional(12.0), pal.fg_dim);
-                    p.galley(egui::pos2(rect.left() + 20.0 + w, rect.center().y - note.size().y / 2.0), note, pal.fg_dim);
-                    if resp.clicked() {
-                        d.folder = crate::home_short(&r.folder);
+                    if f.changed() {
                         d.selected = None;
                         d.dropped.clear();
                     }
-                }
-                ui.add_space(10.0);
-
-                ui.label(label(tr("newsession.start")));
-                ui.horizontal(|ui| {
-                    d.start_ids.clear();
-                    for (k, s) in Start::ALL.into_iter().enumerate() {
-                        // While Profile… has the keys, nothing else in the
-                        // row is lit: one place lit in the row at a time
-                        // (seen on Windows, 2026-10-07). The way picked
-                        // comes back lit when the keys leave Profile….
-                        let profile_has_keys = d.profile_id.is_some_and(|id| ui.memory(|m| m.has_focus(id)));
-                        let b = start_button(ui, s.label(), d.start == s && !profile_has_keys);
-                        d.start_ids.push(b.id);
-                        if d.start_focus == Some(k) {
-                            b.request_focus();
-                            d.start_focus = None;
+                    for (k, r) in shown.iter().enumerate() {
+                        // The arrows walk these from the folder; Tab passes them by.
+                        let (rect, resp) = ui.allocate_exact_size(egui::vec2(ui.available_width(), 26.0), egui::Sense::CLICK);
+                        let p = ui.painter();
+                        if d.selected == Some(k) || resp.hovered() {
+                            p.rect_filled(rect, 6.0, crate::theme::colors().chosen());
                         }
-                        if b.clicked() {
-                            d.start = s;
+                        let name = p.layout_no_wrap(crate::home_short(&r.folder), FontId::monospace(12.5), crate::theme::colors().strong());
+                        let w = name.size().x;
+                        p.galley(egui::pos2(rect.left() + 10.0, rect.center().y - name.size().y / 2.0), name, Color32::WHITE);
+                        let note = p.layout_no_wrap(r.note.clone(), FontId::proportional(12.0), pal.fg_dim);
+                        p.galley(egui::pos2(rect.left() + 20.0 + w, rect.center().y - note.size().y / 2.0), note, pal.fg_dim);
+                        if resp.clicked() {
+                            d.folder = crate::home_short(&r.folder);
+                            d.selected = None;
+                            d.dropped.clear();
                         }
                     }
-                    // Lit with the ring while it has the keys, as the others
-                    // are when picked.
-                    let profile_has_keys = d.profile_id.is_some_and(|id| ui.memory(|m| m.has_focus(id)));
-                    let profile = start_button(ui, tr("newsession.profile"), profile_has_keys);
-                    d.profile_id = Some(profile.id);
-                    egui::Popup::menu(&profile).show(|ui| {
-                        if profiles.is_empty() {
-                            ui.label(RichText::new(tr("newsession.no_profiles")).color(pal.fg_dim));
-                        }
-                        for p in profiles {
-                            if ui.button(format!("{}   {}", p.name, p.folder)).clicked() {
-                                d.apply(p);
-                                ui.close();
+                    ui.add_space(10.0);
+
+                    ui.label(label(tr("newsession.start")));
+                    ui.horizontal(|ui| {
+                        d.start_ids.clear();
+                        for (k, s) in Start::ALL.into_iter().enumerate() {
+                            // While Profile… has the keys, nothing else in the
+                            // row is lit: one place lit in the row at a time
+                            // (seen on Windows, 2026-10-07). The way picked
+                            // comes back lit when the keys leave Profile….
+                            let profile_has_keys = d.profile_id.is_some_and(|id| ui.memory(|m| m.has_focus(id)));
+                            let b = start_button(ui, s.label(), d.start == s && !profile_has_keys);
+                            d.start_ids.push(b.id);
+                            if d.start_focus == Some(k) {
+                                b.request_focus();
+                                d.start_focus = None;
+                            }
+                            if b.clicked() {
+                                d.start = s;
                             }
                         }
-                    });
-                });
-                // More panes in the tab, beside the first (a profile keeps them).
-                ui.horizontal(|ui| {
-                    ui.label(RichText::new(tr("newsession.beside")).size(12.0).color(pal.fg_dim));
-                    let mut gone = None;
-                    d.beside_id = None;
-                    for (k, s) in d.more.iter().enumerate() {
-                        let chip = ui.add(egui::Button::new(RichText::new(format!("{}  ×", s.label())).size(12.0)));
-                        d.beside_id = d.beside_id.or(Some(chip.id));
-                        if ring(ui, chip).on_hover_text(tr("newsession.take_off")).clicked() {
-                            gone = Some(k);
-                        }
-                    }
-                    if let Some(k) = gone {
-                        d.more.remove(k);
-                    }
-                    if d.more.len() < MORE_MOST {
-                        let add = ui.add(egui::Button::new(RichText::new(tr("newsession.add_pane")).size(12.0)));
-                        d.beside_id = d.beside_id.or(Some(add.id));
-                        let add = ring(ui, add);
-                        egui::Popup::menu(&add).show(|ui| {
-                            for s in Start::ALL {
-                                if ui.button(s.label()).clicked() {
-                                    d.more.push(s);
+                        // Lit with the ring while it has the keys, as the others
+                        // are when picked.
+                        let profile_has_keys = d.profile_id.is_some_and(|id| ui.memory(|m| m.has_focus(id)));
+                        let profile = start_button(ui, tr("newsession.profile"), profile_has_keys);
+                        d.profile_id = Some(profile.id);
+                        egui::Popup::menu(&profile).show(|ui| {
+                            if profiles.is_empty() {
+                                ui.label(RichText::new(tr("newsession.no_profiles")).color(pal.fg_dim));
+                            }
+                            for p in profiles {
+                                if ui.button(format!("{}   {}", p.name, p.folder)).clicked() {
+                                    d.apply(p);
                                     ui.close();
                                 }
                             }
                         });
-                    }
-                    if d.more.is_empty() {
-                        ui.label(RichText::new(tr("newsession.one_pane")).size(12.0).color(chrome::grey()));
-                    }
-                });
-                // Where it runs: shown once WSL, SSH or a serial port is there
-                // (or a profile asked for one).
-                if !d.places.is_empty() || d.on != Where::Here {
+                    });
+                    // More panes in the tab, beside the first (a profile keeps them).
                     ui.horizontal(|ui| {
-                        ui.label(RichText::new(tr("newsession.runs_on")).size(12.0).color(pal.fg_dim));
-                        let mut places = Where::with_kept(&d.places);
-                        if !places.contains(&d.on) {
-                            places.push(d.on.clone());
+                        ui.label(RichText::new(tr("newsession.beside")).size(12.0).color(pal.fg_dim));
+                        let mut gone = None;
+                        d.beside_id = None;
+                        for (k, s) in d.more.iter().enumerate() {
+                            let chip = ui.add(egui::Button::new(RichText::new(format!("{}  ×", s.label())).size(12.0)));
+                            d.beside_id = d.beside_id.or(Some(chip.id));
+                            if ring(ui, chip).on_hover_text(tr("newsession.take_off")).clicked() {
+                                gone = Some(k);
+                            }
                         }
-                        let combo = egui::ComboBox::from_id_salt("ns-on").selected_text(d.on.label()).show_ui(ui, |ui| {
-                            for p in &places {
-                                ui.selectable_value(&mut d.on, p.clone(), p.label());
-                            }
-                        });
-                        ring(ui, combo.response);
-                        match d.on {
-                            Where::Ssh(_) => {
-                                ui.label(RichText::new(tr("newsession.ssh_note")).size(12.0).color(chrome::grey()));
-                            }
-                            Where::Mux(_) => {
-                                ui.label(RichText::new(tr("newsession.mux_note")).size(12.0).color(chrome::grey()));
-                            }
-                            Where::Serial(_) => {
-                                ui.label(RichText::new(tr("newsession.serial_note")).size(12.0).color(chrome::grey()));
-                            }
-                            _ => {}
+                        if let Some(k) = gone {
+                            d.more.remove(k);
+                        }
+                        if d.more.len() < MORE_MOST {
+                            let add = ui.add(egui::Button::new(RichText::new(tr("newsession.add_pane")).size(12.0)));
+                            d.beside_id = d.beside_id.or(Some(add.id));
+                            let add = ring(ui, add);
+                            egui::Popup::menu(&add).show(|ui| {
+                                for s in Start::ALL {
+                                    if ui.button(s.label()).clicked() {
+                                        d.more.push(s);
+                                        ui.close();
+                                    }
+                                }
+                            });
+                        }
+                        if d.more.is_empty() {
+                            ui.label(RichText::new(tr("newsession.one_pane")).size(12.0).color(chrome::grey()));
                         }
                     });
-                }
-                ui.add_space(10.0);
+                    // Where it runs: shown once WSL, SSH or a serial port is there
+                    // (or a profile asked for one).
+                    if !d.places.is_empty() || d.on != Where::Here {
+                        ui.horizontal(|ui| {
+                            ui.label(RichText::new(tr("newsession.runs_on")).size(12.0).color(pal.fg_dim));
+                            let mut places = Where::with_kept(&d.places);
+                            if !places.contains(&d.on) {
+                                places.push(d.on.clone());
+                            }
+                            let combo = egui::ComboBox::from_id_salt("ns-on").selected_text(d.on.label()).show_ui(ui, |ui| {
+                                for p in &places {
+                                    ui.selectable_value(&mut d.on, p.clone(), p.label());
+                                }
+                            });
+                            ring(ui, combo.response);
+                            match d.on {
+                                Where::Ssh(_) => {
+                                    ui.label(RichText::new(tr("newsession.ssh_note")).size(12.0).color(chrome::grey()));
+                                }
+                                Where::Mux(_) => {
+                                    ui.label(RichText::new(tr("newsession.mux_note")).size(12.0).color(chrome::grey()));
+                                }
+                                Where::Serial(_) => {
+                                    ui.label(RichText::new(tr("newsession.serial_note")).size(12.0).color(chrome::grey()));
+                                }
+                                _ => {}
+                            }
+                        });
+                    }
+                    ui.add_space(10.0);
 
-                ui.label(label(tr("newsession.tags")));
-                let rule_tags = d.rule_tags(rules);
-                ui.horizontal_wrapped(|ui| {
-                    // The rules' tags dashed, as the design draws them; a
-                    // click takes either kind off.
-                    for (t, auto) in rule_tags.iter().map(|t| (t.clone(), true)).chain(d.tags.clone().into_iter().map(|t| (t, false))) {
-                        let w = ui.fonts_mut(|f| f.layout_no_wrap(t.clone(), FontId::proportional(11.0), pal.fg).size().x) + 12.0;
-                        let (rect, resp) = ui.allocate_exact_size(egui::vec2(w, 16.0), egui::Sense::CLICK);
-                        let p = ui.painter();
-                        chrome::tag_chip(p, rect.min, &t, false);
-                        if auto {
-                            chrome::dashed_outline(p, rect.expand(2.0), crate::theme::colors().run);
-                        }
-                        let hint = if auto { tr("newsession.rule_tag") } else { tr("newsession.take_off") };
-                        if resp.on_hover_text(hint).clicked() {
+                    ui.label(label(tr("newsession.tags")));
+                    let rule_tags = d.rule_tags(rules);
+                    ui.horizontal_wrapped(|ui| {
+                        // The rules' tags dashed, as the design draws them; a
+                        // click takes either kind off.
+                        for (t, auto) in rule_tags.iter().map(|t| (t.clone(), true)).chain(d.tags.clone().into_iter().map(|t| (t, false))) {
+                            let w = ui.fonts_mut(|f| f.layout_no_wrap(t.clone(), FontId::proportional(11.0), pal.fg).size().x) + 12.0;
+                            let (rect, resp) = ui.allocate_exact_size(egui::vec2(w, 16.0), egui::Sense::CLICK);
+                            let p = ui.painter();
+                            chrome::tag_chip(p, rect.min, &t, false);
                             if auto {
-                                d.dropped.push(t.clone());
-                            } else {
-                                d.tags.retain(|x| *x != t);
+                                chrome::dashed_outline(p, rect.expand(2.0), crate::theme::colors().run);
+                            }
+                            let hint = if auto { tr("newsession.rule_tag") } else { tr("newsession.take_off") };
+                            if resp.on_hover_text(hint).clicked() {
+                                if auto {
+                                    d.dropped.push(t.clone());
+                                } else {
+                                    d.tags.retain(|x| *x != t);
+                                }
                             }
                         }
-                    }
-                    let edit = ui.add(egui::TextEdit::singleline(&mut d.tag_input).id(egui::Id::new("ns-tag")).hint_text(tr("newsession.add_tag")).desired_width(140.0));
-                    if edit.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
-                        if let Some(t) = tsumugi_mux::proto::tag_name(&d.tag_input) {
-                            if !d.tags.contains(&t) && d.tags.len() + rule_tags.len() < tsumugi_mux::proto::MAX_TAGS {
-                                d.tags.push(t);
+                        let edit = ui.add(
+                            egui::TextEdit::singleline(&mut d.tag_input)
+                                .id(egui::Id::new("ns-tag"))
+                                .hint_text(tr("newsession.add_tag"))
+                                .desired_width(140.0),
+                        );
+                        if edit.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                            if let Some(t) = tsumugi_mux::proto::tag_name(&d.tag_input) {
+                                if !d.tags.contains(&t) && d.tags.len() + rule_tags.len() < tsumugi_mux::proto::MAX_TAGS {
+                                    d.tags.push(t);
+                                }
                             }
+                            d.tag_input.clear();
+                            edit.request_focus();
                         }
-                        d.tag_input.clear();
-                        edit.request_focus();
-                    }
-                });
-                ui.add_space(10.0);
+                    });
+                    ui.add_space(10.0);
 
-                ui.horizontal(|ui| {
-                    let c = ui.checkbox(&mut d.worktree, RichText::new(tr("newsession.worktree")).color(crate::theme::colors().dim));
-                    ring(ui, c).on_hover_text(tr("newsession.worktree_hover"));
-                    if d.worktree {
-                        let hint = crate::worktree::default_branch(chrono::Local::now());
-                        ui.add(egui::TextEdit::singleline(&mut d.branch).id(egui::Id::new("ns-branch")).hint_text(hint).font(FontId::monospace(12.0)).desired_width(220.0));
-                    }
-                });
-                ui.horizontal(|ui| {
-                    let c = ui.checkbox(&mut d.save, RichText::new(tr("newsession.save")).color(crate::theme::colors().dim));
-                    ring(ui, c);
-                    if d.save {
-                        ui.add(egui::TextEdit::singleline(&mut d.name).id(egui::Id::new("ns-name")).hint_text(tr("newsession.name")).desired_width(200.0));
-                    }
-                });
-                ui.add_space(12.0);
+                    ui.horizontal(|ui| {
+                        let c = ui.checkbox(&mut d.worktree, RichText::new(tr("newsession.worktree")).color(crate::theme::colors().dim));
+                        ring(ui, c).on_hover_text(tr("newsession.worktree_hover"));
+                        if d.worktree {
+                            let hint = crate::worktree::default_branch(chrono::Local::now());
+                            ui.add(
+                                egui::TextEdit::singleline(&mut d.branch)
+                                    .id(egui::Id::new("ns-branch"))
+                                    .hint_text(hint)
+                                    .font(FontId::monospace(12.0))
+                                    .desired_width(220.0),
+                            );
+                        }
+                    });
+                    ui.horizontal(|ui| {
+                        let c = ui.checkbox(&mut d.save, RichText::new(tr("newsession.save")).color(crate::theme::colors().dim));
+                        ring(ui, c);
+                        if d.save {
+                            ui.add(
+                                egui::TextEdit::singleline(&mut d.name)
+                                    .id(egui::Id::new("ns-name"))
+                                    .hint_text(tr("newsession.name"))
+                                    .desired_width(200.0),
+                            );
+                        }
+                    });
+                    ui.add_space(12.0);
 
-                ui.horizontal(|ui| {
-                    for (key, what) in [("Tab", tr("newsession.next")), ("Enter", tr("newsession.create_key")), ("Alt+Enter", tr("newsession.split"))] {
-                        ui.label(RichText::new(key).font(FontId::monospace(12.0)).color(crate::theme::colors().fg));
-                        ui.label(RichText::new(what).size(12.0).color(pal.fg_dim));
-                        ui.add_space(6.0);
-                    }
-                    let create = egui::Button::new(RichText::new(tr("newsession.create")).color(crate::theme::colors().on_accent()).strong()).fill(chrome::cyan());
-                    let (create, cancel) = chrome::foot(ui, create, true, tr("dialog.cancel"));
-                    if ring(ui, cancel).clicked() {
-                        answer = Some(Answer::Cancel);
-                    }
-                    if ring(ui, create).clicked() {
-                        answer = Some(d.create(rules, false));
-                    }
+                    ui.horizontal(|ui| {
+                        for (key, what) in
+                            [("Tab", tr("newsession.next")), ("Enter", tr("newsession.create_key")), ("Alt+Enter", tr("newsession.split"))]
+                        {
+                            ui.label(RichText::new(key).font(FontId::monospace(12.0)).color(crate::theme::colors().fg));
+                            ui.label(RichText::new(what).size(12.0).color(pal.fg_dim));
+                            ui.add_space(6.0);
+                        }
+                        let create =
+                            egui::Button::new(RichText::new(tr("newsession.create")).color(crate::theme::colors().on_accent()).strong())
+                                .fill(chrome::cyan());
+                        let (create, cancel) = chrome::foot(ui, create, true, tr("dialog.cancel"));
+                        if ring(ui, cancel).clicked() {
+                            answer = Some(Answer::Cancel);
+                        }
+                        if ring(ui, create).clicked() {
+                            answer = Some(d.create(rules, false));
+                        }
+                    });
                 });
-            });
-    });
+        });
     d.opening = false;
     answer
 }
@@ -616,7 +673,10 @@ fn start_button(ui: &mut egui::Ui, text: &str, on: bool) -> egui::Response {
     } else {
         (Color32::TRANSPARENT, crate::theme::colors().border, crate::theme::colors().fg)
     };
-    let b = egui::Button::new(RichText::new(text).size(12.5).color(color)).fill(fill).stroke(egui::Stroke::new(1.0, stroke)).min_size(egui::vec2(128.0, 32.0));
+    let b = egui::Button::new(RichText::new(text).size(12.5).color(color))
+        .fill(fill)
+        .stroke(egui::Stroke::new(1.0, stroke))
+        .min_size(egui::vec2(128.0, 32.0));
     let r = ui.add(b);
     ring(ui, r)
 }
@@ -663,7 +723,10 @@ mod tests {
 
     #[test]
     fn rule_tags_follow_the_folder_less_those_taken_off() {
-        let rules = vec![TagRule { folder: "/srv/*".into(), tag: "{name}".into(), ..TagRule::default() }, TagRule { folder: "/srv/ci".into(), tag: "ci".into(), ..TagRule::default() }];
+        let rules = vec![
+            TagRule { folder: "/srv/*".into(), tag: "{name}".into(), ..TagRule::default() },
+            TagRule { folder: "/srv/ci".into(), tag: "ci".into(), ..TagRule::default() },
+        ];
         let mut d = Dialog::new(std::path::Path::new("/srv/ci"));
         assert_eq!(d.rule_tags(&rules), ["ci"], "the same tag from two rules, once");
         d.dropped.push("ci".into());
@@ -686,7 +749,11 @@ mod tests {
         }
 
         fn frame(&self, d: &mut Dialog, events: Vec<egui::Event>) -> Option<Answer> {
-            let input = egui::RawInput { screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(900.0, 800.0))), events, ..Default::default() };
+            let input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(900.0, 800.0))),
+                events,
+                ..Default::default()
+            };
             let mut answer = None;
             let mut out = self.ctx.run_ui(input, |ui| answer = show(ui.ctx(), &Palette::default(), d, &self.recents, &[], &[]));
             out.textures_delta.clear();
@@ -709,7 +776,10 @@ mod tests {
 
         /// The texts drawn in a frame, with where.
         fn texts(&self, d: &mut Dialog) -> Vec<(String, egui::Rect)> {
-            let input = egui::RawInput { screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(900.0, 800.0))), ..Default::default() };
+            let input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(900.0, 800.0))),
+                ..Default::default()
+            };
             let mut out = self.ctx.run_ui(input, |ui| {
                 show(ui.ctx(), &Palette::default(), d, &self.recents, &[], &[]);
             });

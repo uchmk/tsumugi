@@ -68,7 +68,12 @@ impl QuickSelect {
         }
         let labels = labels(texts.len());
         let label_of = |t: &str| texts.iter().position(|x| *x == t).and_then(|i| labels.get(i).cloned());
-        let hits = found.iter().filter_map(|(y, h)| Some(Hit { row: *y, cells: h.cells.clone(), text: h.text.clone(), link: h.link.clone(), label: label_of(&h.text)? })).collect();
+        let hits = found
+            .iter()
+            .filter_map(|(y, h)| {
+                Some(Hit { row: *y, cells: h.cells.clone(), text: h.text.clone(), link: h.link.clone(), label: label_of(&h.text)? })
+            })
+            .collect();
         Self { hits, typed: String::new(), open: Vec::new() }
     }
 
@@ -162,7 +167,8 @@ mod tests {
 
     #[test]
     fn a_shift_taken_back_does_not_open() {
-        let hit = |label: &str| Hit { row: 0, cells: 0..1, text: "x".into(), link: Some(Link::Url("https://x.dev".into())), label: label.into() };
+        let hit =
+            |label: &str| Hit { row: 0, cells: 0..1, text: "x".into(), link: Some(Link::Url("https://x.dev".into())), label: label.into() };
         let mut q = QuickSelect { hits: vec![hit("aa"), hit("as")], typed: String::new(), open: Vec::new() };
         assert_eq!(q.press(Key::Letter('A', true)), Step::Wait);
         assert_eq!(q.press(Key::Back), Step::Wait);

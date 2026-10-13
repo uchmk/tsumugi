@@ -41,9 +41,15 @@ pub fn file(project: &Path) -> PathBuf {
 /// The settings with `rule` added to `permissions.allow`, when it is not
 /// there yet; the rest as it was.
 pub fn add(text: &str, rule: &str) -> Result<String, String> {
-    let mut v = if text.trim().is_empty() { Json::Object(Vec::new()) } else { Json::parse(text).map_err(|e| format!("settings.local.json does not read: {e}"))? };
+    let mut v = if text.trim().is_empty() {
+        Json::Object(Vec::new())
+    } else {
+        Json::parse(text).map_err(|e| format!("settings.local.json does not read: {e}"))?
+    };
     let Json::Object(top) = &mut v else { return Err("settings.local.json is not an object".into()) };
-    let Json::Object(perms) = entry(top, "permissions", Json::Object(Vec::new())) else { return Err("`permissions` is not an object".into()) };
+    let Json::Object(perms) = entry(top, "permissions", Json::Object(Vec::new())) else {
+        return Err("`permissions` is not an object".into());
+    };
     let Json::Array(allow) = entry(perms, "allow", Json::Array(Vec::new())) else { return Err("`permissions.allow` is not a list".into()) };
     if !allow.iter().any(|r| r.string() == Some(rule)) {
         allow.push(Json::String(rule.to_owned()));
@@ -85,14 +91,21 @@ mod tests {
 
     #[test]
     fn only_one_bash_command_becomes_a_rule() {
-        assert_eq!(rule(&lines(&["Bash command", "npm run test", "Run the tests", "Do you want to proceed?"])).as_deref(), Some("Bash(npm run test)"));
+        assert_eq!(
+            rule(&lines(&["Bash command", "npm run test", "Run the tests", "Do you want to proceed?"])).as_deref(),
+            Some("Bash(npm run test)")
+        );
         assert_eq!(rule(&lines(&["Bash command", "cargo build", "Do you want to proceed?"])).as_deref(), Some("Bash(cargo build)"));
         assert_eq!(rule(&lines(&["Edit file", "src/main.rs", "Do you want to make this edit?"])), None, "only Bash");
         assert_eq!(rule(&lines(&["Bash command", "a", "b", "c", "Do you want to proceed?"])), None, "several lines");
         assert_eq!(rule(&lines(&["Bash command", "echo $(rm -rf /)", "Do you want to proceed?"])), None, "no brackets in a rule");
         assert_eq!(rule(&lines(&["Bash command", "ls"])), None, "no question");
         assert_eq!(rule(&lines(&["Bash command", "rm -rf build/*", "Do you want to proceed?"])), None, "a * is a pattern");
-        assert_eq!(rule(&lines(&["Bash command", "cargo test --workspace --all-features --", "-q", "Do you want to proceed?"])), None, "a command wrapped on screen");
+        assert_eq!(
+            rule(&lines(&["Bash command", "cargo test --workspace --all-features --", "-q", "Do you want to proceed?"])),
+            None,
+            "a command wrapped on screen"
+        );
     }
 
     #[test]
@@ -100,7 +113,8 @@ mod tests {
         let text = "{\n  \"permissions\": {\n    \"allow\": [\"Bash(ls)\"],\n    \"deny\": []\n  },\n  \"model\": \"x\"\n}";
         let out = add(text, "Bash(npm run test)").unwrap();
         let v = Json::parse(&out).unwrap();
-        let allow: Vec<&str> = v.get("permissions").and_then(|p| p.get("allow")).and_then(Json::array).unwrap().iter().filter_map(Json::string).collect();
+        let allow: Vec<&str> =
+            v.get("permissions").and_then(|p| p.get("allow")).and_then(Json::array).unwrap().iter().filter_map(Json::string).collect();
         assert_eq!(allow, ["Bash(ls)", "Bash(npm run test)"]);
         assert_eq!(v.get("model").and_then(Json::string), Some("x"));
         assert_eq!(add(&out, "Bash(npm run test)").unwrap(), out, "not twice");

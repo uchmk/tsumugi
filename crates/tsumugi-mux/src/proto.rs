@@ -2,8 +2,8 @@
 
 use std::path::PathBuf;
 
-use serde::{Deserialize, Serialize};
 use ito_pane::Size;
+use serde::{Deserialize, Serialize};
 
 /// Bumped whenever a message changes shape: a client and a server that
 /// disagree say so at `Hello` instead of misreading each other.
@@ -180,121 +180,248 @@ pub enum ScrollBy {
     Top,
     Bottom,
     /// To the prompt before the view's top (OSC 133), or after it.
-    Prompt { back: bool },
+    Prompt {
+        back: bool,
+    },
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum ToServer {
-    Hello { version: u32 },
+    Hello {
+        version: u32,
+    },
     /// Answered with `Sessions`.
     List,
     /// Start a shell (`None`: the default one) in `cwd`; answered with
     /// `Spawned`, and the session is attached.
     /// `typed`: a command's words, typed into the shell once its prompt
     /// shows, quoted for that shell (`quote::typed_line`; one word is a line).
-    Spawn { cwd: PathBuf, shell: Option<(String, Vec<String>)>, size: Size, cell: (u16, u16), place: Place, typed: Vec<String> },
+    Spawn {
+        cwd: PathBuf,
+        shell: Option<(String, Vec<String>)>,
+        size: Size,
+        cell: (u16, u16),
+        place: Place,
+        typed: Vec<String>,
+    },
     /// Send this session's screen whenever it changes, starting now.
-    Attach { id: SessionId },
-    Detach { id: SessionId },
-    Input { id: SessionId, bytes: Vec<u8> },
-    Paste { id: SessionId, text: String },
-    Resize { id: SessionId, size: Size, cell: (u16, u16) },
-    Scroll { id: SessionId, by: ScrollBy },
+    Attach {
+        id: SessionId,
+    },
+    Detach {
+        id: SessionId,
+    },
+    Input {
+        id: SessionId,
+        bytes: Vec<u8>,
+    },
+    Paste {
+        id: SessionId,
+        text: String,
+    },
+    Resize {
+        id: SessionId,
+        size: Size,
+        cell: (u16, u16),
+    },
+    Scroll {
+        id: SessionId,
+        by: ScrollBy,
+    },
     /// `block`: the press begins a rectangle (Alt+drag), not lines.
-    Select { id: SessionId, cell: (usize, usize), right_half: bool, start: bool, block: bool },
-    SelectWord { id: SessionId, cell: (usize, usize) },
-    ClearSelection { id: SessionId },
+    Select {
+        id: SessionId,
+        cell: (usize, usize),
+        right_half: bool,
+        start: bool,
+        block: bool,
+    },
+    SelectWord {
+        id: SessionId,
+        cell: (usize, usize),
+    },
+    ClearSelection {
+        id: SessionId,
+    },
     /// Put the selection on the clipboard: answered with `Clipboard`, or
     /// with `Primary` when it is for Linux's primary selection.
-    Copy { id: SessionId, primary: bool },
+    Copy {
+        id: SessionId,
+        primary: bool,
+    },
     /// End the session's shell.
-    Kill { id: SessionId },
+    Kill {
+        id: SessionId,
+    },
     /// A workspace's new shape or focus, after a drag, a click or a key.
-    SetLayout { id: WorkspaceId, layout: Node<SessionId>, focus: SessionId },
+    SetLayout {
+        id: WorkspaceId,
+        layout: Node<SessionId>,
+        focus: SessionId,
+    },
     /// An agent's word on its session (`tsumugi notify`); `claude` is the
     /// Claude Code conversation its hook named, kept for `claude --resume`.
-    Notify { id: SessionId, state: State, note: String, claude: Option<String> },
+    Notify {
+        id: SessionId,
+        state: State,
+        note: String,
+        claude: Option<String>,
+    },
     /// What was saved before a restart, to show before restoring it;
     /// answered with `Saved`.
     Saved,
     /// Start again the tabs saved before a restart -- only the panes listed,
     /// by their saved ids, or all of them -- when the server has no session
     /// yet; answered with `Restored`.
-    Restore { only: Option<Vec<SessionId>> },
+    Restore {
+        only: Option<Vec<SessionId>>,
+    },
     /// Mark notifications read: these, or all of them.
-    ReadNotices { ids: Option<Vec<u64>> },
+    ReadNotices {
+        ids: Option<Vec<u64>>,
+    },
     /// The window got or lost the keyboard; answered, to every client, with
     /// `Attention`.
-    Focus { focused: bool },
+    Focus {
+        focused: bool,
+    },
     /// Tell of these sessions only in the bell, or again everywhere.
-    Mute { ids: Vec<SessionId>, on: bool },
+    Mute {
+        ids: Vec<SessionId>,
+        on: bool,
+    },
     /// Put a tag on these sessions (`on`), or take it off.
-    Tag { ids: Vec<SessionId>, tag: String, on: bool },
+    Tag {
+        ids: Vec<SessionId>,
+        tag: String,
+        on: bool,
+    },
     /// Tell of the sessions with this tag only in the bell, or again
     /// everywhere; answered, to every client, with `MutedTags`.
-    MuteTag { tag: String, on: bool },
+    MuteTag {
+        tag: String,
+        on: bool,
+    },
     /// Put a tab at `to` in the sidebar's own order (dragged there).
-    MoveWorkspace { id: WorkspaceId, to: usize },
+    MoveWorkspace {
+        id: WorkspaceId,
+        to: usize,
+    },
     /// Take the pane out of its split into a tab of its own, after the
     /// one it was in (a pane dropped on the sidebar).
-    OwnTab { id: SessionId },
+    OwnTab {
+        id: SessionId,
+    },
     /// Record a session into an asciinema `.cast` file at `path` (its
     /// folder made if need be); `None` stops.
-    Record { id: SessionId, path: Option<PathBuf> },
+    Record {
+        id: SessionId,
+        path: Option<PathBuf>,
+    },
     /// Write a session's text to a work log at `path` as it scrolls off
     /// (its folder made if need be; a file already there is not touched,
     /// the name gets `-2`, `-3`); `None` finishes it.
-    Log { id: SessionId, path: Option<PathBuf> },
+    Log {
+        id: SessionId,
+        path: Option<PathBuf>,
+    },
     /// Name a tab; an empty name gives it back its pane's.
-    RenameWorkspace { id: WorkspaceId, name: String },
+    RenameWorkspace {
+        id: WorkspaceId,
+        name: String,
+    },
     /// Keep a tab at the top of the sidebar, or not.
-    PinWorkspace { id: WorkspaceId, on: bool },
+    PinWorkspace {
+        id: WorkspaceId,
+        on: bool,
+    },
     /// Write a note on a tab; empty takes it off.
-    NoteWorkspace { id: WorkspaceId, note: String },
+    NoteWorkspace {
+        id: WorkspaceId,
+        note: String,
+    },
     /// End the session's shell and start it again in its place, resuming
     /// the Claude Code conversation that ran in it.
-    Restart { id: SessionId },
+    Restart {
+        id: SessionId,
+    },
     /// Find `query` in every session's scrollback and screen; answered
     /// with `FoundAll`.
-    SearchAll { query: String },
+    SearchAll {
+        query: String,
+    },
     /// Put a line found on the session's screen, the match selected.
-    Reveal { id: SessionId, line: i32, col: usize, len: usize },
+    Reveal {
+        id: SessionId,
+        line: i32,
+        col: usize,
+        len: usize,
+    },
     /// The session's whole buffer as text; answered with `Text`.
-    AllText { id: SessionId },
+    AllText {
+        id: SessionId,
+    },
     /// Read and write the session's bytes in this character set (one of
     /// `ito_pane::CHARSETS`).
-    SetCharset { id: SessionId, name: String },
+    SetCharset {
+        id: SessionId,
+        name: String,
+    },
     /// Find `needle` (plain text, case aside) in the session's buffer from
     /// the last match on, and put the match on screen, selected; answered
     /// with `Found`. An empty needle forgets where the search got to.
-    Find { id: SessionId, needle: String, back: bool },
+    Find {
+        id: SessionId,
+        needle: String,
+        back: bool,
+    },
     /// Put the last command's output (OSC 133 `C` to the next prompt) on
     /// the clipboard: answered with `Clipboard`, or not at all when the
     /// shell marks none.
-    CopyOutput { id: SessionId },
+    CopyOutput {
+        id: SessionId,
+    },
     /// A picture's pixels, by the key its placement has: answered with
     /// `Picture`.
-    Picture { id: SessionId, key: u64 },
+    Picture {
+        id: SessionId,
+        key: u64,
+    },
     /// This client's line is slow (ssh): send it a pane's screen at most
     /// every `ms` milliseconds, the latest then, and pictures of at most
     /// `picture_bytes` of RGBA, scaled down. Zero for either is no limit.
-    Pace { ms: u32, picture_bytes: u64 },
+    Pace {
+        ms: u32,
+        picture_bytes: u64,
+    },
     /// Turn away typing and pasting into a session, from every window and
     /// from `tsumugi send`, or let them in again.
-    ReadOnly { id: SessionId, on: bool },
+    ReadOnly {
+        id: SessionId,
+        on: bool,
+    },
     /// Say which profile a session was started from (empty for none): the
     /// windows draw it in that profile's theme and font size.
-    Profile { id: SessionId, name: String },
+    Profile {
+        id: SessionId,
+        name: String,
+    },
     /// This client is a window: it shows the boxes of `Asked`.
     Judge,
     /// An MCP client asks to type `text` into a session and press Enter. The
     /// windows are asked; answered with `AskDone` once one of them has
     /// decided (or at once, when none can be asked).
-    AskSend { id: SessionId, text: String },
+    AskSend {
+        id: SessionId,
+        text: String,
+    },
     /// The asker stopped waiting: its box goes away.
     AskCancel,
     /// A window's answer to `Asked`: the first one counts.
-    Decide { n: u64, allow: bool },
+    Decide {
+        n: u64,
+        allow: bool,
+    },
 }
 
 /// A line `SearchAll` found.
@@ -310,36 +437,54 @@ pub struct Hit {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum ToClient {
-    Hello { version: u32 },
+    Hello {
+        version: u32,
+    },
     Sessions(Vec<Info>),
     /// The answer to `List`: the sessions after everything sent before it.
     /// Not `Sessions`, which any change sends and which could answer a
     /// `List` with a list from before.
     Listed(Vec<Info>),
     Workspaces(Vec<Workspace>),
-    Spawned { id: SessionId },
+    Spawned {
+        id: SessionId,
+    },
     /// How many sessions `Restore` started.
     Restored(usize),
     /// What `SearchAll` found for `query`, newest first in each session.
-    FoundAll { query: String, hits: Vec<Hit> },
+    FoundAll {
+        query: String,
+        hits: Vec<Hit>,
+    },
     Saved(Option<crate::state::Saved>),
     /// The notification list, newest last, whenever it changes.
     Notices(Vec<Notice>),
     /// When the server started, in Unix milliseconds (the status bar's "up"),
     /// and the tsumugi version it was built as: one older than the window
     /// speaks the same messages but lacks the server's fixes since.
-    Started { at_ms: u64, build: String },
+    Started {
+        at_ms: u64,
+        build: String,
+    },
     /// What changed on the screen of an attached session: every row the
     /// first time, then only the rows that changed.
-    Screen { id: SessionId, update: crate::diff::Update },
+    Screen {
+        id: SessionId,
+        update: crate::diff::Update,
+    },
     /// The session's shell is gone; the session is no more.
-    Exited { id: SessionId },
+    Exited {
+        id: SessionId,
+    },
     /// Text for the clipboard: a program set it (OSC 52), or `Copy` asked.
     Clipboard(String),
     /// Whether someone is at one of the windows (`looking`), and whether this
     /// client is the one to tell them otherwise (`teller`: the window that
     /// had the keyboard last), so two windows do not tell twice.
-    Attention { looking: bool, teller: bool },
+    Attention {
+        looking: bool,
+        teller: bool,
+    },
     /// The tags whose sessions are told of in the bell only.
     MutedTags(Vec<String>),
     /// Keeps its place (the 16th) for good: a server of another version
@@ -348,25 +493,46 @@ pub enum ToClient {
     Error(String),
     /// A session ended, to every client: what it was, and the last lines on
     /// its screen (the history of closed sessions).
-    Ended { info: Box<Info>, last: Vec<String> },
+    Ended {
+        info: Box<Info>,
+        last: Vec<String>,
+    },
     /// The answer to `AllText`: the scrollback and the screen.
-    Text { id: SessionId, text: String },
+    Text {
+        id: SessionId,
+        text: String,
+    },
     /// The answer to `Find`: `None` when nothing matched, else whether the
     /// search ran off the end and started again to find it.
-    Found { id: SessionId, wrapped: Option<bool> },
+    Found {
+        id: SessionId,
+        wrapped: Option<bool>,
+    },
     /// The answer to `ToServer::Picture`: `None` when the session has let
     /// the picture go.
-    Picture { id: SessionId, key: u64, picture: Option<ito_pane::Picture> },
+    Picture {
+        id: SessionId,
+        key: u64,
+        picture: Option<ito_pane::Picture>,
+    },
     /// The selection, for Linux's primary selection (`Copy` with `primary`).
     Primary(String),
     /// The program in a session the window watches rang the bell (BEL).
-    Bell { id: SessionId },
+    Bell {
+        id: SessionId,
+    },
     /// To the windows: an MCP client asks to type `text` into a session
     /// (`n` names the ask for `Decide`).
-    Asked { n: u64, id: SessionId, text: String },
+    Asked {
+        n: u64,
+        id: SessionId,
+        text: String,
+    },
     /// To the windows: the ask `n` is settled, by another window or by the
     /// asker giving up; its box goes away.
-    AskGone { n: u64 },
+    AskGone {
+        n: u64,
+    },
     /// To the asker: whether the text was typed.
     AskDone(Result<(), String>),
 }

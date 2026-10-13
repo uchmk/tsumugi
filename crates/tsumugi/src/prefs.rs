@@ -8,9 +8,9 @@
 
 use eframe::egui::{self, Color32, FontId, RichText};
 use ito_common::{Clock, CommonChange};
-use tsumugi_mux::settings::{self as cfg, MenuItem, Profile, Settings, TagRule};
 use ito_pane::Palette;
 use ito_prefs::{button, field, keycap, row, section, select, sep, status, switch, Drafts, Look, Words};
+use tsumugi_mux::settings::{self as cfg, MenuItem, Profile, Settings, TagRule};
 
 use crate::facts::Facts;
 use crate::i18n::{tr, tr_desc, trf};
@@ -32,8 +32,17 @@ pub enum Page {
 }
 
 impl Page {
-    pub const ALL: [Page; 9] =
-        [Page::General, Page::Appearance, Page::Keys, Page::Notifications, Page::Sessions, Page::Tags, Page::Theme, Page::Shell, Page::Advanced];
+    pub const ALL: [Page; 9] = [
+        Page::General,
+        Page::Appearance,
+        Page::Keys,
+        Page::Notifications,
+        Page::Sessions,
+        Page::Tags,
+        Page::Theme,
+        Page::Shell,
+        Page::Advanced,
+    ];
 
     pub fn title(self) -> &'static str {
         match self {
@@ -160,11 +169,36 @@ const INDEX: &[(Page, &str)] = &[
 pub fn index() -> Vec<(Page, &'static str)> {
     use crate::keys::Action;
     let w = words();
-    let keys = [Action::NewTab, Action::CloseTab, Action::Rename, Action::Duplicate, Action::NextTab, Action::PrevTab, Action::NextWaiting, Action::Waiting, Action::TypeAll, Action::SplitRight, Action::SplitDown, Action::Zoom];
+    let keys = [
+        Action::NewTab,
+        Action::CloseTab,
+        Action::Rename,
+        Action::Duplicate,
+        Action::NextTab,
+        Action::PrevTab,
+        Action::NextWaiting,
+        Action::Waiting,
+        Action::TypeAll,
+        Action::SplitRight,
+        Action::SplitDown,
+        Action::Zoom,
+    ];
     // Rows this system does not draw are not found either.
     let here = |k: &&str| crate::secure::HERE || *k != "prefs.advanced.secure_input";
     let mut out: Vec<(Page, &'static str)> = INDEX.iter().filter(|(_, k)| here(k)).map(|(p, k)| (*p, tr(k))).collect();
-    let shared = |w: &'static Words| [(Page::General, w.language), (Page::General, w.scale), (Page::General, w.show_time), (Page::General, w.time_format), (Page::General, w.show_date), (Page::General, w.date_format), (Page::General, w.weekday), (Page::Theme, w.mode), (Page::Theme, w.preview)];
+    let shared = |w: &'static Words| {
+        [
+            (Page::General, w.language),
+            (Page::General, w.scale),
+            (Page::General, w.show_time),
+            (Page::General, w.time_format),
+            (Page::General, w.show_date),
+            (Page::General, w.date_format),
+            (Page::General, w.weekday),
+            (Page::Theme, w.mode),
+            (Page::Theme, w.preview),
+        ]
+    };
     out.extend(shared(w));
     out.extend(keys.map(|a| (Page::Keys, tr_desc(crate::keys::title(a)))));
     if crate::i18n::current_language() != "en" {
@@ -240,12 +274,31 @@ struct ProfileDraft {
 
 impl ProfileDraft {
     fn of(p: &Profile) -> Self {
-        Self { was: Some(p.name.clone()), name: p.name.clone(), folder: p.folder.clone(), start: p.start.clone(), tags: p.tags.join(", "), panes: p.panes.clone(), place: p.place.clone(), theme: p.theme.clone(), font_size: p.font_size.map(|s| s.to_string()).unwrap_or_default() }
+        Self {
+            was: Some(p.name.clone()),
+            name: p.name.clone(),
+            folder: p.folder.clone(),
+            start: p.start.clone(),
+            tags: p.tags.join(", "),
+            panes: p.panes.clone(),
+            place: p.place.clone(),
+            theme: p.theme.clone(),
+            font_size: p.font_size.map(|s| s.to_string()).unwrap_or_default(),
+        }
     }
 
     fn profile(&self) -> Profile {
         let tags = self.tags.split(',').filter_map(tsumugi_mux::proto::tag_name).collect();
-        Profile { name: self.name.trim().to_owned(), folder: self.folder.trim().to_owned(), start: self.start.clone(), tags, panes: self.panes.clone(), place: self.place.trim().to_owned(), theme: self.theme.clone(), font_size: self.size() }
+        Profile {
+            name: self.name.trim().to_owned(),
+            folder: self.folder.trim().to_owned(),
+            start: self.start.clone(),
+            tags,
+            panes: self.panes.clone(),
+            place: self.place.trim().to_owned(),
+            theme: self.theme.clone(),
+            font_size: self.size(),
+        }
     }
 
     /// The font size typed, if it is one (6 to 72 points).
@@ -341,7 +394,8 @@ fn words() -> &'static Words {
 pub fn show(ui: &mut egui::Ui, pal: &Palette, screen: &mut Screen, seen: &Seen) -> Vec<Change> {
     let mut out = Vec::new();
     let pages: Vec<(&str, &str)> = Page::ALL.iter().map(|p| (p.title(), p.lead())).collect();
-    let index: Vec<(usize, &str)> = index().into_iter().map(|(p, words)| (Page::ALL.iter().position(|q| *q == p).unwrap_or(0), words)).collect();
+    let index: Vec<(usize, &str)> =
+        index().into_iter().map(|(p, words)| (Page::ALL.iter().position(|q| *q == p).unwrap_or(0), words)).collect();
     let nav = ito_prefs::Nav { pages: &pages, index: &index, words: words(), file: "config.toml" };
     let page = Page::ALL.iter().position(|p| *p == screen.page).unwrap_or(0);
     let mut state = ito_prefs::State { page, query: std::mem::take(&mut screen.query), held: screen.held };
@@ -397,12 +451,16 @@ fn general(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut V
         out.extend(ito_prefs::scale_row(ui, l, words(), seen.scale, note).map(Change::Common));
         sep(ui, l);
         let starts = [(true, tr("prefs.general.restore")), (false, tr("prefs.general.ask"))];
-        if let Some(on) = row(ui, l, tr("prefs.general.on_start"), tr("prefs.general.on_start_note"), |ui| select(ui, "on-start", seen.always_restore, &starts)) {
+        if let Some(on) = row(ui, l, tr("prefs.general.on_start"), tr("prefs.general.on_start_note"), |ui| {
+            select(ui, "on-start", seen.always_restore, &starts)
+        }) {
             out.push(Change::AlwaysRestore(on));
         }
         sep(ui, l);
         let home = if cfg!(windows) { "%USERPROFILE%" } else { "~" };
-        if let Some(t) = row(ui, l, tr("prefs.general.default_folder"), tr("prefs.general.default_folder_note"), |ui| field(ui, &mut edit.drafts, "default-folder", &g.default_folder, home, 200.0)) {
+        if let Some(t) = row(ui, l, tr("prefs.general.default_folder"), tr("prefs.general.default_folder_note"), |ui| {
+            field(ui, &mut edit.drafts, "default-folder", &g.default_folder, home, 200.0)
+        }) {
             out.push(Change::Set(Some("general"), "default_folder", cfg::quote(t.trim())));
         }
         sep(ui, l);
@@ -430,7 +488,9 @@ fn general(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut V
             out.push(set("check_updates", !g.check_updates));
         }
         sep(ui, l);
-        if row(ui, l, tr("prefs.general.restart_after_update"), tr("prefs.general.restart_note"), |ui| switch(ui, l, g.restart_after_update)) {
+        if row(ui, l, tr("prefs.general.restart_after_update"), tr("prefs.general.restart_note"), |ui| {
+            switch(ui, l, g.restart_after_update)
+        }) {
             out.push(set("restart_after_update", !g.restart_after_update));
         }
     });
@@ -461,13 +521,24 @@ fn appearance(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mu
         if !f.family.is_empty() && !seen.font_names.contains(&f.family) {
             families.push((f.family.as_str(), f.family.as_str()));
         }
-        if let Some(family) = row(ui, l, tr("prefs.appearance.font"), tr("prefs.appearance.font_note"), |ui| select(ui, "font-family", f.family.as_str(), &families)) {
+        if let Some(family) = row(ui, l, tr("prefs.appearance.font"), tr("prefs.appearance.font_note"), |ui| {
+            select(ui, "font-family", f.family.as_str(), &families)
+        }) {
             out.push(Change::Set(Some("font"), "family", cfg::quote(family)));
         }
         let using = match &seen.font_file {
             Some(file) => {
-                let styles: Vec<&str> = [tr("prefs.appearance.bold"), tr("prefs.appearance.italic"), tr("prefs.appearance.bold_italic")].into_iter().zip(seen.faces).filter(|(_, on)| *on).map(|(s, _)| s).collect();
-                let styles = if styles.is_empty() { tr("prefs.appearance.no_styles").to_owned() } else { trf("prefs.appearance.with", &[&styles.join(tr("prefs.common.list_sep"))]) };
+                let styles: Vec<&str> = [tr("prefs.appearance.bold"), tr("prefs.appearance.italic"), tr("prefs.appearance.bold_italic")]
+                    .into_iter()
+                    .zip(seen.faces)
+                    .filter(|(_, on)| *on)
+                    .map(|(s, _)| s)
+                    .collect();
+                let styles = if styles.is_empty() {
+                    tr("prefs.appearance.no_styles").to_owned()
+                } else {
+                    trf("prefs.appearance.with", &[&styles.join(tr("prefs.common.list_sep"))])
+                };
                 format!("{file} ({styles})")
             }
             None if !f.family.is_empty() => trf("prefs.appearance.not_found", &[&f.family]),
@@ -476,13 +547,17 @@ fn appearance(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mu
         ui.label(RichText::new(using).size(11.5).color(c.dim));
         ui.add_space(6.0);
         sep(ui, l);
-        if let Some(t) = row(ui, l, tr("prefs.appearance.size"), tr("prefs.appearance.size_note"), |ui| field(ui, &mut edit.drafts, "font-size", &f.size.to_string(), "13", 80.0)) {
+        if let Some(t) = row(ui, l, tr("prefs.appearance.size"), tr("prefs.appearance.size_note"), |ui| {
+            field(ui, &mut edit.drafts, "font-size", &f.size.to_string(), "13", 80.0)
+        }) {
             if let Ok(v) = t.trim().parse::<f32>() {
                 out.push(Change::Set(Some("font"), "size", v.clamp(8.0, 32.0).to_string()));
             }
         }
         sep(ui, l);
-        if let Some(t) = row(ui, l, tr("prefs.appearance.line_height"), tr("prefs.appearance.line_height_note"), |ui| field(ui, &mut edit.drafts, "line-height", &format!("{:.2}", f.line_height), "1.00", 80.0)) {
+        if let Some(t) = row(ui, l, tr("prefs.appearance.line_height"), tr("prefs.appearance.line_height_note"), |ui| {
+            field(ui, &mut edit.drafts, "line-height", &format!("{:.2}", f.line_height), "1.00", 80.0)
+        }) {
             if let Ok(v) = t.trim().parse::<f32>() {
                 out.push(Change::Set(Some("font"), "line_height", format!("{:.2}", v.clamp(0.8, 2.0))));
             }
@@ -517,35 +592,47 @@ fn appearance(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mu
         }
         sep(ui, l);
         let note = tr("prefs.appearance.opacity_note");
-        if let Some(t) = row(ui, l, tr("prefs.appearance.opacity"), note, |ui| field(ui, &mut edit.drafts, "opacity", &w.opacity.to_string(), "100", 80.0)) {
+        if let Some(t) = row(ui, l, tr("prefs.appearance.opacity"), note, |ui| {
+            field(ui, &mut edit.drafts, "opacity", &w.opacity.to_string(), "100", 80.0)
+        }) {
             if let Ok(v) = t.trim().trim_end_matches('%').trim().parse::<u8>() {
                 out.push(Change::Set(Some("window"), "opacity", v.clamp(20, 100).to_string()));
             }
         }
         sep(ui, l);
         let note = tr("prefs.appearance.image_note");
-        if let Some(t) = row(ui, l, tr("prefs.appearance.image"), note, |ui| field(ui, &mut edit.drafts, "image", &w.image, "~/Pictures/bg.png", 220.0)) {
+        if let Some(t) =
+            row(ui, l, tr("prefs.appearance.image"), note, |ui| field(ui, &mut edit.drafts, "image", &w.image, "~/Pictures/bg.png", 220.0))
+        {
             out.push(Change::Set(Some("window"), "image", cfg::quote(t.trim())));
         }
         sep(ui, l);
-        if let Some(t) = row(ui, l, tr("prefs.appearance.image_strength"), tr("prefs.appearance.image_strength_note"), |ui| field(ui, &mut edit.drafts, "image_opacity", &w.image_opacity.to_string(), "25", 80.0)) {
+        if let Some(t) = row(ui, l, tr("prefs.appearance.image_strength"), tr("prefs.appearance.image_strength_note"), |ui| {
+            field(ui, &mut edit.drafts, "image_opacity", &w.image_opacity.to_string(), "25", 80.0)
+        }) {
             if let Ok(v) = t.trim().trim_end_matches('%').trim().parse::<u8>() {
                 out.push(Change::Set(Some("window"), "image_opacity", v.min(100).to_string()));
             }
         }
         sep(ui, l);
         let note = tr("prefs.appearance.quake_note");
-        if let Some(t) = row(ui, l, tr("prefs.appearance.quake_key"), note, |ui| field(ui, &mut edit.drafts, "quake", &w.quake, "Ctrl+`", 140.0)) {
+        if let Some(t) =
+            row(ui, l, tr("prefs.appearance.quake_key"), note, |ui| field(ui, &mut edit.drafts, "quake", &w.quake, "Ctrl+`", 140.0))
+        {
             out.push(Change::Set(Some("window"), "quake", cfg::quote(t.trim())));
         }
         sep(ui, l);
-        if let Some(t) = row(ui, l, tr("prefs.appearance.quake_height"), tr("prefs.appearance.quake_height_note"), |ui| field(ui, &mut edit.drafts, "quake_height", &w.quake_height.to_string(), "50", 80.0)) {
+        if let Some(t) = row(ui, l, tr("prefs.appearance.quake_height"), tr("prefs.appearance.quake_height_note"), |ui| {
+            field(ui, &mut edit.drafts, "quake_height", &w.quake_height.to_string(), "50", 80.0)
+        }) {
             if let Ok(v) = t.trim().trim_end_matches('%').trim().parse::<u8>() {
                 out.push(Change::Set(Some("window"), "quake_height", v.clamp(20, 100).to_string()));
             }
         }
         sep(ui, l);
-        if let Some(t) = row(ui, l, tr("prefs.appearance.dim"), tr("prefs.appearance.dim_note"), |ui| field(ui, &mut edit.drafts, "dim", &a.dim.to_string(), "35", 80.0)) {
+        if let Some(t) = row(ui, l, tr("prefs.appearance.dim"), tr("prefs.appearance.dim_note"), |ui| {
+            field(ui, &mut edit.drafts, "dim", &a.dim.to_string(), "35", 80.0)
+        }) {
             if let Ok(v) = t.trim().trim_end_matches('%').trim().parse::<u8>() {
                 out.push(Change::Set(Some("appearance"), "dim", v.min(90).to_string()));
             }
@@ -559,7 +646,9 @@ fn appearance(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mu
             ("underline-blink", tr("prefs.appearance.underline_blink")),
             ("underline", tr("prefs.appearance.underline")),
         ];
-        if let Some(s) = row(ui, l, tr("prefs.appearance.cursor"), tr("prefs.appearance.cursor_note"), |ui| select(ui, "cursor", a.cursor.as_str(), &shapes)) {
+        if let Some(s) = row(ui, l, tr("prefs.appearance.cursor"), tr("prefs.appearance.cursor_note"), |ui| {
+            select(ui, "cursor", a.cursor.as_str(), &shapes)
+        }) {
             out.push(Change::Set(Some("appearance"), "cursor", cfg::quote(s)));
         }
         sep(ui, l);
@@ -604,7 +693,9 @@ fn keys(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut Vec<
                 match action.and_then(|a| crate::keys::clash(&chord, a)) {
                     Some(c) => {
                         let why = match c {
-                            crate::keys::Clash::Window(a) => trf("prefs.keys.clash_window", &[&chord.label(), tr_desc(crate::keys::title(a))]),
+                            crate::keys::Clash::Window(a) => {
+                                trf("prefs.keys.clash_window", &[&chord.label(), tr_desc(crate::keys::title(a))])
+                            }
                             crate::keys::Clash::Other(whose) => trf("prefs.keys.clash_other", &[&chord.label(), tr_desc(whose)]),
                         };
                         edit.clash = Some((name, why, chord.label()));
@@ -645,23 +736,25 @@ fn keys(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut Vec<
             None if now != own => trf("prefs.keys.own_note", &[own]),
             None => String::new(),
         };
-        row(ui, l, tr_desc(crate::keys::title(a)), &note, |ui| crate::chrome::in_order(ui, |ui| {
-            let waiting = edit.capturing == Some(*name);
-            let text = if waiting { tr("prefs.keys.press").to_owned() } else { now.clone() };
-            if keycap(ui, l, &text, waiting).on_hover_text(tr("prefs.keys.press_hover")).clicked() {
-                edit.capturing = Some(name);
-                edit.clash = None;
-            }
-            if let Some((_, _, chord)) = &clash {
-                if ui.small_button(tr("prefs.keys.use_anyway")).clicked() {
-                    out.push(Change::Set(Some("keys"), name, cfg::quote(chord)));
-                    edit.capturing = None;
+        row(ui, l, tr_desc(crate::keys::title(a)), &note, |ui| {
+            crate::chrome::in_order(ui, |ui| {
+                let waiting = edit.capturing == Some(*name);
+                let text = if waiting { tr("prefs.keys.press").to_owned() } else { now.clone() };
+                if keycap(ui, l, &text, waiting).on_hover_text(tr("prefs.keys.press_hover")).clicked() {
+                    edit.capturing = Some(name);
                     edit.clash = None;
                 }
-            } else if now != own && ui.small_button(tr("prefs.keys.own")).clicked() {
-                out.push(Change::Set(Some("keys"), name, cfg::quote(own)));
-            }
-        }));
+                if let Some((_, _, chord)) = &clash {
+                    if ui.small_button(tr("prefs.keys.use_anyway")).clicked() {
+                        out.push(Change::Set(Some("keys"), name, cfg::quote(chord)));
+                        edit.capturing = None;
+                        edit.clash = None;
+                    }
+                } else if now != own && ui.small_button(tr("prefs.keys.own")).clicked() {
+                    out.push(Change::Set(Some("keys"), name, cfg::quote(own)));
+                }
+            })
+        });
     };
     let fixed_row = |ui: &mut egui::Ui, title: &str, key: &str| {
         row(ui, l, title, "", |ui| {
@@ -669,7 +762,25 @@ fn keys(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut Vec<
         });
     };
     section(ui, l, tr("prefs.head.sessions"), |ui| {
-        for (k, a) in [Action::NewTab, Action::CloseTab, Action::Rename, Action::Duplicate, Action::NextTab, Action::PrevTab, Action::NextWaiting, Action::Waiting, Action::Notices, Action::TypeAll, Action::Search, Action::Input, Action::Rail, Action::Settings].into_iter().enumerate() {
+        for (k, a) in [
+            Action::NewTab,
+            Action::CloseTab,
+            Action::Rename,
+            Action::Duplicate,
+            Action::NextTab,
+            Action::PrevTab,
+            Action::NextWaiting,
+            Action::Waiting,
+            Action::Notices,
+            Action::TypeAll,
+            Action::Search,
+            Action::Input,
+            Action::Rail,
+            Action::Settings,
+        ]
+        .into_iter()
+        .enumerate()
+        {
             if k > 0 {
                 sep(ui, l);
             }
@@ -698,13 +809,35 @@ fn keys(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut Vec<
         changeable(ui, Action::PrevPrompt);
         sep(ui, l);
         changeable(ui, Action::NextPrompt);
-        for a in [Action::SwapPane, Action::Equalize, Action::PaneToTab, Action::Record, Action::CopyOutput, Action::SaveOutput, Action::Changes, Action::Browser, Action::ReadOnly, Action::SaveLayout] {
+        for a in [
+            Action::SwapPane,
+            Action::Equalize,
+            Action::PaneToTab,
+            Action::Record,
+            Action::CopyOutput,
+            Action::SaveOutput,
+            Action::Changes,
+            Action::Browser,
+            Action::ReadOnly,
+            Action::SaveLayout,
+        ] {
             sep(ui, l);
             changeable(ui, a);
         }
     });
     section(ui, l, tr("prefs.head.view"), |ui| {
-        for (k, a) in [Action::Help, Action::Overview, Action::FontBigger, Action::FontSmaller, Action::FontReset, Action::ClosedList, Action::RestartServer].into_iter().enumerate() {
+        for (k, a) in [
+            Action::Help,
+            Action::Overview,
+            Action::FontBigger,
+            Action::FontSmaller,
+            Action::FontReset,
+            Action::ClosedList,
+            Action::RestartServer,
+        ]
+        .into_iter()
+        .enumerate()
+        {
             if k > 0 {
                 sep(ui, l);
             }
@@ -727,7 +860,12 @@ fn span(secs: u64, more: bool) -> String {
 }
 
 fn sound_names() -> [(&'static str, &'static str); 4] {
-    [("chime", tr("prefs.notify.chime")), ("low", tr("prefs.notify.low")), ("alert", tr("prefs.notify.alert")), ("default", tr("prefs.notify.default"))]
+    [
+        ("chime", tr("prefs.notify.chime")),
+        ("low", tr("prefs.notify.low")),
+        ("alert", tr("prefs.notify.alert")),
+        ("default", tr("prefs.notify.default")),
+    ]
 }
 
 fn notifications(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut Vec<Change>) {
@@ -751,7 +889,11 @@ fn notifications(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: 
         // The design's table: the way to tell, then a column per state, the
         // label's column 1.6 times as wide as each state's, a line between
         // rows.
-        let states = [("waiting", tr("prefs.notify.waits"), c.wait), ("error", tr("prefs.notify.fails"), c.err), ("done", tr("prefs.notify.finishes"), c.done)];
+        let states = [
+            ("waiting", tr("prefs.notify.waits"), c.wait),
+            ("error", tr("prefs.notify.fails"), c.err),
+            ("done", tr("prefs.notify.finishes"), c.done),
+        ];
         let gap = 16.0;
         let width = ui.available_width();
         let unit = (width - 3.0 * gap) / 4.6;
@@ -808,23 +950,31 @@ fn notifications(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: 
         }
     });
     section(ui, l, tr("prefs.head.details"), |ui| {
-        let mut lengths: Vec<(u64, String)> = std::iter::once((0, tr("prefs.notify.any_length").to_owned())).chain([30, 60, 300, 600].map(|v| (v, span(v, true)))).collect();
+        let mut lengths: Vec<(u64, String)> =
+            std::iter::once((0, tr("prefs.notify.any_length").to_owned())).chain([30, 60, 300, 600].map(|v| (v, span(v, true)))).collect();
         if !lengths.iter().any(|(v, _)| *v == n.long_run) {
             lengths.push((n.long_run, span(n.long_run, true)));
         }
         let lengths: Vec<(u64, &str)> = lengths.iter().map(|(v, t)| (*v, t.as_str())).collect();
-        if let Some(v) = row(ui, l, tr("prefs.notify.long_run"), tr("prefs.notify.long_run_note"), |ui| select(ui, "long-run", n.long_run, &lengths)) {
+        if let Some(v) =
+            row(ui, l, tr("prefs.notify.long_run"), tr("prefs.notify.long_run_note"), |ui| select(ui, "long-run", n.long_run, &lengths))
+        {
             out.push(Change::Set(Some("notify"), "long_run", v.to_string()));
         }
-        for (key, label, now) in [("sound_waiting", tr("prefs.notify.sound_waiting"), &n.sound_waiting), ("sound_error", tr("prefs.notify.sound_error"), &n.sound_error)] {
+        for (key, label, now) in [
+            ("sound_waiting", tr("prefs.notify.sound_waiting"), &n.sound_waiting),
+            ("sound_error", tr("prefs.notify.sound_error"), &n.sound_error),
+        ] {
             sep(ui, l);
-            let picked = row(ui, l, label, "", |ui| crate::chrome::in_order(ui, |ui| {
-                let picked = select(ui, key, now.as_str(), &sound_names());
-                if ui.small_button("▶").on_hover_text(tr("prefs.notify.play")).clicked() {
-                    out.push(Change::PlaySound(now.clone()));
-                }
-                picked
-            }));
+            let picked = row(ui, l, label, "", |ui| {
+                crate::chrome::in_order(ui, |ui| {
+                    let picked = select(ui, key, now.as_str(), &sound_names());
+                    if ui.small_button("▶").on_hover_text(tr("prefs.notify.play")).clicked() {
+                        out.push(Change::PlaySound(now.clone()));
+                    }
+                    picked
+                })
+            });
             if let Some(s) = picked {
                 out.push(Change::Set(Some("notify"), key, cfg::quote(s)));
             }
@@ -844,12 +994,16 @@ fn notifications(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: 
         }
     });
     section(ui, l, tr("prefs.head.away"), |ui| {
-        if let Some(t) = row(ui, l, tr("prefs.notify.webhook"), tr("prefs.notify.webhook_note"), |ui| field(ui, &mut edit.drafts, "webhook", &n.webhook, "https://ntfy.sh/my-topic", 260.0)) {
+        if let Some(t) = row(ui, l, tr("prefs.notify.webhook"), tr("prefs.notify.webhook_note"), |ui| {
+            field(ui, &mut edit.drafts, "webhook", &n.webhook, "https://ntfy.sh/my-topic", 260.0)
+        }) {
             out.push(Change::Set(Some("notify"), "webhook", cfg::quote(t.trim())));
         }
         sep(ui, l);
         let formats = [("ntfy", "ntfy"), ("slack", "Slack"), ("json", "JSON")];
-        if let Some(v) = row(ui, l, tr("prefs.notify.webhook_format"), tr("prefs.notify.webhook_format_note"), |ui| select(ui, "webhook-format", n.webhook_format.as_str(), &formats)) {
+        if let Some(v) = row(ui, l, tr("prefs.notify.webhook_format"), tr("prefs.notify.webhook_format_note"), |ui| {
+            select(ui, "webhook-format", n.webhook_format.as_str(), &formats)
+        }) {
             out.push(Change::Set(Some("notify"), "webhook_format", cfg::quote(v)));
         }
         sep(ui, l);
@@ -858,14 +1012,18 @@ fn notifications(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: 
             afters.push((n.webhook_after, span(n.webhook_after, false)));
         }
         let afters: Vec<(u64, &str)> = afters.iter().map(|(v, t)| (*v, t.as_str())).collect();
-        if let Some(v) = row(ui, l, tr("prefs.notify.webhook_after"), tr("prefs.notify.webhook_after_note"), |ui| select(ui, "webhook-after", n.webhook_after, &afters)) {
+        if let Some(v) = row(ui, l, tr("prefs.notify.webhook_after"), tr("prefs.notify.webhook_after_note"), |ui| {
+            select(ui, "webhook-after", n.webhook_after, &afters)
+        }) {
             out.push(Change::Set(Some("notify"), "webhook_after", v.to_string()));
         }
     });
     section(ui, l, tr("prefs.head.costs"), |ui| {
         // Once a day, once a 5-hour block, at the estimate (API prices).
         let pick = |now: u64, lines: &[u64]| -> Vec<(u64, String)> {
-            let mut v: Vec<(u64, String)> = std::iter::once((0, tr("prefs.notify.never").to_owned())).chain(lines.iter().map(|d| (*d, trf("prefs.notify.past", &[&format!("${d}")])))).collect();
+            let mut v: Vec<(u64, String)> = std::iter::once((0, tr("prefs.notify.never").to_owned()))
+                .chain(lines.iter().map(|d| (*d, trf("prefs.notify.past", &[&format!("${d}")]))))
+                .collect();
             if !v.iter().any(|(d, _)| *d == now) {
                 v.push((now, trf("prefs.notify.past", &[&format!("${now}")])));
             }
@@ -873,13 +1031,17 @@ fn notifications(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: 
         };
         let days = pick(n.spend_day, &[5, 10, 20, 50, 100, 200]);
         let days: Vec<(u64, &str)> = days.iter().map(|(v, t)| (*v, t.as_str())).collect();
-        if let Some(v) = row(ui, l, tr("prefs.notify.spend_day"), tr("prefs.notify.spend_day_note"), |ui| select(ui, "spend-day", n.spend_day, &days)) {
+        if let Some(v) =
+            row(ui, l, tr("prefs.notify.spend_day"), tr("prefs.notify.spend_day_note"), |ui| select(ui, "spend-day", n.spend_day, &days))
+        {
             out.push(Change::Set(Some("notify"), "spend_day", v.to_string()));
         }
         sep(ui, l);
         let blocks = pick(n.spend_block, &[5, 10, 20, 50]);
         let blocks: Vec<(u64, &str)> = blocks.iter().map(|(v, t)| (*v, t.as_str())).collect();
-        if let Some(v) = row(ui, l, tr("prefs.notify.spend_block"), tr("prefs.notify.spend_block_note"), |ui| select(ui, "spend-block", n.spend_block, &blocks)) {
+        if let Some(v) = row(ui, l, tr("prefs.notify.spend_block"), tr("prefs.notify.spend_block_note"), |ui| {
+            select(ui, "spend-block", n.spend_block, &blocks)
+        }) {
             out.push(Change::Set(Some("notify"), "spend_block", v.to_string()));
         }
     });
@@ -958,11 +1120,15 @@ fn sessions(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut 
     let c = l.c;
     let s = &seen.settings.sessions;
     section(ui, l, tr("prefs.head.new_sessions"), |ui| {
-        if let Some(v) = row(ui, l, tr("prefs.sessions.default_program"), tr("prefs.sessions.default_program_note"), |ui| select(ui, "start", s.start.as_str(), &starts())) {
+        if let Some(v) = row(ui, l, tr("prefs.sessions.default_program"), tr("prefs.sessions.default_program_note"), |ui| {
+            select(ui, "start", s.start.as_str(), &starts())
+        }) {
             out.push(Change::Set(Some("sessions"), "start", cfg::quote(v)));
         }
         sep(ui, l);
-        if let Some(t) = row(ui, l, tr("prefs.sessions.claude_command"), tr("prefs.sessions.claude_command_note"), |ui| field(ui, &mut edit.drafts, "claude", &s.claude, "claude", 200.0)) {
+        if let Some(t) = row(ui, l, tr("prefs.sessions.claude_command"), tr("prefs.sessions.claude_command_note"), |ui| {
+            field(ui, &mut edit.drafts, "claude", &s.claude, "claude", 200.0)
+        }) {
             let t = t.trim();
             out.push(Change::Set(Some("sessions"), "claude", cfg::quote(if t.is_empty() { "claude" } else { t })));
         }
@@ -974,7 +1140,9 @@ fn sessions(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut 
     });
     section(ui, l, tr("prefs.head.waiting"), |ui| {
         let now = s.quiet.map_or_else(String::new, |q| q.to_string());
-        let quiet = row(ui, l, tr("prefs.sessions.quiet"), tr("prefs.sessions.quiet_note"), |ui| field(ui, &mut edit.drafts, "quiet", &now, "10", 80.0));
+        let quiet = row(ui, l, tr("prefs.sessions.quiet"), tr("prefs.sessions.quiet_note"), |ui| {
+            field(ui, &mut edit.drafts, "quiet", &now, "10", 80.0)
+        });
         if let Some(t) = quiet {
             let t = t.trim().trim_end_matches('s').trim();
             if t.is_empty() {
@@ -991,7 +1159,9 @@ fn sessions(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut 
     });
     section(ui, l, tr("prefs.head.profiles"), |ui| {
         for p in seen.profiles {
-            let (e, d) = row(ui, l, &p.name, &profile_words(p), |ui| (button(ui, l, tr("prefs.common.delete")), button(ui, l, tr("prefs.common.edit"))));
+            let (e, d) = row(ui, l, &p.name, &profile_words(p), |ui| {
+                (button(ui, l, tr("prefs.common.delete")), button(ui, l, tr("prefs.common.edit")))
+            });
             if d {
                 edit.profile = Some(ProfileDraft::of(p));
             }
@@ -1002,7 +1172,17 @@ fn sessions(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut 
         }
         if row(ui, l, tr("prefs.sessions.new_profile"), tr("prefs.sessions.new_profile_note"), |ui| button(ui, l, tr("prefs.common.add"))) {
             let home = cfg::home().map(|h| h.display().to_string()).unwrap_or_default();
-            edit.profile = Some(ProfileDraft { was: None, name: String::new(), folder: home, start: "claude".into(), tags: String::new(), panes: Vec::new(), place: String::new(), theme: String::new(), font_size: String::new() });
+            edit.profile = Some(ProfileDraft {
+                was: None,
+                name: String::new(),
+                folder: home,
+                start: "claude".into(),
+                tags: String::new(),
+                panes: Vec::new(),
+                place: String::new(),
+                theme: String::new(),
+                font_size: String::new(),
+            });
         }
         let mut done = None;
         if let Some(d) = &mut edit.profile {
@@ -1026,7 +1206,12 @@ fn sessions(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut 
                 ui.add(egui::TextEdit::singleline(&mut d.tags).hint_text(tr("prefs.sessions.comma_between")).desired_width(260.0));
                 ui.end_row();
                 ui.label(RichText::new(tr("prefs.sessions.runs_on")).color(c.dim));
-                ui.add(egui::TextEdit::singleline(&mut d.place).hint_text(tr("prefs.sessions.place_hint")).font(FontId::monospace(12.5)).desired_width(260.0));
+                ui.add(
+                    egui::TextEdit::singleline(&mut d.place)
+                        .hint_text(tr("prefs.sessions.place_hint"))
+                        .font(FontId::monospace(12.5))
+                        .desired_width(260.0),
+                );
                 ui.end_row();
                 ui.label(RichText::new(tr("prefs.sessions.theme")).color(c.dim));
                 let mut themes = vec![("", tr("prefs.sessions.window_theme"))];
@@ -1040,7 +1225,13 @@ fn sessions(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut 
                 ui.end_row();
                 let mut gone = None;
                 for (k, pane) in d.panes.iter_mut().enumerate() {
-                    ui.label(RichText::new([tr("prefs.sessions.pane_right"), tr("prefs.sessions.pane_below"), tr("prefs.sessions.pane_below_first")][k.min(2)]).color(c.dim));
+                    ui.label(
+                        RichText::new(
+                            [tr("prefs.sessions.pane_right"), tr("prefs.sessions.pane_below"), tr("prefs.sessions.pane_below_first")]
+                                [k.min(2)],
+                        )
+                        .color(c.dim),
+                    );
                     ui.horizontal(|ui| {
                         if let Some(v) = select(ui, &format!("profile-pane-{k}"), pane.as_str(), &starts()) {
                             *pane = v.to_owned();
@@ -1087,7 +1278,9 @@ fn sessions(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut 
         sep(ui, l);
         commands(ui, l, edit, out, "filer", tr("prefs.open.kura"), tr("prefs.open.kura_note"), &o.filer, "kura {folder}");
         sep(ui, l);
-        if let Some(t) = row(ui, l, tr("prefs.open.file"), tr("prefs.open.file_note"), |ui| field(ui, &mut edit.drafts, "file", &o.file, "code --goto {file}:{line}:{column}", 220.0)) {
+        if let Some(t) = row(ui, l, tr("prefs.open.file"), tr("prefs.open.file_note"), |ui| {
+            field(ui, &mut edit.drafts, "file", &o.file, "code --goto {file}:{line}:{column}", 220.0)
+        }) {
             out.push(Change::Set(Some("open"), "file", cfg::quote(&t)));
         }
     });
@@ -1098,7 +1291,17 @@ fn sessions(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut 
 /// a click runs, and an empty one under them to add another (more than one
 /// opens beside the menu's item).
 #[allow(clippy::too_many_arguments)]
-fn commands(ui: &mut egui::Ui, l: Look, edit: &mut Edit, out: &mut Vec<Change>, key: &'static str, label: &str, note: &str, now: &[String], hint: &str) {
+fn commands(
+    ui: &mut egui::Ui,
+    l: Look,
+    edit: &mut Edit,
+    out: &mut Vec<Change>,
+    key: &'static str,
+    label: &str,
+    note: &str,
+    now: &[String],
+    hint: &str,
+) {
     let write = |list: &[String]| Change::Set(Some("open"), key, cfg::quote_list(list));
     for (k, c) in now.iter().enumerate() {
         let (words, about) = if k == 0 {
@@ -1126,7 +1329,9 @@ fn commands(ui: &mut egui::Ui, l: Look, edit: &mut Edit, out: &mut Vec<Change>, 
     let first = now.is_empty();
     let words = if first { label.to_owned() } else { tr("prefs.open.add_another").to_owned() };
     let about = if first { note.to_owned() } else { trf("prefs.open.another_note", &[&tsumugi_mux::settings::program_name(&now[0])]) };
-    if let Some(t) = row(ui, l, &words, &about, |ui| field(ui, &mut edit.drafts, &format!("{key}-new"), "", if first { hint } else { "sakura {folder}" }, 220.0)) {
+    if let Some(t) = row(ui, l, &words, &about, |ui| {
+        field(ui, &mut edit.drafts, &format!("{key}-new"), "", if first { hint } else { "sakura {folder}" }, 220.0)
+    }) {
         if !t.trim().is_empty() {
             let mut next = now.to_vec();
             next.push(t);
@@ -1170,13 +1375,16 @@ fn tab_menu(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut 
                 sep(ui, l);
             }
             let shown = !m.hide.iter().any(|h| h == word);
-            let (up, down, flip) = row(ui, l, menu_label(word), "", |ui| crate::chrome::in_order(ui, |ui| {
-                let up = ui.add_enabled(k > 0, egui::Button::new("↑").small()).on_hover_text(tr("prefs.menu.higher")).clicked();
-                let down = ui.add_enabled(k + 1 < words.len(), egui::Button::new("↓").small()).on_hover_text(tr("prefs.menu.lower")).clicked();
-                ui.add_space(8.0);
-                let flip = switch(ui, l, shown);
-                (up, down, flip)
-            }));
+            let (up, down, flip) = row(ui, l, menu_label(word), "", |ui| {
+                crate::chrome::in_order(ui, |ui| {
+                    let up = ui.add_enabled(k > 0, egui::Button::new("↑").small()).on_hover_text(tr("prefs.menu.higher")).clicked();
+                    let down =
+                        ui.add_enabled(k + 1 < words.len(), egui::Button::new("↓").small()).on_hover_text(tr("prefs.menu.lower")).clicked();
+                    ui.add_space(8.0);
+                    let flip = switch(ui, l, shown);
+                    (up, down, flip)
+                })
+            });
             if up || down {
                 let mut next: Vec<String> = words.iter().map(|w| w.to_string()).collect();
                 next.swap(k, if up { k - 1 } else { k + 1 });
@@ -1203,7 +1411,12 @@ fn tab_menu(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut 
         ui.label(RichText::new(tr("prefs.menu.own_item")).size(12.0).color(c.dim));
         ui.horizontal(|ui| {
             ui.add(egui::TextEdit::singleline(&mut edit.item.0).hint_text(tr("prefs.menu.its_words")).desired_width(160.0));
-            ui.add(egui::TextEdit::singleline(&mut edit.item.1).hint_text("lazygit -p {folder}").desired_width(260.0).font(FontId::monospace(12.5)));
+            ui.add(
+                egui::TextEdit::singleline(&mut edit.item.1)
+                    .hint_text("lazygit -p {folder}")
+                    .desired_width(260.0)
+                    .font(FontId::monospace(12.5)),
+            );
             let ok = !edit.item.0.trim().is_empty() && !edit.item.1.trim().is_empty();
             if ui.add_enabled(ok, egui::Button::new(tr("prefs.common.add"))).clicked() {
                 let mut next = m.session.clone();
@@ -1247,7 +1460,10 @@ fn tags(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut Vec<
         if let Some(tag) = edit.tag.clone() {
             ui.add_space(4.0);
             ui.horizontal(|ui| {
-                let (r, _) = ui.allocate_exact_size(egui::vec2(ui.fonts_mut(|f| f.layout_no_wrap(tag.clone(), FontId::proportional(11.0), c.fg).size().x) + 12.0, 16.0), egui::Sense::hover());
+                let (r, _) = ui.allocate_exact_size(
+                    egui::vec2(ui.fonts_mut(|f| f.layout_no_wrap(tag.clone(), FontId::proportional(11.0), c.fg).size().x) + 12.0, 16.0),
+                    egui::Sense::hover(),
+                );
                 crate::chrome::tag_chip(ui.painter(), r.min, &tag, false);
                 ui.add_space(12.0);
                 ui.add(egui::TextEdit::singleline(&mut edit.rename).desired_width(140.0));
@@ -1328,27 +1544,44 @@ fn tags(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut Vec<
             }
             sep(ui, l);
         }
-        let (title, verb) = if edit.rule.at.is_some() { (tr("prefs.tags.edit_rule"), tr("prefs.common.save")) } else { (tr("prefs.tags.new_rule"), tr("prefs.common.add")) };
-        row(ui, l, title, tr("prefs.tags.rule_note"), |ui| crate::chrome::in_order(ui, |ui| {
-            let d = &mut edit.rule;
-            ui.add(egui::TextEdit::singleline(&mut d.folder).hint_text(tr("prefs.tags.folder_hint")).desired_width(130.0).font(FontId::monospace(12.5)));
-            ui.add(egui::TextEdit::singleline(&mut d.branch).hint_text(tr("prefs.tags.branch_hint")).desired_width(110.0).font(FontId::monospace(12.5)));
-            ui.add(egui::TextEdit::singleline(&mut d.tag).hint_text(tr("prefs.tags.tag_hint")).desired_width(80.0));
-            let ok = (!d.folder.trim().is_empty() || !d.branch.trim().is_empty()) && !d.tag.trim().is_empty();
-            if ui.add_enabled(ok, egui::Button::new(verb)).clicked() {
-                let rule = TagRule { folder: d.folder.trim().to_owned(), branch: d.branch.trim().to_owned(), tag: d.tag.trim().to_owned() };
-                let mut next = t.rule.clone();
-                match d.at {
-                    Some(k) => next[k] = rule,
-                    None => next.push(rule),
+        let (title, verb) = if edit.rule.at.is_some() {
+            (tr("prefs.tags.edit_rule"), tr("prefs.common.save"))
+        } else {
+            (tr("prefs.tags.new_rule"), tr("prefs.common.add"))
+        };
+        row(ui, l, title, tr("prefs.tags.rule_note"), |ui| {
+            crate::chrome::in_order(ui, |ui| {
+                let d = &mut edit.rule;
+                ui.add(
+                    egui::TextEdit::singleline(&mut d.folder)
+                        .hint_text(tr("prefs.tags.folder_hint"))
+                        .desired_width(130.0)
+                        .font(FontId::monospace(12.5)),
+                );
+                ui.add(
+                    egui::TextEdit::singleline(&mut d.branch)
+                        .hint_text(tr("prefs.tags.branch_hint"))
+                        .desired_width(110.0)
+                        .font(FontId::monospace(12.5)),
+                );
+                ui.add(egui::TextEdit::singleline(&mut d.tag).hint_text(tr("prefs.tags.tag_hint")).desired_width(80.0));
+                let ok = (!d.folder.trim().is_empty() || !d.branch.trim().is_empty()) && !d.tag.trim().is_empty();
+                if ui.add_enabled(ok, egui::Button::new(verb)).clicked() {
+                    let rule =
+                        TagRule { folder: d.folder.trim().to_owned(), branch: d.branch.trim().to_owned(), tag: d.tag.trim().to_owned() };
+                    let mut next = t.rule.clone();
+                    match d.at {
+                        Some(k) => next[k] = rule,
+                        None => next.push(rule),
+                    }
+                    out.push(Change::Rules(next));
+                    *d = RuleDraft::default();
                 }
-                out.push(Change::Rules(next));
-                *d = RuleDraft::default();
-            }
-            if d.at.is_some() && button(ui, l, tr("prefs.common.cancel")) {
-                *d = RuleDraft::default();
-            }
-        }));
+                if d.at.is_some() && button(ui, l, tr("prefs.common.cancel")) {
+                    *d = RuleDraft::default();
+                }
+            })
+        });
     });
 }
 
@@ -1364,17 +1597,22 @@ fn shell(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut Vec
         if !sh.program.is_empty() && !shells.iter().any(|(p, _)| *p == sh.program) {
             shells.push((sh.program.as_str(), sh.program.as_str()));
         }
-        if let Some(p) = row(ui, l, tr("prefs.shell.default_shell"), tr("prefs.shell.default_shell_note"), |ui| select(ui, "shell", sh.program.as_str(), &shells)) {
+        if let Some(p) = row(ui, l, tr("prefs.shell.default_shell"), tr("prefs.shell.default_shell_note"), |ui| {
+            select(ui, "shell", sh.program.as_str(), &shells)
+        }) {
             out.push(Change::Set(Some("shell"), "program", cfg::quote(p)));
         }
         sep(ui, l);
         let args = sh.args.join(" ");
-        if let Some(t) = row(ui, l, tr("prefs.shell.arguments"), tr("prefs.shell.arguments_note"), |ui| field(ui, &mut edit.drafts, "shell-args", &args, "-NoLogo", 200.0)) {
+        if let Some(t) = row(ui, l, tr("prefs.shell.arguments"), tr("prefs.shell.arguments_note"), |ui| {
+            field(ui, &mut edit.drafts, "shell-args", &args, "-NoLogo", 200.0)
+        }) {
             let list: Vec<String> = t.split_whitespace().map(str::to_owned).collect();
             out.push(Change::Set(Some("shell"), "args", cfg::quote_list(&list)));
         }
         sep(ui, l);
-        let words = if sh.env.is_empty() { tr("prefs.common.edit").to_owned() } else { trf("prefs.shell.edit_n", &[&sh.env.len().to_string()]) };
+        let words =
+            if sh.env.is_empty() { tr("prefs.common.edit").to_owned() } else { trf("prefs.shell.edit_n", &[&sh.env.len().to_string()]) };
         if row(ui, l, tr("prefs.shell.environment"), tr("prefs.shell.environment_note"), |ui| button(ui, l, &words)) {
             edit.env = match edit.env {
                 Some(_) => None,
@@ -1388,7 +1626,12 @@ fn shell(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut Vec
                 ui.horizontal(|ui| {
                     ui.add(egui::TextEdit::singleline(name).hint_text("NAME").desired_width(160.0).font(FontId::monospace(12.5)));
                     ui.label("=");
-                    ui.add(egui::TextEdit::singleline(value).hint_text(tr("prefs.shell.value")).desired_width(280.0).font(FontId::monospace(12.5)));
+                    ui.add(
+                        egui::TextEdit::singleline(value)
+                            .hint_text(tr("prefs.shell.value"))
+                            .desired_width(280.0)
+                            .font(FontId::monospace(12.5)),
+                    );
                     if ui.small_button(tr("prefs.common.remove")).clicked() {
                         gone = Some(k);
                     }
@@ -1470,7 +1713,9 @@ fn shell(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut Vec
             out.push(Change::ShellHook(name.clone(), !matches!(hook, Some(Some(true)))));
         }
         sep(ui, l);
-        if row(ui, l, tr("prefs.shell.lines"), tr("prefs.shell.lines_note"), |ui| button(ui, l, if edit.lines { tr("prefs.common.hide") } else { tr("prefs.common.show") })) {
+        if row(ui, l, tr("prefs.shell.lines"), tr("prefs.shell.lines_note"), |ui| {
+            button(ui, l, if edit.lines { tr("prefs.common.hide") } else { tr("prefs.common.show") })
+        }) {
             edit.lines = !edit.lines;
         }
         if edit.lines {
@@ -1507,7 +1752,9 @@ fn advanced(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut 
     section(ui, l, tr("prefs.head.server"), |ui| {
         row(ui, l, tr("prefs.advanced.mux"), &seen.address, |ui| status(ui, &trf("prefs.advanced.running", &[&seen.server_up]), c.done));
         sep(ui, l);
-        if row(ui, l, tr("prefs.advanced.restart_server"), tr("prefs.advanced.restart_server_note"), |ui| button(ui, l, tr("prefs.common.restart"))) {
+        if row(ui, l, tr("prefs.advanced.restart_server"), tr("prefs.advanced.restart_server_note"), |ui| {
+            button(ui, l, tr("prefs.common.restart"))
+        }) {
             out.push(Change::RestartServer);
         }
     });
@@ -1527,7 +1774,9 @@ fn advanced(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut 
             out.push(Change::Set(Some("advanced"), "backend", cfg::quote(b)));
         }
         sep(ui, l);
-        if let Some(t) = row(ui, l, tr("prefs.advanced.scrollback"), tr("prefs.advanced.scrollback_note"), |ui| field(ui, &mut edit.drafts, "scrollback", &a.scrollback.to_string(), "10000", 100.0)) {
+        if let Some(t) = row(ui, l, tr("prefs.advanced.scrollback"), tr("prefs.advanced.scrollback_note"), |ui| {
+            field(ui, &mut edit.drafts, "scrollback", &a.scrollback.to_string(), "10000", 100.0)
+        }) {
             if let Ok(v) = t.trim().replace(['_', ',', ' '], "").parse::<usize>() {
                 out.push(Change::Set(Some("advanced"), "scrollback", v.clamp(100, 1_000_000).to_string()));
             }
@@ -1536,7 +1785,9 @@ fn advanced(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut 
     let r = &seen.settings.remote;
     section(ui, l, tr("prefs.head.machines"), |ui| {
         let note = tr("prefs.advanced.remote_note");
-        if let Some(t) = row(ui, l, tr("prefs.advanced.command_there"), note, |ui| field(ui, &mut edit.drafts, "remote_command", &r.command, "tsumugi", 200.0)) {
+        if let Some(t) = row(ui, l, tr("prefs.advanced.command_there"), note, |ui| {
+            field(ui, &mut edit.drafts, "remote_command", &r.command, "tsumugi", 200.0)
+        }) {
             let t = t.trim();
             out.push(Change::Set(Some("remote"), "command", cfg::quote(if t.is_empty() { "tsumugi" } else { t })));
         }
@@ -1548,7 +1799,9 @@ fn advanced(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut 
         if row(ui, l, tr("prefs.advanced.pane_log"), tr("prefs.advanced.pane_log_note"), |ui| switch(ui, l, a.pane_log)) {
             out.push(Change::Set(Some("advanced"), "pane_log", (!a.pane_log).to_string()));
         }
-        if crate::secure::HERE && row(ui, l, tr("prefs.advanced.secure_input"), tr("prefs.advanced.secure_input_note"), |ui| switch(ui, l, a.secure_input)) {
+        if crate::secure::HERE
+            && row(ui, l, tr("prefs.advanced.secure_input"), tr("prefs.advanced.secure_input_note"), |ui| switch(ui, l, a.secure_input))
+        {
             out.push(Change::Set(Some("advanced"), "secure_input", (!a.secure_input).to_string()));
         }
         sep(ui, l);
@@ -1558,12 +1811,22 @@ fn advanced(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut 
         sep(ui, l);
         row(ui, l, tr("prefs.advanced.saved_tabs"), &seen.state_path, |_| ());
         sep(ui, l);
-        if row(ui, l, tr("prefs.advanced.export"), tr("prefs.advanced.export_note"), |ui| button(ui, l, tr("prefs.advanced.export_button"))) {
+        if row(ui, l, tr("prefs.advanced.export"), tr("prefs.advanced.export_note"), |ui| button(ui, l, tr("prefs.advanced.export_button")))
+        {
             out.push(Change::Export);
         }
         ui.horizontal(|ui| {
-            ui.add(egui::TextEdit::singleline(&mut edit.import).hint_text(tr("prefs.advanced.import_hint")).desired_width(360.0).font(FontId::monospace(12.5)));
-            if ui.add_enabled(!edit.import.trim().is_empty(), egui::Button::new(tr("prefs.advanced.import"))).on_hover_text(tr("prefs.advanced.import_hover")).clicked() {
+            ui.add(
+                egui::TextEdit::singleline(&mut edit.import)
+                    .hint_text(tr("prefs.advanced.import_hint"))
+                    .desired_width(360.0)
+                    .font(FontId::monospace(12.5)),
+            );
+            if ui
+                .add_enabled(!edit.import.trim().is_empty(), egui::Button::new(tr("prefs.advanced.import")))
+                .on_hover_text(tr("prefs.advanced.import_hover"))
+                .clicked()
+            {
                 out.push(Change::Import(edit.import.trim().to_owned()));
                 edit.import.clear();
             }
@@ -1592,7 +1855,11 @@ fn theme(ui: &mut egui::Ui, l: Look, pal: &Palette, seen: &Seen, out: &mut Vec<C
         let motion = if s.appearance.animations { tr("prefs.common.on") } else { tr("prefs.common.off") };
         ui.add_space(6.0);
         let line = trf("prefs.theme.line", &[family, &f.size.to_string(), material, motion]);
-        if ui.add(egui::Label::new(RichText::new(line).size(12.0).color(l.c.dim)).sense(egui::Sense::click())).on_hover_text(tr("prefs.theme.hover")).clicked() {
+        if ui
+            .add(egui::Label::new(RichText::new(line).size(12.0).color(l.c.dim)).sense(egui::Sense::click()))
+            .on_hover_text(tr("prefs.theme.hover"))
+            .clicked()
+        {
             more = Some(Change::GoTo(Page::Appearance));
         }
     });
@@ -1622,9 +1889,25 @@ fn preview(ui: &mut egui::Ui, pal: &Palette) {
         r
     };
     card(12.0, c.wait, c.wait_bg(), tr("prefs.theme.preview_approve"), "~/dev/filer", &trf("state.waiting_long", &["2m"]), c.wait);
-    let running = card(72.0, c.run.gamma_multiply(0.6), c.panel, tr("prefs.theme.preview_split"), "~/dev/tsumugi", &trf("state.running", &["4m"]), c.dim);
+    let running = card(
+        72.0,
+        c.run.gamma_multiply(0.6),
+        c.panel,
+        tr("prefs.theme.preview_split"),
+        "~/dev/tsumugi",
+        &trf("state.running", &["4m"]),
+        c.dim,
+    );
     p.line_segment([running.left_top() + egui::vec2(30.0, 1.0), running.left_top() + egui::vec2(80.0, 1.0)], egui::Stroke::new(2.0, c.run));
-    card(132.0, c.err.gamma_multiply(0.7), c.panel, tr("prefs.theme.preview_ci"), "~/dev/filer", &trf("state.error", &[tr("prefs.theme.preview_exited")]), c.err);
+    card(
+        132.0,
+        c.err.gamma_multiply(0.7),
+        c.panel,
+        tr("prefs.theme.preview_ci"),
+        "~/dev/filer",
+        &trf("state.error", &[tr("prefs.theme.preview_exited")]),
+        c.err,
+    );
     card(192.0, c.done.gamma_multiply(0.5), c.panel, tr("prefs.theme.preview_scope"), "~/notes", &trf("state.done", &["20m"]), c.dim);
     let pane = egui::Rect::from_min_max(egui::pos2(side.right() + 10.0, rect.top() + 10.0), rect.max - egui::vec2(10.0, 10.0));
     p.rect_filled(pane, 8.0, pal.bg);
@@ -1661,8 +1944,21 @@ mod tests {
 
     impl Run {
         fn new() -> Self {
-            let facts = Facts { shells: vec![("bash".into(), "bash".into())], hooks: false, shell: "bash".into(), shell_hook: Some(false), autostart: false, conpty: true };
-            Self { ctx: egui::Context::default(), settings: Settings::default(), facts, themes: crate::theme::builtin(), clock: Clock::default() }
+            let facts = Facts {
+                shells: vec![("bash".into(), "bash".into())],
+                hooks: false,
+                shell: "bash".into(),
+                shell_hook: Some(false),
+                autostart: false,
+                conpty: true,
+            };
+            Self {
+                ctx: egui::Context::default(),
+                settings: Settings::default(),
+                facts,
+                themes: crate::theme::builtin(),
+                clock: Clock::default(),
+            }
         }
 
         /// One frame with these events: what was changed, and every text
@@ -1693,7 +1989,11 @@ mod tests {
                 choice: ("dark", "tsumugi Dark", "tsumugi Light"),
                 clock: &self.clock,
             };
-            let input = egui::RawInput { screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(WIDE, 2600.0))), events, ..Default::default() };
+            let input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(WIDE, 2600.0))),
+                events,
+                ..Default::default()
+            };
             let mut changes = Vec::new();
             let out = self.ctx.run_ui(input, |ui| {
                 egui::CentralPanel::default().show(ui, |ui| changes = show(ui, &Palette::default(), screen, &seen));
@@ -1716,7 +2016,12 @@ mod tests {
 
         /// Draw twice (the first frame lays out), then click at `at`.
         fn click(&self, screen: &mut Screen, at: egui::Pos2) -> Vec<Change> {
-            let press = |pressed| egui::Event::PointerButton { pos: at, button: egui::PointerButton::Primary, pressed, modifiers: egui::Modifiers::NONE };
+            let press = |pressed| egui::Event::PointerButton {
+                pos: at,
+                button: egui::PointerButton::Primary,
+                pressed,
+                modifiers: egui::Modifiers::NONE,
+            };
             let mut all = self.frame(screen, vec![egui::Event::PointerMoved(at)]).0;
             all.extend(self.frame(screen, vec![press(true)]).0);
             all.extend(self.frame(screen, vec![press(false)]).0);
@@ -1744,8 +2049,12 @@ mod tests {
         assert!(list - mode < 80.0, "the list at {list}, Mode at {mode}");
         // At the left, under the heading's start, and the choices after it.
         let left = find(&texts, "Colours, applied as you pick.").unwrap().left();
-        let (mode_x, follow, dark) = (find(&texts, "Mode").unwrap().left(), find(&texts, "Follow OS").unwrap().left(), find(&texts, "Dark").unwrap().left());
-        assert!((mode_x - left).abs() < 4.0 && mode_x < follow && follow < dark, "Mode at {mode_x}, the heading at {left}, Follow OS at {follow}, Dark at {dark}");
+        let (mode_x, follow, dark) =
+            (find(&texts, "Mode").unwrap().left(), find(&texts, "Follow OS").unwrap().left(), find(&texts, "Dark").unwrap().left());
+        assert!(
+            (mode_x - left).abs() < 4.0 && mode_x < follow && follow < dark,
+            "Mode at {mode_x}, the heading at {left}, Follow OS at {follow}, Dark at {dark}"
+        );
     }
 
     /// A row of several controls reads, and is tabbed through, left to
@@ -1776,7 +2085,10 @@ mod tests {
         let (_, texts) = run.frame(&mut screen, Vec::new());
         // Each row's own width was once kept under one id for all of them,
         // so the caps drifted right row by row.
-        let caps: Vec<f32> = ["Ctrl+Shift+T", "Ctrl+Tab", "Ctrl+Shift+Tab", "Ctrl+I", "Ctrl+Shift+B", "Alt+Shift++", "Ctrl+Shift+Z"].iter().map(|w| find(&texts, w).unwrap_or_else(|| panic!("{w}")).right()).collect();
+        let caps: Vec<f32> = ["Ctrl+Shift+T", "Ctrl+Tab", "Ctrl+Shift+Tab", "Ctrl+I", "Ctrl+Shift+B", "Alt+Shift++", "Ctrl+Shift+Z"]
+            .iter()
+            .map(|w| find(&texts, w).unwrap_or_else(|| panic!("{w}")).right())
+            .collect();
         assert!(caps.iter().all(|x| (x - caps[0]).abs() < 1.0), "{caps:?}");
     }
 
@@ -1941,24 +2253,42 @@ mod tests {
     #[test]
     fn rows_from_the_file_show_and_go() {
         let mut run = Run::new();
-        run.settings.tags.rule = vec![TagRule { folder: "~/dev/*".into(), tag: "{name}".into(), ..TagRule::default() }, TagRule { branch: "claude/*".into(), tag: "claude".into(), ..TagRule::default() }];
+        run.settings.tags.rule = vec![
+            TagRule { folder: "~/dev/*".into(), tag: "{name}".into(), ..TagRule::default() },
+            TagRule { branch: "claude/*".into(), tag: "claude".into(), ..TagRule::default() },
+        ];
         run.settings.menu.session = vec![MenuItem { name: "lazygit".into(), command: "lazygit -p {folder}".into() }];
         let mut screen = at_page(Page::Tags);
         run.frame(&mut screen, Vec::new());
         let (_, texts) = run.frame(&mut screen, Vec::new());
         assert!(find(&texts, "Folder ~/dev/*").is_some() && find(&texts, "Branch claude/*").is_some());
         let first = *find(&texts, "Folder ~/dev/*").unwrap();
-        let remove = texts.iter().filter(|(t, _)| t == "Remove").map(|(_, r)| *r).find(|r| (r.center().y - first.top() - 16.0).abs() < 14.0).expect("its Remove");
+        let remove = texts
+            .iter()
+            .filter(|(t, _)| t == "Remove")
+            .map(|(_, r)| *r)
+            .find(|r| (r.center().y - first.top() - 16.0).abs() < 14.0)
+            .expect("its Remove");
         let changes = run.click(&mut screen, remove.center());
         assert_eq!(changes, vec![Change::Rules(vec![run.settings.tags.rule[1].clone()])]);
 
         // Edit: the rule comes into the fields, and Save puts it back in place.
-        let edit = texts.iter().filter(|(t, _)| t == "Edit").map(|(_, r)| *r).find(|r| (r.center().y - first.top() - 16.0).abs() < 14.0).expect("its Edit");
+        let edit = texts
+            .iter()
+            .filter(|(t, _)| t == "Edit")
+            .map(|(_, r)| *r)
+            .find(|r| (r.center().y - first.top() - 16.0).abs() < 14.0)
+            .expect("its Edit");
         assert!(run.click(&mut screen, edit.center()).is_empty());
         let (_, texts) = run.frame(&mut screen, Vec::new());
         assert!(find(&texts, "Edit rule").is_some() && find(&texts, "Cancel").is_some());
         // The field is below the rule's own chip.
-        let tag = texts.iter().filter(|(t, _)| t == "{name}").map(|(_, r)| *r).max_by(|a, b| a.top().total_cmp(&b.top())).expect("the tag's field");
+        let tag = texts
+            .iter()
+            .filter(|(t, _)| t == "{name}")
+            .map(|(_, r)| *r)
+            .max_by(|a, b| a.top().total_cmp(&b.top()))
+            .expect("the tag's field");
         run.click(&mut screen, egui::pos2(tag.right() + 1.0, tag.center().y));
         run.frame(&mut screen, vec![egui::Event::Text("-x".into())]);
         let (_, texts) = run.frame(&mut screen, Vec::new());
@@ -2019,14 +2349,27 @@ mod tests {
                 break;
             }
         }
-        assert_eq!(changes, vec![Change::Set(Some("notify"), "system", "[\"error\", \"done\"]".into())], "the first switch: system, waiting");
+        assert_eq!(
+            changes,
+            vec![Change::Set(Some("notify"), "system", "[\"error\", \"done\"]".into())],
+            "the first switch: system, waiting"
+        );
     }
 
     /// A profile's theme and font size go through the editor and back; a
     /// size that is not one is left out.
     #[test]
     fn a_profile_keeps_its_theme_and_font_size() {
-        let p = Profile { name: "work".into(), folder: "~/dev".into(), start: "claude".into(), tags: vec![], panes: vec![], place: String::new(), theme: "Nord".into(), font_size: Some(16.0) };
+        let p = Profile {
+            name: "work".into(),
+            folder: "~/dev".into(),
+            start: "claude".into(),
+            tags: vec![],
+            panes: vec![],
+            place: String::new(),
+            theme: "Nord".into(),
+            font_size: Some(16.0),
+        };
         let mut d = ProfileDraft::of(&p);
         assert_eq!(d.profile(), p);
         assert!(profile_words(&p).ends_with(" · Nord · 16pt"), "{}", profile_words(&p));

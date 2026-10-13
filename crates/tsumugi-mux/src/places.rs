@@ -9,7 +9,8 @@ use std::path::PathBuf;
 /// The state's files, by name (and anything named `state…`, such as the
 /// saved tabs' temporary file): told apart from the settings where both
 /// were in one folder (macOS).
-const STATE_NAMES: [&str; 9] = ["state", "closed-sessions.json", "always-restore", "view", "sort", "closed-folders", "history", "worktrees", "pane-logs"];
+const STATE_NAMES: [&str; 9] =
+    ["state", "closed-sessions.json", "always-restore", "view", "sort", "closed-folders", "history", "worktrees", "pane-logs"];
 
 /// Copies of the running program (`spawn`): an older server may still run
 /// from there, so it is left where it is.

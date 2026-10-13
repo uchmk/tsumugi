@@ -62,7 +62,17 @@ pub struct View {
 impl View {
     pub fn new(page: Page) -> Self {
         let changed = std::time::Instant::now();
-        Self { page, off: HashSet::new(), shown: None, confirming: None, opening: true, picked: 0, query: String::new(), asked: String::new(), changed }
+        Self {
+            page,
+            off: HashSet::new(),
+            shown: None,
+            confirming: None,
+            opening: true,
+            picked: 0,
+            query: String::new(),
+            asked: String::new(),
+            changed,
+        }
     }
 }
 
@@ -84,7 +94,13 @@ pub struct Found {
 pub fn matching<'a>(query: &str, all: &'a [Card]) -> Vec<&'a Card> {
     all.iter()
         .filter(|s| {
-            let text = format!("{} {} {} {}", s.name, s.folder, s.tags.iter().map(|t| format!("#{t}")).collect::<Vec<_>>().join(" "), s.last.join(" "));
+            let text = format!(
+                "{} {} {} {}",
+                s.name,
+                s.folder,
+                s.tags.iter().map(|t| format!("#{t}")).collect::<Vec<_>>().join(" "),
+                s.last.join(" ")
+            );
             crate::palette::score(query, &text).is_some()
         })
         .collect()
@@ -194,7 +210,17 @@ pub fn bulk(rows: &[Row], off: &HashSet<SessionId>, yes: bool) -> Vec<(SessionId
 /// `all` (and `found`, the scrollback lines that hold the query) is filled
 /// only while its page shows; `count` is how many there are.
 #[allow(clippy::too_many_arguments)]
-pub fn show(ctx: &egui::Context, view: &mut View, all: &[Card], found: &[Found], templates: &[Template], count: usize, rows: &[Row], closed: &[Closed], c: &Colors) -> Vec<Do> {
+pub fn show(
+    ctx: &egui::Context,
+    view: &mut View,
+    all: &[Card],
+    found: &[Found],
+    templates: &[Template],
+    count: usize,
+    rows: &[Row],
+    closed: &[Closed],
+    c: &Colors,
+) -> Vec<Do> {
     let mut out = Vec::new();
     let screen = ctx.content_rect();
     // The rest of the window dimmed behind it; a click there closes it.
@@ -228,34 +254,51 @@ pub fn show(ctx: &egui::Context, view: &mut View, all: &[Card], found: &[Found],
     // 400 tall, the list showed one session at a time (the owner,
     // 2026-10-10). The scroll areas' `min_scrolled_height` lets it grow.
     let width = (screen.width() - 32.0).clamp(280.0, 960.0);
-    egui::Area::new(egui::Id::new("lists")).order(egui::Order::Foreground).anchor(egui::Align2::CENTER_TOP, egui::vec2(0.0, 24.0)).show(ctx, |ui| {
-        egui::Frame::NONE.fill(c.panel).stroke(egui::Stroke::new(1.0, c.border_strong())).corner_radius(12.0).inner_margin(egui::Margin::symmetric(18, 14)).show(ui, |ui| {
-            ui.set_width(width);
-            ui.horizontal(|ui| {
-                for (page, title) in [(Page::All, trf("lists.all", &[&count.to_string()])), (Page::Waiting, trf("lists.waiting", &[&rows.len().to_string()])), (Page::Closed, trf("lists.closed", &[&closed.len().to_string()])), (Page::Layouts, trf("lists.layouts", &[&templates.len().to_string()]))] {
-                    if ui.selectable_label(view.page == page, RichText::new(title).size(14.0).strong()).on_hover_text(tr("lists.page_hover")).clicked() {
-                        view.page = page;
+    egui::Area::new(egui::Id::new("lists")).order(egui::Order::Foreground).anchor(egui::Align2::CENTER_TOP, egui::vec2(0.0, 24.0)).show(
+        ctx,
+        |ui| {
+            egui::Frame::NONE
+                .fill(c.panel)
+                .stroke(egui::Stroke::new(1.0, c.border_strong()))
+                .corner_radius(12.0)
+                .inner_margin(egui::Margin::symmetric(18, 14))
+                .show(ui, |ui| {
+                    ui.set_width(width);
+                    ui.horizontal(|ui| {
+                        for (page, title) in [
+                            (Page::All, trf("lists.all", &[&count.to_string()])),
+                            (Page::Waiting, trf("lists.waiting", &[&rows.len().to_string()])),
+                            (Page::Closed, trf("lists.closed", &[&closed.len().to_string()])),
+                            (Page::Layouts, trf("lists.layouts", &[&templates.len().to_string()])),
+                        ] {
+                            if ui
+                                .selectable_label(view.page == page, RichText::new(title).size(14.0).strong())
+                                .on_hover_text(tr("lists.page_hover"))
+                                .clicked()
+                            {
+                                view.page = page;
+                            }
+                        }
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            if ui.button("×").on_hover_text(tr("help.close")).clicked() {
+                                out.push(Do::Close);
+                            }
+                            ui.label(RichText::new(tr("lists.next_page")).size(11.5).color(c.dim));
+                        });
+                    });
+                    ui.separator();
+                    // The window less the panel's own top, title and margins, and
+                    // Waiting's row of buttons.
+                    let max = (screen.height() - if view.page == Page::Waiting { 170.0 } else { 120.0 }).max(160.0);
+                    match view.page {
+                        Page::All => overview(ui, view, all, found, templates, c, max, &mut out),
+                        Page::Waiting => waiting(ui, view, rows, c, max, &mut out),
+                        Page::Closed => history(ui, view, closed, c, max, &mut out),
+                        Page::Layouts => layouts_page(ui, view, templates, c, max, &mut out),
                     }
-                }
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if ui.button("×").on_hover_text(tr("help.close")).clicked() {
-                        out.push(Do::Close);
-                    }
-                    ui.label(RichText::new(tr("lists.next_page")).size(11.5).color(c.dim));
                 });
-            });
-            ui.separator();
-            // The window less the panel's own top, title and margins, and
-            // Waiting's row of buttons.
-            let max = (screen.height() - if view.page == Page::Waiting { 170.0 } else { 120.0 }).max(160.0);
-            match view.page {
-                Page::All => overview(ui, view, all, found, templates, c, max, &mut out),
-                Page::Waiting => waiting(ui, view, rows, c, max, &mut out),
-                Page::Closed => history(ui, view, closed, c, max, &mut out),
-                Page::Layouts => layouts_page(ui, view, templates, c, max, &mut out),
-            }
-        });
-    });
+        },
+    );
     out
 }
 
@@ -278,8 +321,12 @@ fn own_key(i: &mut egui::InputState) -> Option<Page> {
 /// too.
 fn turn(i: &mut egui::InputState, arrows: bool) -> (bool, bool) {
     let ctrl = egui::Modifiers::CTRL;
-    let back = i.consume_key(ctrl | egui::Modifiers::SHIFT, egui::Key::Tab) || i.consume_key(ctrl, egui::Key::PageUp) || (arrows && i.consume_key(egui::Modifiers::NONE, egui::Key::ArrowLeft));
-    let next = i.consume_key(ctrl, egui::Key::Tab) || i.consume_key(ctrl, egui::Key::PageDown) || (arrows && i.consume_key(egui::Modifiers::NONE, egui::Key::ArrowRight));
+    let back = i.consume_key(ctrl | egui::Modifiers::SHIFT, egui::Key::Tab)
+        || i.consume_key(ctrl, egui::Key::PageUp)
+        || (arrows && i.consume_key(egui::Modifiers::NONE, egui::Key::ArrowLeft));
+    let next = i.consume_key(ctrl, egui::Key::Tab)
+        || i.consume_key(ctrl, egui::Key::PageDown)
+        || (arrows && i.consume_key(egui::Modifiers::NONE, egui::Key::ArrowRight));
     (next, back)
 }
 
@@ -300,7 +347,8 @@ fn waiting(ui: &mut egui::Ui, view: &mut View, rows: &[Row], c: &Colors, max: f3
     }
     // Up and Down pick a session, Enter goes to it (Left and Right turn the
     // page). Enter is left to the "always allow" confirmation while it is open.
-    let (up, down, enter) = ui.input(|i| (i.key_pressed(egui::Key::ArrowUp), i.key_pressed(egui::Key::ArrowDown), i.key_pressed(egui::Key::Enter)));
+    let (up, down, enter) =
+        ui.input(|i| (i.key_pressed(egui::Key::ArrowUp), i.key_pressed(egui::Key::ArrowDown), i.key_pressed(egui::Key::Enter)));
     let (picked, go) = waiting_keys(view.picked, rows.len(), (up, down, enter && view.confirming.is_none()));
     view.picked = picked;
     out.extend(go.map(|k| Do::Go(rows[k].id)));
@@ -308,69 +356,85 @@ fn waiting(ui: &mut egui::Ui, view: &mut View, rows: &[Row], c: &Colors, max: f3
         for (k, r) in rows.iter().enumerate() {
             let frame = egui::Frame::NONE.fill(if k == picked { c.hover() } else { egui::Color32::TRANSPARENT }).corner_radius(6.0);
             let shown = frame.show(ui, |ui| {
-              ui.set_width(ui.available_width());
-              ui.horizontal(|ui| {
-                let mut on = !view.off.contains(&r.id);
-                if ui.checkbox(&mut on, "").on_hover_text(tr("lists.tick_hover")).changed() {
-                    if on {
-                        view.off.remove(&r.id);
-                    } else {
-                        view.off.insert(r.id);
-                    }
-                }
-                ui.vertical(|ui| {
-                    ui.horizontal(|ui| {
-                        if ui.link(RichText::new(&r.name).size(13.5).strong().color(c.strong())).on_hover_text(tr("lists.go")).clicked() {
-                            out.push(Do::Go(r.id));
+                ui.set_width(ui.available_width());
+                ui.horizontal(|ui| {
+                    let mut on = !view.off.contains(&r.id);
+                    if ui.checkbox(&mut on, "").on_hover_text(tr("lists.tick_hover")).changed() {
+                        if on {
+                            view.off.remove(&r.id);
+                        } else {
+                            view.off.insert(r.id);
                         }
-                        ui.label(RichText::new(format!("{} · {}", r.folder, r.waited)).size(11.5).color(c.dim));
-                    });
-                    if !r.note.is_empty() {
-                        ui.label(RichText::new(&r.note).size(12.0).color(crate::chrome::ink(crate::chrome::gold())));
                     }
-                    // What would be said yes to: read before answering.
-                    if !r.asking.is_empty() {
-                        egui::Frame::NONE.fill(c.bg).corner_radius(6.0).inner_margin(egui::Margin::symmetric(8, 5)).show(ui, |ui| {
-                            ui.set_width(ui.available_width());
-                            for l in &r.asking {
-                                ui.label(RichText::new(l).monospace().size(11.5).color(c.fg));
+                    ui.vertical(|ui| {
+                        ui.horizontal(|ui| {
+                            if ui.link(RichText::new(&r.name).size(13.5).strong().color(c.strong())).on_hover_text(tr("lists.go")).clicked()
+                            {
+                                out.push(Do::Go(r.id));
                             }
+                            ui.label(RichText::new(format!("{} · {}", r.folder, r.waited)).size(11.5).color(c.dim));
                         });
-                    }
-                    // The command on Claude Code's list from now on: the exact
-                    // rule and file shown before anything is written.
-                    if let Some(rule) = &r.rule {
-                        if view.confirming == Some(r.id) {
-                            ui.label(RichText::new(trf("lists.allow_lead", &[rule, &r.rule_file.display().to_string()])).size(11.5).color(c.dim));
-                            ui.horizontal(|ui| {
-                                let (yes, cancel) = crate::chrome::foot(ui, egui::Button::new(RichText::new(tr("lists.allow_yes")).strong()), true, tr("dialog.cancel"));
-                                if yes.clicked() {
-                                    out.push(Do::Allow(r.id, rule.clone()));
-                                    view.confirming = None;
-                                }
-                                if cancel.clicked() {
-                                    view.confirming = None;
+                        if !r.note.is_empty() {
+                            ui.label(RichText::new(&r.note).size(12.0).color(crate::chrome::ink(crate::chrome::gold())));
+                        }
+                        // What would be said yes to: read before answering.
+                        if !r.asking.is_empty() {
+                            egui::Frame::NONE.fill(c.bg).corner_radius(6.0).inner_margin(egui::Margin::symmetric(8, 5)).show(ui, |ui| {
+                                ui.set_width(ui.available_width());
+                                for l in &r.asking {
+                                    ui.label(RichText::new(l).monospace().size(11.5).color(c.fg));
                                 }
                             });
                         }
-                    }
-                    ui.horizontal_wrapped(|ui| {
-                        if r.choices.is_empty() {
-                            ui.label(RichText::new(tr("lists.no_menu")).size(11.5).color(c.faint()));
-                        }
-                        for ch in &r.choices {
-                            let label = format!("{} {}", ch.key, answer::short(&ch.text));
-                            if ui.button(RichText::new(label).size(12.0)).on_hover_text(trf("sidebar.answer", &[&ch.key.to_string(), &ch.text])).clicked() {
-                                out.push(Do::Type(r.id, ch.key));
+                        // The command on Claude Code's list from now on: the exact
+                        // rule and file shown before anything is written.
+                        if let Some(rule) = &r.rule {
+                            if view.confirming == Some(r.id) {
+                                ui.label(
+                                    RichText::new(trf("lists.allow_lead", &[rule, &r.rule_file.display().to_string()]))
+                                        .size(11.5)
+                                        .color(c.dim),
+                                );
+                                ui.horizontal(|ui| {
+                                    let (yes, cancel) = crate::chrome::foot(
+                                        ui,
+                                        egui::Button::new(RichText::new(tr("lists.allow_yes")).strong()),
+                                        true,
+                                        tr("dialog.cancel"),
+                                    );
+                                    if yes.clicked() {
+                                        out.push(Do::Allow(r.id, rule.clone()));
+                                        view.confirming = None;
+                                    }
+                                    if cancel.clicked() {
+                                        view.confirming = None;
+                                    }
+                                });
                             }
                         }
-                        let offered = r.rule.is_some() && view.confirming != Some(r.id) && answer::yes(&r.choices).is_some();
-                        if offered && ui.button(RichText::new(tr("lists.always")).size(12.0)).on_hover_text(tr("lists.always_hover")).clicked() {
-                            view.confirming = Some(r.id);
-                        }
+                        ui.horizontal_wrapped(|ui| {
+                            if r.choices.is_empty() {
+                                ui.label(RichText::new(tr("lists.no_menu")).size(11.5).color(c.faint()));
+                            }
+                            for ch in &r.choices {
+                                let label = format!("{} {}", ch.key, answer::short(&ch.text));
+                                if ui
+                                    .button(RichText::new(label).size(12.0))
+                                    .on_hover_text(trf("sidebar.answer", &[&ch.key.to_string(), &ch.text]))
+                                    .clicked()
+                                {
+                                    out.push(Do::Type(r.id, ch.key));
+                                }
+                            }
+                            let offered = r.rule.is_some() && view.confirming != Some(r.id) && answer::yes(&r.choices).is_some();
+                            if offered
+                                && ui.button(RichText::new(tr("lists.always")).size(12.0)).on_hover_text(tr("lists.always_hover")).clicked()
+                            {
+                                view.confirming = Some(r.id);
+                            }
+                        });
                     });
                 });
-              });
             });
             if k == picked && (up || down) {
                 shown.response.scroll_to_me(None);
@@ -391,12 +455,25 @@ fn waiting(ui: &mut egui::Ui, view: &mut View, rows: &[Row], c: &Colors, max: f3
             }
         }
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            let no_button = egui::Button::new(RichText::new(trf("lists.no_to", &[&no.len().to_string()])).strong()).min_size(egui::vec2(90.0, 28.0));
-            if ui.add_enabled(!no.is_empty(), no_button).on_hover_text(tr("lists.no_hover")).on_disabled_hover_text(tr("lists.no_none")).clicked() {
+            let no_button =
+                egui::Button::new(RichText::new(trf("lists.no_to", &[&no.len().to_string()])).strong()).min_size(egui::vec2(90.0, 28.0));
+            if ui
+                .add_enabled(!no.is_empty(), no_button)
+                .on_hover_text(tr("lists.no_hover"))
+                .on_disabled_hover_text(tr("lists.no_none"))
+                .clicked()
+            {
                 out.extend(no.iter().map(|(id, k)| Do::Type(*id, *k)));
             }
-            let yes_button = egui::Button::new(RichText::new(trf("lists.yes_to", &[&yes.len().to_string()])).color(c.on_accent()).strong()).fill(c.run).min_size(egui::vec2(90.0, 28.0));
-            if ui.add_enabled(!yes.is_empty(), yes_button).on_hover_text(tr("lists.yes_hover")).on_disabled_hover_text(tr("lists.yes_none")).clicked() {
+            let yes_button = egui::Button::new(RichText::new(trf("lists.yes_to", &[&yes.len().to_string()])).color(c.on_accent()).strong())
+                .fill(c.run)
+                .min_size(egui::vec2(90.0, 28.0));
+            if ui
+                .add_enabled(!yes.is_empty(), yes_button)
+                .on_hover_text(tr("lists.yes_hover"))
+                .on_disabled_hover_text(tr("lists.yes_none"))
+                .clicked()
+            {
                 out.extend(yes.iter().map(|(id, k)| Do::Type(*id, *k)));
             }
         });
@@ -404,7 +481,16 @@ fn waiting(ui: &mut egui::Ui, view: &mut View, rows: &[Row], c: &Colors, max: f3
 }
 
 #[allow(clippy::too_many_arguments)]
-fn overview(ui: &mut egui::Ui, view: &mut View, all: &[Card], found: &[Found], templates: &[Template], c: &Colors, max: f32, out: &mut Vec<Do>) {
+fn overview(
+    ui: &mut egui::Ui,
+    view: &mut View,
+    all: &[Card],
+    found: &[Found],
+    templates: &[Template],
+    c: &Colors,
+    max: f32,
+    out: &mut Vec<Do>,
+) {
     if all.is_empty() && templates.is_empty() {
         ui.add_space(12.0);
         ui.label(RichText::new(tr("lists.none_running")).size(13.0).color(c.dim));
@@ -413,7 +499,9 @@ fn overview(ui: &mut egui::Ui, view: &mut View, all: &[Card], found: &[Found], t
     }
     // Taken before the field sees them.
     let none = egui::Modifiers::NONE;
-    let (up, down, enter) = ui.input_mut(|i| (i.consume_key(none, egui::Key::ArrowUp), i.consume_key(none, egui::Key::ArrowDown), i.consume_key(none, egui::Key::Enter)));
+    let (up, down, enter) = ui.input_mut(|i| {
+        (i.consume_key(none, egui::Key::ArrowUp), i.consume_key(none, egui::Key::ArrowDown), i.consume_key(none, egui::Key::Enter))
+    });
     let before = view.query.clone();
     let field = egui::TextEdit::singleline(&mut view.query)
         .id(egui::Id::new("all-sessions-filter"))
@@ -434,7 +522,14 @@ fn overview(ui: &mut egui::Ui, view: &mut View, all: &[Card], found: &[Found], t
         ui.add_space(8.0);
         return;
     }
-    view.picked = if up { view.picked.saturating_sub(1) } else if down { view.picked + 1 } else { view.picked }.min(shown - 1);
+    view.picked = if up {
+        view.picked.saturating_sub(1)
+    } else if down {
+        view.picked + 1
+    } else {
+        view.picked
+    }
+    .min(shown - 1);
     if enter {
         out.push(match view.picked.checked_sub(cards.len()) {
             None => Do::Go(cards[view.picked].id),
@@ -445,7 +540,10 @@ fn overview(ui: &mut egui::Ui, view: &mut View, all: &[Card], found: &[Found], t
     egui::ScrollArea::vertical().max_height(max).min_scrolled_height(max).auto_shrink([false, true]).show(ui, |ui| {
         for (k, s) in cards.iter().enumerate() {
             let picked = k == view.picked;
-            let frame = egui::Frame::NONE.fill(if picked { c.hover() } else { egui::Color32::TRANSPARENT }).corner_radius(8.0).inner_margin(egui::Margin::symmetric(8, 6));
+            let frame = egui::Frame::NONE
+                .fill(if picked { c.hover() } else { egui::Color32::TRANSPARENT })
+                .corner_radius(8.0)
+                .inner_margin(egui::Margin::symmetric(8, 6));
             let shown = frame.show(ui, |ui| {
                 ui.set_width(ui.available_width());
                 ui.horizontal(|ui| {
@@ -464,7 +562,9 @@ fn overview(ui: &mut egui::Ui, view: &mut View, all: &[Card], found: &[Found], t
                     ui.label(RichText::new(l).monospace().size(11.0).color(c.fg));
                 }
             });
-            let resp = ui.interact(shown.response.rect, egui::Id::new(("overview", s.id)), egui::Sense::click()).on_hover_text(tr("lists.go_enter"));
+            let resp = ui
+                .interact(shown.response.rect, egui::Id::new(("overview", s.id)), egui::Sense::click())
+                .on_hover_text(tr("lists.go_enter"));
             if picked && (up || down) {
                 resp.scroll_to_me(None);
             }
@@ -478,7 +578,10 @@ fn overview(ui: &mut egui::Ui, view: &mut View, all: &[Card], found: &[Found], t
         }
         for (k, f) in found.iter().enumerate() {
             let picked = cards.len() + k == view.picked;
-            let frame = egui::Frame::NONE.fill(if picked { c.hover() } else { egui::Color32::TRANSPARENT }).corner_radius(6.0).inner_margin(egui::Margin::symmetric(8, 3));
+            let frame = egui::Frame::NONE
+                .fill(if picked { c.hover() } else { egui::Color32::TRANSPARENT })
+                .corner_radius(6.0)
+                .inner_margin(egui::Margin::symmetric(8, 3));
             let shown = frame.show(ui, |ui| {
                 ui.set_width(ui.available_width());
                 ui.horizontal(|ui| {
@@ -486,7 +589,9 @@ fn overview(ui: &mut egui::Ui, view: &mut View, all: &[Card], found: &[Found], t
                     ui.add(egui::Label::new(RichText::new(f.text.trim()).monospace().size(11.5).color(c.fg)).truncate());
                 });
             });
-            let resp = ui.interact(shown.response.rect, egui::Id::new(("overview-line", f.id, f.line, f.col)), egui::Sense::click()).on_hover_text(tr("lists.go_line"));
+            let resp = ui
+                .interact(shown.response.rect, egui::Id::new(("overview-line", f.id, f.line, f.col)), egui::Sense::click())
+                .on_hover_text(tr("lists.go_line"));
             if picked && (up || down) {
                 resp.scroll_to_me(None);
             }
@@ -500,7 +605,10 @@ fn overview(ui: &mut egui::Ui, view: &mut View, all: &[Card], found: &[Found], t
         }
         for (k, t) in kept.iter().enumerate() {
             let picked = cards.len() + found.len() + k == view.picked;
-            let frame = egui::Frame::NONE.fill(if picked { c.hover() } else { egui::Color32::TRANSPARENT }).corner_radius(6.0).inner_margin(egui::Margin::symmetric(8, 3));
+            let frame = egui::Frame::NONE
+                .fill(if picked { c.hover() } else { egui::Color32::TRANSPARENT })
+                .corner_radius(6.0)
+                .inner_margin(egui::Margin::symmetric(8, 3));
             let shown = frame.show(ui, |ui| {
                 ui.set_width(ui.available_width());
                 ui.horizontal(|ui| {
@@ -508,7 +616,9 @@ fn overview(ui: &mut egui::Ui, view: &mut View, all: &[Card], found: &[Found], t
                     ui.add(egui::Label::new(RichText::new(&t.detail).monospace().size(11.5).color(c.dim)).truncate());
                 });
             });
-            let resp = ui.interact(shown.response.rect, egui::Id::new(("overview-template", k)), egui::Sense::click()).on_hover_text(tr("lists.open_enter"));
+            let resp = ui
+                .interact(shown.response.rect, egui::Id::new(("overview-template", k)), egui::Sense::click())
+                .on_hover_text(tr("lists.open_enter"));
             if picked && (up || down) {
                 resp.scroll_to_me(None);
             }
@@ -528,7 +638,14 @@ fn layouts_page(ui: &mut egui::Ui, view: &mut View, layouts: &[Template], c: &Co
         ui.add_space(12.0);
         return;
     }
-    let (up, down, enter, delete) = ui.input(|i| (i.key_pressed(egui::Key::ArrowUp), i.key_pressed(egui::Key::ArrowDown), i.key_pressed(egui::Key::Enter), i.key_pressed(egui::Key::Delete)));
+    let (up, down, enter, delete) = ui.input(|i| {
+        (
+            i.key_pressed(egui::Key::ArrowUp),
+            i.key_pressed(egui::Key::ArrowDown),
+            i.key_pressed(egui::Key::Enter),
+            i.key_pressed(egui::Key::Delete),
+        )
+    });
     let (k, act) = closed_keys(view.shown, layouts.len(), (up, down, enter, delete));
     view.shown = Some(k);
     match act {
@@ -542,7 +659,10 @@ fn layouts_page(ui: &mut egui::Ui, view: &mut View, layouts: &[Template], c: &Co
     }
     egui::ScrollArea::vertical().max_height(max).min_scrolled_height(max).auto_shrink([false, true]).show(ui, |ui| {
         for (n, t) in layouts.iter().enumerate() {
-            let frame = egui::Frame::NONE.fill(if n == k { c.hover() } else { egui::Color32::TRANSPARENT }).corner_radius(6.0).inner_margin(egui::Margin::symmetric(8, 5));
+            let frame = egui::Frame::NONE
+                .fill(if n == k { c.hover() } else { egui::Color32::TRANSPARENT })
+                .corner_radius(6.0)
+                .inner_margin(egui::Margin::symmetric(8, 5));
             let shown = frame.show(ui, |ui| {
                 ui.set_width(ui.available_width());
                 ui.horizontal(|ui| {
@@ -550,7 +670,9 @@ fn layouts_page(ui: &mut egui::Ui, view: &mut View, layouts: &[Template], c: &Co
                     ui.add(egui::Label::new(RichText::new(&t.detail).monospace().size(11.5).color(c.dim)).truncate());
                 });
             });
-            let resp = ui.interact(shown.response.rect, egui::Id::new(("layout-page", n)), egui::Sense::click()).on_hover_text(tr("lists.open_layout_enter"));
+            let resp = ui
+                .interact(shown.response.rect, egui::Id::new(("layout-page", n)), egui::Sense::click())
+                .on_hover_text(tr("lists.open_layout_enter"));
             if n == k && (up || down) {
                 resp.scroll_to_me(None);
             }
@@ -571,7 +693,14 @@ fn history(ui: &mut egui::Ui, view: &mut View, closed: &[Closed], c: &Colors, ma
     // The keys, as on All sessions: Up and Down pick one, Enter starts it
     // again, Delete takes it off the list (the owner, 2026-10-10: the page
     // took no key, and its output hid behind a button).
-    let keys = ui.input(|i| (i.key_pressed(egui::Key::ArrowUp), i.key_pressed(egui::Key::ArrowDown), i.key_pressed(egui::Key::Enter), i.key_pressed(egui::Key::Delete)));
+    let keys = ui.input(|i| {
+        (
+            i.key_pressed(egui::Key::ArrowUp),
+            i.key_pressed(egui::Key::ArrowDown),
+            i.key_pressed(egui::Key::Enter),
+            i.key_pressed(egui::Key::Delete),
+        )
+    });
     let (up, down) = (keys.0, keys.1);
     let (k, act) = closed_keys(view.shown, closed.len(), keys);
     view.shown = Some(k);
@@ -582,7 +711,10 @@ fn history(ui: &mut egui::Ui, view: &mut View, closed: &[Closed], c: &Colors, ma
             let name = crate::sort::display_title(&s.title, &s.command);
             let folder = s.cwd.file_name().map_or_else(|| s.cwd.display().to_string(), |f| f.to_string_lossy().into_owned());
             let on = k == picked;
-            let frame = egui::Frame::NONE.fill(if on { c.hover() } else { egui::Color32::TRANSPARENT }).corner_radius(8.0).inner_margin(egui::Margin::symmetric(8, 6));
+            let frame = egui::Frame::NONE
+                .fill(if on { c.hover() } else { egui::Color32::TRANSPARENT })
+                .corner_radius(8.0)
+                .inner_margin(egui::Margin::symmetric(8, 6));
             let shown = frame.show(ui, |ui| {
                 ui.set_width(ui.available_width());
                 ui.horizontal(|ui| {
@@ -613,7 +745,9 @@ fn history(ui: &mut egui::Ui, view: &mut View, closed: &[Closed], c: &Colors, ma
                 }
             });
             let again = if s.claude && !s.conversation.is_empty() { tr("lists.again_resume") } else { tr("lists.again_start") };
-            let resp = ui.interact(shown.response.rect, egui::Id::new(("closed", k)), egui::Sense::click()).on_hover_text(trf("lists.closed_hover", &[again]));
+            let resp = ui
+                .interact(shown.response.rect, egui::Id::new(("closed", k)), egui::Sense::click())
+                .on_hover_text(trf("lists.closed_hover", &[again]));
             if on && (up || down) {
                 resp.scroll_to_me(None);
             }
@@ -641,7 +775,10 @@ fn history(ui: &mut egui::Ui, view: &mut View, closed: &[Closed], c: &Colors, ma
         }
     });
     ui.horizontal(|ui| {
-        let again = closed.get(picked).filter(|s| s.claude && !s.conversation.is_empty()).map_or(tr("lists.foot_start"), |_| tr("lists.foot_resume"));
+        let again = closed
+            .get(picked)
+            .filter(|s| s.claude && !s.conversation.is_empty())
+            .map_or(tr("lists.foot_start"), |_| tr("lists.foot_resume"));
         ui.label(RichText::new(trf("lists.foot", &[again])).size(11.5).color(c.dim));
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             if ui.small_button(tr("lists.clear")).clicked() {
@@ -654,7 +791,14 @@ fn history(ui: &mut egui::Ui, view: &mut View, closed: &[Closed], c: &Colors, ma
 /// The waiting list's keys, (up, down, enter), on `len` sessions with `at`
 /// picked: the session picked after them, and the one Enter goes to.
 fn waiting_keys(at: usize, len: usize, (up, down, enter): (bool, bool, bool)) -> (usize, Option<usize>) {
-    let k = if up { at.saturating_sub(1) } else if down { at + 1 } else { at }.min(len.saturating_sub(1));
+    let k = if up {
+        at.saturating_sub(1)
+    } else if down {
+        at + 1
+    } else {
+        at
+    }
+    .min(len.saturating_sub(1));
     (k, enter.then_some(k).filter(|k| *k < len))
 }
 
@@ -663,7 +807,14 @@ fn waiting_keys(at: usize, len: usize, (up, down, enter): (bool, bool, bool)) ->
 /// leaves the pick on the entry that took the place of the one taken off.
 fn closed_keys(at: Option<usize>, len: usize, (up, down, enter, delete): (bool, bool, bool, bool)) -> (usize, Option<Do>) {
     let at = at.unwrap_or(0);
-    let k = if up { at.saturating_sub(1) } else if down { at + 1 } else { at }.min(len.saturating_sub(1));
+    let k = if up {
+        at.saturating_sub(1)
+    } else if down {
+        at + 1
+    } else {
+        at
+    }
+    .min(len.saturating_sub(1));
     let act = if enter {
         Some(Do::StartAgain(k))
     } else if delete {
@@ -709,8 +860,13 @@ mod tests {
         let mut frame = |key: Option<egui::Key>| {
             let mac = crate::keys::mac();
             let modifiers = egui::Modifiers { ctrl: !mac, mac_cmd: mac, command: true, shift: true, alt: false };
-            let events = key.map(|key| egui::Event::Key { key, physical_key: None, pressed: true, repeat: false, modifiers }).into_iter().collect();
-            let input = egui::RawInput { screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1280.0, 800.0))), events, ..Default::default() };
+            let events =
+                key.map(|key| egui::Event::Key { key, physical_key: None, pressed: true, repeat: false, modifiers }).into_iter().collect();
+            let input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1280.0, 800.0))),
+                events,
+                ..Default::default()
+            };
             let mut got = Vec::new();
             let mut out = ctx.run_ui(input, |ui| got = show(ui.ctx(), &mut view, &[], &[], &[], 0, &[], &[], &crate::theme::colors()));
             out.textures_delta.clear();
@@ -765,8 +921,22 @@ mod tests {
     }
 
     fn row(id: SessionId, texts: &[&str]) -> Row {
-        let choices = texts.iter().enumerate().map(|(k, t)| Choice { key: char::from_digit(k as u32 + 1, 10).unwrap(), text: t.to_string() }).collect();
-        Row { id, name: format!("s{id}"), folder: "f".into(), note: String::new(), waited: "1m".into(), choices, asking: Vec::new(), rule: None, rule_file: Default::default() }
+        let choices = texts
+            .iter()
+            .enumerate()
+            .map(|(k, t)| Choice { key: char::from_digit(k as u32 + 1, 10).unwrap(), text: t.to_string() })
+            .collect();
+        Row {
+            id,
+            name: format!("s{id}"),
+            folder: "f".into(),
+            note: String::new(),
+            waited: "1m".into(),
+            choices,
+            asking: Vec::new(),
+            rule: None,
+            rule_file: Default::default(),
+        }
     }
 
     fn card(id: SessionId, name: &str, folder: &str, tags: &[&str], last: &[&str]) -> Card {
@@ -785,15 +955,15 @@ mod tests {
     /// All sessions' field narrows by name, folder, tag and last lines.
     #[test]
     fn templates_are_found_by_name_in_any_case() {
-    let t = |name: &str| Template { name: name.into(), detail: String::new(), pick: crate::palette::Pick::Script(0) };
-    let all = [t("Two tabs"), t("Review")];
-    assert_eq!(matching_templates("", &all).len(), 2);
-    assert_eq!(matching_templates("TWO", &all)[0].name, "Two tabs");
-    assert!(matching_templates("zzz", &all).is_empty());
-}
+        let t = |name: &str| Template { name: name.into(), detail: String::new(), pick: crate::palette::Pick::Script(0) };
+        let all = [t("Two tabs"), t("Review")];
+        assert_eq!(matching_templates("", &all).len(), 2);
+        assert_eq!(matching_templates("TWO", &all)[0].name, "Two tabs");
+        assert!(matching_templates("zzz", &all).is_empty());
+    }
 
-#[test]
-fn the_filter_matches_name_folder_tags_and_last_lines() {
+    #[test]
+    fn the_filter_matches_name_folder_tags_and_last_lines() {
         let all = [card(1, "claude", "~/dev/filer · main", &["work"], &["Tests passed"]), card(2, "pwsh", "~/notes", &[], &["PS> ls"])];
         let ids = |q: &str| matching(q, &all).into_iter().map(|c| c.id).collect::<Vec<_>>();
         assert_eq!(ids(""), [1, 2], "nothing typed, all in order");
@@ -807,14 +977,23 @@ fn the_filter_matches_name_folder_tags_and_last_lines() {
     #[test]
     fn those_waiting_for_a_person_come_first() {
         use tsumugi_mux::State;
-        let mut all = [(State::Done, 1), (State::Running, 5), (State::Waiting, 9), (State::Error, 3), (State::Waiting, 2), (State::MaybeWaiting, 1)];
+        let mut all =
+            [(State::Done, 1), (State::Running, 5), (State::Waiting, 9), (State::Error, 3), (State::Waiting, 2), (State::MaybeWaiting, 1)];
         all.sort_by_key(|(s, t)| rank(*s, *t));
-        assert_eq!(all, [(State::Waiting, 2), (State::Waiting, 9), (State::MaybeWaiting, 1), (State::Error, 3), (State::Running, 5), (State::Done, 1)]);
+        assert_eq!(
+            all,
+            [(State::Waiting, 2), (State::Waiting, 9), (State::MaybeWaiting, 1), (State::Error, 3), (State::Running, 5), (State::Done, 1)]
+        );
     }
 
     #[test]
     fn all_at_once_answers_only_the_ticked_menus_that_say_so() {
-        let rows = vec![row(1, &["Yes", "Yes, and don't ask again", "No, and tell Claude"]), row(2, &["Use A", "Use B"]), row(3, &[]), row(4, &["Yes", "No"])];
+        let rows = vec![
+            row(1, &["Yes", "Yes, and don't ask again", "No, and tell Claude"]),
+            row(2, &["Use A", "Use B"]),
+            row(3, &[]),
+            row(4, &["Yes", "No"]),
+        ];
         let mut off = HashSet::new();
         assert_eq!(bulk(&rows, &off, true), vec![(1, '1'), (4, '1')]);
         assert_eq!(bulk(&rows, &off, false), vec![(1, '3'), (4, '2')]);

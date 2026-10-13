@@ -7,8 +7,8 @@
 use std::io;
 use std::path::{Path, PathBuf};
 
-use serde::{Deserialize, Serialize};
 use ito_layout::Node;
+use serde::{Deserialize, Serialize};
 
 use crate::proto::SessionId;
 
@@ -109,13 +109,37 @@ mod old {
 
     impl From<V2> for super::SavedPane {
         fn from(p: V2) -> Self {
-            Self { id: p.id, cwd: p.cwd, shell: p.shell, claude: p.claude, title: p.title, state: p.state, muted: false, tags: Vec::new(), charset: String::new(), agent: String::new(), profile: String::new() }
+            Self {
+                id: p.id,
+                cwd: p.cwd,
+                shell: p.shell,
+                claude: p.claude,
+                title: p.title,
+                state: p.state,
+                muted: false,
+                tags: Vec::new(),
+                charset: String::new(),
+                agent: String::new(),
+                profile: String::new(),
+            }
         }
     }
 
     impl From<V3> for super::SavedPane {
         fn from(p: V3) -> Self {
-            Self { id: p.id, cwd: p.cwd, shell: p.shell, claude: p.claude, title: p.title, state: p.state, muted: p.muted, tags: Vec::new(), charset: String::new(), agent: String::new(), profile: String::new() }
+            Self {
+                id: p.id,
+                cwd: p.cwd,
+                shell: p.shell,
+                claude: p.claude,
+                title: p.title,
+                state: p.state,
+                muted: p.muted,
+                tags: Vec::new(),
+                charset: String::new(),
+                agent: String::new(),
+                profile: String::new(),
+            }
         }
     }
 
@@ -147,7 +171,19 @@ mod old {
 
     impl From<V4Pane> for super::SavedPane {
         fn from(p: V4Pane) -> Self {
-            Self { id: p.id, cwd: p.cwd, shell: p.shell, claude: p.claude, title: p.title, state: p.state, muted: p.muted, tags: p.tags, charset: String::new(), agent: String::new(), profile: String::new() }
+            Self {
+                id: p.id,
+                cwd: p.cwd,
+                shell: p.shell,
+                claude: p.claude,
+                title: p.title,
+                state: p.state,
+                muted: p.muted,
+                tags: p.tags,
+                charset: String::new(),
+                agent: String::new(),
+                profile: String::new(),
+            }
         }
     }
 
@@ -178,7 +214,18 @@ mod old {
 
     impl From<V5> for super::Saved {
         fn from(s: V5) -> Self {
-            let workspaces = s.workspaces.into_iter().map(|w| super::SavedWorkspace { name: w.name, pinned: w.pinned, note: String::new(), layout: w.layout, focus: w.focus, panes: w.panes.into_iter().map(Into::into).collect() }).collect();
+            let workspaces = s
+                .workspaces
+                .into_iter()
+                .map(|w| super::SavedWorkspace {
+                    name: w.name,
+                    pinned: w.pinned,
+                    note: String::new(),
+                    layout: w.layout,
+                    focus: w.focus,
+                    panes: w.panes.into_iter().map(Into::into).collect(),
+                })
+                .collect();
             Self { workspaces, at_ms: s.at_ms, muted_tags: s.muted_tags }
         }
     }
@@ -200,7 +247,19 @@ mod old {
 
     impl From<V8Pane> for super::SavedPane {
         fn from(p: V8Pane) -> Self {
-            Self { id: p.id, cwd: p.cwd, shell: p.shell, claude: p.claude, title: p.title, state: p.state, muted: p.muted, tags: p.tags, charset: p.charset, agent: p.agent, profile: String::new() }
+            Self {
+                id: p.id,
+                cwd: p.cwd,
+                shell: p.shell,
+                claude: p.claude,
+                title: p.title,
+                state: p.state,
+                muted: p.muted,
+                tags: p.tags,
+                charset: p.charset,
+                agent: p.agent,
+                profile: String::new(),
+            }
         }
     }
 
@@ -224,7 +283,18 @@ mod old {
 
     impl From<V8> for super::Saved {
         fn from(s: V8) -> Self {
-            let workspaces = s.workspaces.into_iter().map(|w| super::SavedWorkspace { name: w.name, pinned: w.pinned, note: w.note, layout: w.layout, focus: w.focus, panes: w.panes.into_iter().map(Into::into).collect() }).collect();
+            let workspaces = s
+                .workspaces
+                .into_iter()
+                .map(|w| super::SavedWorkspace {
+                    name: w.name,
+                    pinned: w.pinned,
+                    note: w.note,
+                    layout: w.layout,
+                    focus: w.focus,
+                    panes: w.panes.into_iter().map(Into::into).collect(),
+                })
+                .collect();
             Self { workspaces, at_ms: s.at_ms, muted_tags: s.muted_tags }
         }
     }
@@ -245,7 +315,19 @@ mod old {
 
     impl From<V7Pane> for super::SavedPane {
         fn from(p: V7Pane) -> Self {
-            Self { id: p.id, cwd: p.cwd, shell: p.shell, claude: p.claude, title: p.title, state: p.state, muted: p.muted, tags: p.tags, charset: p.charset, agent: String::new(), profile: String::new() }
+            Self {
+                id: p.id,
+                cwd: p.cwd,
+                shell: p.shell,
+                claude: p.claude,
+                title: p.title,
+                state: p.state,
+                muted: p.muted,
+                tags: p.tags,
+                charset: p.charset,
+                agent: String::new(),
+                profile: String::new(),
+            }
         }
     }
 
@@ -269,7 +351,18 @@ mod old {
 
     impl From<V7> for super::Saved {
         fn from(s: V7) -> Self {
-            let workspaces = s.workspaces.into_iter().map(|w| super::SavedWorkspace { name: w.name, pinned: w.pinned, note: w.note, layout: w.layout, focus: w.focus, panes: w.panes.into_iter().map(Into::into).collect() }).collect();
+            let workspaces = s
+                .workspaces
+                .into_iter()
+                .map(|w| super::SavedWorkspace {
+                    name: w.name,
+                    pinned: w.pinned,
+                    note: w.note,
+                    layout: w.layout,
+                    focus: w.focus,
+                    panes: w.panes.into_iter().map(Into::into).collect(),
+                })
+                .collect();
             Self { workspaces, at_ms: s.at_ms, muted_tags: s.muted_tags }
         }
     }
@@ -294,7 +387,18 @@ mod old {
 
     impl From<V6> for super::Saved {
         fn from(s: V6) -> Self {
-            let workspaces = s.workspaces.into_iter().map(|w| super::SavedWorkspace { name: w.name, pinned: w.pinned, note: w.note, layout: w.layout, focus: w.focus, panes: w.panes.into_iter().map(Into::into).collect() }).collect();
+            let workspaces = s
+                .workspaces
+                .into_iter()
+                .map(|w| super::SavedWorkspace {
+                    name: w.name,
+                    pinned: w.pinned,
+                    note: w.note,
+                    layout: w.layout,
+                    focus: w.focus,
+                    panes: w.panes.into_iter().map(Into::into).collect(),
+                })
+                .collect();
             Self { workspaces, at_ms: s.at_ms, muted_tags: s.muted_tags }
         }
     }
@@ -379,7 +483,14 @@ mod tests {
             state: crate::proto::State,
         }
         let pane = |id| Pane { id, cwd: "/tmp".into(), shell: None, claude: None, title: "t".into(), state: crate::proto::State::Done };
-        let old = (vec![(Node::Split { dir: crate::proto::Dir::Right, ratio: 0.5, first: Box::new(Node::Leaf(1)), second: Box::new(Node::Leaf(2)) }, 2u64, vec![pane(1), pane(2)])], 9u64);
+        let old = (
+            vec![(
+                Node::Split { dir: crate::proto::Dir::Right, ratio: 0.5, first: Box::new(Node::Leaf(1)), second: Box::new(Node::Leaf(2)) },
+                2u64,
+                vec![pane(1), pane(2)],
+            )],
+            9u64,
+        );
         let dir = std::env::temp_dir().join(format!("tsumugi-state-v2-test-{}", std::process::id()));
         let path = dir.join("state");
         std::fs::create_dir_all(&dir).unwrap();
@@ -425,7 +536,16 @@ mod tests {
             focus: SessionId,
             panes: Vec<Pane>,
         }
-        let pane = || Pane { id: 3, cwd: "/tmp".into(), shell: None, claude: None, title: "t".into(), state: crate::proto::State::Done, muted: false, tags: vec!["a".into()] };
+        let pane = || Pane {
+            id: 3,
+            cwd: "/tmp".into(),
+            shell: None,
+            claude: None,
+            title: "t".into(),
+            state: crate::proto::State::Done,
+            muted: false,
+            tags: vec!["a".into()],
+        };
         let dir = std::env::temp_dir().join(format!("tsumugi-state-v5-test-{}", std::process::id()));
         let path = dir.join("state");
         std::fs::create_dir_all(&dir).unwrap();
@@ -434,12 +554,35 @@ mod tests {
             bytes.extend(body);
             std::fs::write(&path, bytes).unwrap();
         };
-        write(5, postcard::to_allocvec(&(vec![Tab5 { name: "kept".into(), pinned: true, layout: Node::Leaf(3), focus: 3, panes: vec![pane()] }], 5u64, vec!["ci".to_string()])).unwrap());
+        write(
+            5,
+            postcard::to_allocvec(&(
+                vec![Tab5 { name: "kept".into(), pinned: true, layout: Node::Leaf(3), focus: 3, panes: vec![pane()] }],
+                5u64,
+                vec!["ci".to_string()],
+            ))
+            .unwrap(),
+        );
         let saved = load(&path).expect("read v5");
         let w = &saved.workspaces[0];
         assert_eq!((w.name.as_str(), w.pinned, w.note.as_str(), saved.muted_tags.clone()), ("kept", true, "", vec!["ci".to_string()]));
         assert_eq!((w.panes[0].tags.clone(), w.panes[0].charset.as_str()), (vec!["a".to_string()], ""));
-        write(6, postcard::to_allocvec(&(vec![Tab6 { name: "n".into(), pinned: false, note: "the note".into(), layout: Node::Leaf(3), focus: 3, panes: vec![pane()] }], 6u64, Vec::<String>::new())).unwrap());
+        write(
+            6,
+            postcard::to_allocvec(&(
+                vec![Tab6 {
+                    name: "n".into(),
+                    pinned: false,
+                    note: "the note".into(),
+                    layout: Node::Leaf(3),
+                    focus: 3,
+                    panes: vec![pane()],
+                }],
+                6u64,
+                Vec::<String>::new(),
+            ))
+            .unwrap(),
+        );
         let saved = load(&path).expect("read v6");
         assert_eq!((saved.workspaces[0].note.as_str(), saved.workspaces[0].panes[0].id), ("the note", 3));
         let _ = std::fs::remove_dir_all(&dir);
@@ -469,8 +612,22 @@ mod tests {
             focus: SessionId,
             panes: Vec<Pane>,
         }
-        let pane = Pane { id: 4, cwd: "/tmp".into(), shell: None, claude: None, title: "t".into(), state: crate::proto::State::Done, muted: false, tags: vec![], charset: "EUC-JP".into() };
-        let old = (vec![Tab { name: "n".into(), pinned: false, note: "x".into(), layout: Node::Leaf(4), focus: 4, panes: vec![pane] }], 7u64, Vec::<String>::new());
+        let pane = Pane {
+            id: 4,
+            cwd: "/tmp".into(),
+            shell: None,
+            claude: None,
+            title: "t".into(),
+            state: crate::proto::State::Done,
+            muted: false,
+            tags: vec![],
+            charset: "EUC-JP".into(),
+        };
+        let old = (
+            vec![Tab { name: "n".into(), pinned: false, note: "x".into(), layout: Node::Leaf(4), focus: 4, panes: vec![pane] }],
+            7u64,
+            Vec::<String>::new(),
+        );
         let dir = std::env::temp_dir().join(format!("tsumugi-state-v7-test-{}", std::process::id()));
         let path = dir.join("state");
         std::fs::create_dir_all(&dir).unwrap();
@@ -507,8 +664,23 @@ mod tests {
             focus: SessionId,
             panes: Vec<Pane>,
         }
-        let pane = Pane { id: 5, cwd: "/tmp".into(), shell: None, claude: None, title: "t".into(), state: crate::proto::State::Done, muted: false, tags: vec![], charset: "UTF-8".into(), agent: "claude".into() };
-        let old = (vec![Tab { name: "n".into(), pinned: false, note: String::new(), layout: Node::Leaf(5), focus: 5, panes: vec![pane] }], 8u64, Vec::<String>::new());
+        let pane = Pane {
+            id: 5,
+            cwd: "/tmp".into(),
+            shell: None,
+            claude: None,
+            title: "t".into(),
+            state: crate::proto::State::Done,
+            muted: false,
+            tags: vec![],
+            charset: "UTF-8".into(),
+            agent: "claude".into(),
+        };
+        let old = (
+            vec![Tab { name: "n".into(), pinned: false, note: String::new(), layout: Node::Leaf(5), focus: 5, panes: vec![pane] }],
+            8u64,
+            Vec::<String>::new(),
+        );
         let dir = std::env::temp_dir().join(format!("tsumugi-state-v8-test-{}", std::process::id()));
         let path = dir.join("state");
         std::fs::create_dir_all(&dir).unwrap();

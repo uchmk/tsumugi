@@ -198,7 +198,9 @@ fn a_new_session_can_start_with_a_line_typed() {
     let at = address();
     let _srv = serve(&at).expect("the server starts");
     let c = Client::connect(&at, || {}).expect("a client connects");
-    let pane = c.spawn_typing(std::env::temp_dir(), None, Size::new(80, 24), (8, 16), Place::NewWorkspace, vec!["echo typed-$((40+2))".into()]).expect("a shell starts");
+    let pane = c
+        .spawn_typing(std::env::temp_dir(), None, Size::new(80, 24), (8, 16), Place::NewWorkspace, vec!["echo typed-$((40+2))".into()])
+        .expect("a shell starts");
     until(&pane, "the line and its answer", |t| t.contains("typed-42"));
     pane.kill();
     // Words reach the program as they were given, quoted for the shell:
@@ -702,7 +704,10 @@ fn an_ai_program_is_told_by_its_process() {
     assert_eq!(server::agent_of(&[&vim, &claude_exe], &names), "claude");
     let s = crate::settings::parse("[agents.mine]\nresume = \"mine --again\"\n").unwrap();
     assert_eq!(server::agent_of(&[&p("mine", &[])], &s.agent_names()), "mine", "one of the settings' own");
-    assert_eq!((s.resume_for("mine").as_deref(), s.resume_for("codex").as_deref(), s.resume_for("gemini")), (Some("mine --again"), Some("codex resume --last"), None));
+    assert_eq!(
+        (s.resume_for("mine").as_deref(), s.resume_for("codex").as_deref(), s.resume_for("gemini")),
+        (Some("mine --again"), Some("codex resume --last"), None)
+    );
 }
 
 /// What runs in a session and what it listens on reach every window: a
@@ -717,7 +722,13 @@ fn a_sessions_program_and_ports_are_seen() {
     let port = probe.local_addr().unwrap().port();
     drop(probe);
     let script = dir.join("codex");
-    std::fs::write(&script, format!("#!/bin/sh\npython3 -c \"import socket,time; s=socket.socket(); s.bind(('127.0.0.1',{port})); s.listen(); time.sleep(30)\"\n")).unwrap();
+    std::fs::write(
+        &script,
+        format!(
+            "#!/bin/sh\npython3 -c \"import socket,time; s=socket.socket(); s.bind(('127.0.0.1',{port})); s.listen(); time.sleep(30)\"\n"
+        ),
+    )
+    .unwrap();
     std::process::Command::new("chmod").arg("+x").arg(&script).status().unwrap();
     let at = address();
     let _srv = serve(&at).expect("the server starts");
@@ -766,7 +777,10 @@ fn a_failed_ssh_says_what_to_do() {
     assert_eq!(args[args.len() - 3..], ["box", "/opt/t/tsumugi", "proxy"]);
     let eof = Error::new(ErrorKind::UnexpectedEof, "failed to fill whole buffer");
     let missing = explain("box", "tsumugi", &eof, Some(127), "bash: line 1: tsumugi: command not found");
-    assert!(missing.contains("tsumugi is not there") && missing.contains(crate::client::RELEASES) && missing.contains("command not found"), "{missing}");
+    assert!(
+        missing.contains("tsumugi is not there") && missing.contains(crate::client::RELEASES) && missing.contains("command not found"),
+        "{missing}"
+    );
     let windows = explain("win", "tsumugi", &eof, Some(1), "'tsumugi' is not recognized as an internal or external command");
     assert!(windows.contains("is not there"), "{windows}");
     let refused = explain("box", "tsumugi", &eof, Some(255), "ssh: connect to host box port 22: Connection refused");

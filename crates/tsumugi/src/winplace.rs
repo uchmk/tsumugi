@@ -47,7 +47,9 @@ fn render(p: &Place) -> String {
 
 fn parse(text: &str) -> Option<Place> {
     let t: toml::Table = text.parse().ok()?;
-    let num = |k: &str| t.get(k).and_then(|v| v.as_float().or_else(|| v.as_integer().map(|i| i as f64))).map(|f| f as f32).filter(|f| f.is_finite());
+    let num = |k: &str| {
+        t.get(k).and_then(|v| v.as_float().or_else(|| v.as_integer().map(|i| i as f64))).map(|f| f as f32).filter(|f| f.is_finite())
+    };
     Some(Place {
         pos: [num("x")?, num("y")?],
         size: [num("width")?, num("height")?],
@@ -86,9 +88,18 @@ pub fn save(path: &Path, place: &Place) {
 /// All the screens together, in pixels: left, top, width, height.
 #[cfg(windows)]
 fn screens() -> Option<[f32; 4]> {
-    use windows::Win32::UI::WindowsAndMessaging::{GetSystemMetrics, SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN, SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN};
+    use windows::Win32::UI::WindowsAndMessaging::{
+        GetSystemMetrics, SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN, SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN,
+    };
     // SAFETY: plain queries of the system, with no pointers.
-    let (x, y, w, h) = unsafe { (GetSystemMetrics(SM_XVIRTUALSCREEN), GetSystemMetrics(SM_YVIRTUALSCREEN), GetSystemMetrics(SM_CXVIRTUALSCREEN), GetSystemMetrics(SM_CYVIRTUALSCREEN)) };
+    let (x, y, w, h) = unsafe {
+        (
+            GetSystemMetrics(SM_XVIRTUALSCREEN),
+            GetSystemMetrics(SM_YVIRTUALSCREEN),
+            GetSystemMetrics(SM_CXVIRTUALSCREEN),
+            GetSystemMetrics(SM_CYVIRTUALSCREEN),
+        )
+    };
     (w > 0 && h > 0).then_some([x as f32, y as f32, w as f32, h as f32])
 }
 

@@ -94,34 +94,41 @@ pub fn show(ctx: &egui::Context, pane: egui::Rect, bar: &mut Bar, c: &Colors) ->
     let width = 330.0_f32.min(pane.width() - 16.0).max(160.0);
     let at = egui::pos2(pane.right() - width - 10.0, pane.top() + 6.0);
     egui::Area::new(egui::Id::new(("find-bar", bar.id))).order(egui::Order::Foreground).fixed_pos(at).show(ctx, |ui| {
-        egui::Frame::NONE.fill(c.panel).stroke(egui::Stroke::new(1.0, c.border_strong())).corner_radius(8.0).inner_margin(egui::Margin::symmetric(8, 5)).show(ui, |ui| {
-            ui.set_width(width - 16.0);
-            ui.horizontal(|ui| {
-                let words = match bar.said {
-                    Some(None) => RichText::new(tr("find.no_match")).color(c.err),
-                    // "From the end again" was cut short in the 96 points (the
-                    // real machine, 2.30).
-                    Some(Some(true)) => RichText::new(tr("find.wrapped")).color(c.dim),
-                    _ => RichText::new(""),
-                };
-                let room = ui.available_width() - 3.0 * 24.0 - 96.0;
-                let field = ui.add(egui::TextEdit::singleline(&mut bar.needle).id(field_id).hint_text(tr("find.hint")).desired_width(room.max(60.0)));
-                if std::mem::take(&mut bar.focus) || (bar.keyed && step.is_some()) {
-                    field.request_focus();
-                }
-                bar.keyed = field.has_focus() || ctx.memory(|m| m.has_focus(field_id));
-                ui.add_sized(egui::vec2(96.0, 18.0), egui::Label::new(words.size(11.5)).truncate());
-                if ui.small_button("↑").on_hover_text(tr("find.older")).clicked() {
-                    step = Some(true);
-                }
-                if ui.small_button("↓").on_hover_text(tr("find.newer")).clicked() {
-                    step = Some(false);
-                }
-                if ui.small_button("×").on_hover_text(tr("help.close")).clicked() {
-                    close = true;
-                }
+        egui::Frame::NONE
+            .fill(c.panel)
+            .stroke(egui::Stroke::new(1.0, c.border_strong()))
+            .corner_radius(8.0)
+            .inner_margin(egui::Margin::symmetric(8, 5))
+            .show(ui, |ui| {
+                ui.set_width(width - 16.0);
+                ui.horizontal(|ui| {
+                    let words = match bar.said {
+                        Some(None) => RichText::new(tr("find.no_match")).color(c.err),
+                        // "From the end again" was cut short in the 96 points (the
+                        // real machine, 2.30).
+                        Some(Some(true)) => RichText::new(tr("find.wrapped")).color(c.dim),
+                        _ => RichText::new(""),
+                    };
+                    let room = ui.available_width() - 3.0 * 24.0 - 96.0;
+                    let field = ui.add(
+                        egui::TextEdit::singleline(&mut bar.needle).id(field_id).hint_text(tr("find.hint")).desired_width(room.max(60.0)),
+                    );
+                    if std::mem::take(&mut bar.focus) || (bar.keyed && step.is_some()) {
+                        field.request_focus();
+                    }
+                    bar.keyed = field.has_focus() || ctx.memory(|m| m.has_focus(field_id));
+                    ui.add_sized(egui::vec2(96.0, 18.0), egui::Label::new(words.size(11.5)).truncate());
+                    if ui.small_button("↑").on_hover_text(tr("find.older")).clicked() {
+                        step = Some(true);
+                    }
+                    if ui.small_button("↓").on_hover_text(tr("find.newer")).clicked() {
+                        step = Some(false);
+                    }
+                    if ui.small_button("×").on_hover_text(tr("help.close")).clicked() {
+                        close = true;
+                    }
+                });
             });
-        });
     });
     asks(bar, step, close)
 }
@@ -141,7 +148,11 @@ mod tests {
         assert_eq!(asks(&mut bar, Some(true), false), [Ask::Find { needle: "err".into(), back: true }]);
         assert_eq!(asks(&mut bar, Some(false), false), [Ask::Find { needle: "err".into(), back: false }]);
         bar.needle = "error".into();
-        assert_eq!(asks(&mut bar, Some(true), false), [Ask::Restart, Ask::Find { needle: "error".into(), back: true }], "a change starts over");
+        assert_eq!(
+            asks(&mut bar, Some(true), false),
+            [Ask::Restart, Ask::Find { needle: "error".into(), back: true }],
+            "a change starts over"
+        );
         assert_eq!(bar.said, None, "the old answer goes with it");
         bar.needle.clear();
         assert_eq!(asks(&mut bar, None, false), [Ask::Restart]);
@@ -164,9 +175,23 @@ mod tests {
             got
         };
         assert_eq!(frame(&ctx, &mut bar, vec![]).len(), 2, "the typed text is asked for");
-        let key = |key, shift| egui::Event::Key { key, physical_key: None, pressed: true, repeat: false, modifiers: if shift { egui::Modifiers::SHIFT } else { egui::Modifiers::NONE } };
-        assert_eq!(frame(&ctx, &mut bar, vec![key(egui::Key::Enter, false)]), [Ask::Find { needle: "x".into(), back: false }], "Enter: down, newer");
-        assert_eq!(frame(&ctx, &mut bar, vec![key(egui::Key::Enter, true)]), [Ask::Find { needle: "x".into(), back: true }], "Shift+Enter: up, older");
+        let key = |key, shift| egui::Event::Key {
+            key,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: if shift { egui::Modifiers::SHIFT } else { egui::Modifiers::NONE },
+        };
+        assert_eq!(
+            frame(&ctx, &mut bar, vec![key(egui::Key::Enter, false)]),
+            [Ask::Find { needle: "x".into(), back: false }],
+            "Enter: down, newer"
+        );
+        assert_eq!(
+            frame(&ctx, &mut bar, vec![key(egui::Key::Enter, true)]),
+            [Ask::Find { needle: "x".into(), back: true }],
+            "Shift+Enter: up, older"
+        );
         assert!(ctx.memory(|m| m.has_focus(egui::Id::new(("find-field", 7_u64)))), "the field keeps the keys");
         assert_eq!(frame(&ctx, &mut bar, vec![key(egui::Key::Escape, false)]), [Ask::Close]);
     }

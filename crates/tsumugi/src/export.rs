@@ -10,9 +10,18 @@ const HEAD: &str = "# tsumugi settings export";
 
 /// The files of the settings folder that go in, by their path in it.
 fn files(dir: &Path) -> Vec<String> {
-    let mut out: Vec<String> = ["config.toml", "profiles.toml", "prompts.toml", "layouts.toml", "theme.toml"].iter().filter(|n| dir.join(n).is_file()).map(|n| n.to_string()).collect();
+    let mut out: Vec<String> = ["config.toml", "profiles.toml", "prompts.toml", "layouts.toml", "theme.toml"]
+        .iter()
+        .filter(|n| dir.join(n).is_file())
+        .map(|n| n.to_string())
+        .collect();
     if let Ok(entries) = std::fs::read_dir(dir.join("themes")) {
-        let mut themes: Vec<String> = entries.flatten().filter_map(|e| e.file_name().to_str().map(str::to_owned)).filter(|n| n.ends_with(".toml")).map(|n| format!("themes/{n}")).collect();
+        let mut themes: Vec<String> = entries
+            .flatten()
+            .filter_map(|e| e.file_name().to_str().map(str::to_owned))
+            .filter(|n| n.ends_with(".toml"))
+            .map(|n| format!("themes/{n}"))
+            .collect();
         themes.sort();
         out.extend(themes);
     }
@@ -66,7 +75,8 @@ fn allowed(name: &str) -> bool {
 
 /// Write the export into `to` (a folder): its file's path (a thread's work).
 pub fn export(dir: &Path, to: &Path) -> Result<PathBuf, String> {
-    let read: Vec<(String, String)> = files(dir).into_iter().filter_map(|n| std::fs::read_to_string(dir.join(&n)).ok().map(|t| (n, t))).collect();
+    let read: Vec<(String, String)> =
+        files(dir).into_iter().filter_map(|n| std::fs::read_to_string(dir.join(&n)).ok().map(|t| (n, t))).collect();
     let file = to.join(format!("tsumugi-settings-{}.txt", chrono::Local::now().format("%Y%m%d")));
     std::fs::write(&file, pack(&read)).map_err(|e| format!("{}: {e}", file.display()))?;
     Ok(file)
@@ -105,7 +115,11 @@ pub fn save_output(to: &Path, name: &str, text: &str) -> Result<PathBuf, String>
 fn file_word(name: &str) -> String {
     let w: String = name.chars().map(|c| if c.is_alphanumeric() || c == '-' || c == '_' { c } else { '-' }).take(40).collect();
     let w = w.trim_matches('-').to_owned();
-    if w.is_empty() { "session".into() } else { w }
+    if w.is_empty() {
+        "session".into()
+    } else {
+        w
+    }
 }
 
 /// Where a recording of `name` goes: `tsumugi` in Videos (Movies on
@@ -137,7 +151,10 @@ mod tests {
 
     #[test]
     fn an_export_comes_back_as_it_went() {
-        let files = vec![("config.toml".to_string(), "theme = \"dark\"\n".to_string()), ("themes/Mine.toml".to_string(), "name = \"Mine\"".to_string())];
+        let files = vec![
+            ("config.toml".to_string(), "theme = \"dark\"\n".to_string()),
+            ("themes/Mine.toml".to_string(), "name = \"Mine\"".to_string()),
+        ];
         let text = pack(&files);
         let back = unpack(&text).unwrap();
         assert_eq!(back[0], files[0]);

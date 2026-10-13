@@ -2,8 +2,8 @@
 //! a character sends one row and not the whole screen. A client that has
 //! nothing yet, or a grid that changed shape, gets every row.
 
-use serde::{Deserialize, Serialize};
 use ito_pane::{Block, CellView, Hyperlink, MouseReport, Placement, Screen};
+use serde::{Deserialize, Serialize};
 
 /// What changed on a session's screen, and the state that goes with it.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -62,7 +62,8 @@ pub fn diff(old: Option<(&Screen, &Extra)>, new: &Screen, extra: &Extra) -> Opti
     };
     if let (false, Some((o, e))) = (full, old) {
         let same = rows.is_empty()
-            && (o.cursor, o.app_cursor, o.alt_screen, o.mouse, o.focus_report, o.kitty) == (new.cursor, new.app_cursor, new.alt_screen, new.mouse, new.focus_report, new.kitty)
+            && (o.cursor, o.app_cursor, o.alt_screen, o.mouse, o.focus_report, o.kitty)
+                == (new.cursor, new.app_cursor, new.alt_screen, new.mouse, new.focus_report, new.kitty)
             && e == extra;
         if same {
             return None;
@@ -106,7 +107,16 @@ pub fn apply(screen: &mut Screen, extra: &mut Extra, u: Update) {
     screen.mouse = u.mouse;
     screen.focus_report = u.focus_report;
     screen.kitty = u.kitty;
-    *extra = Extra { scrolled_back: u.scrolled_back, win32_input: u.win32_input, bracketed_paste: u.bracketed_paste, title: u.title, links: u.links, blocks: u.blocks, pictures: u.pictures, selected: u.selected };
+    *extra = Extra {
+        scrolled_back: u.scrolled_back,
+        win32_input: u.win32_input,
+        bracketed_paste: u.bracketed_paste,
+        title: u.title,
+        links: u.links,
+        blocks: u.blocks,
+        pictures: u.pictures,
+        selected: u.selected,
+    };
 }
 
 #[cfg(test)]

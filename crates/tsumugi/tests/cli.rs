@@ -31,7 +31,11 @@ impl Server {
         let dir = std::env::temp_dir().join(format!("tsumugi-cli-{label}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
-        let address = if cfg!(windows) { PathBuf::from(format!(r"\\.\pipe\tsumugi-test-{label}-{}", std::process::id())) } else { dir.join("s.sock") };
+        let address = if cfg!(windows) {
+            PathBuf::from(format!(r"\\.\pipe\tsumugi-test-{label}-{}", std::process::id()))
+        } else {
+            dir.join("s.sock")
+        };
         let args: Vec<String> = args.iter().map(|a| format!("{a:?}")).collect();
         std::fs::write(dir.join("config.toml"), format!("[shell]\nprogram = \"{shell}\"\nargs = [{}]\n", args.join(", "))).unwrap();
         Self { dir, address }
@@ -163,7 +167,24 @@ fn ls_json_is_one_array_of_sessions() {
     let json = s.ok(&["ls", "--json"]);
     let t = json.trim();
     assert!(t.starts_with('[') && t.ends_with(']'), "{json}");
-    for key in ["id", "state", "command", "agent", "cwd", "project", "branch", "title", "note", "since_ms", "tags", "ports", "muted", "charset", "read_only", "profile"] {
+    for key in [
+        "id",
+        "state",
+        "command",
+        "agent",
+        "cwd",
+        "project",
+        "branch",
+        "title",
+        "note",
+        "since_ms",
+        "tags",
+        "ports",
+        "muted",
+        "charset",
+        "read_only",
+        "profile",
+    ] {
         assert!(json.contains(&format!("\"{key}\":")), "no {key} in {json}");
     }
     assert!(json.contains(&format!("\"id\": {id}")) || json.contains(&format!("\"id\":{id}")), "{json}");
@@ -265,8 +286,12 @@ fn an_ask_to_type_waits_for_a_window_and_a_refusal_types_nothing() {
     answer(true, "echo allowed > yes.txt").expect("allowed");
     let deadline = Instant::now() + PATIENCE;
     while !s.dir.join("yes.txt").exists() {
-        assert!(Instant::now() < deadline, "no yes.txt; the session shows:
-{}", s.ok(&["read", &id, "--all"]));
+        assert!(
+            Instant::now() < deadline,
+            "no yes.txt; the session shows:
+{}",
+            s.ok(&["read", &id, "--all"])
+        );
         std::thread::sleep(Duration::from_millis(200));
     }
     assert!(!s.dir.join("no.txt").exists() && !s.dir.join("none.txt").exists(), "a line that was not allowed ran");
@@ -394,7 +419,9 @@ fn mcp_lists_sessions_and_reads_a_screen() {
         assert!(out.status.success(), "tsumugi mcp: {:?}", out.status);
         String::from_utf8(out.stdout).unwrap().lines().map(str::to_owned).collect()
     };
-    let call = |id: u32, tool: &str, args: &str| format!(r#"{{"jsonrpc":"2.0","id":{id},"method":"tools/call","params":{{"name":"{tool}","arguments":{args}}}}}"#);
+    let call = |id: u32, tool: &str, args: &str| {
+        format!(r#"{{"jsonrpc":"2.0","id":{id},"method":"tools/call","params":{{"name":"{tool}","arguments":{args}}}}}"#)
+    };
     let hello = [
         r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"test","version":"0"}}}"#.to_owned(),
         r#"{"jsonrpc":"2.0","method":"notifications/initialized"}"#.to_owned(),
@@ -435,7 +462,13 @@ fn help_names_the_folders() {
 #[test]
 fn keys_refuses_a_bad_script() {
     let s = Server::new("keys");
-    for (args, says) in [(&["--keys"][..], "usage"), (&["--keys", "echo hi"], "<Space>"), (&["--keys", "<Shot:../up>"], "letters, digits"), (&["--keys", "<Wait:soon>"], "milliseconds"), (&["--keys", "j", "k"], "usage")] {
+    for (args, says) in [
+        (&["--keys"][..], "usage"),
+        (&["--keys", "echo hi"], "<Space>"),
+        (&["--keys", "<Shot:../up>"], "letters, digits"),
+        (&["--keys", "<Wait:soon>"], "milliseconds"),
+        (&["--keys", "j", "k"], "usage"),
+    ] {
         let out = s.run(args);
         let err = String::from_utf8_lossy(&out.stderr);
         assert_eq!(out.status.code(), Some(2), "tsumugi {args:?}: {err}");
@@ -449,7 +482,12 @@ fn keys_refuses_a_bad_script() {
 #[test]
 fn serial_refuses_bad_words_and_a_missing_port() {
     let s = Server::new("serial-words");
-    for (args, says) in [(&["serial"][..], "usage"), (&["serial", "COM3@fast"], "not a speed"), (&["serial", "COM3@9600,9N1"], "not a frame"), (&["serial", "a", "b"], "usage")] {
+    for (args, says) in [
+        (&["serial"][..], "usage"),
+        (&["serial", "COM3@fast"], "not a speed"),
+        (&["serial", "COM3@9600,9N1"], "not a frame"),
+        (&["serial", "a", "b"], "usage"),
+    ] {
         let out = s.run(args);
         let err = String::from_utf8_lossy(&out.stderr);
         assert_eq!(out.status.code(), Some(2), "tsumugi {args:?}: {err}");
@@ -577,7 +615,15 @@ fn tmux_panes_open_as_sessions() {
             let _ = self.0.wait();
         }
     }
-    let mut gateway = Gateway(s.command(&["tmux", "-t", "t"]).env("TMUX_TMPDIR", &s.dir).env_remove("TMUX").stdout(Stdio::piped()).stderr(Stdio::null()).spawn().unwrap());
+    let mut gateway = Gateway(
+        s.command(&["tmux", "-t", "t"])
+            .env("TMUX_TMPDIR", &s.dir)
+            .env_remove("TMUX")
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn()
+            .unwrap(),
+    );
     let tmux_sessions = |n: usize| {
         let deadline = Instant::now() + PATIENCE;
         loop {
@@ -644,7 +690,9 @@ fn layout_opens_a_saved_layout_and_split_takes_a_share() {
 fn env_reports_the_places_and_the_server() {
     let s = Server::new("env");
     let before = s.ok(&["env"]);
-    let line = |text: &str, name: &str| text.lines().find(|l| l.starts_with(name)).unwrap_or_else(|| panic!("no {name} line in {text}")).to_owned();
+    let line = |text: &str, name: &str| {
+        text.lines().find(|l| l.starts_with(name)).unwrap_or_else(|| panic!("no {name} line in {text}")).to_owned()
+    };
     assert!(line(&before, "tsumugi").contains(env!("CARGO_PKG_VERSION")), "{before}");
     assert!(line(&before, "os").contains(std::env::consts::OS), "{before}");
     assert!(line(&before, "settings").contains(&s.dir.display().to_string()), "{before}");

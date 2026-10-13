@@ -270,7 +270,10 @@ impl Parser<'_> {
                             if let Some(high @ 0xD800..=0xDBFF) = code {
                                 if self.s.get(self.at..self.at + 2) == Some(b"\\u") {
                                     self.at += 2;
-                                    code = self.hex4().filter(|low| (0xDC00..=0xDFFF).contains(low)).map(|low| 0x10000 + ((high - 0xD800) << 10) + (low - 0xDC00));
+                                    code = self
+                                        .hex4()
+                                        .filter(|low| (0xDC00..=0xDFFF).contains(low))
+                                        .map(|low| 0x10000 + ((high - 0xD800) << 10) + (low - 0xDC00));
                                 }
                             }
                             let c = code.and_then(char::from_u32).unwrap_or('\u{fffd}');
@@ -306,7 +309,17 @@ mod tests {
     #[test]
     fn json_reads_what_a_settings_file_has() {
         let v = Json::parse(r#"[1, -2.5e1, "a\"bé", true, null, {"k": []}]"#).unwrap();
-        assert_eq!(v, Json::Array(vec![Json::Number(1.0), Json::Number(-25.0), Json::String("a\"bé".into()), Json::Bool(true), Json::Null, Json::Object(vec![("k".into(), Json::Array(vec![]))])]));
+        assert_eq!(
+            v,
+            Json::Array(vec![
+                Json::Number(1.0),
+                Json::Number(-25.0),
+                Json::String("a\"bé".into()),
+                Json::Bool(true),
+                Json::Null,
+                Json::Object(vec![("k".into(), Json::Array(vec![]))])
+            ])
+        );
         assert!(Json::parse("{\"a\" 1}").is_err());
         assert!(Json::parse("[1] 2").is_err());
         let text = "{\n  \"a\": [\n    1,\n    \"q\\\"\\\\\"\n  ],\n  \"b\": {},\n  \"c\": 2.5\n}\n";

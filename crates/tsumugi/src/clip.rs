@@ -32,10 +32,13 @@ fn write_png(path: &Path, width: u32, height: u32, rgba: Vec<u8>) -> Result<(), 
 
 /// Files' sizes, for the chips (a thread's work).
 pub fn sizes(files: Vec<PathBuf>) -> Vec<(PathBuf, u64)> {
-    files.into_iter().map(|f| {
-        let n = std::fs::metadata(&f).map(|m| m.len()).unwrap_or(0);
-        (f, n)
-    }).collect()
+    files
+        .into_iter()
+        .map(|f| {
+            let n = std::fs::metadata(&f).map(|m| m.len()).unwrap_or(0);
+            (f, n)
+        })
+        .collect()
 }
 
 #[cfg(test)]

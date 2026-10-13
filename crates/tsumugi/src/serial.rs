@@ -7,9 +7,10 @@
 use std::io::{Read, Write};
 use std::process::ExitCode;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, mpsc};
+use std::sync::{mpsc, Arc};
 
-pub const USAGE: &str = "tsumugi serial [--hold] PORT[@BAUD[,FRAME]]  a serial port (COM3, ttyUSB0; 115200 and 8N1 unless said); Ctrl+] then q leaves";
+pub const USAGE: &str =
+    "tsumugi serial [--hold] PORT[@BAUD[,FRAME]]  a serial port (COM3, ttyUSB0; 115200 and 8N1 unless said); Ctrl+] then q leaves";
 
 /// The key that starts an escape: `Ctrl+]`, as telnet's.
 const ESCAPE: u8 = 0x1d;
@@ -82,7 +83,11 @@ pub fn parse(text: &str) -> Result<Spec, String> {
 /// so), `/dev/ttyUSB0` elsewhere; a path stays as it is.
 pub fn device(port: &str, windows: bool) -> String {
     if windows {
-        if port.starts_with(r"\\") { port.into() } else { format!(r"\\.\{port}") }
+        if port.starts_with(r"\\") {
+            port.into()
+        } else {
+            format!(r"\\.\{port}")
+        }
     } else if port.contains('/') {
         port.into()
     } else {
@@ -292,7 +297,9 @@ mod imp {
     use std::fs::{File, OpenOptions};
     use std::os::windows::fs::OpenOptionsExt;
     use std::os::windows::io::AsRawHandle;
-    use windows::Win32::Devices::Communication::{COMMTIMEOUTS, DCB, DCB_PARITY, DCB_STOP_BITS, GetCommState, SetCommState, SetCommTimeouts};
+    use windows::Win32::Devices::Communication::{
+        GetCommState, SetCommState, SetCommTimeouts, COMMTIMEOUTS, DCB, DCB_PARITY, DCB_STOP_BITS,
+    };
     use windows::Win32::Foundation::HANDLE;
 
     fn handle(f: &File) -> HANDLE {
@@ -322,7 +329,13 @@ mod imp {
             // What has come, at once; else wait a little and give up, so
             // the writes (which wait for the read on the same handle) get
             // through.
-            let t = COMMTIMEOUTS { ReadIntervalTimeout: u32::MAX, ReadTotalTimeoutMultiplier: u32::MAX, ReadTotalTimeoutConstant: 50, WriteTotalTimeoutMultiplier: 0, WriteTotalTimeoutConstant: 0 };
+            let t = COMMTIMEOUTS {
+                ReadIntervalTimeout: u32::MAX,
+                ReadTotalTimeoutMultiplier: u32::MAX,
+                ReadTotalTimeoutConstant: 50,
+                WriteTotalTimeoutMultiplier: 0,
+                WriteTotalTimeoutConstant: 0,
+            };
             SetCommTimeouts(h, &t)?;
         }
         Ok(port)
@@ -331,9 +344,9 @@ mod imp {
     /// `HKLM\HARDWARE\DEVICEMAP\SERIALCOMM`: the ports there are now, each
     /// value's data a name (`COM3`).
     pub fn ports() -> Vec<String> {
+        use windows::core::{w, PWSTR};
         use windows::Win32::Foundation::ERROR_SUCCESS;
-        use windows::Win32::System::Registry::{HKEY, HKEY_LOCAL_MACHINE, KEY_READ, REG_SZ, RegCloseKey, RegEnumValueW, RegOpenKeyExW};
-        use windows::core::{PWSTR, w};
+        use windows::Win32::System::Registry::{RegCloseKey, RegEnumValueW, RegOpenKeyExW, HKEY, HKEY_LOCAL_MACHINE, KEY_READ, REG_SZ};
         let mut out = Vec::new();
         let mut key = HKEY::default();
         // SAFETY: the key is closed below; the buffers are ours, their
@@ -348,7 +361,16 @@ mod imp {
                 let mut data = [0u16; 128];
                 let mut data_len = std::mem::size_of_val(&data) as u32;
                 let mut kind = 0u32;
-                let r = RegEnumValueW(key, i, Some(PWSTR(name.as_mut_ptr())), &mut name_len, None, Some(&mut kind), Some(data.as_mut_ptr().cast()), Some(&mut data_len));
+                let r = RegEnumValueW(
+                    key,
+                    i,
+                    Some(PWSTR(name.as_mut_ptr())),
+                    &mut name_len,
+                    None,
+                    Some(&mut kind),
+                    Some(data.as_mut_ptr().cast()),
+                    Some(&mut data_len),
+                );
                 if r != ERROR_SUCCESS {
                     break;
                 }
@@ -375,7 +397,11 @@ mod imp {
     use std::os::unix::fs::OpenOptionsExt;
 
     fn check(r: libc::c_int) -> std::io::Result<()> {
-        if r == -1 { Err(std::io::Error::last_os_error()) } else { Ok(()) }
+        if r == -1 {
+            Err(std::io::Error::last_os_error())
+        } else {
+            Ok(())
+        }
     }
 
     #[cfg(any(target_os = "linux", target_os = "android"))]
@@ -425,7 +451,11 @@ mod imp {
     pub fn open(spec: &Spec) -> std::io::Result<File> {
         let speed = speed(spec.baud).ok_or_else(|| std::io::Error::other(format!("{} is not a speed this system knows", spec.baud)))?;
         // Not as our terminal; and not waiting for the modem's carrier.
-        let port = OpenOptions::new().read(true).write(true).custom_flags(libc::O_NOCTTY | libc::O_NONBLOCK).open(super::device(&spec.port, false))?;
+        let port = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .custom_flags(libc::O_NOCTTY | libc::O_NONBLOCK)
+            .open(super::device(&spec.port, false))?;
         let fd = port.as_raw_fd();
         // SAFETY: the descriptor is the open port's; the termios is ours.
         unsafe {

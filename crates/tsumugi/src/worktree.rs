@@ -54,11 +54,14 @@ pub fn add(folder: &Path, branch: &str) -> Result<PathBuf, String> {
 
 /// [`add`] without the list.
 fn make(folder: &Path, branch: &str) -> Result<PathBuf, String> {
-    let root = PathBuf::from(git(folder, &["rev-parse", "--show-toplevel"]).map_err(|_| format!("{} is not in a git repository", folder.display()))?);
+    let root = PathBuf::from(
+        git(folder, &["rev-parse", "--show-toplevel"]).map_err(|_| format!("{} is not in a git repository", folder.display()))?,
+    );
     let path = place(&root, branch, Path::exists);
     let target = path.to_string_lossy().into_owned();
     let exists = git(&root, &["rev-parse", "--verify", "--quiet", &format!("refs/heads/{branch}")]).is_ok();
-    let made = if exists { git(&root, &["worktree", "add", &target, branch]) } else { git(&root, &["worktree", "add", "-b", branch, &target]) };
+    let made =
+        if exists { git(&root, &["worktree", "add", &target, branch]) } else { git(&root, &["worktree", "add", "-b", branch, &target]) };
     made.map_err(|e| format!("git worktree add: {e}"))?;
     Ok(path)
 }
@@ -75,7 +78,9 @@ pub fn remove(path: &Path) -> Result<(), String> {
 fn unmake(path: &Path) -> Result<(), String> {
     let target = path.to_string_lossy().into_owned();
     // From the main repository: git will not remove the tree it runs in.
-    let common = PathBuf::from(git(path, &["rev-parse", "--path-format=absolute", "--git-common-dir"]).map_err(|e| format!("{}: {e}", path.display()))?);
+    let common = PathBuf::from(
+        git(path, &["rev-parse", "--path-format=absolute", "--git-common-dir"]).map_err(|e| format!("{}: {e}", path.display()))?,
+    );
     let main = common.parent().map_or_else(|| path.to_path_buf(), Path::to_path_buf);
     git(&main, &["worktree", "remove", &target]).map(drop).map_err(|e| format!("git worktree remove: {e}"))
 }

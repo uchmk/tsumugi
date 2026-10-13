@@ -140,7 +140,11 @@ impl InputBox {
             .iter()
             .map(|p| {
                 let s = p.display().to_string();
-                if s.contains(' ') { format!("\"{s}\"") } else { s }
+                if s.contains(' ') {
+                    format!("\"{s}\"")
+                } else {
+                    s
+                }
             })
             .collect();
         match (d.text.trim().is_empty(), paths.is_empty()) {
@@ -193,7 +197,16 @@ impl InputBox {
     /// by name) to send to as well. What to send, when it is sent.
     /// `queued`: prompts waiting to go to `to`, shown so they can be seen.
     #[allow(clippy::too_many_arguments)]
-    pub fn show(&mut self, ui: &mut egui::Ui, c: &Colors, to: SessionId, name: &str, tags: &[String], others: &[(SessionId, String)], queued: usize) -> Option<Send> {
+    pub fn show(
+        &mut self,
+        ui: &mut egui::Ui,
+        c: &Colors,
+        to: SessionId,
+        name: &str,
+        tags: &[String],
+        others: &[(SessionId, String)],
+        queued: usize,
+    ) -> Option<Send> {
         self.to_tags.retain(|t| tags.contains(t));
         self.to_also.retain(|s| *s != to && others.iter().any(|(o, _)| o == s));
         let id = egui::Id::new("input-box");
@@ -219,7 +232,11 @@ impl InputBox {
             let cmd = egui::Modifiers::COMMAND;
             // Up and Down with nothing held: egui's own match lets Shift
             // through, and Shift+↑ is the selection's, not the history's.
-            let bare = |i: &egui::InputState, key: egui::Key| !i.events.iter().any(|e| matches!(e, egui::Event::Key { key: k, pressed: true, modifiers, .. } if *k == key && !modifiers.is_none()));
+            let bare = |i: &egui::InputState, key: egui::Key| {
+                !i.events
+                    .iter()
+                    .any(|e| matches!(e, egui::Event::Key { key: k, pressed: true, modifiers, .. } if *k == key && !modifiers.is_none()))
+            };
             let (bare_up, bare_down) = (bare(i, egui::Key::ArrowUp), bare(i, egui::Key::ArrowDown));
             (
                 // Before the plain one, which would match it too.
@@ -236,7 +253,9 @@ impl InputBox {
         // never came, with no text pasted, asks the window for the image.
         if focused {
             let (pasted, v_down, v_up) = ui.input(|i| {
-                let key = |down: bool| i.events.iter().any(|e| matches!(e, egui::Event::Key { key: egui::Key::V, pressed, .. } if *pressed == down));
+                let key = |down: bool| {
+                    i.events.iter().any(|e| matches!(e, egui::Event::Key { key: egui::Key::V, pressed, .. } if *pressed == down))
+                };
                 (i.events.iter().any(|e| matches!(e, egui::Event::Paste(_))), key(true), key(false))
             });
             if v_down {
@@ -281,7 +300,11 @@ impl InputBox {
                     let mut gone = None;
                     for s in &self.to_also {
                         let n = others.iter().find(|(o, _)| o == s).map_or("", |(_, n)| n.as_str());
-                        if ui.selectable_label(true, RichText::new(format!("+ {n}")).size(12.0)).on_hover_text(tr("inputbox.also_hover")).clicked() {
+                        if ui
+                            .selectable_label(true, RichText::new(format!("+ {n}")).size(12.0))
+                            .on_hover_text(tr("inputbox.also_hover"))
+                            .clicked()
+                        {
                             gone = Some(*s);
                         }
                     }
@@ -377,7 +400,9 @@ impl InputBox {
                             ui.label(RichText::new(tr("inputbox.placeholders")).size(11.0).color(c.faint()));
                         } else {
                             ui.horizontal(|ui| {
-                                ui.add(egui::TextEdit::singleline(&mut self.naming).hint_text(tr("inputbox.name_hint")).desired_width(160.0));
+                                ui.add(
+                                    egui::TextEdit::singleline(&mut self.naming).hint_text(tr("inputbox.name_hint")).desired_width(160.0),
+                                );
                                 if ui.add_enabled(!self.naming.trim().is_empty(), egui::Button::new(tr("inputbox.save"))).clicked() {
                                     let name = std::mem::take(&mut self.naming).trim().to_owned();
                                     self.prompts.retain(|p| p.name != name);
@@ -394,7 +419,8 @@ impl InputBox {
                     }
                     menus_open |= menu.1.is_some();
                     if queued > 0 {
-                        ui.label(RichText::new(trf("inputbox.queued", &[&queued.to_string()])).size(11.5).color(c.wait)).on_hover_text(tr("inputbox.queued_hover"));
+                        ui.label(RichText::new(trf("inputbox.queued", &[&queued.to_string()])).size(11.5).color(c.wait))
+                            .on_hover_text(tr("inputbox.queued_hover"));
                     }
                     // The design's: every session keeps its draft.
                     ui.label(RichText::new(tr("inputbox.draft")).size(11.5).color(c.faint())).on_hover_text(tr("inputbox.draft_hover"));
@@ -422,10 +448,15 @@ impl InputBox {
                 for (k, f) in draft.files.iter().enumerate() {
                     let name = f.file_name().map_or_else(|| f.display().to_string(), |n| n.to_string_lossy().into_owned());
                     // An image's mark or a file's, and its size when known.
-                    let image = f.extension().and_then(|e| e.to_str()).is_some_and(|e| ["png", "jpg", "jpeg", "gif", "webp", "bmp"].contains(&e.to_ascii_lowercase().as_str()));
+                    let image = f
+                        .extension()
+                        .and_then(|e| e.to_str())
+                        .is_some_and(|e| ["png", "jpg", "jpeg", "gif", "webp", "bmp"].contains(&e.to_ascii_lowercase().as_str()));
                     let mark = if image { "▣" } else { "▤" };
                     let size = draft.sizes.get(f).map(|b| format!(" · {}", size_words(*b))).unwrap_or_default();
-                    let chip = egui::Button::new(RichText::new(format!("{mark} {name}{size}  ×")).size(12.0)).fill(c.panel).stroke(egui::Stroke::new(1.0, c.border));
+                    let chip = egui::Button::new(RichText::new(format!("{mark} {name}{size}  ×")).size(12.0))
+                        .fill(c.panel)
+                        .stroke(egui::Stroke::new(1.0, c.border));
                     if ui.add(chip).on_hover_text(format!("{}: click to take it off", f.display())).clicked() {
                         gone = Some(k);
                     }
@@ -436,11 +467,14 @@ impl InputBox {
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     let key = if cfg!(target_os = "macos") { "Cmd+Enter" } else { "Ctrl+Enter" };
                     let label = if self.later { tr("inputbox.queue") } else { tr("inputbox.send") };
-                    let button = egui::Button::new(RichText::new(format!("{label}   {key}")).color(c.on_accent()).strong()).fill(if self.later { c.wait } else { c.run }).min_size(egui::vec2(110.0, 28.0));
+                    let button = egui::Button::new(RichText::new(format!("{label}   {key}")).color(c.on_accent()).strong())
+                        .fill(if self.later { c.wait } else { c.run })
+                        .min_size(egui::vec2(110.0, 28.0));
                     let empty = draft.text.trim().is_empty() && draft.files.is_empty();
                     let clicked = ui.add_enabled(!empty, button).clicked();
                     let shift = if cfg!(target_os = "macos") { "Cmd+Shift+Enter" } else { "Ctrl+Shift+Enter" };
-                    ui.toggle_value(&mut self.later, RichText::new(tr("inputbox.when_done")).size(12.0)).on_hover_text(trf("inputbox.when_done_hover", &[shift]));
+                    ui.toggle_value(&mut self.later, RichText::new(tr("inputbox.when_done")).size(12.0))
+                        .on_hover_text(trf("inputbox.when_done_hover", &[shift]));
                     if (clicked || send || later_key) && !empty {
                         let text = Self::prompt(&draft);
                         let to = if !self.to_tags.is_empty() {

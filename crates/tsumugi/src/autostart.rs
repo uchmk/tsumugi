@@ -68,7 +68,11 @@ mod imp {
 
     pub fn set(on: bool, exe: &Path) -> Result<(), String> {
         let line = format!("\"{}\" server", exe.display());
-        let out = if on { reg(&["add", KEY, "/v", "tsumugi", "/t", "REG_SZ", "/d", &line, "/f"]) } else { reg(&["delete", KEY, "/v", "tsumugi", "/f"]) };
+        let out = if on {
+            reg(&["add", KEY, "/v", "tsumugi", "/t", "REG_SZ", "/d", &line, "/f"])
+        } else {
+            reg(&["delete", KEY, "/v", "tsumugi", "/f"])
+        };
         match out {
             Ok(o) if o.status.success() || !on => Ok(()),
             Ok(o) => Err(String::from_utf8_lossy(&o.stderr).trim().to_string()),

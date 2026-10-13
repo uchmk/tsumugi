@@ -137,7 +137,7 @@ impl Command {
     /// The key that does the same, shown beside it: the settings' key if
     /// they moved it.
     pub fn key(self) -> String {
-        use crate::keys::{Action, label};
+        use crate::keys::{label, Action};
         let action = match self {
             Command::NewSession => Action::NewTab,
             Command::SplitRight => Action::SplitRight,
@@ -165,7 +165,11 @@ impl Command {
         };
         // An action without a key shows none beside it.
         let key = label(action);
-        if key == "none" { String::new() } else { key }
+        if key == "none" {
+            String::new()
+        } else {
+            key
+        }
     }
 }
 

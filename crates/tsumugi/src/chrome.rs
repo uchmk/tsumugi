@@ -3,8 +3,8 @@
 //! and 8). Each draws and hands back what was asked, and changes nothing.
 
 use eframe::egui::{self, Color32, FontId, RichText};
-use tsumugi_mux::{Info, Notice, SessionId, State};
 use ito_pane::Palette;
+use tsumugi_mux::{Info, Notice, SessionId, State};
 
 use crate::i18n::{tr, trf};
 
@@ -88,7 +88,12 @@ pub fn wait_ring(painter: &egui::Painter, rect: egui::Rect, radius: f32, time: O
         let glow = if light { 0.18 } else { 0.28 };
         for (k, spread) in [1.5_f32, 3.5].into_iter().enumerate() {
             let alpha = glow * b / (k as f32 + 1.0);
-            painter.rect_stroke(rect.expand(spread - 1.0), radius + spread, egui::Stroke::new(2.0, gold.gamma_multiply(alpha)), egui::StrokeKind::Outside);
+            painter.rect_stroke(
+                rect.expand(spread - 1.0),
+                radius + spread,
+                egui::Stroke::new(2.0, gold.gamma_multiply(alpha)),
+                egui::StrokeKind::Outside,
+            );
         }
     }
 }
@@ -141,7 +146,11 @@ pub enum Look {
 }
 
 pub fn look(info: &Info) -> Look {
-    if crate::sort::is_shell(info) { Look::Shell } else { Look::State(info.state) }
+    if crate::sort::is_shell(info) {
+        Look::Shell
+    } else {
+        Look::State(info.state)
+    }
 }
 
 pub fn look_color(l: Look) -> Color32 {
@@ -189,7 +198,12 @@ pub fn selected_ring(painter: &egui::Painter, rect: egui::Rect, radius: f32, l: 
     let glow = if light { 0.16 } else { 0.24 };
     for (k, spread) in [1.5_f32, 3.5].into_iter().enumerate() {
         let alpha = glow / (k as f32 + 1.0);
-        painter.rect_stroke(rect.expand(spread - 1.0), radius + spread, egui::Stroke::new(2.0, color.gamma_multiply(alpha)), egui::StrokeKind::Outside);
+        painter.rect_stroke(
+            rect.expand(spread - 1.0),
+            radius + spread,
+            egui::Stroke::new(2.0, color.gamma_multiply(alpha)),
+            egui::StrokeKind::Outside,
+        );
     }
     painter.rect_filled(rect, radius, color.gamma_multiply(0.04));
 }
@@ -227,10 +241,12 @@ pub fn state_mark(painter: &egui::Painter, at: egui::Pos2, l: Look, time: Option
         }
         Look::State(State::Running) => {
             let start = time.map_or(0.0, |t| (t * std::f64::consts::TAU / 1.2) as f32);
-            let pts: Vec<egui::Pos2> = (0..=18).map(|k| {
-                let a = start + k as f32 / 18.0 * std::f32::consts::TAU * 0.72;
-                at + egui::vec2(a.cos(), a.sin()) * 4.5
-            }).collect();
+            let pts: Vec<egui::Pos2> = (0..=18)
+                .map(|k| {
+                    let a = start + k as f32 / 18.0 * std::f32::consts::TAU * 0.72;
+                    at + egui::vec2(a.cos(), a.sin()) * 4.5
+                })
+                .collect();
             painter.add(egui::Shape::line(pts, stroke));
         }
         Look::State(State::MaybeWaiting) => {
@@ -354,7 +370,12 @@ pub fn status_bar(
         ui.label(small(trf("status.up", &[&elapsed(up_ms)]), pal.fg_dim));
         ui.add_space(14.0);
         // Shells are none of these: they are not running anything of note.
-        let count = |s: State| sessions.iter().filter(|i| !crate::sort::is_shell(i) && (i.state == s || (s == State::Waiting && i.state == State::MaybeWaiting))).count();
+        let count = |s: State| {
+            sessions
+                .iter()
+                .filter(|i| !crate::sort::is_shell(i) && (i.state == s || (s == State::Waiting && i.state == State::MaybeWaiting)))
+                .count()
+        };
         for state in [State::Waiting, State::Running, State::Error] {
             let n = count(state);
             if n == 0 {
@@ -400,7 +421,8 @@ pub fn status_bar(
                 // screen's language, as the other apps' clocks.
                 let now = chrono::Local::now().naive_local();
                 let lang = crate::i18n::current_language();
-                ui.label(RichText::new(clock.text(&now, lang)).font(FontId::monospace(11.5)).color(crate::theme::colors().strong())).on_hover_text(ito_common::Clock::full(&now, lang));
+                ui.label(RichText::new(clock.text(&now, lang)).font(FontId::monospace(11.5)).color(crate::theme::colors().strong()))
+                    .on_hover_text(ito_common::Clock::full(&now, lang));
                 ui.add_space(12.0);
             }
             // The pane's character set; a menu of others off Windows, where
@@ -428,10 +450,14 @@ pub fn status_bar(
                 use crate::price::dollars;
                 let money = |c: f64| if c > 0.0 { format!(" ≈{}", dollars(c)) } else { String::new() };
                 let said = match conversation {
-                    Some(c) => trf("status.tokens", &[&short(c.total()), &money(cost.0.unwrap_or(0.0)), &short(today.total()), &money(cost.1)]),
+                    Some(c) => {
+                        trf("status.tokens", &[&short(c.total()), &money(cost.0.unwrap_or(0.0)), &short(today.total()), &money(cost.1)])
+                    }
                     None => trf("status.tokens_today", &[&short(today.total()), &money(cost.1)]),
                 };
-                let detail = |t: &crate::usage::Tokens| trf("status.tokens_detail", &[&short(t.input), &short(t.cache_write), &short(t.cache_read), &short(t.output)]);
+                let detail = |t: &crate::usage::Tokens| {
+                    trf("status.tokens_detail", &[&short(t.input), &short(t.cache_write), &short(t.cache_read), &short(t.output)])
+                };
                 let mut hover = trf("status.tokens_hover_today", &[&detail(today)]);
                 if let Some(c) = conversation {
                     hover = trf("status.tokens_hover_conversation", &[&detail(c), &hover]);
@@ -442,16 +468,19 @@ pub fn status_bar(
                 use crate::usage::short;
                 use chrono::TimeZone;
                 let end = chrono::Local.timestamp_millis_opt(b.end_ms).single().map(|t| t.format("%H:%M").to_string()).unwrap_or_default();
-                let start = chrono::Local.timestamp_millis_opt(b.start_ms).single().map(|t| t.format("%H:%M").to_string()).unwrap_or_default();
+                let start =
+                    chrono::Local.timestamp_millis_opt(b.start_ms).single().map(|t| t.format("%H:%M").to_string()).unwrap_or_default();
                 let left = (b.end_ms - now_ms() as i64).max(0) as u64;
                 ui.add_space(12.0);
                 let money = if b.cost > 0.0 { format!(" ≈{}", crate::price::dollars(b.cost)) } else { String::new() };
                 let tokens = short(b.tokens.total());
-                ui.label(small(trf("status.block", &[&tokens, &money, &end]), pal.fg_dim)).on_hover_text(trf("status.block_hover", &[&start, &end, &elapsed(left), &tokens]));
+                ui.label(small(trf("status.block", &[&tokens, &money, &end]), pal.fg_dim))
+                    .on_hover_text(trf("status.block_hover", &[&start, &end, &elapsed(left), &tokens]));
             }
             if let (Some(i), Some((cols, lines))) = (focus, size) {
                 ui.add_space(12.0);
-                ui.label(small(format!("{} · {cols}×{lines}", crate::program_name(&i.command)), pal.fg_dim)).on_hover_text(tr("status.program_hover"));
+                ui.label(small(format!("{} · {cols}×{lines}", crate::program_name(&i.command)), pal.fg_dim))
+                    .on_hover_text(tr("status.program_hover"));
             }
             ui.add_space(10.0);
             divider(ui);
@@ -596,7 +625,8 @@ pub fn bell(ui: &mut egui::Ui, rect: egui::Rect, pal: &Palette, notices: &[Notic
 }
 
 /// `[tags.colors]`: tags given a colour of their own.
-static TAG_COLORS: std::sync::RwLock<std::collections::BTreeMap<String, Color32>> = std::sync::RwLock::new(std::collections::BTreeMap::new());
+static TAG_COLORS: std::sync::RwLock<std::collections::BTreeMap<String, Color32>> =
+    std::sync::RwLock::new(std::collections::BTreeMap::new());
 
 /// Take `[tags.colors]` (`"#rrggbb"` each; others are left out).
 pub fn set_tag_colors(map: &std::collections::BTreeMap<String, String>) {
@@ -683,7 +713,15 @@ pub fn tags_that_fit(widths: &[f32], shown: usize, room: f32, more_w: impl Fn(us
 /// session with the keys on the right, `[tags] shown` and `+N`. When the
 /// window is narrow the tags give way to `+N` first, then the box shrinks
 /// to its magnifier (1o); the box never moves for them.
-pub fn top_band(ui: &mut egui::Ui, pal: &Palette, tags: &[String], shown: usize, muted_tags: &[String], notices: &[Notice], frame: &BandFrame) -> BandOut {
+pub fn top_band(
+    ui: &mut egui::Ui,
+    pal: &Palette,
+    tags: &[String],
+    shown: usize,
+    muted_tags: &[String],
+    notices: &[Notice],
+    frame: &BandFrame,
+) -> BandOut {
     let whole = ui.max_rect();
     let p = ui.painter().clone();
     p.line_segment([whole.left_bottom(), whole.right_bottom()], egui::Stroke::new(1.0, crate::theme::colors().border));
@@ -702,7 +740,12 @@ pub fn top_band(ui: &mut egui::Ui, pal: &Palette, tags: &[String], shown: usize,
     }
     let buttons = if frame.own && !cfg!(target_os = "macos") { 3.0 * CAPTION_W } else { 0.0 };
     if buttons > 0.0 {
-        if let Some(op) = caption_buttons(ui, egui::Rect::from_min_max(egui::pos2(whole.right() - buttons, whole.top()), whole.right_bottom()), pal, frame.maximized) {
+        if let Some(op) = caption_buttons(
+            ui,
+            egui::Rect::from_min_max(egui::pos2(whole.right() - buttons, whole.top()), whole.right_bottom()),
+            pal,
+            frame.maximized,
+        ) {
             out.window = Some(op);
         }
     }
@@ -712,10 +755,12 @@ pub fn top_band(ui: &mut egui::Ui, pal: &Palette, tags: &[String], shown: usize,
     // The mark: two threads, cyan and gold (the design's 10 A).
     let o = egui::pos2(rect.left() + 16.0, rect.center().y);
     let wave = |amp: f32, color: Color32| {
-        let pts: Vec<egui::Pos2> = (0..=16).map(|k| {
-            let x = k as f32;
-            o + egui::vec2(x, -amp * ((x / 16.0) * std::f32::consts::TAU).cos())
-        }).collect();
+        let pts: Vec<egui::Pos2> = (0..=16)
+            .map(|k| {
+                let x = k as f32;
+                o + egui::vec2(x, -amp * ((x / 16.0) * std::f32::consts::TAU).cos())
+            })
+            .collect();
         p.add(egui::Shape::line(pts, egui::Stroke::new(1.6, color)));
     };
     wave(4.0, cyan());
@@ -725,7 +770,8 @@ pub fn top_band(ui: &mut egui::Ui, pal: &Palette, tags: &[String], shown: usize,
     p.galley(egui::pos2(o.x + 24.0, rect.center().y - name.size().y / 2.0), name, Color32::WHITE);
     if frame.settings {
         p.text(whole.center(), egui::Align2::CENTER_CENTER, tr("title.settings"), FontId::proportional(13.0), pal.fg_dim);
-        let r = egui::Rect::from_min_max(egui::pos2(rect.right() - 44.0, whole.top() + 4.0), egui::pos2(rect.right(), whole.bottom() - 4.0));
+        let r =
+            egui::Rect::from_min_max(egui::pos2(rect.right() - 44.0, whole.top() + 4.0), egui::pos2(rect.right(), whole.bottom() - 4.0));
         let resp = ui.interact(r, ui.id().with("close-settings"), egui::Sense::CLICK).on_hover_text(tr("title.close_settings"));
         if resp.hovered() {
             p.rect_filled(r, 4.0, crate::theme::colors().hover());
@@ -759,7 +805,9 @@ pub fn top_band(ui: &mut egui::Ui, pal: &Palette, tags: &[String], shown: usize,
         let galley = p.layout_no_wrap(tr("title.old_server").to_owned(), FontId::proportional(12.0), Color32::WHITE);
         let chip = egui::Rect::from_min_size(egui::pos2(left_edge - 6.0, rect.center().y - 9.0), egui::vec2(galley.size().x + 16.0, 18.0));
         if chip.right() + 12.0 < rect.right() {
-            let resp = ui.interact(chip, ui.id().with("old-server"), egui::Sense::CLICK).on_hover_text(trf("title.old_server_hint", &[build, env!("CARGO_PKG_VERSION")]));
+            let resp = ui
+                .interact(chip, ui.id().with("old-server"), egui::Sense::CLICK)
+                .on_hover_text(trf("title.old_server_hint", &[build, env!("CARGO_PKG_VERSION")]));
             let fill = if resp.hovered() { Color32::from_rgb(240, 64, 64) } else { Color32::from_rgb(214, 40, 40) };
             p.rect_filled(chip, 4.0, fill);
             p.galley(egui::pos2(chip.left() + 8.0, chip.center().y - galley.size().y / 2.0), galley, Color32::WHITE);
@@ -781,7 +829,10 @@ pub fn top_band(ui: &mut egui::Ui, pal: &Palette, tags: &[String], shown: usize,
         let chip = egui::Rect::from_min_size(egui::pos2(left_edge - 6.0, rect.center().y - 8.0), egui::vec2(galley.size().x + 12.0, 16.0));
         if chip.right() + 12.0 < rect.right() {
             let hint = trf(if log.paused { "title.log_paused" } else { "title.log" }, &[&log.path]);
-            let resp = ui.interact(chip, ui.id().with("work-log"), egui::Sense::CLICK).on_hover_cursor(egui::CursorIcon::PointingHand).on_hover_text(hint);
+            let resp = ui
+                .interact(chip, ui.id().with("work-log"), egui::Sense::CLICK)
+                .on_hover_cursor(egui::CursorIcon::PointingHand)
+                .on_hover_text(hint);
             p.rect_filled(chip, 4.0, if resp.hovered() { LOG_HOVER } else { LOG_FILL });
             p.galley(egui::pos2(chip.left() + 6.0, chip.center().y - galley.size().y / 2.0), galley, ink);
             out.open_log = resp.clicked();
@@ -886,7 +937,11 @@ const CAPTION_W: f32 = 46.0;
 /// as Windows draws them: thin lines, close red under the pointer.
 fn caption_buttons(ui: &mut egui::Ui, rect: egui::Rect, pal: &Palette, maximized: bool) -> Option<WindowOp> {
     let mut out = None;
-    let ops = [(WindowOp::Minimize, tr("title.minimize")), (WindowOp::ToggleMax, if maximized { tr("title.restore") } else { tr("title.maximize") }), (WindowOp::Close, tr("title.close"))];
+    let ops = [
+        (WindowOp::Minimize, tr("title.minimize")),
+        (WindowOp::ToggleMax, if maximized { tr("title.restore") } else { tr("title.maximize") }),
+        (WindowOp::Close, tr("title.close")),
+    ];
     for (k, (op, words)) in ops.into_iter().enumerate() {
         let r = egui::Rect::from_min_size(rect.min + egui::vec2(k as f32 * CAPTION_W, 0.0), egui::vec2(CAPTION_W, rect.height()));
         let resp = ui.interact(r, ui.id().with(("caption", k)), egui::Sense::CLICK).on_hover_text(words);
@@ -905,7 +960,12 @@ fn caption_buttons(ui: &mut egui::Ui, rect: egui::Rect, pal: &Palette, maximized
             }
             WindowOp::ToggleMax if maximized => {
                 // Two windows, one behind the other.
-                p.rect_stroke(egui::Rect::from_center_size(c + egui::vec2(-1.0, 1.0), egui::vec2(8.0, 8.0)), 1.0, stroke, egui::StrokeKind::Inside);
+                p.rect_stroke(
+                    egui::Rect::from_center_size(c + egui::vec2(-1.0, 1.0), egui::vec2(8.0, 8.0)),
+                    1.0,
+                    stroke,
+                    egui::StrokeKind::Inside,
+                );
                 p.line_segment([c + egui::vec2(-3.0, -5.0), c + egui::vec2(5.0, -5.0)], stroke);
                 p.line_segment([c + egui::vec2(5.0, -5.0), c + egui::vec2(5.0, 3.0)], stroke);
             }
@@ -976,7 +1036,12 @@ fn edge_at(r: egui::Rect, p: egui::Pos2) -> Option<egui::ResizeDirection> {
 /// The command palette opened (`Ctrl+Shift+P`): a field, and the entries
 /// that match it below, the arrows moving among them, `Enter` picking, `Esc`
 /// or a click elsewhere closing.
-pub fn search_box(ctx: &egui::Context, pal: &Palette, view: &mut crate::palette::View, entries: &[crate::palette::Entry]) -> Option<crate::palette::Answer> {
+pub fn search_box(
+    ctx: &egui::Context,
+    pal: &Palette,
+    view: &mut crate::palette::View,
+    entries: &[crate::palette::Entry],
+) -> Option<crate::palette::Answer> {
     use crate::palette::Answer;
     let found: Vec<crate::palette::Entry> = crate::palette::search(&view.query, entries).into_iter().take(12).collect();
     let (up, down, enter, esc) = ctx.input_mut(|i| {
@@ -1002,53 +1067,64 @@ pub fn search_box(ctx: &egui::Context, pal: &Palette, view: &mut crate::palette:
         return found.get(view.selected).map(|e| Answer::Pick(e.pick.clone()));
     }
     let mut answer = None;
-    let area = egui::Area::new(egui::Id::new("search-box")).order(egui::Order::Foreground).anchor(egui::Align2::CENTER_TOP, egui::vec2(0.0, 46.0)).show(ctx, |ui| {
-        egui::Frame::NONE
-            .fill(crate::theme::colors().raised())
-            .stroke(egui::Stroke::new(1.0, crate::theme::colors().border_strong()))
-            .corner_radius(8.0)
-            .inner_margin(egui::Margin::same(6))
-            .show(ui, |ui| {
-                ui.set_width(520.0);
-                let before = view.query.clone();
-                let field = egui::TextEdit::singleline(&mut view.query)
-                    .id(egui::Id::new("search-field"))
-                    .hint_text(trf("title.search_hint", &[&crate::keys::label(crate::keys::Action::Overview)]))
-                    .desired_width(f32::INFINITY);
-                crate::keep_focus(&ui.add(field));
-                if view.query != before {
-                    view.selected = 0;
-                }
-                ui.add_space(4.0);
-                if found.is_empty() {
-                    ui.label(RichText::new(tr("title.nothing_matches")).color(pal.fg_dim).size(12.0));
-                }
-                for (k, e) in found.iter().enumerate() {
-                    let (rect, resp) = ui.allocate_exact_size(egui::vec2(ui.available_width(), 26.0), egui::Sense::click());
-                    if resp.hovered() && ui.input(|i| i.pointer.delta() != egui::Vec2::ZERO) {
-                        view.selected = k;
+    let area = egui::Area::new(egui::Id::new("search-box"))
+        .order(egui::Order::Foreground)
+        .anchor(egui::Align2::CENTER_TOP, egui::vec2(0.0, 46.0))
+        .show(ctx, |ui| {
+            egui::Frame::NONE
+                .fill(crate::theme::colors().raised())
+                .stroke(egui::Stroke::new(1.0, crate::theme::colors().border_strong()))
+                .corner_radius(8.0)
+                .inner_margin(egui::Margin::same(6))
+                .show(ui, |ui| {
+                    ui.set_width(520.0);
+                    let before = view.query.clone();
+                    let field = egui::TextEdit::singleline(&mut view.query)
+                        .id(egui::Id::new("search-field"))
+                        .hint_text(trf("title.search_hint", &[&crate::keys::label(crate::keys::Action::Overview)]))
+                        .desired_width(f32::INFINITY);
+                    crate::keep_focus(&ui.add(field));
+                    if view.query != before {
+                        view.selected = 0;
                     }
-                    let p = ui.painter();
-                    if k == view.selected {
-                        p.rect_filled(rect, 5.0, crate::theme::colors().chosen());
+                    ui.add_space(4.0);
+                    if found.is_empty() {
+                        ui.label(RichText::new(tr("title.nothing_matches")).color(pal.fg_dim).size(12.0));
                     }
-                    // The detail at most 40% of the line, the title the rest;
-                    // both cut short, so nothing runs out of the box.
-                    let mut job = egui::text::LayoutJob::simple_singleline(e.detail.clone(), FontId::proportional(11.5), pal.fg_dim);
-                    job.wrap = egui::text::TextWrapping::truncate_at_width(rect.width() * 0.4);
-                    let detail = ui.fonts_mut(|f| f.layout_job(job));
-                    let mut job = egui::text::LayoutJob::simple_singleline(e.title.clone(), FontId::proportional(12.5), crate::theme::colors().strong());
-                    job.wrap = egui::text::TextWrapping::truncate_at_width((rect.width() - detail.size().x - 28.0).max(20.0));
-                    let title = ui.fonts_mut(|f| f.layout_job(job));
-                    let p = ui.painter();
-                    p.galley(egui::pos2(rect.left() + 8.0, rect.center().y - title.size().y / 2.0), title, Color32::WHITE);
-                    p.galley(egui::pos2(rect.right() - 8.0 - detail.size().x, rect.center().y - detail.size().y / 2.0), detail, pal.fg_dim);
-                    if resp.clicked() {
-                        answer = Some(Answer::Pick(e.pick.clone()));
+                    for (k, e) in found.iter().enumerate() {
+                        let (rect, resp) = ui.allocate_exact_size(egui::vec2(ui.available_width(), 26.0), egui::Sense::click());
+                        if resp.hovered() && ui.input(|i| i.pointer.delta() != egui::Vec2::ZERO) {
+                            view.selected = k;
+                        }
+                        let p = ui.painter();
+                        if k == view.selected {
+                            p.rect_filled(rect, 5.0, crate::theme::colors().chosen());
+                        }
+                        // The detail at most 40% of the line, the title the rest;
+                        // both cut short, so nothing runs out of the box.
+                        let mut job = egui::text::LayoutJob::simple_singleline(e.detail.clone(), FontId::proportional(11.5), pal.fg_dim);
+                        job.wrap = egui::text::TextWrapping::truncate_at_width(rect.width() * 0.4);
+                        let detail = ui.fonts_mut(|f| f.layout_job(job));
+                        let mut job = egui::text::LayoutJob::simple_singleline(
+                            e.title.clone(),
+                            FontId::proportional(12.5),
+                            crate::theme::colors().strong(),
+                        );
+                        job.wrap = egui::text::TextWrapping::truncate_at_width((rect.width() - detail.size().x - 28.0).max(20.0));
+                        let title = ui.fonts_mut(|f| f.layout_job(job));
+                        let p = ui.painter();
+                        p.galley(egui::pos2(rect.left() + 8.0, rect.center().y - title.size().y / 2.0), title, Color32::WHITE);
+                        p.galley(
+                            egui::pos2(rect.right() - 8.0 - detail.size().x, rect.center().y - detail.size().y / 2.0),
+                            detail,
+                            pal.fg_dim,
+                        );
+                        if resp.clicked() {
+                            answer = Some(Answer::Pick(e.pick.clone()));
+                        }
                     }
-                }
-            });
-    });
+                });
+        });
     if answer.is_none() && area.response.clicked_elsewhere() && !view.opening {
         answer = Some(Answer::Close);
     }
@@ -1231,55 +1307,59 @@ pub fn bell_list(ctx: &egui::Context, pal: &Palette, at: egui::Pos2, notices: &[
                 // The rows' own height, not what an Area leaves of its last
                 // frame's size: a list that gained an entry stayed at 1.5 rows.
                 let rows = notices.len() as f32 * (46.0 + ui.spacing().item_spacing.y);
-                egui::ScrollArea::vertical().max_height(rows.min(420.0)).min_scrolled_height(rows.min(420.0)).auto_shrink([false, false]).show(ui, |ui| {
-                    for (row, n) in notices.iter().rev().enumerate() {
-                        let text_color = if n.read { pal.fg_dim } else { pal.fg };
-                        let (rect, resp) = ui.allocate_exact_size(egui::vec2(ui.available_width(), 46.0), egui::Sense::click());
-                        let p = ui.painter_at(rect);
-                        let keyed = sel == Some(row);
-                        if keyed && moved {
-                            resp.scroll_to_me(None);
+                egui::ScrollArea::vertical()
+                    .max_height(rows.min(420.0))
+                    .min_scrolled_height(rows.min(420.0))
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| {
+                        for (row, n) in notices.iter().rev().enumerate() {
+                            let text_color = if n.read { pal.fg_dim } else { pal.fg };
+                            let (rect, resp) = ui.allocate_exact_size(egui::vec2(ui.available_width(), 46.0), egui::Sense::click());
+                            let p = ui.painter_at(rect);
+                            let keyed = sel == Some(row);
+                            if keyed && moved {
+                                resp.scroll_to_me(None);
+                            }
+                            if resp.hovered() || keyed {
+                                p.rect_filled(rect, 6.0, pal.selection.gamma_multiply(0.6));
+                            }
+                            let dot = rect.left_top() + egui::vec2(10.0, 14.0);
+                            if n.read {
+                                p.circle_stroke(dot, 4.0, egui::Stroke::new(1.2, state_color(n.state)));
+                            } else {
+                                p.circle_filled(dot, 4.0, state_color(n.state));
+                            }
+                            let word = match n.state {
+                                _ if n.trigger => "trigger",
+                                State::Waiting => "waiting",
+                                State::Error => "error",
+                                _ => "finished",
+                            };
+                            // The time first, then the word, and the title cut
+                            // short in what is left: a long one ran over both.
+                            let line = |text: String, size: f32, color: Color32, width: f32| {
+                                let mut job = egui::text::LayoutJob::simple_singleline(text, FontId::proportional(size), color);
+                                job.wrap = egui::text::TextWrapping::truncate_at_width(width.max(10.0));
+                                ui.fonts_mut(|f| f.layout_job(job))
+                            };
+                            let ago = line(format!("{} ago", elapsed(now.saturating_sub(n.at_ms))), 11.0, pal.fg_dim, rect.width());
+                            let room = rect.width() - 22.0 - 6.0 - ago.size().x - 10.0;
+                            let word = line(format!(" · {word}"), 13.0, text_color, room / 2.0);
+                            let title = line(crate::sort::without_spinner(&n.title).to_string(), 13.0, text_color, room - word.size().x);
+                            let head = rect.left_top() + egui::vec2(22.0, 6.0);
+                            let after = head + egui::vec2(title.size().x, 0.0);
+                            p.galley(egui::pos2(rect.right() - 6.0 - ago.size().x, rect.top() + 6.0), ago, pal.fg_dim);
+                            p.galley(head, title, text_color);
+                            p.galley(after, word, text_color);
+                            if !n.note.is_empty() {
+                                let note = line(n.note.clone(), 11.5, pal.fg_dim, rect.width() - 22.0 - 6.0);
+                                p.galley(rect.left_top() + egui::vec2(22.0, 25.0), note, pal.fg_dim);
+                            }
+                            if resp.clicked() {
+                                action = Some(BellAction::Open(n.session, n.id));
+                            }
                         }
-                        if resp.hovered() || keyed {
-                            p.rect_filled(rect, 6.0, pal.selection.gamma_multiply(0.6));
-                        }
-                        let dot = rect.left_top() + egui::vec2(10.0, 14.0);
-                        if n.read {
-                            p.circle_stroke(dot, 4.0, egui::Stroke::new(1.2, state_color(n.state)));
-                        } else {
-                            p.circle_filled(dot, 4.0, state_color(n.state));
-                        }
-                        let word = match n.state {
-                            _ if n.trigger => "trigger",
-                            State::Waiting => "waiting",
-                            State::Error => "error",
-                            _ => "finished",
-                        };
-                        // The time first, then the word, and the title cut
-                        // short in what is left: a long one ran over both.
-                        let line = |text: String, size: f32, color: Color32, width: f32| {
-                            let mut job = egui::text::LayoutJob::simple_singleline(text, FontId::proportional(size), color);
-                            job.wrap = egui::text::TextWrapping::truncate_at_width(width.max(10.0));
-                            ui.fonts_mut(|f| f.layout_job(job))
-                        };
-                        let ago = line(format!("{} ago", elapsed(now.saturating_sub(n.at_ms))), 11.0, pal.fg_dim, rect.width());
-                        let room = rect.width() - 22.0 - 6.0 - ago.size().x - 10.0;
-                        let word = line(format!(" · {word}"), 13.0, text_color, room / 2.0);
-                        let title = line(crate::sort::without_spinner(&n.title).to_string(), 13.0, text_color, room - word.size().x);
-                        let head = rect.left_top() + egui::vec2(22.0, 6.0);
-                        let after = head + egui::vec2(title.size().x, 0.0);
-                        p.galley(egui::pos2(rect.right() - 6.0 - ago.size().x, rect.top() + 6.0), ago, pal.fg_dim);
-                        p.galley(head, title, text_color);
-                        p.galley(after, word, text_color);
-                        if !n.note.is_empty() {
-                            let note = line(n.note.clone(), 11.5, pal.fg_dim, rect.width() - 22.0 - 6.0);
-                            p.galley(rect.left_top() + egui::vec2(22.0, 25.0), note, pal.fg_dim);
-                        }
-                        if resp.clicked() {
-                            action = Some(BellAction::Open(n.session, n.id));
-                        }
-                    }
-                });
+                    });
             });
     });
     if resp.response.clicked_elsewhere() && action.is_none() {
@@ -1334,80 +1414,102 @@ pub fn restore_screen(ui: &mut egui::Ui, pal: &Palette, view: &mut RestoreView) 
         State::Running => 2,
         State::Done => 3,
     });
-    let when = chrono::DateTime::from_timestamp_millis(view.saved.at_ms as i64).map(|t| when_words(t.with_timezone(&chrono::Local).naive_local(), chrono::Local::now().naive_local())).unwrap_or_default();
-    let mut child = ui.new_child(egui::UiBuilder::new().max_rect(egui::Rect::from_center_size(rect.center(), egui::vec2(width, rect.height().min(560.0)))));
-    egui::Frame::NONE.fill(crate::theme::colors().panel).corner_radius(12.0).stroke(egui::Stroke::new(1.0, crate::theme::colors().border_strong())).inner_margin(20.0).show(&mut child, |ui| {
-        ui.label(RichText::new(tr("restore.title")).size(18.0).strong().color(pal.fg));
-        let lead = if panes.len() == 1 { trf("restore.lead_one", &[&when]) } else { trf("restore.lead", &[&panes.len().to_string(), &when]) };
-        ui.label(RichText::new(lead).color(pal.fg_dim));
-        ui.add_space(10.0);
-        // The rows scroll, so Restore and Start fresh stay in sight however
-        // many there were.
-        if view.ticked.len() > 1 {
-            let count = view.ticked.iter().filter(|(_, on)| *on).count();
-            let mut all = count == view.ticked.len();
-            let some = count > 0 && !all;
-            let ticked = &mut view.ticked;
-            egui::Frame::NONE.inner_margin(egui::Margin::symmetric(8, 2)).show(ui, |ui| {
-                let label = RichText::new(tr("restore.select_all")).size(12.5).color(pal.fg_dim);
-                if ui.add(egui::Checkbox::new(&mut all, label).indeterminate(some)).clicked() {
-                    tick_all(ticked);
-                }
-            });
-        }
-        let room = (ui.available_height() - 60.0).max(80.0);
-        egui::ScrollArea::vertical().id_salt("restore-rows").max_height(room).auto_shrink([false, true]).show(ui, |ui| {
-            for &i in &order {
-                let p = panes[i];
-                let Some(slot) = view.ticked.iter_mut().find(|(id, _)| *id == p.id) else { continue };
-                let waiting = matches!(p.state, State::Waiting | State::MaybeWaiting);
-                let frame = if waiting { egui::Frame::NONE.fill(crate::theme::colors().wait_bg()).stroke(egui::Stroke::new(1.0, gold().gamma_multiply(0.6))) } else { egui::Frame::NONE };
-                frame.corner_radius(7.0).inner_margin(egui::Margin::symmetric(8, 6)).show(ui, |ui| {
-                    ui.horizontal(|ui| {
-                        ui.checkbox(&mut slot.1, "");
-                        let color = if p.claude.is_some() || p.state != State::Done { state_color(p.state) } else { grey() };
-                        ui.label(RichText::new("●").color(color));
-                        let command = p.shell.as_ref().map_or_else(ito_pane::default_program, |(c, _)| c.clone());
-                        let name = if p.title.is_empty() { crate::home_short(&p.cwd) } else { crate::sort::display_title(&p.title, &command) };
-                        // What it will do on the right first; the name gets the
-                        // room left and is cut short in it, never over it.
-                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            let what = match (&p.claude, p.state) {
-                                (Some(_), _) => tr("restore.resume").to_owned(),
-                                (None, State::Done) if !slot.1 => tr("restore.left_closed").to_owned(),
-                                (None, _) => trf("restore.new_shell", &[&crate::home_short(&p.cwd)]),
-                            };
-                            // At most under half the row, so the name always shows.
-                            let room = ui.available_width() * 0.45;
-                            ui.scope(|ui| {
-                                ui.set_max_width(room);
-                                ui.add(egui::Label::new(RichText::new(what).size(12.0).color(pal.fg_dim)).truncate());
-                            });
-                            ui.add_space(12.0);
-                            ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
-                                ui.add(egui::Label::new(RichText::new(name).color(if slot.1 { pal.fg } else { pal.fg_dim })).truncate());
+    let when = chrono::DateTime::from_timestamp_millis(view.saved.at_ms as i64)
+        .map(|t| when_words(t.with_timezone(&chrono::Local).naive_local(), chrono::Local::now().naive_local()))
+        .unwrap_or_default();
+    let mut child = ui.new_child(
+        egui::UiBuilder::new().max_rect(egui::Rect::from_center_size(rect.center(), egui::vec2(width, rect.height().min(560.0)))),
+    );
+    egui::Frame::NONE
+        .fill(crate::theme::colors().panel)
+        .corner_radius(12.0)
+        .stroke(egui::Stroke::new(1.0, crate::theme::colors().border_strong()))
+        .inner_margin(20.0)
+        .show(&mut child, |ui| {
+            ui.label(RichText::new(tr("restore.title")).size(18.0).strong().color(pal.fg));
+            let lead =
+                if panes.len() == 1 { trf("restore.lead_one", &[&when]) } else { trf("restore.lead", &[&panes.len().to_string(), &when]) };
+            ui.label(RichText::new(lead).color(pal.fg_dim));
+            ui.add_space(10.0);
+            // The rows scroll, so Restore and Start fresh stay in sight however
+            // many there were.
+            if view.ticked.len() > 1 {
+                let count = view.ticked.iter().filter(|(_, on)| *on).count();
+                let mut all = count == view.ticked.len();
+                let some = count > 0 && !all;
+                let ticked = &mut view.ticked;
+                egui::Frame::NONE.inner_margin(egui::Margin::symmetric(8, 2)).show(ui, |ui| {
+                    let label = RichText::new(tr("restore.select_all")).size(12.5).color(pal.fg_dim);
+                    if ui.add(egui::Checkbox::new(&mut all, label).indeterminate(some)).clicked() {
+                        tick_all(ticked);
+                    }
+                });
+            }
+            let room = (ui.available_height() - 60.0).max(80.0);
+            egui::ScrollArea::vertical().id_salt("restore-rows").max_height(room).auto_shrink([false, true]).show(ui, |ui| {
+                for &i in &order {
+                    let p = panes[i];
+                    let Some(slot) = view.ticked.iter_mut().find(|(id, _)| *id == p.id) else { continue };
+                    let waiting = matches!(p.state, State::Waiting | State::MaybeWaiting);
+                    let frame = if waiting {
+                        egui::Frame::NONE.fill(crate::theme::colors().wait_bg()).stroke(egui::Stroke::new(1.0, gold().gamma_multiply(0.6)))
+                    } else {
+                        egui::Frame::NONE
+                    };
+                    frame.corner_radius(7.0).inner_margin(egui::Margin::symmetric(8, 6)).show(ui, |ui| {
+                        ui.horizontal(|ui| {
+                            ui.checkbox(&mut slot.1, "");
+                            let color = if p.claude.is_some() || p.state != State::Done { state_color(p.state) } else { grey() };
+                            ui.label(RichText::new("●").color(color));
+                            let command = p.shell.as_ref().map_or_else(ito_pane::default_program, |(c, _)| c.clone());
+                            let name =
+                                if p.title.is_empty() { crate::home_short(&p.cwd) } else { crate::sort::display_title(&p.title, &command) };
+                            // What it will do on the right first; the name gets the
+                            // room left and is cut short in it, never over it.
+                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                let what = match (&p.claude, p.state) {
+                                    (Some(_), _) => tr("restore.resume").to_owned(),
+                                    (None, State::Done) if !slot.1 => tr("restore.left_closed").to_owned(),
+                                    (None, _) => trf("restore.new_shell", &[&crate::home_short(&p.cwd)]),
+                                };
+                                // At most under half the row, so the name always shows.
+                                let room = ui.available_width() * 0.45;
+                                ui.scope(|ui| {
+                                    ui.set_max_width(room);
+                                    ui.add(egui::Label::new(RichText::new(what).size(12.0).color(pal.fg_dim)).truncate());
+                                });
+                                ui.add_space(12.0);
+                                ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                                    ui.add(
+                                        egui::Label::new(RichText::new(name).color(if slot.1 { pal.fg } else { pal.fg_dim })).truncate(),
+                                    );
+                                });
                             });
                         });
                     });
-                });
-            }
-        });
-        ui.add_space(10.0);
-        ui.separator();
-        ui.horizontal(|ui| {
-            ui.checkbox(&mut view.always, RichText::new(tr("restore.always")).size(12.5).color(pal.fg_dim));
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                let picked: Vec<SessionId> = view.ticked.iter().filter(|(_, on)| *on).map(|(id, _)| *id).collect();
-                let restore = egui::Button::new(RichText::new(trf("restore.restore", &[&picked.len().to_string()])).strong().color(crate::theme::colors().on_accent())).fill(cyan());
-                if ui.add_enabled(!picked.is_empty(), restore).clicked() {
-                    answer = Some(RestoreAnswer::Restore(picked));
-                }
-                if ui.button(tr("restore.fresh")).clicked() {
-                    answer = Some(RestoreAnswer::Fresh);
                 }
             });
+            ui.add_space(10.0);
+            ui.separator();
+            ui.horizontal(|ui| {
+                ui.checkbox(&mut view.always, RichText::new(tr("restore.always")).size(12.5).color(pal.fg_dim));
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    let picked: Vec<SessionId> = view.ticked.iter().filter(|(_, on)| *on).map(|(id, _)| *id).collect();
+                    let restore = egui::Button::new(
+                        RichText::new(trf("restore.restore", &[&picked.len().to_string()]))
+                            .strong()
+                            .color(crate::theme::colors().on_accent()),
+                    )
+                    .fill(cyan());
+                    if ui.add_enabled(!picked.is_empty(), restore).clicked() {
+                        answer = Some(RestoreAnswer::Restore(picked));
+                    }
+                    if ui.button(tr("restore.fresh")).clicked() {
+                        answer = Some(RestoreAnswer::Fresh);
+                    }
+                });
+            });
         });
-    });
     answer
 }
 
@@ -1458,16 +1560,28 @@ pub fn foot(ui: &mut egui::Ui, main: egui::Button<'_>, enabled: bool, cancel: &s
 
 #[cfg(test)]
 mod tests {
-    use super::{BREATHE, SWEEP, breathe, edge_at, elapsed, sweep_at, when_words};
+    use super::{breathe, edge_at, elapsed, sweep_at, when_words, BREATHE, SWEEP};
 
     /// The bell's list grows with its entries, also when they arrive while it
     /// is open (a lane saw only 1.5 rows once there were two).
     #[test]
     fn bell_list_grows_with_its_entries() {
         let ctx = egui::Context::default();
-        let notice = |id: u64| tsumugi_mux::Notice { id, session: 1, state: tsumugi_mux::State::Done, title: format!("pane {id}"), note: String::new(), at_ms: 0, read: false, trigger: false };
+        let notice = |id: u64| tsumugi_mux::Notice {
+            id,
+            session: 1,
+            state: tsumugi_mux::State::Done,
+            title: format!("pane {id}"),
+            note: String::new(),
+            at_ms: 0,
+            read: false,
+            trigger: false,
+        };
         let height = |notices: &[tsumugi_mux::Notice]| {
-            let input = egui::RawInput { screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1280.0, 800.0))), ..Default::default() };
+            let input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1280.0, 800.0))),
+                ..Default::default()
+            };
             let mut out = ctx.run_ui(input, |ui| {
                 super::bell_list(ui.ctx(), &super::Palette::default(), egui::pos2(100.0, 40.0), notices);
             });
@@ -1537,7 +1651,7 @@ mod tests {
         assert_eq!(when_words(t("2026-10-06 07:02"), t("2026-10-06 08:00")), "today at 07:02");
         assert_eq!(when_words(t("2026-10-01 07:02"), t("2026-10-06 08:00")), "2026/10/01 07:02");
     }
-    use eframe::egui::{ResizeDirection as D, pos2, Rect};
+    use eframe::egui::{pos2, Rect, ResizeDirection as D};
 
     #[test]
     fn the_edges_and_corners_resize() {

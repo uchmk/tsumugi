@@ -5,7 +5,7 @@
 //! (`ito_common::fonts`).
 
 use eframe::egui;
-use ito_common::fonts::{JAPANESE, JAPANESE_BOLD, NERD_FONTS, UI_BOLD, UI_REGULAR, find_file, font_dirs, nerd_font, read_first};
+use ito_common::fonts::{find_file, font_dirs, nerd_font, read_first, JAPANESE, JAPANESE_BOLD, NERD_FONTS, UI_BOLD, UI_REGULAR};
 
 /// The family the window's titles are drawn in: bold, proportional.
 pub const UI_BOLD_FAMILY: &str = "ui-bold";
@@ -97,7 +97,8 @@ pub fn load(family: &str) -> Loaded {
     // Bold and italic: the regular file's siblings, then the same fallbacks.
     let fallback = fonts.families.get(&egui::FontFamily::Monospace).cloned().unwrap_or_default();
     if let Some(path) = &file {
-        for (k, (family, style)) in [(BOLD, Style::Bold), (ITALIC, Style::Italic), (BOLD_ITALIC, Style::BoldItalic)].into_iter().enumerate() {
+        for (k, (family, style)) in [(BOLD, Style::Bold), (ITALIC, Style::Italic), (BOLD_ITALIC, Style::BoldItalic)].into_iter().enumerate()
+        {
             let Some((sib, data)) = siblings(path, style).into_iter().find_map(|p| read(&p).map(|d| (p, d))) else { continue };
             let name = format!("{family}:{}", sib.display());
             fonts.font_data.insert(name.clone(), data);
@@ -151,7 +152,8 @@ pub fn find(family: &str) -> Option<std::path::PathBuf> {
         return Some(path.to_path_buf());
     }
     let want = squash(family);
-    let mut found: Vec<std::path::PathBuf> = files().into_iter().filter(|p| p.file_stem().is_some_and(|s| squash(&s.to_string_lossy()).contains(&want))).collect();
+    let mut found: Vec<std::path::PathBuf> =
+        files().into_iter().filter(|p| p.file_stem().is_some_and(|s| squash(&s.to_string_lossy()).contains(&want))).collect();
     found.sort_by_key(|p| {
         let s = squash(&p.file_stem().unwrap_or_default().to_string_lossy());
         (rank(&s), s.len())
@@ -178,7 +180,8 @@ fn rank(squashed: &str) -> u8 {
 /// The font files in the font folders and one level below.
 fn files() -> Vec<std::path::PathBuf> {
     let mut out = Vec::new();
-    let is_font = |p: &std::path::Path| p.extension().is_some_and(|e| matches!(e.to_string_lossy().to_lowercase().as_str(), "ttf" | "otf" | "ttc"));
+    let is_font =
+        |p: &std::path::Path| p.extension().is_some_and(|e| matches!(e.to_string_lossy().to_lowercase().as_str(), "ttf" | "otf" | "ttc"));
     for dir in font_dirs() {
         let Ok(entries) = std::fs::read_dir(&dir) else { continue };
         for e in entries.flatten() {
@@ -212,7 +215,25 @@ pub fn names() -> &'static [String] {
 /// The monospace-looking families installed, by name, for the settings
 /// screen's list: regular faces whose names say they are for code.
 fn monospace_names() -> Vec<String> {
-    let hints = ["mono", "code", "console", "consol", "nerd", "nf", "hack", "courier", "cascadia", "menlo", "monaco", "fira", "sarasa", "hackgen", "ricty", "inconsolata", "iosevka"];
+    let hints = [
+        "mono",
+        "code",
+        "console",
+        "consol",
+        "nerd",
+        "nf",
+        "hack",
+        "courier",
+        "cascadia",
+        "menlo",
+        "monaco",
+        "fira",
+        "sarasa",
+        "hackgen",
+        "ricty",
+        "inconsolata",
+        "iosevka",
+    ];
     let mut names: Vec<String> = files()
         .into_iter()
         .filter_map(|p| p.file_stem().map(|s| s.to_string_lossy().into_owned()))

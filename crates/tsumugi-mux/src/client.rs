@@ -218,7 +218,12 @@ impl Client {
             // A server of another version: told apart, so a window can offer
             // to stop it (`stop`).
             ToClient::Error(e) => return Err(io::Error::new(io::ErrorKind::InvalidData, e)),
-            ToClient::Hello { version } => return Err(io::Error::new(io::ErrorKind::InvalidData, format!("the server speaks version {version}, the client {VERSION}"))),
+            ToClient::Hello { version } => {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    format!("the server speaks version {version}, the client {VERSION}"),
+                ))
+            }
             other => return Err(io::Error::other(format!("the server answered {other:?}"))),
         }
         let (tx, rx) = crossbeam_channel::unbounded::<ToServer>();
@@ -595,7 +600,16 @@ fn receive(inner: &Inner, msg: ToClient) {
             let r = st.screens.entry(id).or_default();
             let mut extra = crate::diff::Extra::default();
             crate::diff::apply(&mut r.screen, &mut extra, update);
-            (r.scrolled_back, r.win32_input, r.bracketed_paste, r.title, r.links, r.blocks, r.pictures, r.selected) = (extra.scrolled_back, extra.win32_input, extra.bracketed_paste, extra.title, extra.links, extra.blocks, extra.pictures, extra.selected);
+            (r.scrolled_back, r.win32_input, r.bracketed_paste, r.title, r.links, r.blocks, r.pictures, r.selected) = (
+                extra.scrolled_back,
+                extra.win32_input,
+                extra.bracketed_paste,
+                extra.title,
+                extra.links,
+                extra.blocks,
+                extra.pictures,
+                extra.selected,
+            );
             // Pixels of pictures no longer on the screen are let go; the
             // view keeps its own textures a while, should one come back.
             let on: std::collections::HashSet<u64> = r.pictures.iter().map(|p| p.key).collect();
@@ -812,7 +826,9 @@ impl Pane for RemotePane {
 /// `command` is read by the shell there, so a path with spaces is quoted
 /// in it.
 pub fn ssh_args(host: &str, command: &str) -> Vec<String> {
-    ["-T", "-o", "BatchMode=yes", "-o", "ServerAliveInterval=10", "-o", "ServerAliveCountMax=3", "--", host, command, "proxy"].map(String::from).to_vec()
+    ["-T", "-o", "BatchMode=yes", "-o", "ServerAliveInterval=10", "-o", "ServerAliveCountMax=3", "--", host, command, "proxy"]
+        .map(String::from)
+        .to_vec()
 }
 
 /// How often a server sends a client over ssh a pane's screen, at most

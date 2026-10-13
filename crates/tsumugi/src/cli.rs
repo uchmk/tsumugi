@@ -3,8 +3,8 @@
 
 use std::path::PathBuf;
 
-use tsumugi_mux::{Client, Info, Place, SessionId};
 use ito_pane::Size;
+use tsumugi_mux::{Client, Info, Place, SessionId};
 
 use crate::sort;
 
@@ -162,7 +162,9 @@ pub fn open_layout(client: &Client, l: &crate::layouts::Layout, base: &std::path
         if !folder.is_dir() {
             return Err(format!("{}: not a folder (a pane's dir)", folder.display()));
         }
-        let pane = client.spawn_typing(folder, None, Size::new(80, 24), (8, 16), place, p.typed(claude)).map_err(|e| format!("a pane did not start: {e}"))?;
+        let pane = client
+            .spawn_typing(folder, None, Size::new(80, 24), (8, 16), place, p.typed(claude))
+            .map_err(|e| format!("a pane did not start: {e}"))?;
         made.push(pane.id());
     }
     let first = *made.first().ok_or("the layout has no panes")?;
@@ -254,7 +256,10 @@ mod tests {
     fn new_reads_a_folder_tags_and_a_command() {
         let a = |s: &str| s.split(' ').map(String::from).collect::<Vec<_>>();
         let n = parse_new(&a("~/dev/filer --tag review -- claude --continue")).unwrap();
-        assert_eq!(n, New { folder: Some("~/dev/filer".into()), tags: vec!["review".into()], command: a("claude --continue"), ..New::default() });
+        assert_eq!(
+            n,
+            New { folder: Some("~/dev/filer".into()), tags: vec!["review".into()], command: a("claude --continue"), ..New::default() }
+        );
         let n = parse_new(&a("--name api --at 2")).unwrap();
         assert_eq!((n.name.as_deref(), n.at), (Some("api"), Some(2)));
         assert!(parse_new(&a("--at 0")).is_err());
@@ -266,7 +271,11 @@ mod tests {
 
     #[test]
     fn a_session_is_found_by_number_folder_program_or_tag() {
-        let list = [info(1, "/home/u/dev/filer", "claude", &["review"]), info(2, "/home/u/dev/tsumugi", "/bin/bash", &[]), info(3, "/tmp", "/bin/bash", &[])];
+        let list = [
+            info(1, "/home/u/dev/filer", "claude", &["review"]),
+            info(2, "/home/u/dev/tsumugi", "/bin/bash", &[]),
+            info(3, "/tmp", "/bin/bash", &[]),
+        ];
         assert_eq!(find(&list, "2"), Ok(2));
         assert!(find(&list, "9").is_err());
         assert_eq!(find(&list, "Filer"), Ok(1), "case aside");
@@ -300,7 +309,9 @@ pub fn take_host(args: &[String], text_after_who: bool) -> Result<(Option<String
     while let Some(a) = it.next() {
         let free = rest.iter().any(|r: &String| r == "--") || (text_after_who && rest.iter().any(|r: &String| !r.starts_with('-')));
         match a.as_str() {
-            "--host" if !free => host = Some(it.next().filter(|h| !h.is_empty()).ok_or("--host takes a machine (as ssh knows it)")?.clone()),
+            "--host" if !free => {
+                host = Some(it.next().filter(|h| !h.is_empty()).ok_or("--host takes a machine (as ssh knows it)")?.clone())
+            }
             _ => rest.push(a.clone()),
         }
     }
@@ -363,7 +374,8 @@ pub fn parse_split(args: &[String]) -> Result<Split, String> {
             "--" => out.command = it.by_ref().cloned().collect(),
             "--down" => out.down = true,
             "--right" => out.down = false,
-            "--percent" | "-p" => match it.next().and_then(|n| n.trim_end_matches('%').parse::<u8>().ok()).filter(|n| (1..=95).contains(n)) {
+            "--percent" | "-p" => match it.next().and_then(|n| n.trim_end_matches('%').parse::<u8>().ok()).filter(|n| (1..=95).contains(n))
+            {
                 Some(n) => out.percent = Some(n),
                 None => return Err("--percent takes the new pane's share, 1 to 95".into()),
             },
@@ -436,7 +448,8 @@ pub fn log(client: &Client, list: &[Info], id: SessionId, l: Log, remote: bool) 
         // The server's folder is not this one.
         Some(p) => std::path::absolute(&p).map_err(|e| format!("{}: {e}", p.display()))?,
         None if remote => return Err("give the file on that machine (--host)".into()),
-        None => crate::export::log_path(&crate::sort::display_title(&info.title, &info.command)).ok_or("no home folder to write the work log in")?,
+        None => crate::export::log_path(&crate::sort::display_title(&info.title, &info.command))
+            .ok_or("no home folder to write the work log in")?,
     };
     client.log(id, Some(path.clone()));
     let now = client.list().map_err(|e| e.to_string())?;
@@ -465,7 +478,11 @@ pub fn parse_wait(args: &[String]) -> Result<Wait, String> {
                 let s = it.next().and_then(|s| State::from_word(s)).ok_or("--state takes waiting, done, error or running")?;
                 out.states = if s == State::Waiting { vec![State::Waiting, State::MaybeWaiting] } else { vec![s] };
             }
-            "--timeout" => out.timeout = Some(std::time::Duration::from_secs_f64(it.next().and_then(|n| n.parse::<f64>().ok()).filter(|n| *n >= 0.0).ok_or("--timeout takes seconds")?)),
+            "--timeout" => {
+                out.timeout = Some(std::time::Duration::from_secs_f64(
+                    it.next().and_then(|n| n.parse::<f64>().ok()).filter(|n| *n >= 0.0).ok_or("--timeout takes seconds")?,
+                ))
+            }
             s if s.starts_with('-') => return Err(format!("unknown option `{s}`")),
             _ if out.who.is_empty() => out.who = a.clone(),
             _ => return Err(format!("one session only (`{a}` is a second)")),
@@ -557,7 +574,10 @@ mod remote_tests {
     #[test]
     fn the_host_is_taken_before_the_free_words() {
         assert_eq!(take_host(&words("--host box 3 --lines 5"), false).unwrap(), (Some("box".into()), words("3 --lines 5")));
-        assert_eq!(take_host(&words("3 --host box --down -- ssh --host x"), false).unwrap(), (Some("box".into()), words("3 --down -- ssh --host x")));
+        assert_eq!(
+            take_host(&words("3 --host box --down -- ssh --host x"), false).unwrap(),
+            (Some("box".into()), words("3 --down -- ssh --host x"))
+        );
         assert_eq!(take_host(&words("--json"), false).unwrap(), (None, words("--json")));
         // `send`'s text is typed as it is.
         assert_eq!(take_host(&words("--host box 3 echo --host y"), true).unwrap(), (Some("box".into()), words("3 echo --host y")));
@@ -568,7 +588,10 @@ mod remote_tests {
     fn the_remote_controls_words_are_read() {
         assert_eq!(parse_read(&words("3 --lines 10")).unwrap(), Read { who: "3".into(), lines: 10, all: false });
         assert!(parse_read(&words("--all")).is_err(), "which session");
-        assert_eq!(parse_split(&words("filer --down -- npm run dev")).unwrap(), Split { who: "filer".into(), down: true, percent: None, count: None, command: words("npm run dev") });
+        assert_eq!(
+            parse_split(&words("filer --down -- npm run dev")).unwrap(),
+            Split { who: "filer".into(), down: true, percent: None, count: None, command: words("npm run dev") }
+        );
         assert_eq!(parse_split(&words("3 -p 30%")).unwrap().percent, Some(30));
         assert!(parse_split(&words("3 -p 0")).is_err());
         assert!(parse_split(&words("3 --percent")).is_err());
@@ -576,7 +599,12 @@ mod remote_tests {
         assert_eq!(parse_layout(&words("--list")).unwrap(), LayoutCmd::List);
         assert!(parse_layout(&words("")).is_err());
         assert!(parse_layout(&words("a b c")).is_err());
-        let mut tree = tsumugi_mux::Node::Split { dir: tsumugi_mux::Dir::Right, ratio: 0.5, first: Box::new(tsumugi_mux::Node::Leaf(1)), second: Box::new(tsumugi_mux::Node::Leaf(2)) };
+        let mut tree = tsumugi_mux::Node::Split {
+            dir: tsumugi_mux::Dir::Right,
+            ratio: 0.5,
+            first: Box::new(tsumugi_mux::Node::Leaf(1)),
+            second: Box::new(tsumugi_mux::Node::Leaf(2)),
+        };
         assert!(set_share(&mut tree, 1, 2, 0.7));
         assert!(matches!(tree, tsumugi_mux::Node::Split { ratio, .. } if (ratio - 0.7).abs() < 1e-6));
         assert!(!set_share(&mut tree, 2, 1, 0.3), "only the pair in that order");
@@ -585,7 +613,12 @@ mod remote_tests {
         assert!(parse_split(&words("3 -n 4 -p 30")).is_err());
         // 4 in a row: 1/4, then 1/3 of the rest, then 1/2: all a quarter.
         let shares: Vec<f32> = (0..3).map(|step| equal_share(4 - step)).collect();
-        let sizes = [shares[0], (1.0 - shares[0]) * shares[1], (1.0 - shares[0]) * (1.0 - shares[1]) * shares[2], (1.0 - shares[0]) * (1.0 - shares[1]) * (1.0 - shares[2])];
+        let sizes = [
+            shares[0],
+            (1.0 - shares[0]) * shares[1],
+            (1.0 - shares[0]) * (1.0 - shares[1]) * shares[2],
+            (1.0 - shares[0]) * (1.0 - shares[1]) * (1.0 - shares[2]),
+        ];
         assert!(sizes.iter().all(|s| (s - 0.25).abs() < 1e-6), "{sizes:?}");
         assert_eq!(parse_log(&words("3 out.txt")).unwrap(), Log { who: "3".into(), path: Some("out.txt".into()), stop: false });
         assert_eq!(parse_log(&words("3 --stop")).unwrap(), Log { who: "3".into(), path: None, stop: true });

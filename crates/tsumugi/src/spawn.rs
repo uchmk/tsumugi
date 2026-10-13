@@ -22,7 +22,7 @@ pub fn server() -> io::Result<()> {
 /// inherited stdio still get them: those are duplicated for the child.
 #[cfg(windows)]
 fn keep_std_handles() {
-    use windows::Win32::Foundation::{HANDLE_FLAG_INHERIT, HANDLE_FLAGS, SetHandleInformation};
+    use windows::Win32::Foundation::{SetHandleInformation, HANDLE_FLAGS, HANDLE_FLAG_INHERIT};
     use windows::Win32::System::Console::{GetStdHandle, STD_ERROR_HANDLE, STD_INPUT_HANDLE, STD_OUTPUT_HANDLE};
     for which in [STD_INPUT_HANDLE, STD_OUTPUT_HANDLE, STD_ERROR_HANDLE] {
         if let Ok(h) = unsafe { GetStdHandle(which) } {

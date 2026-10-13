@@ -82,7 +82,10 @@ mod tests {
     fn a_program_with_a_space_runs_in_powershell() {
         let w = words(&["C:\\Program Files\\Git\\bin\\bash.exe", "--rcfile", "C:\\Users\\me\\rc"]);
         assert_eq!(typed_line("pwsh", &w).as_deref(), Some("& 'C:\\Program Files\\Git\\bin\\bash.exe' --rcfile C:\\Users\\me\\rc"));
-        assert_eq!(typed_line("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe", &w).as_deref().map(|l| l.starts_with("& '")), Some(true));
+        assert_eq!(
+            typed_line("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe", &w).as_deref().map(|l| l.starts_with("& '")),
+            Some(true)
+        );
         assert_eq!(typed_line("cmd.exe", &w).as_deref(), Some("\"C:\\Program Files\\Git\\bin\\bash.exe\" --rcfile C:\\Users\\me\\rc"));
         assert_eq!(typed_line("/usr/bin/zsh", &words(&["/opt/my apps/run", "x"])).as_deref(), Some("'/opt/my apps/run' x"));
     }

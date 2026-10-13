@@ -3,7 +3,7 @@
 //! stretched.
 
 use std::path::{Path, PathBuf};
-use std::sync::mpsc::{Receiver, channel};
+use std::sync::mpsc::{channel, Receiver};
 
 use eframe::egui;
 
@@ -64,7 +64,12 @@ fn resolve(path: &str) -> PathBuf {
 
 fn load(file: &Path) -> Result<egui::ColorImage, String> {
     let said = |e: &dyn std::fmt::Display| format!("The background image {}: {e}", file.display());
-    let image = image::ImageReader::open(file).map_err(|e| said(&e))?.with_guessed_format().map_err(|e| said(&e))?.decode().map_err(|e| said(&e))?;
+    let image = image::ImageReader::open(file)
+        .map_err(|e| said(&e))?
+        .with_guessed_format()
+        .map_err(|e| said(&e))?
+        .decode()
+        .map_err(|e| said(&e))?;
     let image = if image.width().max(image.height()) > LONGEST { image.thumbnail(LONGEST, LONGEST) } else { image };
     let rgba = image.to_rgba8();
     Ok(egui::ColorImage::from_rgba_unmultiplied([rgba.width() as usize, rgba.height() as usize], rgba.as_raw()))
@@ -137,16 +142,23 @@ mod tests {
     #[test]
     fn the_backdrop_leaves_the_panes_out() {
         let area = egui::Rect::from_min_max(egui::Pos2::ZERO, egui::pos2(100.0, 50.0));
-        let holes = [egui::Rect::from_min_max(egui::pos2(10.0, 10.0), egui::pos2(45.0, 40.0)), egui::Rect::from_min_max(egui::pos2(55.0, 10.0), egui::pos2(90.0, 40.0))];
+        let holes = [
+            egui::Rect::from_min_max(egui::pos2(10.0, 10.0), egui::pos2(45.0, 40.0)),
+            egui::Rect::from_min_max(egui::pos2(55.0, 10.0), egui::pos2(90.0, 40.0)),
+        ];
         let mesh = around(area, &holes, egui::Color32::BLACK);
-        let covered: f32 = mesh.indices.chunks(6).map(|q| {
-            let a = mesh.vertices[q[0] as usize].pos;
-            let b = mesh.vertices[q[1] as usize].pos;
-            let c = mesh.vertices[q[2] as usize].pos;
-            let (x0, x1) = (a.x.min(b.x).min(c.x), a.x.max(b.x).max(c.x));
-            let (y0, y1) = (a.y.min(b.y).min(c.y), a.y.max(b.y).max(c.y));
-            (x1 - x0) * (y1 - y0)
-        }).sum();
+        let covered: f32 = mesh
+            .indices
+            .chunks(6)
+            .map(|q| {
+                let a = mesh.vertices[q[0] as usize].pos;
+                let b = mesh.vertices[q[1] as usize].pos;
+                let c = mesh.vertices[q[2] as usize].pos;
+                let (x0, x1) = (a.x.min(b.x).min(c.x), a.x.max(b.x).max(c.x));
+                let (y0, y1) = (a.y.min(b.y).min(c.y), a.y.max(b.y).max(c.y));
+                (x1 - x0) * (y1 - y0)
+            })
+            .sum();
         assert_eq!(covered, 100.0 * 50.0 - 2.0 * 35.0 * 30.0);
     }
 

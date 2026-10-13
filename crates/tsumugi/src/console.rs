@@ -16,8 +16,9 @@ mod imp {
     use std::os::windows::io::AsRawHandle;
     use windows::Win32::Foundation::HANDLE;
     use windows::Win32::System::Console::{
-        CONSOLE_MODE, CONSOLE_SCREEN_BUFFER_INFO, DISABLE_NEWLINE_AUTO_RETURN, ENABLE_PROCESSED_OUTPUT, ENABLE_VIRTUAL_TERMINAL_INPUT, ENABLE_VIRTUAL_TERMINAL_PROCESSING, ENABLE_WRAP_AT_EOL_OUTPUT,
         GetConsoleCP, GetConsoleMode, GetConsoleOutputCP, GetConsoleScreenBufferInfo, SetConsoleCP, SetConsoleMode, SetConsoleOutputCP,
+        CONSOLE_MODE, CONSOLE_SCREEN_BUFFER_INFO, DISABLE_NEWLINE_AUTO_RETURN, ENABLE_PROCESSED_OUTPUT, ENABLE_VIRTUAL_TERMINAL_INPUT,
+        ENABLE_VIRTUAL_TERMINAL_PROCESSING, ENABLE_WRAP_AT_EOL_OUTPUT,
     };
 
     fn handle(f: &File) -> HANDLE {
@@ -56,9 +57,17 @@ mod imp {
         let guard = unsafe {
             GetConsoleMode(handle(&input), &mut mi)?;
             GetConsoleMode(handle(&output), &mut mo)?;
-            let guard = Guard { input: input.try_clone()?, output: output.try_clone()?, modes: (mi, mo), cps: (GetConsoleCP(), GetConsoleOutputCP()) };
+            let guard = Guard {
+                input: input.try_clone()?,
+                output: output.try_clone()?,
+                modes: (mi, mo),
+                cps: (GetConsoleCP(), GetConsoleOutputCP()),
+            };
             SetConsoleMode(handle(&input), ENABLE_VIRTUAL_TERMINAL_INPUT)?;
-            SetConsoleMode(handle(&output), ENABLE_PROCESSED_OUTPUT | ENABLE_WRAP_AT_EOL_OUTPUT | ENABLE_VIRTUAL_TERMINAL_PROCESSING | DISABLE_NEWLINE_AUTO_RETURN)?;
+            SetConsoleMode(
+                handle(&output),
+                ENABLE_PROCESSED_OUTPUT | ENABLE_WRAP_AT_EOL_OUTPUT | ENABLE_VIRTUAL_TERMINAL_PROCESSING | DISABLE_NEWLINE_AUTO_RETURN,
+            )?;
             let _ = SetConsoleCP(65001);
             let _ = SetConsoleOutputCP(65001);
             guard
@@ -81,7 +90,11 @@ mod imp {
 #[cfg(unix)]
 mod imp {
     fn check(r: libc::c_int) -> std::io::Result<()> {
-        if r == -1 { Err(std::io::Error::last_os_error()) } else { Ok(()) }
+        if r == -1 {
+            Err(std::io::Error::last_os_error())
+        } else {
+            Ok(())
+        }
     }
 
     /// The terminal's settings as they were, when it is one.

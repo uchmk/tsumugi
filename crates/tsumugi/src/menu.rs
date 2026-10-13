@@ -205,7 +205,9 @@ mod tests {
         assert_eq!(super::file_uri("file://box").as_deref(), None);
         assert_eq!(super::file_uri("https://x.example/").as_deref(), None);
         assert!(super::url_ok("http://127.0.0.1:8080"));
-        for bad in ["file:///etc/passwd", "https://", "https://a.b/x&calc", "https://a.b/'$(x)'", "https://a.b/%PATH%", "javascript:alert(1)"] {
+        for bad in
+            ["file:///etc/passwd", "https://", "https://a.b/x&calc", "https://a.b/'$(x)'", "https://a.b/%PATH%", "javascript:alert(1)"]
+        {
             assert!(!super::url_ok(bad), "{bad}");
         }
     }

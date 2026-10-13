@@ -200,14 +200,22 @@ pub fn display_title(title: &str, command: &str) -> String {
     }
     let path_like = (t.contains('\\') || t.contains('/')) && !t.contains(' ') || t.to_ascii_lowercase().ends_with(".exe");
     let is_program = t == command || program_name(t).eq_ignore_ascii_case(&program_name(command));
-    if path_like && (is_program || t.to_ascii_lowercase().ends_with(".exe")) { program_name(t) } else { t.to_owned() }
+    if path_like && (is_program || t.to_ascii_lowercase().ends_with(".exe")) {
+        program_name(t)
+    } else {
+        t.to_owned()
+    }
 }
 
 /// A title without the turning mark a program puts before it while it
 /// works (Claude Code's `✳` and `✻`, the braille spinners): the card's own
 /// mark says that already.
 pub fn without_spinner(title: &str) -> &str {
-    let spinner = |c: char| matches!(c, '✳' | '✻' | '✽' | '✶' | '✢' | '✦' | '✧' | '·' | '*' | '◐' | '◓' | '◑' | '◒' | '⏺') || ('\u{2800}'..='\u{28FF}').contains(&c) || c.is_whitespace();
+    let spinner = |c: char| {
+        matches!(c, '✳' | '✻' | '✽' | '✶' | '✢' | '✦' | '✧' | '·' | '*' | '◐' | '◓' | '◑' | '◒' | '⏺')
+            || ('\u{2800}'..='\u{28FF}').contains(&c)
+            || c.is_whitespace()
+    };
     title.trim_start_matches(spinner).trim()
 }
 
@@ -289,7 +297,13 @@ pub enum Item<'b, 'a> {
 /// The sidebar's list. Sorted by folder, the tabs come under their
 /// project's heading, all of them, and a closed group shows none. `Lines`
 /// makes every tab but the shown one a line.
-pub fn items<'b, 'a>(shown: &[&'b Tab<'a>], sort: Sort, density: Density, closed: &[PathBuf], active: Option<tsumugi_mux::WorkspaceId>) -> Vec<Item<'b, 'a>> {
+pub fn items<'b, 'a>(
+    shown: &[&'b Tab<'a>],
+    sort: Sort,
+    density: Density,
+    closed: &[PathBuf],
+    active: Option<tsumugi_mux::WorkspaceId>,
+) -> Vec<Item<'b, 'a>> {
     let card = |t: &Tab| density == Density::Cards || Some(t.workspace.id) == active;
     if sort != Sort::Folder {
         return shown.iter().map(|t| Item::Tab { tab: t, card: card(t) }).collect();
@@ -298,7 +312,10 @@ pub fn items<'b, 'a>(shown: &[&'b Tab<'a>], sort: Sort, density: Density, closed
     let mut at = 0;
     while at < shown.len() {
         let project = shown[at].project().map(Path::to_path_buf).unwrap_or_default();
-        let end = shown[at..].iter().position(|t| t.project().map(Path::to_path_buf).unwrap_or_default() != project).map_or(shown.len(), |n| at + n);
+        let end = shown[at..]
+            .iter()
+            .position(|t| t.project().map(Path::to_path_buf).unwrap_or_default() != project)
+            .map_or(shown.len(), |n| at + n);
         let group = &shown[at..end];
         let open = !closed.contains(&project);
         let kinds: Vec<Kind> = group.iter().filter_map(|t| t.kind()).collect();
@@ -467,7 +484,9 @@ mod tests {
             items
                 .iter()
                 .map(|i| match i {
-                    Item::Group { project, total, open, .. } => format!("{}:{total}{}", project.display(), if *open { "" } else { " closed" }),
+                    Item::Group { project, total, open, .. } => {
+                        format!("{}:{total}{}", project.display(), if *open { "" } else { " closed" })
+                    }
                     Item::Tab { tab, card } => format!("{}{}", tab.workspace.focus, if *card { "" } else { "-" }),
                 })
                 .collect::<Vec<_>>()

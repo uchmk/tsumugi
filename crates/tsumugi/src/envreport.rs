@@ -16,10 +16,24 @@ pub fn report() -> String {
         ("settings", with_presence(settings_path.as_deref())),
         ("state", with_presence(tsumugi_mux::state::default_path().as_deref())),
         ("server", server()),
-        ("conpty", if cfg!(windows) { (if facts.conpty { "beside the exe" } else { "not beside the exe (the system's)" }).into() } else { "n/a".into() }),
+        (
+            "conpty",
+            if cfg!(windows) {
+                (if facts.conpty { "beside the exe" } else { "not beside the exe (the system's)" }).into()
+            } else {
+                "n/a".into()
+            },
+        ),
         ("shell", facts.shell.clone()),
         ("shells", facts.shells.iter().map(|(_, p)| p.as_str()).collect::<Vec<_>>().join(", ")),
-        ("shell hook", match facts.shell_hook { Some(true) => "in the profile".into(), Some(false) => "not in the profile".into(), None => "none for this shell".into() }),
+        (
+            "shell hook",
+            match facts.shell_hook {
+                Some(true) => "in the profile".into(),
+                Some(false) => "not in the profile".into(),
+                None => "none for this shell".into(),
+            },
+        ),
         ("claude hooks", on_off(facts.hooks).into()),
         ("autostart", on_off(facts.autostart).into()),
     ];
@@ -34,7 +48,11 @@ fn render(rows: &[(&str, String)]) -> String {
 }
 
 fn on_off(on: bool) -> &'static str {
-    if on { "on" } else { "off" }
+    if on {
+        "on"
+    } else {
+        "off"
+    }
 }
 
 fn with_presence(path: Option<&Path>) -> String {
@@ -59,7 +77,13 @@ fn server() -> String {
 fn variables() -> Vec<String> {
     let mut found: Vec<String> = std::env::vars()
         .filter(|(k, _)| k.starts_with("TSUMUGI_"))
-        .map(|(k, v)| if ["TOKEN", "SECRET", "PASSWORD", "KEY"].iter().any(|w| k.contains(w)) { format!("{k}=(hidden)") } else { format!("{k}={v}") })
+        .map(|(k, v)| {
+            if ["TOKEN", "SECRET", "PASSWORD", "KEY"].iter().any(|w| k.contains(w)) {
+                format!("{k}=(hidden)")
+            } else {
+                format!("{k}={v}")
+            }
+        })
         .collect();
     found.sort();
     found

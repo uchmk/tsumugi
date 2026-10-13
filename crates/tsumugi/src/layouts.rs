@@ -15,7 +15,7 @@
 
 use std::path::PathBuf;
 
-use ito_layout::{Dir, MIN_RATIO, Node};
+use ito_layout::{Dir, Node, MIN_RATIO};
 
 use crate::newsession::Start;
 use tsumugi_mux::SessionId;

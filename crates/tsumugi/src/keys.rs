@@ -367,7 +367,17 @@ impl Chord {
 
 /// Ctrl, Shift, Alt or the Windows / Cmd key pressed alone.
 pub fn is_modifier(key: Key) -> bool {
-    matches!(key, Key::ShiftLeft | Key::ShiftRight | Key::ControlLeft | Key::ControlRight | Key::AltLeft | Key::AltRight | Key::SuperLeft | Key::SuperRight)
+    matches!(
+        key,
+        Key::ShiftLeft
+            | Key::ShiftRight
+            | Key::ControlLeft
+            | Key::ControlRight
+            | Key::AltLeft
+            | Key::AltRight
+            | Key::SuperLeft
+            | Key::SuperRight
+    )
 }
 
 fn key_named(name: &str) -> Option<Key> {
@@ -420,7 +430,11 @@ pub fn set_bindings(table: &std::collections::BTreeMap<String, String>) -> Resul
             let names: Vec<&str> = NAMED.iter().map(|(_, n, ..)| *n).collect();
             return Err(format!("keys.{name}: not one of {}", names.join(", ")));
         };
-        let chord = if text.trim().eq_ignore_ascii_case("none") { None } else { Some(Chord::parse(text).map_err(|e| format!("keys.{name}: {e}"))?) };
+        let chord = if text.trim().eq_ignore_ascii_case("none") {
+            None
+        } else {
+            Some(Chord::parse(text).map_err(|e| format!("keys.{name}: {e}"))?)
+        };
         out.push((*a, chord));
     }
     if let Ok(mut b) = BINDINGS.write() {
@@ -475,7 +489,11 @@ pub fn label(action: Action) -> String {
         return c.map_or_else(|| "none".into(), |c| c.label());
     }
     let own = NAMED.iter().find(|(a, ..)| *a == action).map(|(_, _, win, m)| if mac { *m } else { *win }).unwrap_or_default();
-    if own.is_empty() { "none".into() } else { own.to_owned() }
+    if own.is_empty() {
+        "none".into()
+    } else {
+        own.to_owned()
+    }
 }
 
 fn action_on(key: Key, m: Modifiers, mac: bool) -> Option<Action> {
@@ -678,7 +696,10 @@ mod tests {
         assert_eq!(action_on(Key::R, CTRL_SHIFT, false), Some(Action::Record));
         assert_eq!(action_on(Key::S, CTRL, false), None, "Ctrl+S is the terminal's stop (XOFF) and some editors' save");
         assert_eq!(action_on(Key::S, CTRL_SHIFT, false), Some(Action::WorkLog));
-        assert_eq!(action_on(Key::S, Modifiers { shift: true, command: true, mac_cmd: true, ..Default::default() }, true), Some(Action::WorkLog));
+        assert_eq!(
+            action_on(Key::S, Modifiers { shift: true, command: true, mac_cmd: true, ..Default::default() }, true),
+            Some(Action::WorkLog)
+        );
         assert_eq!(action_on(Key::L, CTRL, false), None, "the shell's clear screen");
         assert_eq!(action_on(Key::L, CTRL_SHIFT, false), Some(Action::CopyOutput));
         assert_eq!(action_on(Key::Space, CTRL, false), None, "Ctrl+Space is the shell's (and an IME's)");
@@ -752,10 +773,13 @@ mod tests {
         // JIS: Shift and `-` is `=`; Shift and `;` is `+`.
         let mut events = vec![ev(Key::Equals, Key::Minus), ev(Key::Plus, Key::Semicolon), ev(Key::Plus, Key::Equals)];
         physical_minus(&mut events);
-        let keys: Vec<Key> = events.iter().map(|e| match e {
-            egui::Event::Key { key, .. } => *key,
-            _ => unreachable!(),
-        }).collect();
+        let keys: Vec<Key> = events
+            .iter()
+            .map(|e| match e {
+                egui::Event::Key { key, .. } => *key,
+                _ => unreachable!(),
+            })
+            .collect();
         assert_eq!(keys, [Key::Minus, Key::Plus, Key::Plus], "only JIS's `-` key changes");
         assert_eq!(action_on(Key::Minus, alt_shift, false), Some(Action::SplitDown));
         assert_eq!(action_on(Key::Plus, alt_shift, false), Some(Action::SplitRight));

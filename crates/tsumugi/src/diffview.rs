@@ -70,7 +70,17 @@ pub fn lines(text: &str) -> Vec<Line> {
             (Kind::File, l.to_owned())
         } else if l.starts_with("@@") {
             (Kind::Hunk, l.to_owned())
-        } else if l.starts_with("+++") || l.starts_with("---") || l.starts_with("index ") || l.starts_with("new file mode") || l.starts_with("deleted file mode") || l.starts_with("similarity") || l.starts_with("rename ") || l.starts_with("Binary files") || l.starts_with("old mode") || l.starts_with("new mode") {
+        } else if l.starts_with("+++")
+            || l.starts_with("---")
+            || l.starts_with("index ")
+            || l.starts_with("new file mode")
+            || l.starts_with("deleted file mode")
+            || l.starts_with("similarity")
+            || l.starts_with("rename ")
+            || l.starts_with("Binary files")
+            || l.starts_with("old mode")
+            || l.starts_with("new mode")
+        {
             (Kind::Meta, l.to_owned())
         } else if l.starts_with('+') {
             (Kind::Added, l.to_owned())
@@ -105,63 +115,80 @@ pub fn show(ctx: &egui::Context, view: &mut View, c: &Colors) -> bool {
     view.opening = false;
     let width = (screen.width() - 48.0).clamp(300.0, 1100.0);
     let height = (screen.height() - 120.0).max(200.0);
-    egui::Area::new(egui::Id::new("diff")).order(egui::Order::Foreground).anchor(egui::Align2::CENTER_TOP, egui::vec2(0.0, 52.0)).show(ctx, |ui| {
-        egui::Frame::NONE.fill(c.panel).stroke(egui::Stroke::new(1.0, c.border_strong())).corner_radius(12.0).inner_margin(egui::Margin::symmetric(16, 12)).show(ui, |ui| {
-            ui.set_width(width);
-            ui.horizontal(|ui| {
-                ui.label(RichText::new(trf("diff.title", &[&view.title])).size(14.0).strong().color(c.strong()));
-                ui.label(RichText::new(view.cwd.display().to_string()).monospace().size(11.0).color(c.dim));
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if ui.button("×").on_hover_text(tr("help.close")).clicked() {
-                        open = false;
-                    }
-                    if let Some(Ok(lines)) = &view.text {
-                        let added = lines.iter().filter(|l| l.kind == Kind::Added).count();
-                        let removed = lines.iter().filter(|l| l.kind == Kind::Removed).count();
-                        ui.label(RichText::new(format!("−{removed}")).monospace().color(crate::chrome::ink(crate::chrome::red())));
-                        ui.label(RichText::new(format!("+{added}")).monospace().color(crate::chrome::ink(crate::chrome::green())));
+    egui::Area::new(egui::Id::new("diff")).order(egui::Order::Foreground).anchor(egui::Align2::CENTER_TOP, egui::vec2(0.0, 52.0)).show(
+        ctx,
+        |ui| {
+            egui::Frame::NONE
+                .fill(c.panel)
+                .stroke(egui::Stroke::new(1.0, c.border_strong()))
+                .corner_radius(12.0)
+                .inner_margin(egui::Margin::symmetric(16, 12))
+                .show(ui, |ui| {
+                    ui.set_width(width);
+                    ui.horizontal(|ui| {
+                        ui.label(RichText::new(trf("diff.title", &[&view.title])).size(14.0).strong().color(c.strong()));
+                        ui.label(RichText::new(view.cwd.display().to_string()).monospace().size(11.0).color(c.dim));
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            if ui.button("×").on_hover_text(tr("help.close")).clicked() {
+                                open = false;
+                            }
+                            if let Some(Ok(lines)) = &view.text {
+                                let added = lines.iter().filter(|l| l.kind == Kind::Added).count();
+                                let removed = lines.iter().filter(|l| l.kind == Kind::Removed).count();
+                                ui.label(RichText::new(format!("−{removed}")).monospace().color(crate::chrome::ink(crate::chrome::red())));
+                                ui.label(RichText::new(format!("+{added}")).monospace().color(crate::chrome::ink(crate::chrome::green())));
+                            }
+                        });
+                    });
+                    ui.separator();
+                    match &view.text {
+                        None => {
+                            ui.label(RichText::new(tr("diff.reading")).color(c.dim));
+                        }
+                        Some(Err(e)) => {
+                            ui.label(RichText::new(e).color(c.dim));
+                        }
+                        Some(Ok(lines)) if lines.is_empty() => {
+                            ui.label(RichText::new(tr("diff.nothing")).color(c.dim));
+                        }
+                        Some(Ok(lines)) => {
+                            let row = 16.0;
+                            // As tall as the diff, up to the window's room.
+                            let tall = (row * lines.len() as f32 + 8.0).min(height);
+                            egui::ScrollArea::both().max_height(height).min_scrolled_height(tall).auto_shrink([false, false]).show_rows(
+                                ui,
+                                row,
+                                lines.len(),
+                                |ui, range| {
+                                    ui.spacing_mut().item_spacing.y = 0.0;
+                                    for l in &lines[range] {
+                                        let (color, strong) = match l.kind {
+                                            Kind::File => (c.strong(), true),
+                                            Kind::Meta => (c.faint(), false),
+                                            Kind::Hunk => (crate::chrome::ink(crate::chrome::cyan()), false),
+                                            Kind::Added => (crate::chrome::ink(crate::chrome::green()), false),
+                                            Kind::Removed => (crate::chrome::ink(crate::chrome::red()), false),
+                                            Kind::Same | Kind::New => (c.fg, false),
+                                        };
+                                        let mut text = RichText::new(&l.text).monospace().size(12.0).color(color);
+                                        if strong {
+                                            text = text.strong();
+                                        }
+                                        ui.allocate_ui_with_layout(
+                                            egui::vec2(ui.available_width(), row),
+                                            egui::Layout::left_to_right(egui::Align::Center),
+                                            |ui| {
+                                                ui.add(egui::Label::new(text).extend());
+                                            },
+                                        );
+                                    }
+                                },
+                            );
+                        }
                     }
                 });
-            });
-            ui.separator();
-            match &view.text {
-                None => {
-                    ui.label(RichText::new(tr("diff.reading")).color(c.dim));
-                }
-                Some(Err(e)) => {
-                    ui.label(RichText::new(e).color(c.dim));
-                }
-                Some(Ok(lines)) if lines.is_empty() => {
-                    ui.label(RichText::new(tr("diff.nothing")).color(c.dim));
-                }
-                Some(Ok(lines)) => {
-                    let row = 16.0;
-                    // As tall as the diff, up to the window's room.
-                    let tall = (row * lines.len() as f32 + 8.0).min(height);
-                    egui::ScrollArea::both().max_height(height).min_scrolled_height(tall).auto_shrink([false, false]).show_rows(ui, row, lines.len(), |ui, range| {
-                        ui.spacing_mut().item_spacing.y = 0.0;
-                        for l in &lines[range] {
-                            let (color, strong) = match l.kind {
-                                Kind::File => (c.strong(), true),
-                                Kind::Meta => (c.faint(), false),
-                                Kind::Hunk => (crate::chrome::ink(crate::chrome::cyan()), false),
-                                Kind::Added => (crate::chrome::ink(crate::chrome::green()), false),
-                                Kind::Removed => (crate::chrome::ink(crate::chrome::red()), false),
-                                Kind::Same | Kind::New => (c.fg, false),
-                            };
-                            let mut text = RichText::new(&l.text).monospace().size(12.0).color(color);
-                            if strong {
-                                text = text.strong();
-                            }
-                            ui.allocate_ui_with_layout(egui::vec2(ui.available_width(), row), egui::Layout::left_to_right(egui::Align::Center), |ui| {
-                                ui.add(egui::Label::new(text).extend());
-                            });
-                        }
-                    });
-                }
-            }
-        });
-    });
+        },
+    );
     open
 }
 

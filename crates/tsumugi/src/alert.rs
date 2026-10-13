@@ -6,11 +6,11 @@
 //! so a slow notification service never holds up a frame.
 
 use std::collections::{HashMap, HashSet};
-use std::sync::{Arc, mpsc};
+use std::sync::{mpsc, Arc};
 
-use tsumugi_mux::{Notice, SessionId, State};
 use ito_notify::notifier::{Action, Notifier, Toast};
 use ito_notify::toast::App;
+use tsumugi_mux::{Notice, SessionId, State};
 
 /// Which ways to tell, per state: `[notify]` in `config.toml`.
 #[derive(Clone, Copy, Debug)]
@@ -54,7 +54,12 @@ impl Kinds {
 
 impl From<&tsumugi_mux::settings::Notify> for Rules {
     fn from(n: &tsumugi_mux::settings::Notify) -> Self {
-        Self { notify: Kinds::from_words(&n.system), badge: Kinds::from_words(&n.taskbar), flash: Kinds::from_words(&n.flash), sound: Kinds::from_words(&n.sound) }
+        Self {
+            notify: Kinds::from_words(&n.system),
+            badge: Kinds::from_words(&n.taskbar),
+            flash: Kinds::from_words(&n.flash),
+            sound: Kinds::from_words(&n.sound),
+        }
     }
 }
 
@@ -70,7 +75,12 @@ impl Default for Rules {
 pub enum Out {
     /// `session`: where a click on it goes. `state`: what the session is
     /// in, for a notification that looks like it (None: a plain one).
-    Notify { session: SessionId, title: String, body: String, state: Option<State> },
+    Notify {
+        session: SessionId,
+        title: String,
+        body: String,
+        state: Option<State>,
+    },
     Flash,
     /// The sound for a session that failed (`true`) or wants a person.
     Sound(bool),
@@ -146,7 +156,11 @@ impl Alerts {
                 out.push(Out::Sound(sounding.iter().any(|n| n.state == State::Error)));
             }
         }
-        let counted: Vec<&Notice> = if looking { Vec::new() } else { notices.iter().filter(heard).filter(|n| !n.read && !n.trigger && self.rules.badge.has(n.state)).collect() };
+        let counted: Vec<&Notice> = if looking {
+            Vec::new()
+        } else {
+            notices.iter().filter(heard).filter(|n| !n.read && !n.trigger && self.rules.badge.has(n.state)).collect()
+        };
         let badge = (counted.len(), counted.iter().any(|n| n.state == State::Error));
         if badge != self.badge {
             self.badge = badge;
@@ -220,7 +234,7 @@ pub fn set_answer_buttons(on: bool) {
 #[cfg(windows)]
 fn restore_window(handle: isize) {
     use windows::Win32::Foundation::HWND;
-    use windows::Win32::UI::WindowsAndMessaging::{IsIconic, SW_RESTORE, SetForegroundWindow, ShowWindow};
+    use windows::Win32::UI::WindowsAndMessaging::{IsIconic, SetForegroundWindow, ShowWindow, SW_RESTORE};
     let hwnd = HWND(handle as *mut _);
     unsafe {
         if IsIconic(hwnd).as_bool() {
@@ -401,13 +415,15 @@ mod os {
     //! A toast through the notification service, and the number as an
     //! overlay on the taskbar button (`ITaskbarList3`).
 
-    use super::{Out, badge_pixels};
+    use super::{badge_pixels, Out};
+    use windows::core::{w, HSTRING};
     use windows::Win32::Foundation::HWND;
-    use windows::Win32::Graphics::Gdi::{BI_RGB, BITMAPINFO, BITMAPINFOHEADER, CreateBitmap, CreateDIBSection, DIB_RGB_COLORS, DeleteObject, HGDIOBJ};
-    use windows::Win32::System::Com::{CLSCTX_INPROC_SERVER, COINIT_APARTMENTTHREADED, CoCreateInstance, CoInitializeEx};
+    use windows::Win32::Graphics::Gdi::{
+        CreateBitmap, CreateDIBSection, DeleteObject, BITMAPINFO, BITMAPINFOHEADER, BI_RGB, DIB_RGB_COLORS, HGDIOBJ,
+    };
+    use windows::Win32::System::Com::{CoCreateInstance, CoInitializeEx, CLSCTX_INPROC_SERVER, COINIT_APARTMENTTHREADED};
     use windows::Win32::UI::Shell::{ITaskbarList3, SetCurrentProcessExplicitAppUserModelID, TaskbarList};
     use windows::Win32::UI::WindowsAndMessaging::{CreateIconIndirect, DestroyIcon, HICON, ICONINFO};
-    use windows::core::{HSTRING, w};
 
     use super::APP_ID;
 
@@ -556,7 +572,13 @@ mod tests {
         assert_eq!(a.decide(&old, seen(false, true, &none)), vec![Out::Badge(1, false)]);
         let new = [notice(0, State::Waiting, false), notice(1, State::Error, false)];
         let out = a.decide(&new, seen(false, true, &none));
-        assert_eq!(out, vec![Out::Notify { session: 1, title: "claude failed".into(), body: String::new(), state: Some(State::Error) }, Out::Badge(2, true)]);
+        assert_eq!(
+            out,
+            vec![
+                Out::Notify { session: 1, title: "claude failed".into(), body: String::new(), state: Some(State::Error) },
+                Out::Badge(2, true)
+            ]
+        );
         // Told once.
         assert_eq!(a.decide(&new, seen(false, true, &none)), vec![]);
     }
@@ -597,7 +619,10 @@ mod tests {
         n.trigger = true;
         n.note = "BUILD FAILED".into();
         let out = a.decide(&[n.clone()], seen(false, true, &none));
-        assert_eq!(out, vec![Out::Notify { session: 1, title: "claude: a trigger matched".into(), body: "BUILD FAILED".into(), state: None }]);
+        assert_eq!(
+            out,
+            vec![Out::Notify { session: 1, title: "claude: a trigger matched".into(), body: "BUILD FAILED".into(), state: None }]
+        );
         // Not while looking at it.
         n.id = 1;
         assert_eq!(a.decide(&[n], seen(true, true, &none)), vec![]);
@@ -610,8 +635,14 @@ mod tests {
         a.decide(&[], seen(false, true, &none));
         let spent: HashMap<SessionId, String> = HashMap::from([(1, "12.3k tokens · $0.35".to_owned())]);
         let places = HashMap::new();
-        let out = a.decide(&[notice(0, State::Done, false)], Seen { looking: false, teller: true, muted: &none, places: &places, spent: &spent });
-        assert_eq!(out, vec![Out::Notify { session: 1, title: "claude is done".into(), body: "12.3k tokens · $0.35".into(), state: Some(State::Done) }]);
+        let out =
+            a.decide(&[notice(0, State::Done, false)], Seen { looking: false, teller: true, muted: &none, places: &places, spent: &spent });
+        assert_eq!(
+            out,
+            vec![Out::Notify {
+                session: 1, title: "claude is done".into(), body: "12.3k tokens · $0.35".into(), state: Some(State::Done)
+            }]
+        );
     }
 
     #[test]
@@ -634,7 +665,11 @@ mod tests {
         a.rules.sound = Kinds { waiting: true, error: true, done: false };
         let out = a.decide(&[notice(3, State::Waiting, false), notice(4, State::Error, false)], seen(false, true, &none));
         assert_eq!(out, vec![Out::Sound(true), Out::Badge(2, true)]);
-        assert_eq!(a.decide(&[notice(5, State::Waiting, false)], seen(true, true, &none)), vec![Out::Badge(0, false)], "no sound while looking");
+        assert_eq!(
+            a.decide(&[notice(5, State::Waiting, false)], seen(true, true, &none)),
+            vec![Out::Badge(0, false)],
+            "no sound while looking"
+        );
     }
 
     #[test]
@@ -670,7 +705,10 @@ mod tests {
         let args = |t: &Toast| t.actions.iter().map(|a| a.arg.clone()).collect::<Vec<_>>();
         set_answer_buttons(true);
         let wait = toast(3, "t", "b", Some(State::Waiting));
-        assert_eq!((args(&wait), wait.urgent, wait.tag.as_str(), wait.launch.as_str()), (["allow", "deny", "open", "dismiss"].map(String::from).to_vec(), true, "3", "open"));
+        assert_eq!(
+            (args(&wait), wait.urgent, wait.tag.as_str(), wait.launch.as_str()),
+            (["allow", "deny", "open", "dismiss"].map(String::from).to_vec(), true, "3", "open")
+        );
         let done = toast(3, "t", "b", Some(State::Done));
         assert_eq!((args(&done), done.urgent), (["open", "dismiss"].map(String::from).to_vec(), false));
         assert!(toast(3, "t", "b", Some(State::Error)).urgent);

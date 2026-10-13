@@ -83,50 +83,64 @@ pub fn show(ctx: &egui::Context, view: &mut View, c: &Colors) -> Option<Answer> 
         answer = Some(Answer::Close);
     }
     let first = std::mem::take(&mut view.opening);
-    egui::Area::new(egui::Id::new("parallel")).order(egui::Order::Foreground).anchor(egui::Align2::CENTER_TOP, egui::vec2(0.0, 70.0)).show(ctx, |ui| {
-        egui::Frame::NONE.fill(c.panel).stroke(egui::Stroke::new(1.0, c.border_strong())).corner_radius(12.0).inner_margin(egui::Margin::symmetric(20, 16)).show(ui, |ui| {
-            ui.set_width((screen.width() - 40.0).clamp(300.0, 600.0));
-            ui.label(RichText::new(tr("parallel.title")).size(16.0).strong().color(c.strong()));
-            ui.label(RichText::new(tr("parallel.lead")).size(12.0).color(c.dim));
-            ui.add_space(10.0);
-            ui.label(RichText::new("REPOSITORY").size(11.0).color(c.faint()));
-            ui.add(egui::TextEdit::singleline(&mut view.folder).font(egui::FontId::monospace(12.5)).desired_width(f32::INFINITY));
-            ui.add_space(8.0);
-            ui.label(RichText::new("WORK, ONE PROMPT EACH").size(11.0).color(c.faint()));
-            let mut gone = None;
-            for (k, t) in view.tasks.iter_mut().enumerate() {
-                ui.horizontal(|ui| {
-                    ui.label(RichText::new(format!("{}", k + 1)).monospace().color(c.dim));
-                    let field = ui.add(egui::TextEdit::multiline(t).desired_rows(2).desired_width(ui.available_width() - 30.0).hint_text(tr("parallel.hint")));
-                    if first && k == 0 {
-                        field.request_focus();
+    egui::Area::new(egui::Id::new("parallel")).order(egui::Order::Foreground).anchor(egui::Align2::CENTER_TOP, egui::vec2(0.0, 70.0)).show(
+        ctx,
+        |ui| {
+            egui::Frame::NONE
+                .fill(c.panel)
+                .stroke(egui::Stroke::new(1.0, c.border_strong()))
+                .corner_radius(12.0)
+                .inner_margin(egui::Margin::symmetric(20, 16))
+                .show(ui, |ui| {
+                    ui.set_width((screen.width() - 40.0).clamp(300.0, 600.0));
+                    ui.label(RichText::new(tr("parallel.title")).size(16.0).strong().color(c.strong()));
+                    ui.label(RichText::new(tr("parallel.lead")).size(12.0).color(c.dim));
+                    ui.add_space(10.0);
+                    ui.label(RichText::new("REPOSITORY").size(11.0).color(c.faint()));
+                    ui.add(egui::TextEdit::singleline(&mut view.folder).font(egui::FontId::monospace(12.5)).desired_width(f32::INFINITY));
+                    ui.add_space(8.0);
+                    ui.label(RichText::new("WORK, ONE PROMPT EACH").size(11.0).color(c.faint()));
+                    let mut gone = None;
+                    for (k, t) in view.tasks.iter_mut().enumerate() {
+                        ui.horizontal(|ui| {
+                            ui.label(RichText::new(format!("{}", k + 1)).monospace().color(c.dim));
+                            let field = ui.add(
+                                egui::TextEdit::multiline(t)
+                                    .desired_rows(2)
+                                    .desired_width(ui.available_width() - 30.0)
+                                    .hint_text(tr("parallel.hint")),
+                            );
+                            if first && k == 0 {
+                                field.request_focus();
+                            }
+                            if ui.small_button("×").on_hover_text(tr("parallel.take_out")).clicked() {
+                                gone = Some(k);
+                            }
+                        });
                     }
-                    if ui.small_button("×").on_hover_text(tr("parallel.take_out")).clicked() {
-                        gone = Some(k);
+                    if let Some(k) = gone {
+                        view.tasks.remove(k);
                     }
+                    if view.tasks.len() < MOST && ui.button("+ Another").clicked() {
+                        view.tasks.push(String::new());
+                    }
+                    ui.add_space(10.0);
+                    let ready = view.start();
+                    ui.horizontal(|ui| {
+                        let n = ready.as_ref().map_or(0, |s| s.tasks.len());
+                        let go = egui::Button::new(RichText::new(trf("parallel.start", &[&n.to_string()])).color(c.on_accent()).strong())
+                            .fill(c.run);
+                        let (go, cancel) = crate::chrome::foot(ui, go, ready.is_some(), tr("dialog.cancel"));
+                        if go.clicked() {
+                            answer = ready.clone().map(Answer::Start);
+                        }
+                        if cancel.clicked() {
+                            answer = Some(Answer::Close);
+                        }
+                    });
                 });
-            }
-            if let Some(k) = gone {
-                view.tasks.remove(k);
-            }
-            if view.tasks.len() < MOST && ui.button("+ Another").clicked() {
-                view.tasks.push(String::new());
-            }
-            ui.add_space(10.0);
-            let ready = view.start();
-            ui.horizontal(|ui| {
-                let n = ready.as_ref().map_or(0, |s| s.tasks.len());
-                let go = egui::Button::new(RichText::new(trf("parallel.start", &[&n.to_string()])).color(c.on_accent()).strong()).fill(c.run);
-                let (go, cancel) = crate::chrome::foot(ui, go, ready.is_some(), tr("dialog.cancel"));
-                if go.clicked() {
-                    answer = ready.clone().map(Answer::Start);
-                }
-                if cancel.clicked() {
-                    answer = Some(Answer::Close);
-                }
-            });
-        });
-    });
+        },
+    );
     answer
 }
 

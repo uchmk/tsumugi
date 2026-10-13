@@ -42,7 +42,10 @@ static SET: RwLock<Vec<(String, Price)>> = RwLock::new(Vec::new());
 
 /// Take the settings' prices (a cache read a tenth of the input unless given).
 pub fn set(prices: &std::collections::BTreeMap<String, tsumugi_mux::settings::Price>) {
-    let list = prices.iter().map(|(m, s)| (m.clone(), Price { input: s.input, output: s.output, cache_read: s.cache_read.unwrap_or(s.input / 10.0) })).collect();
+    let list = prices
+        .iter()
+        .map(|(m, s)| (m.clone(), Price { input: s.input, output: s.output, cache_read: s.cache_read.unwrap_or(s.input / 10.0) }))
+        .collect();
     if let Ok(mut l) = SET.write() {
         *l = list;
     }
@@ -60,7 +63,11 @@ pub fn of(model: &str) -> Option<Price> {
 /// the hour-long cache's at 2 times.
 pub fn cost(price: Price, t: &Tokens) -> f64 {
     let short_writes = t.cache_write.saturating_sub(t.cache_write_1h) as f64;
-    let dollars = t.input as f64 * price.input + short_writes * price.input * 1.25 + t.cache_write_1h as f64 * price.input * 2.0 + t.cache_read as f64 * price.cache_read + t.output as f64 * price.output;
+    let dollars = t.input as f64 * price.input
+        + short_writes * price.input * 1.25
+        + t.cache_write_1h as f64 * price.input * 2.0
+        + t.cache_read as f64 * price.cache_read
+        + t.output as f64 * price.output;
     dollars / 1e6
 }
 
@@ -99,6 +106,9 @@ mod tests {
         let t = Tokens { input: 1_000_000, cache_write: 2_000_000, cache_write_1h: 1_000_000, cache_read: 10_000_000, output: 1_000_000 };
         // 4 + 4 × 1.25 + 4 × 2 + 10 × 0.2 + 20
         assert!((cost(of("claude-opus-5-5").unwrap(), &t) - 39.0).abs() < 1e-9);
-        assert_eq!((dollars(0.004), dollars(0.42), dollars(12.3), dollars(1204.4)), ("<$0.01".into(), "$0.42".into(), "$12.30".into(), "$1,204".into()));
+        assert_eq!(
+            (dollars(0.004), dollars(0.42), dollars(12.3), dollars(1204.4)),
+            ("<$0.01".into(), "$0.42".into(), "$12.30".into(), "$1,204".into())
+        );
     }
 }

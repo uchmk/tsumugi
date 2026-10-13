@@ -68,14 +68,31 @@ fn hex(s: &str) -> Option<Color32> {
 
 /// Windows Terminal's names for the sixteen, in order.
 const WT_NAMES: [&str; 16] = [
-    "black", "red", "green", "yellow", "blue", "purple", "cyan", "white", "brightBlack", "brightRed", "brightGreen", "brightYellow", "brightBlue", "brightPurple", "brightCyan", "brightWhite",
+    "black",
+    "red",
+    "green",
+    "yellow",
+    "blue",
+    "purple",
+    "cyan",
+    "white",
+    "brightBlack",
+    "brightRed",
+    "brightGreen",
+    "brightYellow",
+    "brightBlue",
+    "brightPurple",
+    "brightCyan",
+    "brightWhite",
 ];
 
 /// The schemes in a Windows Terminal file (`name` names one without a name).
 pub fn windows_terminal(text: &str, name: &str) -> Result<Vec<Scheme>, String> {
     let v = Json::parse(text)?;
     let list: Vec<&Json> = match &v {
-        Json::Object(_) if v.get("schemes").is_some() => v.get("schemes").and_then(Json::array).map(|a| a.iter().collect()).unwrap_or_default(),
+        Json::Object(_) if v.get("schemes").is_some() => {
+            v.get("schemes").and_then(Json::array).map(|a| a.iter().collect()).unwrap_or_default()
+        }
         Json::Object(_) => vec![&v],
         Json::Array(a) => a.iter().collect(),
         _ => Vec::new(),
@@ -167,7 +184,9 @@ mod tests {
     #[test]
     fn an_iterm_scheme_is_read() {
         let mut text = String::from("<plist><dict>");
-        let entry = |key: &str, r: f32, g: f32, b: f32| format!("<key>{key}</key><dict><key>Blue Component</key><real>{b}</real><key>Color Space</key><string>sRGB</string><key>Green Component</key><real>{g}</real><key>Red Component</key><real>{r}</real></dict>");
+        let entry = |key: &str, r: f32, g: f32, b: f32| {
+            format!("<key>{key}</key><dict><key>Blue Component</key><real>{b}</real><key>Color Space</key><string>sRGB</string><key>Green Component</key><real>{g}</real><key>Red Component</key><real>{r}</real></dict>")
+        };
         for k in 0..16 {
             text.push_str(&entry(&format!("Ansi {k} Color"), k as f32 / 15.0, 0.0, 0.0));
         }

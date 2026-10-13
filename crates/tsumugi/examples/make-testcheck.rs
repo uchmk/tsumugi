@@ -38,7 +38,10 @@ struct Section {
 fn is_id(s: &str) -> bool {
     let mut parts = s.splitn(2, '.');
     let (Some(a), Some(b)) = (parts.next(), parts.next()) else { return false };
-    !a.is_empty() && a.chars().all(|c| c.is_ascii_digit()) && b.chars().next().is_some_and(|c| c.is_ascii_digit()) && b.chars().all(|c| c.is_ascii_alphanumeric())
+    !a.is_empty()
+        && a.chars().all(|c| c.is_ascii_digit())
+        && b.chars().next().is_some_and(|c| c.is_ascii_digit())
+        && b.chars().all(|c| c.is_ascii_alphanumeric())
 }
 
 /// The sections (`## N. Title`) and their rows (`| id | Do | Expect |`).

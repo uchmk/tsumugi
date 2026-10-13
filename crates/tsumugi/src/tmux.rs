@@ -174,7 +174,11 @@ impl Cell {
                 let (along, across): (Vec<u16>, Vec<u16>) = sizes.iter().map(|&(w, h)| if row { (w, h) } else { (h, w) }).unzip();
                 let total = along.iter().fold(gaps, |a, &b| a.saturating_add(b));
                 let most = across.into_iter().max().unwrap_or(1);
-                if row { (total, most) } else { (most, total) }
+                if row {
+                    (total, most)
+                } else {
+                    (most, total)
+                }
             }
         }
     }
@@ -200,14 +204,26 @@ pub fn place(cell: &Cell, id: u32, there: impl Fn(u32) -> bool) -> Option<(u32, 
 pub enum Line {
     /// A reply starts; `mine` when it answers one of our commands (the
     /// attach's own has flags 0).
-    Begin { number: u64, mine: bool },
+    Begin {
+        number: u64,
+        mine: bool,
+    },
     /// A reply ends, or ends saying the command failed.
-    End { number: u64, failed: bool },
-    Output { pane: u32, bytes: Vec<u8> },
+    End {
+        number: u64,
+        failed: bool,
+    },
+    Output {
+        pane: u32,
+        bytes: Vec<u8>,
+    },
     /// The panes may have changed: a window came or went, a split moved,
     /// the session is another.
     Changed,
-    Renamed { window: u32, name: String },
+    Renamed {
+        window: u32,
+        name: String,
+    },
     Exit(String),
     Other,
 }
@@ -261,7 +277,8 @@ pub struct Listed {
 }
 
 /// What `list-panes` is asked to write, a pane a line (the path last: it may hold a tab).
-const LIST: &str = "list-panes -s -F '#{pane_id}\t#{window_id}\t#{pane_width}\t#{pane_height}\t#{window_layout}\t#{window_name}\t#{pane_current_path}'";
+const LIST: &str =
+    "list-panes -s -F '#{pane_id}\t#{window_id}\t#{pane_width}\t#{pane_height}\t#{window_layout}\t#{window_name}\t#{pane_current_path}'";
 
 pub fn listed(text: &[u8]) -> Option<Listed> {
     let text = String::from_utf8_lossy(text);
@@ -321,10 +338,13 @@ pub fn snapshot(c: Cursor, lines: &[Vec<u8>]) -> Vec<u8> {
 /// The commands that type `bytes` into the pane: `send-keys -H`, a few
 /// hundred bytes each.
 pub fn keys(pane: u32, bytes: &[u8]) -> Vec<String> {
-    bytes.chunks(256).map(|c| {
-        let hex: Vec<String> = c.iter().map(|b| format!("{b:02x}")).collect();
-        format!("send-keys -t %{pane} -H {}", hex.join(" "))
-    }).collect()
+    bytes
+        .chunks(256)
+        .map(|c| {
+            let hex: Vec<String> = c.iter().map(|b| format!("{b:02x}")).collect();
+            format!("send-keys -t %{pane} -H {}", hex.join(" "))
+        })
+        .collect()
 }
 
 // The socket between the gateway and a bridge: a kind byte, the length
@@ -370,7 +390,11 @@ enum Ev {
     Line(Vec<u8>),
     /// tmux is gone.
     Eof,
-    Hello { conn: u64, pane: u32, to: TcpStream },
+    Hello {
+        conn: u64,
+        pane: u32,
+        to: TcpStream,
+    },
     Keys(u64, Vec<u8>),
     Size(u64, (u16, u16)),
     Bye(u64),
@@ -476,7 +500,13 @@ impl Gateway {
                     self.tell(c, b't', name.as_bytes());
                 }
             }
-            Line::Exit(why) => return Some(if why.trim().is_empty() { "tmux let go (detached, or its server ended)".into() } else { format!("tmux: {}", why.trim()) }),
+            Line::Exit(why) => {
+                return Some(if why.trim().is_empty() {
+                    "tmux let go (detached, or its server ended)".into()
+                } else {
+                    format!("tmux: {}", why.trim())
+                })
+            }
             Line::End { .. } | Line::Other => {}
         }
         None
@@ -538,7 +568,16 @@ impl Gateway {
                 continue;
             }
             let session = self.start(l);
-            let pane = Pane { window: l.window, size: l.size, session, conn: None, ready: false, let_go: false, want: None, cursor: Cursor::default() };
+            let pane = Pane {
+                window: l.window,
+                size: l.size,
+                session,
+                conn: None,
+                ready: false,
+                let_go: false,
+                want: None,
+                cursor: Cursor::default(),
+            };
             self.panes.insert(l.pane, pane);
         }
     }
@@ -854,7 +893,9 @@ pub fn bridge(args: &[String]) -> ExitCode {
     let _ = stream.set_nodelay(true);
     let Ok(mut from) = stream.try_clone() else { return ExitCode::FAILURE };
     let to = Arc::new(Mutex::new(stream));
-    let send = |to: &Mutex<TcpStream>, kind: u8, payload: &[u8]| to.lock().map(|mut s| s.write_all(&frame(kind, payload)).is_ok()).unwrap_or(false);
+    let send = |to: &Mutex<TcpStream>, kind: u8, payload: &[u8]| {
+        to.lock().map(|mut s| s.write_all(&frame(kind, payload)).is_ok()).unwrap_or(false)
+    };
     if !send(&to, b'h', format!("{token} {pane}").as_bytes()) {
         drop(guard);
         return ExitCode::FAILURE;
@@ -957,7 +998,13 @@ mod tests {
         assert_eq!(layout("b25d,80x24,0,0,0"), Some(Cell::Pane(0, (80, 24))));
         let l = layout("f91d,120x40,0,0{60x40,0,0,0,59x40,61,0[59x20,61,0,1,59x19,61,21,2]}").unwrap();
         assert_eq!(l.panes(), [0, 1, 2]);
-        assert_eq!(l, Cell::Row(vec![Cell::Pane(0, (60, 40)), Cell::Col(vec![Cell::Pane(1, (59, 20)), Cell::Pane(2, (59, 19))], (59, 40))], (120, 40)));
+        assert_eq!(
+            l,
+            Cell::Row(
+                vec![Cell::Pane(0, (60, 40)), Cell::Col(vec![Cell::Pane(1, (59, 20)), Cell::Pane(2, (59, 19))], (59, 40))],
+                (120, 40)
+            )
+        );
         assert_eq!(layout("x,80x24,0,0{"), None);
         assert_eq!(layout("x,80x24,0,0,1junk"), None);
     }

@@ -104,7 +104,11 @@ pub struct Talk {
 /// A line that is a prompt someone typed: the user's, its content words,
 /// not a tool's result (a list) or a command's output.
 fn is_prompt(text: &str) -> bool {
-    text.contains("\"type\":\"user\"") && text.contains("\"role\":\"user\",\"content\":\"") && !text.contains("\"isMeta\":true") && !text.contains("<command-") && !text.contains("<local-command")
+    text.contains("\"type\":\"user\"")
+        && text.contains("\"role\":\"user\",\"content\":\"")
+        && !text.contains("\"isMeta\":true")
+        && !text.contains("<command-")
+        && !text.contains("<local-command")
 }
 
 /// A line's time, in Unix milliseconds.
@@ -235,7 +239,10 @@ impl File {
 }
 
 fn projects() -> Option<PathBuf> {
-    let base = std::env::var_os("CLAUDE_CONFIG_DIR").filter(|v| !v.is_empty()).map(PathBuf::from).or_else(|| tsumugi_mux::settings::home().map(|h| h.join(".claude")))?;
+    let base = std::env::var_os("CLAUDE_CONFIG_DIR")
+        .filter(|v| !v.is_empty())
+        .map(PathBuf::from)
+        .or_else(|| tsumugi_mux::settings::home().map(|h| h.join(".claude")))?;
     Some(base.join("projects"))
 }
 
@@ -253,7 +260,13 @@ fn transcripts(dir: &Path) -> Vec<(PathBuf, Option<String>)> {
         for p in entries.flatten().map(|e| e.path()) {
             if p.is_dir() {
                 let inner = std::fs::read_dir(&p).into_iter().flatten().flatten().map(|e| e.path());
-                let deeper = inner.flat_map(|q| if q.is_dir() { std::fs::read_dir(&q).into_iter().flatten().flatten().map(|e| e.path()).collect() } else { vec![q] });
+                let deeper = inner.flat_map(|q| {
+                    if q.is_dir() {
+                        std::fs::read_dir(&q).into_iter().flatten().flatten().map(|e| e.path()).collect()
+                    } else {
+                        vec![q]
+                    }
+                });
                 out.extend(deeper.filter(|q| jsonl(q) && recent(q)).map(|q| (q, None)));
             } else if jsonl(&p) && recent(&p) {
                 let id = p.file_stem().map(|s| s.to_string_lossy().into_owned());
@@ -288,7 +301,8 @@ impl Watcher {
                 let today = Local::now().date_naive();
                 let mut u = Usage::default();
                 let price = |model: &str, t: &Tokens| crate::price::of(model).map_or(0.0, |p| crate::price::cost(p, t));
-                let answers: Vec<(i64, Tokens, f64)> = files.values().flat_map(|(f, _)| f.recent.iter().map(|(ms, m, t)| (*ms, *t, price(m, t)))).collect();
+                let answers: Vec<(i64, Tokens, f64)> =
+                    files.values().flat_map(|(f, _)| f.recent.iter().map(|(ms, m, t)| (*ms, *t, price(m, t)))).collect();
                 u.block = block(&answers, chrono::Utc::now().timestamp_millis());
                 for (f, id) in files.values() {
                     if let Some(t) = f.days.get(&today) {
@@ -303,7 +317,11 @@ impl Watcher {
                     }
                 }
                 let changed = out.lock().map(|mut l| {
-                    let changed = l.today != u.today || l.conversations != u.conversations || l.talks != u.talks || l.block != u.block || l.today_cost != u.today_cost;
+                    let changed = l.today != u.today
+                        || l.conversations != u.conversations
+                        || l.talks != u.talks
+                        || l.block != u.block
+                        || l.today_cost != u.today_cost;
                     *l = Arc::new(u);
                     changed
                 });
@@ -331,7 +349,12 @@ mod tests {
         let t = |n: u64| Tokens { output: n, ..Tokens::default() };
         // 09:20 and 11:00 in one window (09:00 to 14:00); 14:10 opens the
         // next at 14:00, which 15:30 is in.
-        let answers = [(9 * h + 20 * 60 * 1000, t(1), 0.5), (11 * h, t(2), 0.5), (14 * h + 10 * 60 * 1000, t(4), 1.0), (15 * h + 30 * 60 * 1000, t(8), 2.0)];
+        let answers = [
+            (9 * h + 20 * 60 * 1000, t(1), 0.5),
+            (11 * h, t(2), 0.5),
+            (14 * h + 10 * 60 * 1000, t(4), 1.0),
+            (15 * h + 30 * 60 * 1000, t(8), 2.0),
+        ];
         let b = block(&answers, 16 * h).unwrap();
         assert_eq!((b.start_ms, b.end_ms, b.tokens.output, b.cost), (14 * h, 19 * h, 12, 3.0));
         assert_eq!(block(&answers[..2], 12 * h).unwrap().tokens.output, 3);
@@ -351,8 +374,14 @@ mod tests {
         assert!(line(r#"{"type":"user","message":{"content":"hi"},"timestamp":"2026-10-06T03:57:00Z"}"#).is_none());
         // A tool's result carrying a helper's usage is no answer of this
         // conversation's; and the total, not the first iteration's, counts.
-        assert!(line(r#"{"type":"user","toolUseResult":{"usage":{"output_tokens":9}},"message":{"content":"x"},"timestamp":"2026-10-06T03:57:00Z"}"#).is_none());
-        let two = ANSWER.replace(r#""iterations":[{"input_tokens":2,"output_tokens":492}],"output_tokens":492"#, r#""iterations":[{"output_tokens":100},{"output_tokens":392}],"output_tokens":492"#);
+        assert!(line(
+            r#"{"type":"user","toolUseResult":{"usage":{"output_tokens":9}},"message":{"content":"x"},"timestamp":"2026-10-06T03:57:00Z"}"#
+        )
+        .is_none());
+        let two = ANSWER.replace(
+            r#""iterations":[{"input_tokens":2,"output_tokens":492}],"output_tokens":492"#,
+            r#""iterations":[{"output_tokens":100},{"output_tokens":392}],"output_tokens":492"#,
+        );
         assert_eq!(line(&two).unwrap().tokens.output, 492);
         let mut f = File::default();
         f.take(&format!("{ANSWER}\n{ANSWER}\nnot json\n"));

@@ -2,8 +2,8 @@
 //! works from any program. It brings the window down from the top of the
 //! screen, and sends it away again when it has the keys.
 
-use std::sync::OnceLock;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::OnceLock;
 
 use eframe::egui;
 use global_hotkey::hotkey::HotKey;

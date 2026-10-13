@@ -18,7 +18,13 @@ pub fn pixels(size: u32) -> Vec<u8> {
     let n = size as usize;
     let unit = size as f32 / 16.0;
     // Thicker at small sizes, as the design's 32 and 16 px versions are.
-    let width = if size <= 16 { 2.0 } else if size <= 32 { 1.8 } else { 1.5 } * unit;
+    let width = if size <= 16 {
+        2.0
+    } else if size <= 32 {
+        1.8
+    } else {
+        1.5
+    } * unit;
     let lines: Vec<(Vec<[f32; 2]>, [u8; 3])> = THREADS.iter().map(|(p, c)| (curve(p, unit), *c)).collect();
     let mut out = vec![0u8; n * n * 4];
     let radius = 3.5 * unit;

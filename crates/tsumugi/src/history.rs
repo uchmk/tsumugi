@@ -86,7 +86,11 @@ pub fn from_json(text: &str) -> Vec<Closed> {
                 _ => 0.0,
             },
             ended_ms: num(j, "ended_ms"),
-            last: j.get("last").and_then(Json::array).map(|a| a.iter().filter_map(Json::string).map(str::to_owned).collect()).unwrap_or_default(),
+            last: j
+                .get("last")
+                .and_then(Json::array)
+                .map(|a| a.iter().filter_map(Json::string).map(str::to_owned).collect())
+                .unwrap_or_default(),
         })
         .take(KEPT)
         .collect()

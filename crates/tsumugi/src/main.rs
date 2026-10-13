@@ -20,73 +20,73 @@
 
 mod alert;
 mod answer;
+mod backdrop;
 mod chrome;
 mod cli;
 mod drop;
 mod files;
 mod fonts;
+mod gitinfo;
 mod hooks;
 mod import;
-mod json;
-mod gitinfo;
 mod inputbox;
+mod json;
 mod keys;
 mod keyscript;
 mod material;
-mod backdrop;
-mod quake;
 mod menu;
 mod newsession;
 mod palette;
 mod prefs;
+mod quake;
 mod shellhook;
 mod sort;
 use ito_notify::sound;
-mod spend;
-mod theme;
-mod usage;
-mod price;
-mod permit;
-mod prompts;
-mod parallel;
-mod worktree;
-mod spawn;
 mod autostart;
-mod facts;
-mod envreport;
-mod winplace;
-mod update;
-mod export;
-mod icon;
 mod clip;
-mod history;
-mod diffview;
-mod lists;
+mod console;
 mod copymode;
+mod diffview;
+mod envreport;
+mod export;
+mod facts;
+mod find;
+mod help;
+mod history;
+mod i18n;
+mod icon;
+mod layouts;
+mod lists;
+mod machine;
+mod mcp;
+mod parallel;
+mod paste;
+mod permit;
+mod price;
 mod primary;
+mod prompts;
 mod quickselect;
+mod remote;
 mod secure;
 mod serial;
-mod console;
+mod spawn;
+mod spend;
+mod theme;
 mod tmux;
-mod remote;
-mod layouts;
-mod help;
-mod find;
-mod paste;
-mod machine;
-mod i18n;
-mod mcp;
+mod update;
+mod usage;
+mod winplace;
+mod worktree;
 
 use std::time::Duration;
 
 use eframe::egui;
 use std::collections::HashMap;
 
-use ito_layout::{Node, Rect};
-use tsumugi_mux::{Client, Dir, Info, Place, RemotePane, SessionId, State, Workspace, WorkspaceId};
-use ito_pane::{Palette, Size, ViewOptions, ViewState};
 use i18n::{tr, trf};
+use ito_layout::{Node, Rect};
+use ito_pane::{Palette, Size, ViewOptions, ViewState};
+use tsumugi_mux::{Client, Dir, Info, Place, RemotePane, SessionId, State, Workspace, WorkspaceId};
 
 fn main() -> std::process::ExitCode {
     // Before anything loads a DLL: `conpty.dll` only from beside the exe.
@@ -241,7 +241,10 @@ fn layout_cli(args: &[String]) -> std::process::ExitCode {
         if !folder.is_dir() {
             return Err(format!("{}: not a folder", folder.display()));
         }
-        let claude = tsumugi_mux::settings::default_path().and_then(|p| tsumugi_mux::settings::load(&p).ok()).map(|s| s.sessions.claude).unwrap_or_default();
+        let claude = tsumugi_mux::settings::default_path()
+            .and_then(|p| tsumugi_mux::settings::load(&p).ok())
+            .map(|s| s.sessions.claude)
+            .unwrap_or_default();
         let client = connect(|| {}).map_err(|e| e.to_string())?;
         cli::open_layout(&client, l, &folder, &claude)
     };
@@ -273,7 +276,10 @@ fn attach(args: &[String]) -> std::process::ExitCode {
         eprintln!("usage: tsumugi attach NUMBER|NAME (tsumugi ls lists them)");
         return std::process::ExitCode::from(2);
     };
-    let found = Client::connect(&tsumugi_mux::address(), || {}).map_err(|e| format!("no server ({e})")).and_then(|c| c.list().map_err(|e| e.to_string())).and_then(|list| cli::find(&list, name));
+    let found = Client::connect(&tsumugi_mux::address(), || {})
+        .map_err(|e| format!("no server ({e})"))
+        .and_then(|c| c.list().map_err(|e| e.to_string()))
+        .and_then(|list| cli::find(&list, name));
     match found {
         Ok(id) => {
             let _ = SHOW_SESSION.set(id);
@@ -290,7 +296,8 @@ fn attach(args: &[String]) -> std::process::ExitCode {
 fn client_at(host: Option<&str>) -> std::io::Result<Client> {
     match host {
         Some(h) => {
-            let remote = tsumugi_mux::settings::default_path().and_then(|p| tsumugi_mux::settings::load(&p).ok()).unwrap_or_default().remote;
+            let remote =
+                tsumugi_mux::settings::default_path().and_then(|p| tsumugi_mux::settings::load(&p).ok()).unwrap_or_default().remote;
             Client::over_ssh(h, &remote.command_for(h), || {})
         }
         None => Client::connect(&tsumugi_mux::address(), || {}),
@@ -415,7 +422,9 @@ fn remote(what: &str, args: &[String]) -> std::process::ExitCode {
                 return fail("nothing to send".into());
             }
             match client.list() {
-                Ok(list) if list.iter().any(|i| i.id == id && i.read_only) => return fail(format!("session {id} is read-only; its menu lets typing in again")),
+                Ok(list) if list.iter().any(|i| i.id == id && i.read_only) => {
+                    return fail(format!("session {id} is read-only; its menu lets typing in again"))
+                }
                 Ok(_) => {}
                 Err(e) => return fail(e.to_string()),
             }
@@ -650,7 +659,11 @@ fn window() -> std::process::ExitCode {
     let first = tsumugi_mux::settings::default_path().and_then(|p| tsumugi_mux::settings::load(&p).ok()).unwrap_or_default();
     // The design's logo as the window's and the taskbar's icon.
     let icon = egui::IconData { rgba: icon::pixels(256), width: 256, height: 256 };
-    let mut viewport = egui::ViewportBuilder::default().with_title("tsumugi").with_inner_size([1280.0, 800.0]).with_min_inner_size([420.0, 260.0]).with_icon(icon);
+    let mut viewport = egui::ViewportBuilder::default()
+        .with_title("tsumugi")
+        .with_inner_size([1280.0, 800.0])
+        .with_min_inner_size([420.0, 260.0])
+        .with_icon(icon);
     // A tab dropped outside another window opens there.
     if let Some(at) = menu::window_at() {
         viewport = viewport.with_position(at);
@@ -684,13 +697,17 @@ fn window() -> std::process::ExitCode {
     // window opens), so a machine without the file still follows it.
     i18n::follow("auto");
     let options = eframe::NativeOptions { viewport, wgpu_options: wgpu_options(&first.advanced.backend), ..Default::default() };
-    match eframe::run_native("tsumugi", options, Box::new(move |cc| {
-        let mut app = App::new(cc);
-        if let Some(p) = placed {
-            app.place.loaded(p);
-        }
-        Ok(Box::new(app))
-    })) {
+    match eframe::run_native(
+        "tsumugi",
+        options,
+        Box::new(move |cc| {
+            let mut app = App::new(cc);
+            if let Some(p) = placed {
+                app.place.loaded(p);
+            }
+            Ok(Box::new(app))
+        }),
+    ) {
         Ok(()) => std::process::ExitCode::SUCCESS,
         Err(e) => {
             eprintln!("tsumugi: {e}");
@@ -774,41 +791,57 @@ fn nobody_at(e: &std::io::Error) -> bool {
 fn hooks_card(ui: &mut egui::Ui, width: f32, full: bool) -> Option<u8> {
     let c = theme::colors();
     let mut answer = None;
-    egui::Frame::NONE.fill(c.panel).stroke(egui::Stroke::new(1.0, c.wait.gamma_multiply(0.5))).corner_radius(12.0).inner_margin(egui::Margin::symmetric(20, 18)).show(ui, |ui| {
-        ui.set_width(width - 40.0);
-        ui.with_layout(egui::Layout::top_down(egui::Align::Min), |ui| {
-            ui.horizontal(|ui| {
-                let (dot, _) = ui.allocate_exact_size(egui::vec2(8.0, 8.0), egui::Sense::hover());
-                ui.painter().circle_filled(dot.center(), 4.0, c.wait);
-                ui.label(egui::RichText::new(tr("dialog.hooks_title")).size(15.0).strong().color(c.strong()));
-            });
-            ui.add_space(4.0);
-            ui.label(egui::RichText::new(tr("dialog.hooks_lead")).size(13.0).color(c.dim));
-            ui.add_space(6.0);
-            if full {
-                egui::Frame::NONE.fill(c.side).corner_radius(8.0).inner_margin(egui::Margin::symmetric(12, 10)).show(ui, |ui| {
-                    ui.set_width(ui.available_width());
-                    let [notification, stop] = hooks::commands();
-                    ui.label(egui::RichText::new(format!("\"Notification\": [{{ \"command\": {notification:?} }}]\n\"Stop\":         [{{ \"command\": {stop:?} }}]")).font(egui::FontId::monospace(12.0)).color(c.fg));
+    egui::Frame::NONE
+        .fill(c.panel)
+        .stroke(egui::Stroke::new(1.0, c.wait.gamma_multiply(0.5)))
+        .corner_radius(12.0)
+        .inner_margin(egui::Margin::symmetric(20, 18))
+        .show(ui, |ui| {
+            ui.set_width(width - 40.0);
+            ui.with_layout(egui::Layout::top_down(egui::Align::Min), |ui| {
+                ui.horizontal(|ui| {
+                    let (dot, _) = ui.allocate_exact_size(egui::vec2(8.0, 8.0), egui::Sense::hover());
+                    ui.painter().circle_filled(dot.center(), 4.0, c.wait);
+                    ui.label(egui::RichText::new(tr("dialog.hooks_title")).size(15.0).strong().color(c.strong()));
                 });
-            }
-            ui.add_space(8.0);
-            ui.horizontal(|ui| {
-                let add = egui::Button::new(egui::RichText::new(tr("dialog.hooks_add")).color(c.on_accent()).strong()).fill(c.wait).min_size(egui::vec2(0.0, 34.0));
-                if ui.add(add).clicked() {
-                    answer = Some(0);
+                ui.add_space(4.0);
+                ui.label(egui::RichText::new(tr("dialog.hooks_lead")).size(13.0).color(c.dim));
+                ui.add_space(6.0);
+                if full {
+                    egui::Frame::NONE.fill(c.side).corner_radius(8.0).inner_margin(egui::Margin::symmetric(12, 10)).show(ui, |ui| {
+                        ui.set_width(ui.available_width());
+                        let [notification, stop] = hooks::commands();
+                        ui.label(
+                            egui::RichText::new(format!(
+                                "\"Notification\": [{{ \"command\": {notification:?} }}]\n\"Stop\":         [{{ \"command\": {stop:?} }}]"
+                            ))
+                            .font(egui::FontId::monospace(12.0))
+                            .color(c.fg),
+                        );
+                    });
                 }
-                if ui.add(egui::Button::new(tr("dialog.not_now")).min_size(egui::vec2(0.0, 34.0))).clicked() {
-                    answer = Some(1);
-                }
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if ui.add(egui::Button::new(egui::RichText::new(tr("dialog.hooks_never")).size(12.5).color(c.dim)).frame(false)).clicked() {
-                        answer = Some(2);
+                ui.add_space(8.0);
+                ui.horizontal(|ui| {
+                    let add = egui::Button::new(egui::RichText::new(tr("dialog.hooks_add")).color(c.on_accent()).strong())
+                        .fill(c.wait)
+                        .min_size(egui::vec2(0.0, 34.0));
+                    if ui.add(add).clicked() {
+                        answer = Some(0);
                     }
+                    if ui.add(egui::Button::new(tr("dialog.not_now")).min_size(egui::vec2(0.0, 34.0))).clicked() {
+                        answer = Some(1);
+                    }
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if ui
+                            .add(egui::Button::new(egui::RichText::new(tr("dialog.hooks_never")).size(12.5).color(c.dim)).frame(false))
+                            .clicked()
+                        {
+                            answer = Some(2);
+                        }
+                    });
                 });
             });
         });
-    });
     answer
 }
 
@@ -828,7 +861,10 @@ const OTHER_VERSION: &str = "A tsumugi server of another version is running: ";
 /// That server answers a new client until it has read the stop, so only
 /// the line's end says it went (the real machine, 17.26: the window took
 /// the old server back, and was left with nothing when it left).
-fn replace_server(old: Option<Client>, wake: impl Fn() + Send + Sync + Clone + 'static) -> std::sync::mpsc::Receiver<Result<Client, String>> {
+fn replace_server(
+    old: Option<Client>,
+    wake: impl Fn() + Send + Sync + Clone + 'static,
+) -> std::sync::mpsc::Receiver<Result<Client, String>> {
     let (tx, rx) = std::sync::mpsc::channel();
     let _ = std::thread::Builder::new().name("replace-server".into()).spawn(move || {
         let at = tsumugi_mux::address();
@@ -965,7 +1001,14 @@ impl View {
 
     fn text(self) -> String {
         let yes = |b: bool| if b { "yes" } else { "no" };
-        format!("sort={}\ndensity={}\nrail={}\nasked={}\nhooks_asked={}\n", self.sort.word(), self.density.word(), yes(self.rail), yes(self.asked), yes(self.hooks_asked))
+        format!(
+            "sort={}\ndensity={}\nrail={}\nasked={}\nhooks_asked={}\n",
+            self.sort.word(),
+            self.density.word(),
+            yes(self.rail),
+            yes(self.asked),
+            yes(self.hooks_asked)
+        )
     }
 
     /// Written on a thread of its own: no disk on the window's thread.
@@ -1564,14 +1607,19 @@ impl App {
             usage,
             own_frame: first_window.own_titlebar(),
             system_frame: !first_window.own_titlebar(),
-            material: (cfg!(windows) || cfg!(target_os = "macos")) && first_window.material != "none" && material::apply(cc, &first_window.material, theme::colors().light),
+            material: (cfg!(windows) || cfg!(target_os = "macos"))
+                && first_window.material != "none"
+                && material::apply(cc, &first_window.material, theme::colors().light),
             transparent: first_window.opacity < 100,
             backdrop: backdrop::Backdrop::default(),
             quake: quake::Quake::default(),
             place: winplace::Tracker::default(),
             secure: secure::Secure::default(),
             known_cwds: HashMap::new(),
-            closed: closed_file().and_then(|p| std::fs::read_to_string(p).ok()).map(|t| t.lines().filter(|l| !l.is_empty()).map(std::path::PathBuf::from).collect()).unwrap_or_default(),
+            closed: closed_file()
+                .and_then(|p| std::fs::read_to_string(p).ok())
+                .map(|t| t.lines().filter(|l| !l.is_empty()).map(std::path::PathBuf::from).collect())
+                .unwrap_or_default(),
             shown_tab: None,
             shown_panes: std::collections::HashSet::new(),
             tab_at: None,
@@ -1624,7 +1672,12 @@ impl App {
             update_asked: false,
             build_told: false,
             close_ok: false,
-            script: KEYS.get().map(|steps| keyscript::runner(steps.clone(), std::env::var_os("TSUMUGI_KEYS_DONE").filter(|p| !p.is_empty()).map(std::path::PathBuf::from))),
+            script: KEYS.get().map(|steps| {
+                keyscript::runner(
+                    steps.clone(),
+                    std::env::var_os("TSUMUGI_KEYS_DONE").filter(|p| !p.is_empty()).map(std::path::PathBuf::from),
+                )
+            }),
             script_todo: Vec::new(),
             worktree_removing: None,
             toast: None,
@@ -1781,8 +1834,7 @@ impl App {
             }
             keys::Action::NextWaiting => {
                 // The longest-waiting first; from the one shown, on to the next.
-                let mut waiting: Vec<&Info> =
-                    sessions.iter().filter(|i| matches!(i.state, State::Waiting | State::MaybeWaiting)).collect();
+                let mut waiting: Vec<&Info> = sessions.iter().filter(|i| matches!(i.state, State::Waiting | State::MaybeWaiting)).collect();
                 waiting.sort_by_key(|i| i.since_ms);
                 let here = waiting.iter().position(|i| i.id == w.focus);
                 let next = here.map_or(0, |h| (h + 1) % waiting.len().max(1));
@@ -1893,7 +1945,9 @@ impl App {
             keys::Action::QuickSelect => {
                 self.quick = match self.quick {
                     Some(_) => None,
-                    None => self.panes.get(&w.focus).map(|pane| (w.focus, quickselect::QuickSelect::new(&ito_pane::Pane::screen(pane).rows))),
+                    None => {
+                        self.panes.get(&w.focus).map(|pane| (w.focus, quickselect::QuickSelect::new(&ito_pane::Pane::screen(pane).rows)))
+                    }
                 };
             }
             keys::Action::ClosedList => self.lists = Some(lists::View::new(lists::Page::Closed)),
@@ -1907,7 +1961,8 @@ impl App {
             keys::Action::Changes => {
                 if let Some(i) = sessions.iter().find(|i| i.id == w.focus) {
                     let ctx = self.ctx.clone();
-                    self.diff = Some(diffview::View::open(sort::display_title(&i.title, &i.command), i.cwd.clone(), move || ctx.request_repaint()));
+                    self.diff =
+                        Some(diffview::View::open(sort::display_title(&i.title, &i.command), i.cwd.clone(), move || ctx.request_repaint()));
                 }
             }
             keys::Action::Browser => {
@@ -1949,7 +2004,14 @@ impl App {
             keys::Action::Duplicate => {
                 if let Some(focus) = sessions.iter().find(|i| i.id == w.focus) {
                     let typed = focus.claude.then(|| newsession::Start::Claude.typed(&self.settings_now.sessions.claude)).flatten();
-                    if let Ok(pane) = client.spawn_typing(focus.cwd.clone(), None, Size::new(80, 24), (8, 16), Place::NewWorkspace, typed.into_iter().collect()) {
+                    if let Ok(pane) = client.spawn_typing(
+                        focus.cwd.clone(),
+                        None,
+                        Size::new(80, 24),
+                        (8, 16),
+                        Place::NewWorkspace,
+                        typed.into_iter().collect(),
+                    ) {
                         self.pending = Some(pane.id());
                     }
                 }
@@ -1968,7 +2030,11 @@ impl App {
                 self.font = egui::FontId::monospace(font_size(base, self.font_step));
                 let size = self.font.size;
                 let size = size.to_string();
-                let words = if self.font_step == 0.0 { trf("toast.font_size", &[&size]) } else { trf("toast.font_size_reset", &[&size, &keys::label(keys::Action::FontReset)]) };
+                let words = if self.font_step == 0.0 {
+                    trf("toast.font_size", &[&size])
+                } else {
+                    trf("toast.font_size_reset", &[&size, &keys::label(keys::Action::FontReset)])
+                };
                 self.say(words, false);
             }
         }
@@ -1976,7 +2042,12 @@ impl App {
 
     /// What the command palette lists: the commands, saved prompts and
     /// layouts, then every folder the sessions are in.
-    fn search_entries(sessions: &[Info], saved: &[prompts::Prompt], kept: &[layouts::Layout], scripts: &[tsumugi_mux::settings::MenuItem]) -> Vec<palette::Entry> {
+    fn search_entries(
+        sessions: &[Info],
+        saved: &[prompts::Prompt],
+        kept: &[layouts::Layout],
+        scripts: &[tsumugi_mux::settings::MenuItem],
+    ) -> Vec<palette::Entry> {
         let mut out = Vec::new();
         for c in palette::Command::ALL {
             if c == palette::Command::SecureInput && !secure::HERE {
@@ -1986,13 +2057,25 @@ impl App {
         }
         for (k, p) in saved.iter().enumerate() {
             let first = p.text.lines().next().unwrap_or_default();
-            out.push(palette::Entry { title: trf("palette.send_prompt", &[&p.name]), detail: first.chars().take(60).collect(), pick: palette::Pick::Prompt(k) });
+            out.push(palette::Entry {
+                title: trf("palette.send_prompt", &[&p.name]),
+                detail: first.chars().take(60).collect(),
+                pick: palette::Pick::Prompt(k),
+            });
         }
         for (k, l) in kept.iter().enumerate() {
-            out.push(palette::Entry { title: trf("palette.open_layout", &[&l.name]), detail: layouts::words(&l.tree), pick: palette::Pick::Layout(k) });
+            out.push(palette::Entry {
+                title: trf("palette.open_layout", &[&l.name]),
+                detail: layouts::words(&l.tree),
+                pick: palette::Pick::Layout(k),
+            });
         }
         for (k, s) in scripts.iter().enumerate() {
-            out.push(palette::Entry { title: trf("palette.run_script", &[&s.name]), detail: s.command.chars().take(60).collect(), pick: palette::Pick::Script(k) });
+            out.push(palette::Entry {
+                title: trf("palette.run_script", &[&s.name]),
+                detail: s.command.chars().take(60).collect(),
+                pick: palette::Pick::Script(k),
+            });
         }
         let mut folders: Vec<&std::path::Path> = Vec::new();
         for i in sessions {
@@ -2003,7 +2086,11 @@ impl App {
             }
         }
         for f in folders {
-            out.push(palette::Entry { title: trf("palette.new_session_in", &[&home_short(f)]), detail: tr("palette.folder").into(), pick: palette::Pick::Folder(f.to_path_buf()) });
+            out.push(palette::Entry {
+                title: trf("palette.new_session_in", &[&home_short(f)]),
+                detail: tr("palette.folder").into(),
+                pick: palette::Pick::Folder(f.to_path_buf()),
+            });
         }
         out
     }
@@ -2055,7 +2142,9 @@ impl App {
     /// The settings screen in place of the panes, and what it changes.
     fn settings_screen(&mut self, ui: &mut egui::Ui, client: &Client, workspaces: &[Workspace], sessions: &[Info]) {
         let mut tags: Vec<String> = Vec::new();
-        for t in workspaces.iter().flat_map(|w| w.layout.leaves()).filter_map(|id| sessions.iter().find(|i| i.id == id)).flat_map(|i| &i.tags) {
+        for t in
+            workspaces.iter().flat_map(|w| w.layout.leaves()).filter_map(|id| sessions.iter().find(|i| i.id == id)).flat_map(|i| &i.tags)
+        {
             if !tags.contains(t) {
                 tags.push(t.clone());
             }
@@ -2091,14 +2180,21 @@ impl App {
         let changes = prefs::show(ui, &self.palette, screen, &seen);
         for change in changes {
             match change {
-                prefs::Change::Set(table, key, value) => edit_settings(self.settings_tx.clone(), move |t| tsumugi_mux::settings::set_key(t, table, key, &value)),
+                prefs::Change::Set(table, key, value) => {
+                    edit_settings(self.settings_tx.clone(), move |t| tsumugi_mux::settings::set_key(t, table, key, &value))
+                }
                 prefs::Change::SetIn(table, key, value) => edit_settings(self.settings_tx.clone(), move |t| match &value {
                     Some(v) => tsumugi_mux::settings::set_key(t, Some(&table), &key, v),
                     None => tsumugi_mux::settings::remove_key(t, Some(&table), &key),
                 }),
                 prefs::Change::Rules(rules) => edit_settings(self.settings_tx.clone(), move |t| write_rules(t, &rules)),
                 prefs::Change::MenuItems(items) => edit_settings(self.settings_tx.clone(), move |t| {
-                    let blocks: Vec<Vec<(&str, String)>> = items.iter().map(|i| vec![("name", tsumugi_mux::settings::quote(&i.name)), ("command", tsumugi_mux::settings::quote(&i.command))]).collect();
+                    let blocks: Vec<Vec<(&str, String)>> = items
+                        .iter()
+                        .map(|i| {
+                            vec![("name", tsumugi_mux::settings::quote(&i.name)), ("command", tsumugi_mux::settings::quote(&i.command))]
+                        })
+                        .collect();
                     tsumugi_mux::settings::set_tables(t, "menu.session", &blocks)
                 }),
                 prefs::Change::RenameTag(old, new) => self.rename_tag(client, sessions, old, new),
@@ -2128,12 +2224,16 @@ impl App {
                 }),
                 prefs::Change::RestartServer => self.restart_server(ui.ctx()),
                 prefs::Change::Export => self.job(|| {
-                    let dir = tsumugi_mux::settings::default_path().and_then(|p| p.parent().map(std::path::Path::to_path_buf)).ok_or("no settings folder")?;
+                    let dir = tsumugi_mux::settings::default_path()
+                        .and_then(|p| p.parent().map(std::path::Path::to_path_buf))
+                        .ok_or("no settings folder")?;
                     let to = export::place().ok_or("no home folder")?;
                     export::export(&dir, &to).map(|f| trf("toast.exported", &[&home_short(&f)]))
                 }),
                 prefs::Change::Import(from) => self.job(move || {
-                    let dir = tsumugi_mux::settings::default_path().and_then(|p| p.parent().map(std::path::Path::to_path_buf)).ok_or("no settings folder")?;
+                    let dir = tsumugi_mux::settings::default_path()
+                        .and_then(|p| p.parent().map(std::path::Path::to_path_buf))
+                        .ok_or("no settings folder")?;
                     export::import(&dir, std::path::Path::new(&from)).map(|n| trf("toast.imported", &[&n.to_string()]))
                 }),
                 prefs::Change::GoTo(_) => {}
@@ -2267,7 +2367,14 @@ impl App {
         };
         let shell = c.on.shell();
         self.keep_profile(&mut c);
-        match client.spawn_typing(c.folder.clone(), shell, Size::new(80, 24), (8, 16), place, c.start.typed(&self.settings_now.sessions.claude).filter(|_| c.on.takes_typing()).into_iter().collect()) {
+        match client.spawn_typing(
+            c.folder.clone(),
+            shell,
+            Size::new(80, 24),
+            (8, 16),
+            place,
+            c.start.typed(&self.settings_now.sessions.claude).filter(|_| c.on.takes_typing()).into_iter().collect(),
+        ) {
             Ok(pane) => {
                 let id = pane.id();
                 self.pending = Some(id);
@@ -2287,7 +2394,14 @@ impl App {
                 for (k, s) in c.more.iter().enumerate() {
                     let (beside, dir) = newsession::more_place(k, id, &made);
                     let shell = c.on.shell();
-                    match client.spawn_typing(c.folder.clone(), shell, Size::new(80, 24), (8, 16), Place::Split { beside, dir }, s.typed(&self.settings_now.sessions.claude).filter(|_| c.on.takes_typing()).into_iter().collect()) {
+                    match client.spawn_typing(
+                        c.folder.clone(),
+                        shell,
+                        Size::new(80, 24),
+                        (8, 16),
+                        Place::Split { beside, dir },
+                        s.typed(&self.settings_now.sessions.claude).filter(|_| c.on.takes_typing()).into_iter().collect(),
+                    ) {
                         Ok(pane) => {
                             made.push(pane.id());
                             for t in c.tags.iter().cloned() {
@@ -2337,7 +2451,8 @@ impl App {
         let name = if !w.name.trim().is_empty() {
             w.name.trim().to_owned()
         } else {
-            let project = sessions.iter().find(|i| i.id == w.focus).and_then(|i| i.project.file_name().map(|n| n.to_string_lossy().into_owned()));
+            let project =
+                sessions.iter().find(|i| i.id == w.focus).and_then(|i| i.project.file_name().map(|n| n.to_string_lossy().into_owned()));
             format!("{} · {} panes", project.unwrap_or_else(|| "Tab".into()), tree.leaves().len())
         };
         let words = layouts::words(&tree);
@@ -2394,7 +2509,11 @@ impl App {
                     };
                     client.send_prompt(*id, text);
                 }
-                let words = if to.len() > 1 { trf("toast.sent_panes", &[&p.name, &to.len().to_string()]) } else { trf("toast.sent_pane", &[&p.name]) };
+                let words = if to.len() > 1 {
+                    trf("toast.sent_panes", &[&p.name, &to.len().to_string()])
+                } else {
+                    trf("toast.sent_pane", &[&p.name])
+                };
                 self.say(words, false);
             }
             palette::Pick::Script(k) => {
@@ -2417,7 +2536,9 @@ impl App {
             }
             palette::Pick::Command(palette::Command::SecureInput) => {
                 let on = !self.settings_now.advanced.secure_input;
-                edit_settings(self.settings_tx.clone(), move |t| tsumugi_mux::settings::set_key(t, Some("advanced"), "secure_input", &on.to_string()));
+                edit_settings(self.settings_tx.clone(), move |t| {
+                    tsumugi_mux::settings::set_key(t, Some("advanced"), "secure_input", &on.to_string())
+                });
                 self.say(if on { tr("toast.secure_input") } else { tr("toast.secure_input_off") }.into(), false);
             }
             palette::Pick::Command(palette::Command::Sort(s)) => {
@@ -2463,7 +2584,9 @@ impl App {
     /// the band does.
     fn side_panel(&mut self, ui: &mut egui::Ui, workspaces: &[Workspace], sessions: &[Info], top: f32) {
         // Room at the top for macOS's traffic lights, when they sit on it.
-        let side = egui::Frame::NONE.fill(self.chrome_fill(self.palette.on_cursor)).inner_margin(egui::Margin { top: top as i8, ..Default::default() });
+        let side = egui::Frame::NONE
+            .fill(self.chrome_fill(self.palette.on_cursor))
+            .inner_margin(egui::Margin { top: top as i8, ..Default::default() });
         // Each switch between the two starts the panel at its own width: a
         // fresh id, since egui keeps a panel's width by its id.
         self.side_rect = None;
@@ -2539,14 +2662,16 @@ impl App {
         // More lines on a card: its pull request, when one is known for its
         // branch, and on the selected card its conversation's numbers (the
         // design's Sidebar, 4 and 5).
-        let numbers = (as_card && Some(w.id) == self.active).then(|| {
-            let c = &urgent.conversation;
-            let talk = used.talks.get(c)?;
-            let tokens = used.conversations.get(c).map_or(0, usage::Tokens::total);
-            let prompts = if talk.prompts == 1 { "1 prompt".to_owned() } else { format!("{} prompts", talk.prompts) };
-            let cost = used.costs.get(c).filter(|c| **c > 0.0).map(|c| format!(" · ≈{}", price::dollars(*c))).unwrap_or_default();
-            Some(format!("{prompts} · {} · {} tokens{cost}", chrome::elapsed(talk.ms), usage::short(tokens)))
-        }).flatten();
+        let numbers = (as_card && Some(w.id) == self.active)
+            .then(|| {
+                let c = &urgent.conversation;
+                let talk = used.talks.get(c)?;
+                let tokens = used.conversations.get(c).map_or(0, usage::Tokens::total);
+                let prompts = if talk.prompts == 1 { "1 prompt".to_owned() } else { format!("{} prompts", talk.prompts) };
+                let cost = used.costs.get(c).filter(|c| **c > 0.0).map(|c| format!(" · ≈{}", price::dollars(*c))).unwrap_or_default();
+                Some(format!("{prompts} · {} · {} tokens{cost}", chrome::elapsed(talk.ms), usage::short(tokens)))
+            })
+            .flatten();
         // What runs in it other than Claude Code (`codex`) and the ports its
         // programs listen on, a click away in the browser.
         let ports: Vec<u16> = infos.iter().flat_map(|i| i.ports.iter().copied()).take(4).collect();
@@ -2600,7 +2725,8 @@ impl App {
             ui.label(egui::RichText::new(tr("sidebar.sessions")).size(11.0).strong().color(pal.fg_dim));
             // Another machine's, shown: whose.
             if let Some(host) = &self.on {
-                ui.label(egui::RichText::new(trf("sidebar.on_host", &[host])).size(11.0).strong().color(chrome::ink(chrome::cyan()))).on_hover_text(tr("sidebar.on_host_hover"));
+                ui.label(egui::RichText::new(trf("sidebar.on_host", &[host])).size(11.0).strong().color(chrome::ink(chrome::cyan())))
+                    .on_hover_text(tr("sidebar.on_host_hover"));
             }
             ui.label(egui::RichText::new(count).size(11.0).color(crate::theme::colors().faint()));
             // Right to left: `+` at the end, the order before it.
@@ -2643,33 +2769,38 @@ impl App {
         if !all_tags.is_empty() {
             // A margin rather than a space, so a second line lines up too.
             let margin = egui::Margin { left: 14, right: 10, top: 0, bottom: 0 };
-            egui::Frame::NONE.inner_margin(margin).show(ui, |ui| ui.horizontal_wrapped(|ui| {
-                ui.spacing_mut().item_spacing = egui::vec2(5.0, 5.0);
-                for t in &all_tags {
-                    let faded = muted_tags.contains(t);
-                    let size = egui::vec2(ui.fonts_mut(|f| f.layout_no_wrap(t.clone(), egui::FontId::proportional(11.0), pal.fg).size().x) + 12.0, 16.0);
-                    let (rect, resp) = ui.allocate_exact_size(size, egui::Sense::click());
-                    let on = self.filter.tag.as_ref() == Some(t);
-                    let p = ui.painter();
-                    let dim = self.filter.tag.is_some() && !on;
-                    chrome::tag_chip(p, rect.min, t, faded || dim);
-                    if on {
-                        p.rect_stroke(rect.expand(1.5), 5.0, egui::Stroke::new(1.0, pal.fg), egui::StrokeKind::Outside);
-                    }
-                    let hint = if faded { trf("tag.show_muted", &[t]) } else { trf("tag.show", &[t]) };
-                    let resp = resp.on_hover_text(hint);
-                    if resp.clicked() {
-                        self.filter.tag = if on { None } else { Some(t.clone()) };
-                    }
-                    resp.context_menu(|ui| {
-                        let label = if faded { trf("tag.unmute", &[t]) } else { trf("tag.mute", &[t]) };
-                        if ui.button(label).clicked() {
-                            ops.push(SideOp::MuteTag(t.clone(), !faded));
-                            ui.close();
+            egui::Frame::NONE.inner_margin(margin).show(ui, |ui| {
+                ui.horizontal_wrapped(|ui| {
+                    ui.spacing_mut().item_spacing = egui::vec2(5.0, 5.0);
+                    for t in &all_tags {
+                        let faded = muted_tags.contains(t);
+                        let size = egui::vec2(
+                            ui.fonts_mut(|f| f.layout_no_wrap(t.clone(), egui::FontId::proportional(11.0), pal.fg).size().x) + 12.0,
+                            16.0,
+                        );
+                        let (rect, resp) = ui.allocate_exact_size(size, egui::Sense::click());
+                        let on = self.filter.tag.as_ref() == Some(t);
+                        let p = ui.painter();
+                        let dim = self.filter.tag.is_some() && !on;
+                        chrome::tag_chip(p, rect.min, t, faded || dim);
+                        if on {
+                            p.rect_stroke(rect.expand(1.5), 5.0, egui::Stroke::new(1.0, pal.fg), egui::StrokeKind::Outside);
                         }
-                    });
-                }
-            }));
+                        let hint = if faded { trf("tag.show_muted", &[t]) } else { trf("tag.show", &[t]) };
+                        let resp = resp.on_hover_text(hint);
+                        if resp.clicked() {
+                            self.filter.tag = if on { None } else { Some(t.clone()) };
+                        }
+                        resp.context_menu(|ui| {
+                            let label = if faded { trf("tag.unmute", &[t]) } else { trf("tag.mute", &[t]) };
+                            if ui.button(label).clicked() {
+                                ops.push(SideOp::MuteTag(t.clone(), !faded));
+                                ui.close();
+                            }
+                        });
+                    }
+                })
+            });
             ui.add_space(6.0);
         }
 
@@ -2694,14 +2825,30 @@ impl App {
                         if n == 0 && !on {
                             continue;
                         }
-                        if chrome::filter_button(ui, &pal, &format!("{} {n}", k.label()), Some(k.state().map_or_else(chrome::grey, state_color)), on).clicked() {
+                        if chrome::filter_button(
+                            ui,
+                            &pal,
+                            &format!("{} {n}", k.label()),
+                            Some(k.state().map_or_else(chrome::grey, state_color)),
+                            on,
+                        )
+                        .clicked()
+                        {
                             self.filter.kind = if on { None } else { Some(k) };
                         }
                     }
                 });
                 if projects.len() > 1 || self.filter.project.is_some() {
                     ui.horizontal_wrapped(|ui| {
-                        if chrome::filter_button(ui, &pal, &trf("sidebar.all_folders", &[&tabs.len().to_string()]), None, self.filter.project.is_none()).clicked() {
+                        if chrome::filter_button(
+                            ui,
+                            &pal,
+                            &trf("sidebar.all_folders", &[&tabs.len().to_string()]),
+                            None,
+                            self.filter.project.is_none(),
+                        )
+                        .clicked()
+                        {
                             self.filter.project = None;
                         }
                         for (p, n) in &projects {
@@ -2724,10 +2871,12 @@ impl App {
                 let key = keys::label(keys::Action::NextWaiting);
                 let resp = ui.horizontal(|ui| {
                     ui.add_space(12.0);
-                    let cap = egui::Button::new(egui::RichText::new(&key).font(egui::FontId::monospace(11.0)).color(crate::theme::colors().strong()))
-                        .fill(crate::theme::colors().panel)
-                        .stroke(egui::Stroke::new(1.0, crate::theme::colors().border_strong()))
-                        .corner_radius(5.0);
+                    let cap = egui::Button::new(
+                        egui::RichText::new(&key).font(egui::FontId::monospace(11.0)).color(crate::theme::colors().strong()),
+                    )
+                    .fill(crate::theme::colors().panel)
+                    .stroke(egui::Stroke::new(1.0, crate::theme::colors().border_strong()))
+                    .corner_radius(5.0);
                     // No cap when the key was given back to the shell.
                     let a = key != "none" && ui.add(cap).clicked();
                     let words = egui::RichText::new(trf("sidebar.jump", &[&waiting.to_string()])).size(12.0).color(pal.fg_dim);
@@ -2737,7 +2886,9 @@ impl App {
                         .with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             ui.add_space(12.0);
                             let words = egui::RichText::new(tr("sidebar.list")).size(12.0).color(chrome::ink(chrome::cyan()));
-                            ui.add(egui::Label::new(words).sense(egui::Sense::click())).on_hover_text(trf("sidebar.list_hover", &[&keys::label(keys::Action::Waiting)])).clicked()
+                            ui.add(egui::Label::new(words).sense(egui::Sense::click()))
+                                .on_hover_text(trf("sidebar.list_hover", &[&keys::label(keys::Action::Waiting)]))
+                                .clicked()
                         })
                         .inner;
                     (a || b.clicked(), list)
@@ -2768,455 +2919,552 @@ impl App {
         // No scrollbar: every card at full size while they fit, and the last
         // ones as lines when they do not (the wheel still moves a list too
         // long even as lines).
-        egui::ScrollArea::vertical().auto_shrink([false, false]).scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysHidden).show(ui, |ui| {
-            let mut listed = sort::items(&shown, self.view.sort, self.view.density, &self.closed_groups, self.active);
-            // Room between the cards for their glow (the design's Sidebar).
-            if self.view.density == sort::Density::Cards {
-                ui.spacing_mut().item_spacing.y = 6.0;
-            }
-            let gap = ui.spacing().item_spacing.y;
-            let fits: Vec<sort::Row> = listed
-                .iter()
-                .map(|item| match item {
-                    sort::Item::Group { .. } => sort::Row { card: 28.0 + gap, line: 28.0 + gap, keep: true },
-                    sort::Item::Tab { tab, card } => {
-                        let tall = |as_card| self.card_lines(tab, &used, now, as_card).map_or(0.0, |l| l.height() + gap);
-                        sort::Row { card: tall(*card), line: tall(false), keep: Some(tab.workspace.id) == self.active }
-                    }
-                })
-                .collect();
-            for (item, stays) in listed.iter_mut().zip(sort::fit(&fits, ui.available_height())) {
-                if let sort::Item::Tab { card, .. } = item {
-                    *card &= stays;
+        egui::ScrollArea::vertical()
+            .auto_shrink([false, false])
+            .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysHidden)
+            .show(ui, |ui| {
+                let mut listed = sort::items(&shown, self.view.sort, self.view.density, &self.closed_groups, self.active);
+                // Room between the cards for their glow (the design's Sidebar).
+                if self.view.density == sort::Density::Cards {
+                    ui.spacing_mut().item_spacing.y = 6.0;
                 }
-            }
-            for item in &listed {
-                let (tab, as_card) = match item {
-                    // A project's heading (the design's 1i B): a click
-                    // opens or closes it.
-                    sort::Item::Group { project, total, kinds, open } => {
-                        let (rect, resp) = ui.allocate_exact_size(egui::vec2(ui.available_width(), 28.0), egui::Sense::click());
-                        let p = ui.painter_at(rect);
-                        if resp.hovered() {
-                            p.rect_filled(rect.shrink2(egui::vec2(6.0, 1.0)), 6.0, pal.selection.gamma_multiply(0.4));
+                let gap = ui.spacing().item_spacing.y;
+                let fits: Vec<sort::Row> = listed
+                    .iter()
+                    .map(|item| match item {
+                        sort::Item::Group { .. } => sort::Row { card: 28.0 + gap, line: 28.0 + gap, keep: true },
+                        sort::Item::Tab { tab, card } => {
+                            let tall = |as_card| self.card_lines(tab, &used, now, as_card).map_or(0.0, |l| l.height() + gap);
+                            sort::Row { card: tall(*card), line: tall(false), keep: Some(tab.workspace.id) == self.active }
                         }
-                        chrome::triangle(&p, egui::pos2(rect.left() + 18.0, rect.center().y), *open, pal.fg_dim);
-                        let name = project.file_name().map_or_else(|| project.display().to_string(), |f| f.to_string_lossy().into_owned());
-                        let name = p.layout_no_wrap(name, egui::FontId::proportional(13.0), crate::theme::colors().strong());
-                        let x = rect.left() + 30.0 + name.size().x;
-                        p.galley(egui::pos2(rect.left() + 28.0, rect.center().y - name.size().y / 2.0), name, egui::Color32::WHITE);
-                        p.text(egui::pos2(x + 8.0, rect.center().y), egui::Align2::LEFT_CENTER, total.to_string(), egui::FontId::proportional(12.0), pal.fg_dim);
-                        let mut right = rect.right() - 14.0;
-                        if *open {
-                            for (k, color) in [(sort::Kind::Error, chrome::red()), (sort::Kind::Waiting, chrome::gold())] {
-                                let n = kinds.iter().filter(|x| **x == k).count();
-                                if n > 0 {
-                                    let r = p.text(egui::pos2(right, rect.center().y), egui::Align2::RIGHT_CENTER, if k == sort::Kind::Error { trf("sidebar.group_error", &[&n.to_string()]) } else { trf("sidebar.group_waiting", &[&n.to_string()]) }, egui::FontId::proportional(11.5), color);
-                                    right = r.left() - 8.0;
-                                }
-                            }
-                        } else {
-                            // Closed: only a dot each.
-                            for k in kinds.iter().rev().take(12) {
-                                p.circle_filled(egui::pos2(right - 3.0, rect.center().y), 3.0, k.state().map_or_else(chrome::grey, state_color));
-                                right -= 9.0;
-                            }
-                        }
-                        if resp.on_hover_text(home_short(project)).clicked() {
-                            if *open {
-                                self.closed_groups.push(project.clone());
-                            } else {
-                                self.closed_groups.retain(|q| q != project);
-                            }
-                        }
-                        continue;
-                    }
-                    sort::Item::Tab { tab, card } => (*tab, *card),
-                };
-                let w = tab.workspace;
-                let infos = &tab.infos;
-                let (Some(focus), Some(urgent), Some(lines)) = (tab.focus(), tab.urgent(), self.card_lines(tab, &used, now, as_card)) else { continue };
-                let (height, base) = (lines.height(), lines.base());
-                let CardLines { tags, numbers, ports, other_agent, noting, note_line, run_line, closed_up, .. } = lines;
-                let pr = as_card.then(|| self.git.known(&focus.cwd, &focus.branch).and_then(|g| g.pr)).flatten();
-                let (rect, resp) = ui.allocate_exact_size(egui::vec2(ui.available_width(), height), sense);
-                rows.push((w.id, rect));
-                let painter = ui.painter_at(rect);
-                let muted = infos.iter().all(|i| i.muted);
-                let quiet_tab = infos.iter().all(|i| quiet(i, &muted_tags));
-                // The pointer on the changes' count: their list, not the preview.
-                let mut over_changes = false;
-                if as_card {
-                let card = rect.shrink2(egui::vec2(6.0, 2.0));
-                // Each state its ring (the design's States): waiting in gold
-                // and breathing, the one to look at, its glow past the card.
-                let look = chrome::look(urgent);
-                match look {
-                    chrome::Look::State(State::Waiting) => {
-                        painter.rect_filled(card, 8.0, crate::theme::colors().wait_bg());
-                    }
-                    chrome::Look::State(State::Done) => chrome::done_ground(&painter, card, 8.0),
-                    _ => {}
-                }
-                let moves = matches!(look, chrome::Look::State(State::Waiting | State::Running));
-                let t = if moves { self.moving(ui) } else { None };
-                chrome::state_ring(&ui.painter_at(rect.expand(4.0)), card, 8.0, look, t);
-                // The hover comes and goes over a moment rather than at once.
-                let hover = if self.settings_now.appearance.animations {
-                    ui.ctx().animate_bool_with_time(egui::Id::new(("card-hover", w.id)), resp.hovered(), 0.12)
-                } else {
-                    f32::from(u8::from(resp.hovered()))
-                };
-                // The selected card keeps its dark ground: its ring in its
-                // state's colour, brighter, and a soft glow past it.
-                if Some(w.id) == self.active {
-                    chrome::selected_ring(&ui.painter_at(rect.expand(4.0)), card, 8.0, look);
-                } else if hover > 0.0 {
-                    painter.rect_filled(card, 8.0, pal.selection.gamma_multiply(0.3 * hover));
-                }
-                if self.dragging_tab == Some(w.id) {
-                    painter.rect_stroke(card, 8.0, egui::Stroke::new(1.0, chrome::cyan()), egui::StrokeKind::Inside);
-                }
-                // The state's mark, its shape saying it without the colour.
-                chrome::state_mark(&painter, egui::pos2(rect.left() + 20.0, rect.top() + 14.0), look, t);
-                let name = tab.name();
-                let name = if infos.len() > 1 { format!("{name}  ·{}", infos.len()) } else { name };
-                let left = rect.left() + 32.0;
-                let width = rect.right() - left - 12.0;
-                let line = |text: String, y: f32, font: egui::FontId, color: egui::Color32, width: f32| {
-                    let galley = ui.fonts_mut(|f| {
-                        let mut job = egui::text::LayoutJob::simple_singleline(text, font, color);
-                        job.wrap = egui::text::TextWrapping::truncate_at_width(width);
-                        f.layout_job(job)
-                    });
-                    painter.galley(egui::pos2(left, rect.top() + y), galley, color);
-                };
-                let marks = usize::from(quiet_tab) + usize::from(w.pinned);
-                // A waiting card's name in the warm white the design gives it.
-                let name_color = if look == chrome::Look::State(State::Waiting) { crate::theme::colors().wait_text() } else { pal.fg };
-                // Bold and small in the window's own letters (not the
-                // terminal's); a finished one's in the plain weight.
-                let name_font = if look == chrome::Look::State(State::Done) { egui::FontId::proportional(13.0) } else { fonts::bold(13.0) };
-                line(name, 6.0, name_font, name_color, width - 18.0 * marks as f32);
-                let mut mark_x = rect.right() - 22.0;
-                if quiet_tab {
-                    chrome::muted_mark(&painter, egui::pos2(mark_x, rect.top() + 14.0), pal.fg_dim);
-                    mark_x -= 18.0;
-                }
-                if w.pinned {
-                    chrome::pin_mark(&painter, egui::pos2(mark_x, rect.top() + 14.0), pal.fg_dim);
-                }
-                // Where to take hold of it, shown only on the way there.
-                if manual && resp.hovered() {
-                    chrome::grip(&painter, egui::pos2(rect.right() - 16.0, rect.center().y), pal.fg_dim);
-                }
-                // The folder, then ` · ` and the branch, then its pull
-                // request in its checks' colour; the folder gives way first
-                // when the row is narrow.
-                let mono = egui::FontId::monospace(11.0);
-                let branch = (!focus.branch.is_empty() || pr.is_some()).then(|| {
-                    ui.fonts_mut(|f| {
-                        let mut job = egui::text::LayoutJob::default();
-                        let plain = egui::TextFormat::simple(mono.clone(), pal.fg_dim);
-                        if !focus.branch.is_empty() {
-                            job.append(&format!(" · {}", focus.branch), 0.0, plain.clone());
-                        }
-                        if let Some(pr) = &pr {
-                            job.append(" · ", 0.0, plain);
-                            job.append(&format!("PR #{}", pr.number), 0.0, egui::TextFormat::simple(mono.clone(), chrome::pr_line(pr).1));
-                        }
-                        job.wrap = egui::text::TextWrapping::truncate_at_width(width - 70.0);
-                        f.layout_job(job)
                     })
-                });
-                // What it has changed and not committed, on the right: lines
-                // added and removed, or how many files when git counts none.
-                let changed = self.changes.get(&focus.cwd, &focus.branch).and_then(|g| g.changes).filter(|c| !c.files.is_empty());
-                let diff = changed.as_ref().map(|c| {
-                    let mut job = egui::text::LayoutJob::default();
-                    let f = |color| egui::TextFormat::simple(mono.clone(), color);
-                    if c.added + c.removed > 0 {
-                        job.append(&format!("+{}", c.added), 0.0, f(chrome::green()));
-                        job.append(&format!("−{}", c.removed), 4.0, f(chrome::red()));
-                    } else {
-                        job.append(&format!("{} new", c.files.len()), 0.0, f(chrome::green()));
-                    }
-                    ui.fonts_mut(|x| x.layout_job(job))
-                });
-                let diff_w = diff.as_ref().map_or(0.0, |g| g.size().x + 10.0);
-                let room = width - 6.0 - diff_w - branch.as_ref().map_or(0.0, |b| b.size().x);
-                let folder = ui.fonts_mut(|f| {
-                    let mut job = egui::text::LayoutJob::simple_singleline(home_short(&focus.cwd), mono.clone(), pal.fg_dim);
-                    job.wrap = egui::text::TextWrapping::truncate_at_width(room.max(20.0));
-                    f.layout_job(job)
-                });
-                let y = rect.top() + 25.0;
-                let folder_w = folder.size().x;
-                painter.galley(egui::pos2(left, y), folder, pal.fg_dim);
-                if let Some(b) = branch {
-                    let at = egui::pos2(left + folder_w, y);
-                    if let Some(pr) = &pr {
-                        let r = egui::Rect::from_min_size(at, b.size());
-                        ui.interact(r, egui::Id::new(("pr", w.id)), egui::Sense::hover()).on_hover_text(chrome::pr_line(pr).0);
-                    }
-                    painter.galley(at, b, pal.fg_dim);
-                }
-                if let (Some(g), Some(c)) = (diff, &changed) {
-                    let at = egui::pos2(rect.right() - 12.0 - g.size().x, y);
-                    let r = egui::Rect::from_min_size(at, g.size());
-                    painter.galley(at, g, pal.fg);
-                    let list: Vec<String> = c.files.iter().take(15).cloned().collect();
-                    let more = c.files.len().saturating_sub(15);
-                    let over = ui.interact(r, egui::Id::new(("changes", w.id)), egui::Sense::click());
-                    over_changes = over.hovered();
-                    if over.clicked() {
-                        ops.push(SideOp::Diff(sort::display_title(&focus.title, &focus.command), focus.cwd.clone()));
-                    }
-                    over.on_hover_ui(|ui| {
-                        ui.label(egui::RichText::new(format!("{} file(s) changed, not committed", c.files.len())).strong());
-                        ui.label(egui::RichText::new(list.join("\n")).monospace().size(11.0).color(pal.fg_dim));
-                        if more > 0 {
-                            ui.label(egui::RichText::new(trf("sidebar.more_files", &[&more.to_string()])).size(11.0).color(pal.fg_dim));
-                        }
-                        ui.label(egui::RichText::new(tr("sidebar.see_diff")).size(11.0).color(pal.fg_dim));
-                    });
-                }
-                let words = chrome::card_words(urgent, now);
-                let mut third = match urgent.state {
-                    State::Waiting | State::Error | State::Done if !urgent.note.is_empty() && !words.is_empty() => format!("{words} · {}", urgent.note),
-                    _ => words,
-                };
-                // A working agent's tokens so far (the design's Main).
-                if urgent.state == State::Running {
-                    if let Some(t) = used.conversations.get(&urgent.conversation).filter(|t| t.total() > 0) {
-                        third = format!("{third} · {} tokens", usage::short(t.total()));
+                    .collect();
+                for (item, stays) in listed.iter_mut().zip(sort::fit(&fits, ui.available_height())) {
+                    if let sort::Item::Tab { card, .. } = item {
+                        *card &= stays;
                     }
                 }
-                let queued = self.queue.iter().filter(|q| infos.iter().any(|i| i.id == q.id)).count();
-                if queued > 0 {
-                    third = format!("{queued} queued · {third}");
-                }
-                // In its state's colour; probably waiting stays quiet.
-                let third_color = match urgent.state {
-                    State::MaybeWaiting => pal.fg_dim,
-                    s => chrome::state_ink(s),
-                };
-                // A question on its screen: its choices as buttons, so it is
-                // answered without going there (the third line gives way).
-                let mut room = width;
-                if urgent.state == State::Waiting {
-                    let found = answer::choices(&self.watch_lines(urgent.id));
-                    let mut x = rect.right() - 12.0;
-                    for c in found.iter().take(3).rev() {
-                        let label = format!("{} {}", c.key, answer::short(&c.text));
-                        let g = ui.fonts_mut(|f| f.layout_no_wrap(label, egui::FontId::proportional(11.0), pal.fg));
-                        let r = egui::Rect::from_min_size(egui::pos2(x - g.size().x - 12.0, rect.top() + 40.0), egui::vec2(g.size().x + 12.0, 18.0));
-                        if r.left() < left + 40.0 {
-                            break;
-                        }
-                        let b = ui.interact(r, egui::Id::new(("answer", urgent.id, c.key)), egui::Sense::click()).on_hover_text(trf("sidebar.answer", &[&c.key.to_string(), &c.text]));
-                        let first = c.key == '1';
-                        let fill = match (first, b.hovered()) {
-                            (true, true) => chrome::cyan(),
-                            (true, false) => chrome::cyan().gamma_multiply(0.8),
-                            (false, true) => crate::theme::colors().hover(),
-                            (false, false) => crate::theme::colors().panel,
-                        };
-                        painter.rect_filled(r, 5.0, fill);
-                        painter.rect_stroke(r, 5.0, egui::Stroke::new(1.0, crate::theme::colors().border), egui::StrokeKind::Inside);
-                        let color = if first { crate::theme::colors().on_accent() } else { pal.fg };
-                        painter.galley(egui::pos2(r.left() + 6.0, r.center().y - g.size().y / 2.0), g, color);
-                        if b.clicked() {
-                            if let Some(pane) = self.panes.get(&urgent.id) {
-                                ito_pane::Pane::send(pane, vec![c.key as u8]);
+                for item in &listed {
+                    let (tab, as_card) = match item {
+                        // A project's heading (the design's 1i B): a click
+                        // opens or closes it.
+                        sort::Item::Group { project, total, kinds, open } => {
+                            let (rect, resp) = ui.allocate_exact_size(egui::vec2(ui.available_width(), 28.0), egui::Sense::click());
+                            let p = ui.painter_at(rect);
+                            if resp.hovered() {
+                                p.rect_filled(rect.shrink2(egui::vec2(6.0, 1.0)), 6.0, pal.selection.gamma_multiply(0.4));
                             }
-                        }
-                        x = r.left() - 4.0;
-                    }
-                    room = (x - left - 6.0).max(20.0);
-                }
-                line(third, 42.0, egui::FontId::proportional(11.5), third_color, room);
-                // Up to `[tags] shown` tags, the rest as +N (the design's 1o).
-                let mut x = left;
-                for (k, t) in tags.iter().enumerate() {
-                    let at = egui::pos2(x, rect.top() + 61.0 - closed_up);
-                    let rest = tags.len() - k;
-                    let w_chip = ui.fonts_mut(|f| f.layout_no_wrap(t.to_string(), egui::FontId::proportional(11.0), pal.fg).size().x) + 12.0;
-                    if k == shown_tags || (rest > 1 && x + w_chip + 34.0 > left + width) || x + w_chip > left + width {
-                        chrome::more_chip(&painter, at, rest, pal.fg_dim);
-                        break;
-                    }
-                    x = chrome::tag_chip(&painter, at, t, muted_tags.contains(*t)).right() + 5.0;
-                }
-                // Under the third line, or under the tags when there are.
-                let mut y = base - 2.0;
-                let note_y = y;
-                if note_line {
-                    if !noting {
-                        line(format!("“{}”", w.note), y, egui::FontId::proportional(11.5), pal.fg, width);
-                    }
-                    y += 18.0;
-                }
-                if run_line {
-                    let mut x = left;
-                    if let Some(a) = &other_agent {
-                        let g = ui.fonts_mut(|f| f.layout_no_wrap(a.clone(), egui::FontId::proportional(11.5), pal.fg));
-                        let w_a = g.size().x;
-                        painter.galley(egui::pos2(x, rect.top() + y), g, pal.fg);
-                        x += w_a + 10.0;
-                    }
-                    for port in &ports {
-                        let g = ui.fonts_mut(|f| f.layout_no_wrap(format!(":{port}"), egui::FontId::monospace(11.0), chrome::ink(chrome::cyan())));
-                        let r = egui::Rect::from_min_size(egui::pos2(x, rect.top() + y - 1.0), g.size() + egui::vec2(8.0, 2.0));
-                        if r.right() > left + width {
-                            break;
-                        }
-                        let b = ui.interact(r, egui::Id::new(("port", w.id, *port)), egui::Sense::click()).on_hover_text(trf("sidebar.port", &[&port.to_string()]));
-                        painter.rect_filled(r, 4.0, if b.hovered() { crate::theme::colors().hover() } else { crate::theme::colors().panel });
-                        painter.galley(egui::pos2(r.left() + 4.0, r.top() + 1.0), g, chrome::ink(chrome::cyan()));
-                        if b.clicked() {
-                            self.show_page(&format!("http://localhost:{port}"));
-                        }
-                        x = r.right() + 5.0;
-                    }
-                    y += 18.0;
-                }
-                if let Some(n) = numbers {
-                    line(n, y, egui::FontId::monospace(11.0), pal.fg_dim, width);
-                }
-                // The note in a field on its line, Enter to keep (empty takes
-                // it off), Esc to leave it as it was.
-                if let Some((id, text)) = &mut self.noting_card {
-                    if *id == w.id {
-                        self.fields_drawn.0 = true;
-                        let at = egui::Rect::from_min_size(egui::pos2(left - 4.0, rect.top() + note_y - 3.0), egui::vec2(width - 10.0, 20.0));
-                        let field = ui.put(at, egui::TextEdit::singleline(text).id(egui::Id::new(("note-card", w.id))).hint_text("A note: what this tab is for").font(egui::FontId::proportional(12.0)));
-                        keep_focus(&field);
-                        let (enter, esc) = ui.input(|i| (i.key_pressed(egui::Key::Enter), i.key_pressed(egui::Key::Escape)));
-                        if enter {
-                            ops.push(SideOp::Note(w.id, text.clone()));
-                            self.noting_card = None;
-                        } else if esc || field.lost_focus() {
-                            self.noting_card = None;
-                        }
-                    }
-                }
-                // F2: the name in a field over it, Enter to keep, Esc to leave.
-                if let Some((id, text)) = &mut self.renaming_card {
-                    if *id == w.id {
-                        self.fields_drawn.1 = true;
-                        let at = egui::Rect::from_min_size(egui::pos2(left - 4.0, rect.top() + 3.0), egui::vec2(width - 10.0, 22.0));
-                        let field = ui.put(at, egui::TextEdit::singleline(text).id(egui::Id::new(("rename-card", w.id))).hint_text(tr("tab.name_hint")).font(egui::FontId::proportional(13.5)));
-                        keep_focus(&field);
-                        let (enter, esc) = ui.input(|i| (i.key_pressed(egui::Key::Enter), i.key_pressed(egui::Key::Escape)));
-                        if enter {
-                            ops.push(SideOp::Rename(w.id, text.clone()));
-                            self.renaming_card = None;
-                        } else if esc || field.lost_focus() {
-                            self.renaming_card = None;
-                        }
-                    }
-                }
-                } else {
-                    // One line (the design's 1i C): the dot, the name, the
-                    // project and how long; rings for what wants a person.
-                    let r = rect.shrink2(egui::vec2(6.0, 1.0));
-                    // A ring only for what wants a person; a running agent
-                    // its line.
-                    let look = chrome::look(urgent);
-                    let t = match look {
-                        chrome::Look::State(State::Waiting) => {
-                            painter.rect_filled(r, 6.0, crate::theme::colors().wait_bg());
-                            let t = self.moving(ui);
-                            chrome::wait_ring(&ui.painter_at(rect.expand(3.0)), r, 6.0, t);
-                            t
-                        }
-                        chrome::Look::State(State::Running) => {
-                            let t = self.moving(ui);
-                            if let Some(t) = t {
-                                chrome::run_line(&painter, r, 6.0, t);
-                            }
-                            t
-                        }
-                        chrome::Look::State(State::Error) => {
-                            painter.rect_stroke(r, 6.0, egui::Stroke::new(1.0, chrome::red().gamma_multiply(0.6)), egui::StrokeKind::Inside);
-                            None
-                        }
-                        _ => None,
-                    };
-                    if resp.hovered() {
-                        painter.rect_filled(r, 6.0, pal.selection.gamma_multiply(0.4));
-                    }
-                    if self.dragging_tab == Some(w.id) {
-                        painter.rect_stroke(r, 6.0, egui::Stroke::new(1.0, chrome::cyan()), egui::StrokeKind::Inside);
-                    }
-                    chrome::state_mark(&painter, egui::pos2(r.left() + 12.0, r.center().y), look, t);
-                    let since = if matches!(urgent.state, State::Running) { String::new() } else { chrome::elapsed(now.saturating_sub(urgent.since_ms)) };
-                    let time_color = if urgent.state == State::Waiting { chrome::ink(chrome::gold()) } else { chrome::grey() };
-                    let t = painter.text(egui::pos2(r.right() - 8.0, r.center().y), egui::Align2::RIGHT_CENTER, since, egui::FontId::proportional(11.0), time_color);
-                    let project = focus.project.file_name().map(|f| f.to_string_lossy().into_owned()).unwrap_or_default();
-                    let pj = painter.text(egui::pos2(t.left() - 8.0, r.center().y), egui::Align2::RIGHT_CENTER, project, egui::FontId::proportional(11.0), chrome::grey());
-                    let name_color = match urgent.state {
-                        State::Waiting => crate::theme::colors().wait_text(),
-                        State::Done => pal.fg_dim,
-                        _ => pal.fg,
-                    };
-                    let mut job = egui::text::LayoutJob::simple_singleline(tab.name(), egui::FontId::proportional(12.5), name_color);
-                    job.wrap = egui::text::TextWrapping::truncate_at_width((pj.left() - r.left() - 32.0).max(10.0));
-                    let g = ui.fonts_mut(|f| f.layout_job(job));
-                    painter.galley(egui::pos2(r.left() + 22.0, r.center().y - g.size().y / 2.0), g, name_color);
-                }
-                // Its last lines on the way past, without going there.
-                let resp = if resp.hovered() && self.dragging_tab.is_none() && !over_changes {
-                    let lines = self.peek_lines(urgent.id);
-                    resp.on_hover_ui(|ui| chrome::peek(ui, &pal, &lines))
-                } else {
-                    resp
-                };
-                if resp.clicked() {
-                    picked = Some(w.id);
-                }
-                if resp.drag_started() {
-                    self.dragging_tab = Some(w.id);
-                }
-                // The tab's menu (the design's 1j), in four groups: how it
-                // looks, starting it again, its folder, closing it.
-                let ids: Vec<SessionId> = infos.iter().map(|i| i.id).collect();
-                let shown_item = |word: &str| !self.menu.hide.iter().any(|h| h == word);
-                // Open until a click outside it: a click into one of its
-                // fields must not close it.
-                let menu = egui::Popup::context_menu(&resp).close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside);
-                menu.show(|ui| {
-                    // The design's: 300 wide, rows of about 32.
-                    ui.set_min_width(300.0);
-                    ui.spacing_mut().button_padding = egui::vec2(10.0, 8.0);
-                    // In the settings' order (`[menu] order`), a line between
-                    // groups; one's own items before "Close the session".
-                    let mut last_group = None;
-                    for word in tsumugi_mux::settings::menu_words(&self.menu.order) {
-                        if word == "close" && !self.menu.session.is_empty() {
-                            ui.separator();
-                            for item in &self.menu.session {
-                                if ui.button(&item.name).on_hover_text(&item.command).clicked() {
-                                    menu::run(tsumugi_mux::settings::fill(&item.command, &focus.cwd, focus.id));
-                                    ui.close();
+                            chrome::triangle(&p, egui::pos2(rect.left() + 18.0, rect.center().y), *open, pal.fg_dim);
+                            let name =
+                                project.file_name().map_or_else(|| project.display().to_string(), |f| f.to_string_lossy().into_owned());
+                            let name = p.layout_no_wrap(name, egui::FontId::proportional(13.0), crate::theme::colors().strong());
+                            let x = rect.left() + 30.0 + name.size().x;
+                            p.galley(egui::pos2(rect.left() + 28.0, rect.center().y - name.size().y / 2.0), name, egui::Color32::WHITE);
+                            p.text(
+                                egui::pos2(x + 8.0, rect.center().y),
+                                egui::Align2::LEFT_CENTER,
+                                total.to_string(),
+                                egui::FontId::proportional(12.0),
+                                pal.fg_dim,
+                            );
+                            let mut right = rect.right() - 14.0;
+                            if *open {
+                                for (k, color) in [(sort::Kind::Error, chrome::red()), (sort::Kind::Waiting, chrome::gold())] {
+                                    let n = kinds.iter().filter(|x| **x == k).count();
+                                    if n > 0 {
+                                        let r = p.text(
+                                            egui::pos2(right, rect.center().y),
+                                            egui::Align2::RIGHT_CENTER,
+                                            if k == sort::Kind::Error {
+                                                trf("sidebar.group_error", &[&n.to_string()])
+                                            } else {
+                                                trf("sidebar.group_waiting", &[&n.to_string()])
+                                            },
+                                            egui::FontId::proportional(11.5),
+                                            color,
+                                        );
+                                        right = r.left() - 8.0;
+                                    }
+                                }
+                            } else {
+                                // Closed: only a dot each.
+                                for k in kinds.iter().rev().take(12) {
+                                    p.circle_filled(
+                                        egui::pos2(right - 3.0, rect.center().y),
+                                        3.0,
+                                        k.state().map_or_else(chrome::grey, state_color),
+                                    );
+                                    right -= 9.0;
                                 }
                             }
-                            last_group = Some("own");
-                        }
-                        if !shown_item(word) {
+                            if resp.on_hover_text(home_short(project)).clicked() {
+                                if *open {
+                                    self.closed_groups.push(project.clone());
+                                } else {
+                                    self.closed_groups.retain(|q| q != project);
+                                }
+                            }
                             continue;
                         }
-                        let group = tsumugi_mux::settings::menu_group(word);
-                        if last_group.is_some_and(|g| g != group) {
-                            ui.separator();
+                        sort::Item::Tab { tab, card } => (*tab, *card),
+                    };
+                    let w = tab.workspace;
+                    let infos = &tab.infos;
+                    let (Some(focus), Some(urgent), Some(lines)) = (tab.focus(), tab.urgent(), self.card_lines(tab, &used, now, as_card))
+                    else {
+                        continue;
+                    };
+                    let (height, base) = (lines.height(), lines.base());
+                    let CardLines { tags, numbers, ports, other_agent, noting, note_line, run_line, closed_up, .. } = lines;
+                    let pr = as_card.then(|| self.git.known(&focus.cwd, &focus.branch).and_then(|g| g.pr)).flatten();
+                    let (rect, resp) = ui.allocate_exact_size(egui::vec2(ui.available_width(), height), sense);
+                    rows.push((w.id, rect));
+                    let painter = ui.painter_at(rect);
+                    let muted = infos.iter().all(|i| i.muted);
+                    let quiet_tab = infos.iter().all(|i| quiet(i, &muted_tags));
+                    // The pointer on the changes' count: their list, not the preview.
+                    let mut over_changes = false;
+                    if as_card {
+                        let card = rect.shrink2(egui::vec2(6.0, 2.0));
+                        // Each state its ring (the design's States): waiting in gold
+                        // and breathing, the one to look at, its glow past the card.
+                        let look = chrome::look(urgent);
+                        match look {
+                            chrome::Look::State(State::Waiting) => {
+                                painter.rect_filled(card, 8.0, crate::theme::colors().wait_bg());
+                            }
+                            chrome::Look::State(State::Done) => chrome::done_ground(&painter, card, 8.0),
+                            _ => {}
                         }
-                        last_group = Some(group);
-                        match word {
-                            "rename" => {
-                                match &mut self.renaming {
+                        let moves = matches!(look, chrome::Look::State(State::Waiting | State::Running));
+                        let t = if moves { self.moving(ui) } else { None };
+                        chrome::state_ring(&ui.painter_at(rect.expand(4.0)), card, 8.0, look, t);
+                        // The hover comes and goes over a moment rather than at once.
+                        let hover = if self.settings_now.appearance.animations {
+                            ui.ctx().animate_bool_with_time(egui::Id::new(("card-hover", w.id)), resp.hovered(), 0.12)
+                        } else {
+                            f32::from(u8::from(resp.hovered()))
+                        };
+                        // The selected card keeps its dark ground: its ring in its
+                        // state's colour, brighter, and a soft glow past it.
+                        if Some(w.id) == self.active {
+                            chrome::selected_ring(&ui.painter_at(rect.expand(4.0)), card, 8.0, look);
+                        } else if hover > 0.0 {
+                            painter.rect_filled(card, 8.0, pal.selection.gamma_multiply(0.3 * hover));
+                        }
+                        if self.dragging_tab == Some(w.id) {
+                            painter.rect_stroke(card, 8.0, egui::Stroke::new(1.0, chrome::cyan()), egui::StrokeKind::Inside);
+                        }
+                        // The state's mark, its shape saying it without the colour.
+                        chrome::state_mark(&painter, egui::pos2(rect.left() + 20.0, rect.top() + 14.0), look, t);
+                        let name = tab.name();
+                        let name = if infos.len() > 1 { format!("{name}  ·{}", infos.len()) } else { name };
+                        let left = rect.left() + 32.0;
+                        let width = rect.right() - left - 12.0;
+                        let line = |text: String, y: f32, font: egui::FontId, color: egui::Color32, width: f32| {
+                            let galley = ui.fonts_mut(|f| {
+                                let mut job = egui::text::LayoutJob::simple_singleline(text, font, color);
+                                job.wrap = egui::text::TextWrapping::truncate_at_width(width);
+                                f.layout_job(job)
+                            });
+                            painter.galley(egui::pos2(left, rect.top() + y), galley, color);
+                        };
+                        let marks = usize::from(quiet_tab) + usize::from(w.pinned);
+                        // A waiting card's name in the warm white the design gives it.
+                        let name_color =
+                            if look == chrome::Look::State(State::Waiting) { crate::theme::colors().wait_text() } else { pal.fg };
+                        // Bold and small in the window's own letters (not the
+                        // terminal's); a finished one's in the plain weight.
+                        let name_font =
+                            if look == chrome::Look::State(State::Done) { egui::FontId::proportional(13.0) } else { fonts::bold(13.0) };
+                        line(name, 6.0, name_font, name_color, width - 18.0 * marks as f32);
+                        let mut mark_x = rect.right() - 22.0;
+                        if quiet_tab {
+                            chrome::muted_mark(&painter, egui::pos2(mark_x, rect.top() + 14.0), pal.fg_dim);
+                            mark_x -= 18.0;
+                        }
+                        if w.pinned {
+                            chrome::pin_mark(&painter, egui::pos2(mark_x, rect.top() + 14.0), pal.fg_dim);
+                        }
+                        // Where to take hold of it, shown only on the way there.
+                        if manual && resp.hovered() {
+                            chrome::grip(&painter, egui::pos2(rect.right() - 16.0, rect.center().y), pal.fg_dim);
+                        }
+                        // The folder, then ` · ` and the branch, then its pull
+                        // request in its checks' colour; the folder gives way first
+                        // when the row is narrow.
+                        let mono = egui::FontId::monospace(11.0);
+                        let branch = (!focus.branch.is_empty() || pr.is_some()).then(|| {
+                            ui.fonts_mut(|f| {
+                                let mut job = egui::text::LayoutJob::default();
+                                let plain = egui::TextFormat::simple(mono.clone(), pal.fg_dim);
+                                if !focus.branch.is_empty() {
+                                    job.append(&format!(" · {}", focus.branch), 0.0, plain.clone());
+                                }
+                                if let Some(pr) = &pr {
+                                    job.append(" · ", 0.0, plain);
+                                    job.append(
+                                        &format!("PR #{}", pr.number),
+                                        0.0,
+                                        egui::TextFormat::simple(mono.clone(), chrome::pr_line(pr).1),
+                                    );
+                                }
+                                job.wrap = egui::text::TextWrapping::truncate_at_width(width - 70.0);
+                                f.layout_job(job)
+                            })
+                        });
+                        // What it has changed and not committed, on the right: lines
+                        // added and removed, or how many files when git counts none.
+                        let changed = self.changes.get(&focus.cwd, &focus.branch).and_then(|g| g.changes).filter(|c| !c.files.is_empty());
+                        let diff = changed.as_ref().map(|c| {
+                            let mut job = egui::text::LayoutJob::default();
+                            let f = |color| egui::TextFormat::simple(mono.clone(), color);
+                            if c.added + c.removed > 0 {
+                                job.append(&format!("+{}", c.added), 0.0, f(chrome::green()));
+                                job.append(&format!("−{}", c.removed), 4.0, f(chrome::red()));
+                            } else {
+                                job.append(&format!("{} new", c.files.len()), 0.0, f(chrome::green()));
+                            }
+                            ui.fonts_mut(|x| x.layout_job(job))
+                        });
+                        let diff_w = diff.as_ref().map_or(0.0, |g| g.size().x + 10.0);
+                        let room = width - 6.0 - diff_w - branch.as_ref().map_or(0.0, |b| b.size().x);
+                        let folder = ui.fonts_mut(|f| {
+                            let mut job = egui::text::LayoutJob::simple_singleline(home_short(&focus.cwd), mono.clone(), pal.fg_dim);
+                            job.wrap = egui::text::TextWrapping::truncate_at_width(room.max(20.0));
+                            f.layout_job(job)
+                        });
+                        let y = rect.top() + 25.0;
+                        let folder_w = folder.size().x;
+                        painter.galley(egui::pos2(left, y), folder, pal.fg_dim);
+                        if let Some(b) = branch {
+                            let at = egui::pos2(left + folder_w, y);
+                            if let Some(pr) = &pr {
+                                let r = egui::Rect::from_min_size(at, b.size());
+                                ui.interact(r, egui::Id::new(("pr", w.id)), egui::Sense::hover()).on_hover_text(chrome::pr_line(pr).0);
+                            }
+                            painter.galley(at, b, pal.fg_dim);
+                        }
+                        if let (Some(g), Some(c)) = (diff, &changed) {
+                            let at = egui::pos2(rect.right() - 12.0 - g.size().x, y);
+                            let r = egui::Rect::from_min_size(at, g.size());
+                            painter.galley(at, g, pal.fg);
+                            let list: Vec<String> = c.files.iter().take(15).cloned().collect();
+                            let more = c.files.len().saturating_sub(15);
+                            let over = ui.interact(r, egui::Id::new(("changes", w.id)), egui::Sense::click());
+                            over_changes = over.hovered();
+                            if over.clicked() {
+                                ops.push(SideOp::Diff(sort::display_title(&focus.title, &focus.command), focus.cwd.clone()));
+                            }
+                            over.on_hover_ui(|ui| {
+                                ui.label(egui::RichText::new(format!("{} file(s) changed, not committed", c.files.len())).strong());
+                                ui.label(egui::RichText::new(list.join("\n")).monospace().size(11.0).color(pal.fg_dim));
+                                if more > 0 {
+                                    ui.label(
+                                        egui::RichText::new(trf("sidebar.more_files", &[&more.to_string()])).size(11.0).color(pal.fg_dim),
+                                    );
+                                }
+                                ui.label(egui::RichText::new(tr("sidebar.see_diff")).size(11.0).color(pal.fg_dim));
+                            });
+                        }
+                        let words = chrome::card_words(urgent, now);
+                        let mut third = match urgent.state {
+                            State::Waiting | State::Error | State::Done if !urgent.note.is_empty() && !words.is_empty() => {
+                                format!("{words} · {}", urgent.note)
+                            }
+                            _ => words,
+                        };
+                        // A working agent's tokens so far (the design's Main).
+                        if urgent.state == State::Running {
+                            if let Some(t) = used.conversations.get(&urgent.conversation).filter(|t| t.total() > 0) {
+                                third = format!("{third} · {} tokens", usage::short(t.total()));
+                            }
+                        }
+                        let queued = self.queue.iter().filter(|q| infos.iter().any(|i| i.id == q.id)).count();
+                        if queued > 0 {
+                            third = format!("{queued} queued · {third}");
+                        }
+                        // In its state's colour; probably waiting stays quiet.
+                        let third_color = match urgent.state {
+                            State::MaybeWaiting => pal.fg_dim,
+                            s => chrome::state_ink(s),
+                        };
+                        // A question on its screen: its choices as buttons, so it is
+                        // answered without going there (the third line gives way).
+                        let mut room = width;
+                        if urgent.state == State::Waiting {
+                            let found = answer::choices(&self.watch_lines(urgent.id));
+                            let mut x = rect.right() - 12.0;
+                            for c in found.iter().take(3).rev() {
+                                let label = format!("{} {}", c.key, answer::short(&c.text));
+                                let g = ui.fonts_mut(|f| f.layout_no_wrap(label, egui::FontId::proportional(11.0), pal.fg));
+                                let r = egui::Rect::from_min_size(
+                                    egui::pos2(x - g.size().x - 12.0, rect.top() + 40.0),
+                                    egui::vec2(g.size().x + 12.0, 18.0),
+                                );
+                                if r.left() < left + 40.0 {
+                                    break;
+                                }
+                                let b = ui
+                                    .interact(r, egui::Id::new(("answer", urgent.id, c.key)), egui::Sense::click())
+                                    .on_hover_text(trf("sidebar.answer", &[&c.key.to_string(), &c.text]));
+                                let first = c.key == '1';
+                                let fill = match (first, b.hovered()) {
+                                    (true, true) => chrome::cyan(),
+                                    (true, false) => chrome::cyan().gamma_multiply(0.8),
+                                    (false, true) => crate::theme::colors().hover(),
+                                    (false, false) => crate::theme::colors().panel,
+                                };
+                                painter.rect_filled(r, 5.0, fill);
+                                painter.rect_stroke(
+                                    r,
+                                    5.0,
+                                    egui::Stroke::new(1.0, crate::theme::colors().border),
+                                    egui::StrokeKind::Inside,
+                                );
+                                let color = if first { crate::theme::colors().on_accent() } else { pal.fg };
+                                painter.galley(egui::pos2(r.left() + 6.0, r.center().y - g.size().y / 2.0), g, color);
+                                if b.clicked() {
+                                    if let Some(pane) = self.panes.get(&urgent.id) {
+                                        ito_pane::Pane::send(pane, vec![c.key as u8]);
+                                    }
+                                }
+                                x = r.left() - 4.0;
+                            }
+                            room = (x - left - 6.0).max(20.0);
+                        }
+                        line(third, 42.0, egui::FontId::proportional(11.5), third_color, room);
+                        // Up to `[tags] shown` tags, the rest as +N (the design's 1o).
+                        let mut x = left;
+                        for (k, t) in tags.iter().enumerate() {
+                            let at = egui::pos2(x, rect.top() + 61.0 - closed_up);
+                            let rest = tags.len() - k;
+                            let w_chip =
+                                ui.fonts_mut(|f| f.layout_no_wrap(t.to_string(), egui::FontId::proportional(11.0), pal.fg).size().x) + 12.0;
+                            if k == shown_tags || (rest > 1 && x + w_chip + 34.0 > left + width) || x + w_chip > left + width {
+                                chrome::more_chip(&painter, at, rest, pal.fg_dim);
+                                break;
+                            }
+                            x = chrome::tag_chip(&painter, at, t, muted_tags.contains(*t)).right() + 5.0;
+                        }
+                        // Under the third line, or under the tags when there are.
+                        let mut y = base - 2.0;
+                        let note_y = y;
+                        if note_line {
+                            if !noting {
+                                line(format!("“{}”", w.note), y, egui::FontId::proportional(11.5), pal.fg, width);
+                            }
+                            y += 18.0;
+                        }
+                        if run_line {
+                            let mut x = left;
+                            if let Some(a) = &other_agent {
+                                let g = ui.fonts_mut(|f| f.layout_no_wrap(a.clone(), egui::FontId::proportional(11.5), pal.fg));
+                                let w_a = g.size().x;
+                                painter.galley(egui::pos2(x, rect.top() + y), g, pal.fg);
+                                x += w_a + 10.0;
+                            }
+                            for port in &ports {
+                                let g = ui.fonts_mut(|f| {
+                                    f.layout_no_wrap(format!(":{port}"), egui::FontId::monospace(11.0), chrome::ink(chrome::cyan()))
+                                });
+                                let r = egui::Rect::from_min_size(egui::pos2(x, rect.top() + y - 1.0), g.size() + egui::vec2(8.0, 2.0));
+                                if r.right() > left + width {
+                                    break;
+                                }
+                                let b = ui
+                                    .interact(r, egui::Id::new(("port", w.id, *port)), egui::Sense::click())
+                                    .on_hover_text(trf("sidebar.port", &[&port.to_string()]));
+                                painter.rect_filled(
+                                    r,
+                                    4.0,
+                                    if b.hovered() { crate::theme::colors().hover() } else { crate::theme::colors().panel },
+                                );
+                                painter.galley(egui::pos2(r.left() + 4.0, r.top() + 1.0), g, chrome::ink(chrome::cyan()));
+                                if b.clicked() {
+                                    self.show_page(&format!("http://localhost:{port}"));
+                                }
+                                x = r.right() + 5.0;
+                            }
+                            y += 18.0;
+                        }
+                        if let Some(n) = numbers {
+                            line(n, y, egui::FontId::monospace(11.0), pal.fg_dim, width);
+                        }
+                        // The note in a field on its line, Enter to keep (empty takes
+                        // it off), Esc to leave it as it was.
+                        if let Some((id, text)) = &mut self.noting_card {
+                            if *id == w.id {
+                                self.fields_drawn.0 = true;
+                                let at = egui::Rect::from_min_size(
+                                    egui::pos2(left - 4.0, rect.top() + note_y - 3.0),
+                                    egui::vec2(width - 10.0, 20.0),
+                                );
+                                let field = ui.put(
+                                    at,
+                                    egui::TextEdit::singleline(text)
+                                        .id(egui::Id::new(("note-card", w.id)))
+                                        .hint_text("A note: what this tab is for")
+                                        .font(egui::FontId::proportional(12.0)),
+                                );
+                                keep_focus(&field);
+                                let (enter, esc) = ui.input(|i| (i.key_pressed(egui::Key::Enter), i.key_pressed(egui::Key::Escape)));
+                                if enter {
+                                    ops.push(SideOp::Note(w.id, text.clone()));
+                                    self.noting_card = None;
+                                } else if esc || field.lost_focus() {
+                                    self.noting_card = None;
+                                }
+                            }
+                        }
+                        // F2: the name in a field over it, Enter to keep, Esc to leave.
+                        if let Some((id, text)) = &mut self.renaming_card {
+                            if *id == w.id {
+                                self.fields_drawn.1 = true;
+                                let at =
+                                    egui::Rect::from_min_size(egui::pos2(left - 4.0, rect.top() + 3.0), egui::vec2(width - 10.0, 22.0));
+                                let field = ui.put(
+                                    at,
+                                    egui::TextEdit::singleline(text)
+                                        .id(egui::Id::new(("rename-card", w.id)))
+                                        .hint_text(tr("tab.name_hint"))
+                                        .font(egui::FontId::proportional(13.5)),
+                                );
+                                keep_focus(&field);
+                                let (enter, esc) = ui.input(|i| (i.key_pressed(egui::Key::Enter), i.key_pressed(egui::Key::Escape)));
+                                if enter {
+                                    ops.push(SideOp::Rename(w.id, text.clone()));
+                                    self.renaming_card = None;
+                                } else if esc || field.lost_focus() {
+                                    self.renaming_card = None;
+                                }
+                            }
+                        }
+                    } else {
+                        // One line (the design's 1i C): the dot, the name, the
+                        // project and how long; rings for what wants a person.
+                        let r = rect.shrink2(egui::vec2(6.0, 1.0));
+                        // A ring only for what wants a person; a running agent
+                        // its line.
+                        let look = chrome::look(urgent);
+                        let t = match look {
+                            chrome::Look::State(State::Waiting) => {
+                                painter.rect_filled(r, 6.0, crate::theme::colors().wait_bg());
+                                let t = self.moving(ui);
+                                chrome::wait_ring(&ui.painter_at(rect.expand(3.0)), r, 6.0, t);
+                                t
+                            }
+                            chrome::Look::State(State::Running) => {
+                                let t = self.moving(ui);
+                                if let Some(t) = t {
+                                    chrome::run_line(&painter, r, 6.0, t);
+                                }
+                                t
+                            }
+                            chrome::Look::State(State::Error) => {
+                                painter.rect_stroke(
+                                    r,
+                                    6.0,
+                                    egui::Stroke::new(1.0, chrome::red().gamma_multiply(0.6)),
+                                    egui::StrokeKind::Inside,
+                                );
+                                None
+                            }
+                            _ => None,
+                        };
+                        if resp.hovered() {
+                            painter.rect_filled(r, 6.0, pal.selection.gamma_multiply(0.4));
+                        }
+                        if self.dragging_tab == Some(w.id) {
+                            painter.rect_stroke(r, 6.0, egui::Stroke::new(1.0, chrome::cyan()), egui::StrokeKind::Inside);
+                        }
+                        chrome::state_mark(&painter, egui::pos2(r.left() + 12.0, r.center().y), look, t);
+                        let since = if matches!(urgent.state, State::Running) {
+                            String::new()
+                        } else {
+                            chrome::elapsed(now.saturating_sub(urgent.since_ms))
+                        };
+                        let time_color = if urgent.state == State::Waiting { chrome::ink(chrome::gold()) } else { chrome::grey() };
+                        let t = painter.text(
+                            egui::pos2(r.right() - 8.0, r.center().y),
+                            egui::Align2::RIGHT_CENTER,
+                            since,
+                            egui::FontId::proportional(11.0),
+                            time_color,
+                        );
+                        let project = focus.project.file_name().map(|f| f.to_string_lossy().into_owned()).unwrap_or_default();
+                        let pj = painter.text(
+                            egui::pos2(t.left() - 8.0, r.center().y),
+                            egui::Align2::RIGHT_CENTER,
+                            project,
+                            egui::FontId::proportional(11.0),
+                            chrome::grey(),
+                        );
+                        let name_color = match urgent.state {
+                            State::Waiting => crate::theme::colors().wait_text(),
+                            State::Done => pal.fg_dim,
+                            _ => pal.fg,
+                        };
+                        let mut job = egui::text::LayoutJob::simple_singleline(tab.name(), egui::FontId::proportional(12.5), name_color);
+                        job.wrap = egui::text::TextWrapping::truncate_at_width((pj.left() - r.left() - 32.0).max(10.0));
+                        let g = ui.fonts_mut(|f| f.layout_job(job));
+                        painter.galley(egui::pos2(r.left() + 22.0, r.center().y - g.size().y / 2.0), g, name_color);
+                    }
+                    // Its last lines on the way past, without going there.
+                    let resp = if resp.hovered() && self.dragging_tab.is_none() && !over_changes {
+                        let lines = self.peek_lines(urgent.id);
+                        resp.on_hover_ui(|ui| chrome::peek(ui, &pal, &lines))
+                    } else {
+                        resp
+                    };
+                    if resp.clicked() {
+                        picked = Some(w.id);
+                    }
+                    if resp.drag_started() {
+                        self.dragging_tab = Some(w.id);
+                    }
+                    // The tab's menu (the design's 1j), in four groups: how it
+                    // looks, starting it again, its folder, closing it.
+                    let ids: Vec<SessionId> = infos.iter().map(|i| i.id).collect();
+                    let shown_item = |word: &str| !self.menu.hide.iter().any(|h| h == word);
+                    // Open until a click outside it: a click into one of its
+                    // fields must not close it.
+                    let menu = egui::Popup::context_menu(&resp).close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside);
+                    menu.show(|ui| {
+                        // The design's: 300 wide, rows of about 32.
+                        ui.set_min_width(300.0);
+                        ui.spacing_mut().button_padding = egui::vec2(10.0, 8.0);
+                        // In the settings' order (`[menu] order`), a line between
+                        // groups; one's own items before "Close the session".
+                        let mut last_group = None;
+                        for word in tsumugi_mux::settings::menu_words(&self.menu.order) {
+                            if word == "close" && !self.menu.session.is_empty() {
+                                ui.separator();
+                                for item in &self.menu.session {
+                                    if ui.button(&item.name).on_hover_text(&item.command).clicked() {
+                                        menu::run(tsumugi_mux::settings::fill(&item.command, &focus.cwd, focus.id));
+                                        ui.close();
+                                    }
+                                }
+                                last_group = Some("own");
+                            }
+                            if !shown_item(word) {
+                                continue;
+                            }
+                            let group = tsumugi_mux::settings::menu_group(word);
+                            if last_group.is_some_and(|g| g != group) {
+                                ui.separator();
+                            }
+                            last_group = Some(group);
+                            match word {
+                                "rename" => match &mut self.renaming {
                                     Some((id, text)) if *id == w.id => {
-                                        let edit = ui.add(egui::TextEdit::singleline(text).id(egui::Id::new(("rename", w.id))).hint_text(tr("tab.name_hint")).desired_width(220.0));
+                                        let edit = ui.add(
+                                            egui::TextEdit::singleline(text)
+                                                .id(egui::Id::new(("rename", w.id)))
+                                                .hint_text(tr("tab.name_hint"))
+                                                .desired_width(220.0),
+                                        );
                                         keep_focus(&edit);
                                         if ui.input(|i| i.key_pressed(egui::Key::Enter)) {
                                             ops.push(SideOp::Rename(w.id, text.clone()));
@@ -3225,133 +3473,160 @@ impl App {
                                         }
                                     }
                                     _ => {
-                                        if ui.add(egui::Button::new(tr("tab.rename")).shortcut_text(keys::label(keys::Action::Rename))).clicked() {
+                                        if ui
+                                            .add(egui::Button::new(tr("tab.rename")).shortcut_text(keys::label(keys::Action::Rename)))
+                                            .clicked()
+                                        {
                                             self.renaming = Some((w.id, w.name.clone()));
                                         }
                                     }
-                                }
-                            }
-                            "note" => {
-                                let label = if w.note.is_empty() { tr("tab.note") } else { tr("tab.edit_note") };
-                                if ui.button(label).on_hover_text(tr("tab.note_hint")).clicked() {
-                                    self.noting_card = Some((w.id, w.note.clone()));
-                                    self.fields_drawn.0 = true;
-                                    ui.close();
-                                }
-                            }
-                            "tags" => {
-                                for t in &tags {
-                                    if ui.button(trf("tab.remove_tag", &[t])).clicked() {
-                                        ops.push(SideOp::Tag(ids.clone(), t.to_string(), false));
-                                    }
-                                }
-                                if tags.len() < tsumugi_mux::proto::MAX_TAGS {
-                                    let edit = ui.add(egui::TextEdit::singleline(&mut self.tag_input).id(egui::Id::new(("tag-input", w.id))).hint_text(tr("tab.add_tag")).desired_width(220.0));
-                                    if edit.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
-                                        if let Some(t) = tsumugi_mux::proto::tag_name(&self.tag_input) {
-                                            ops.push(SideOp::Tag(ids.clone(), t, true));
-                                        }
-                                        self.tag_input.clear();
-                                        edit.request_focus();
-                                    }
-                                } else {
-                                    ui.label(egui::RichText::new(trf("tab.tags_at_most", &[&tsumugi_mux::proto::MAX_TAGS.to_string()])).color(pal.fg_dim));
-                                }
-                            }
-                            "mute" => {
-                                let label = if muted { tr("tab.unmute") } else { tr("tab.mute") };
-                                if ui.button(label).on_hover_text(tr("tab.mute_hint")).clicked() {
-                                    ops.push(SideOp::Mute(ids.clone(), !muted));
-                                    ui.close();
-                                }
-                            }
-                            "pin" => {
-                                let label = if w.pinned { tr("tab.unpin") } else { tr("tab.pin") };
-                                if ui.button(label).clicked() {
-                                    ops.push(SideOp::Pin(w.id, !w.pinned));
-                                    ui.close();
-                                }
-                            }
-                            "read-only" => {
-                                let label = if focus.read_only { tr("tab.read_only_off") } else { tr("tab.read_only") };
-                                if ui.button(label).on_hover_text(tr("tab.read_only_hint")).clicked() {
-                                    ops.push(SideOp::ReadOnly(focus.id, !focus.read_only));
-                                    ui.close();
-                                }
-                            }
-                            "restart" => {
-                                let label = if focus.claude { tr("tab.restart_resume") } else { tr("tab.restart") };
-                                if ui.button(label).clicked() {
-                                    ops.push(SideOp::Restart(focus.id));
-                                    ui.close();
-                                }
-                            }
-                            "duplicate" => {
-                                if ui.add(egui::Button::new(tr("tab.duplicate")).shortcut_text(keys::label(keys::Action::Duplicate))).clicked() {
-                                    ops.push(SideOp::Duplicate(focus.cwd.clone(), focus.claude));
-                                    ui.close();
-                                }
-                            }
-                            "new-window" => {
-                                if ui.button(tr("tab.new_window")).clicked() {
-                                    menu::new_window(w.id, None);
-                                    ui.close();
-                                }
-                            }
-                            "filer" => open_with(ui, tr("tab.open_filer"), &self.open.filer, focus),
-                            "editor" => open_with(ui, tr("tab.open_editor"), &self.open.editor, focus),
-                            "copy-path" => {
-                                if ui.button(tr("tab.copy_path")).clicked() {
-                                    ui.ctx().copy_text(focus.cwd.display().to_string());
-                                    ui.close();
-                                }
-                            }
-                            "work-log" => {
-                                let (label, hint) = if focus.logging.is_empty() {
-                                    (tr("tab.work_log"), tr("tab.work_log_hint"))
-                                } else {
-                                    (tr("tab.work_log_end"), tr("tab.work_log_end_hint"))
-                                };
-                                if ui.add(egui::Button::new(label).shortcut_text(keys::label(keys::Action::WorkLog))).on_hover_text(hint).clicked() {
-                                    let tab = if w.name.is_empty() { sort::display_title(&focus.title, &focus.command) } else { w.name.clone() };
-                                    ops.push(SideOp::WorkLog(focus.id, tab));
-                                    ui.close();
-                                }
-                            }
-                            "pr" => {
-                                let shown = !focus.branch.is_empty() && !matches!(focus.branch.as_str(), "main" | "master");
-                                if shown && ui.button(tr("tab.pr")).on_hover_text(trf("tab.pr_hint", &[&focus.branch])).clicked() {
-                                    ops.push(SideOp::CreatePr(focus.cwd.clone()));
-                                    ui.close();
-                                }
-                            }
-                            "save-output" => {
-                                if ui.button(tr("tab.save_output")).on_hover_text(tr("tab.save_output_hint")).clicked() {
-                                    ops.push(SideOp::SaveOutput(focus.id, sort::display_title(&focus.title, &focus.command)));
-                                    ui.close();
-                                }
-                            }
-                            "close" => {
-                                // Something running in it: a second click, to be sure.
-                                let busy = infos.iter().any(|i| matches!(i.state, State::Running | State::MaybeWaiting));
-                                let armed = self.close_armed == Some(w.id);
-                                let label = if armed { tr("tab.close_armed") } else { tr("tab.close") };
-                                if ui.add(egui::Button::new(egui::RichText::new(label).color(crate::theme::colors().err)).shortcut_text(keys::label(keys::Action::CloseTab))).clicked() {
-                                    if busy && !armed {
-                                        self.close_armed = Some(w.id);
-                                    } else {
-                                        ops.push(SideOp::Close(ids.clone()));
-                                        self.close_armed = None;
+                                },
+                                "note" => {
+                                    let label = if w.note.is_empty() { tr("tab.note") } else { tr("tab.edit_note") };
+                                    if ui.button(label).on_hover_text(tr("tab.note_hint")).clicked() {
+                                        self.noting_card = Some((w.id, w.note.clone()));
+                                        self.fields_drawn.0 = true;
                                         ui.close();
                                     }
                                 }
+                                "tags" => {
+                                    for t in &tags {
+                                        if ui.button(trf("tab.remove_tag", &[t])).clicked() {
+                                            ops.push(SideOp::Tag(ids.clone(), t.to_string(), false));
+                                        }
+                                    }
+                                    if tags.len() < tsumugi_mux::proto::MAX_TAGS {
+                                        let edit = ui.add(
+                                            egui::TextEdit::singleline(&mut self.tag_input)
+                                                .id(egui::Id::new(("tag-input", w.id)))
+                                                .hint_text(tr("tab.add_tag"))
+                                                .desired_width(220.0),
+                                        );
+                                        if edit.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                                            if let Some(t) = tsumugi_mux::proto::tag_name(&self.tag_input) {
+                                                ops.push(SideOp::Tag(ids.clone(), t, true));
+                                            }
+                                            self.tag_input.clear();
+                                            edit.request_focus();
+                                        }
+                                    } else {
+                                        ui.label(
+                                            egui::RichText::new(trf("tab.tags_at_most", &[&tsumugi_mux::proto::MAX_TAGS.to_string()]))
+                                                .color(pal.fg_dim),
+                                        );
+                                    }
+                                }
+                                "mute" => {
+                                    let label = if muted { tr("tab.unmute") } else { tr("tab.mute") };
+                                    if ui.button(label).on_hover_text(tr("tab.mute_hint")).clicked() {
+                                        ops.push(SideOp::Mute(ids.clone(), !muted));
+                                        ui.close();
+                                    }
+                                }
+                                "pin" => {
+                                    let label = if w.pinned { tr("tab.unpin") } else { tr("tab.pin") };
+                                    if ui.button(label).clicked() {
+                                        ops.push(SideOp::Pin(w.id, !w.pinned));
+                                        ui.close();
+                                    }
+                                }
+                                "read-only" => {
+                                    let label = if focus.read_only { tr("tab.read_only_off") } else { tr("tab.read_only") };
+                                    if ui.button(label).on_hover_text(tr("tab.read_only_hint")).clicked() {
+                                        ops.push(SideOp::ReadOnly(focus.id, !focus.read_only));
+                                        ui.close();
+                                    }
+                                }
+                                "restart" => {
+                                    let label = if focus.claude { tr("tab.restart_resume") } else { tr("tab.restart") };
+                                    if ui.button(label).clicked() {
+                                        ops.push(SideOp::Restart(focus.id));
+                                        ui.close();
+                                    }
+                                }
+                                "duplicate" => {
+                                    if ui
+                                        .add(egui::Button::new(tr("tab.duplicate")).shortcut_text(keys::label(keys::Action::Duplicate)))
+                                        .clicked()
+                                    {
+                                        ops.push(SideOp::Duplicate(focus.cwd.clone(), focus.claude));
+                                        ui.close();
+                                    }
+                                }
+                                "new-window" => {
+                                    if ui.button(tr("tab.new_window")).clicked() {
+                                        menu::new_window(w.id, None);
+                                        ui.close();
+                                    }
+                                }
+                                "filer" => open_with(ui, tr("tab.open_filer"), &self.open.filer, focus),
+                                "editor" => open_with(ui, tr("tab.open_editor"), &self.open.editor, focus),
+                                "copy-path" => {
+                                    if ui.button(tr("tab.copy_path")).clicked() {
+                                        ui.ctx().copy_text(focus.cwd.display().to_string());
+                                        ui.close();
+                                    }
+                                }
+                                "work-log" => {
+                                    let (label, hint) = if focus.logging.is_empty() {
+                                        (tr("tab.work_log"), tr("tab.work_log_hint"))
+                                    } else {
+                                        (tr("tab.work_log_end"), tr("tab.work_log_end_hint"))
+                                    };
+                                    if ui
+                                        .add(egui::Button::new(label).shortcut_text(keys::label(keys::Action::WorkLog)))
+                                        .on_hover_text(hint)
+                                        .clicked()
+                                    {
+                                        let tab = if w.name.is_empty() {
+                                            sort::display_title(&focus.title, &focus.command)
+                                        } else {
+                                            w.name.clone()
+                                        };
+                                        ops.push(SideOp::WorkLog(focus.id, tab));
+                                        ui.close();
+                                    }
+                                }
+                                "pr" => {
+                                    let shown = !focus.branch.is_empty() && !matches!(focus.branch.as_str(), "main" | "master");
+                                    if shown && ui.button(tr("tab.pr")).on_hover_text(trf("tab.pr_hint", &[&focus.branch])).clicked() {
+                                        ops.push(SideOp::CreatePr(focus.cwd.clone()));
+                                        ui.close();
+                                    }
+                                }
+                                "save-output" => {
+                                    if ui.button(tr("tab.save_output")).on_hover_text(tr("tab.save_output_hint")).clicked() {
+                                        ops.push(SideOp::SaveOutput(focus.id, sort::display_title(&focus.title, &focus.command)));
+                                        ui.close();
+                                    }
+                                }
+                                "close" => {
+                                    // Something running in it: a second click, to be sure.
+                                    let busy = infos.iter().any(|i| matches!(i.state, State::Running | State::MaybeWaiting));
+                                    let armed = self.close_armed == Some(w.id);
+                                    let label = if armed { tr("tab.close_armed") } else { tr("tab.close") };
+                                    if ui
+                                        .add(
+                                            egui::Button::new(egui::RichText::new(label).color(crate::theme::colors().err))
+                                                .shortcut_text(keys::label(keys::Action::CloseTab)),
+                                        )
+                                        .clicked()
+                                    {
+                                        if busy && !armed {
+                                            self.close_armed = Some(w.id);
+                                        } else {
+                                            ops.push(SideOp::Close(ids.clone()));
+                                            self.close_armed = None;
+                                            ui.close();
+                                        }
+                                    }
+                                }
+                                _ => {}
                             }
-                            _ => {}
                         }
-                    }
-                });
-            }
-        });
+                    });
+                }
+            });
         // A tab being dragged: a line where it would go, and there on release.
         // Let go outside the window, it opens in a window of its own there
         // (Q16); the system keeps telling where the pointer is while a
@@ -3424,7 +3699,9 @@ impl App {
                     SideOp::Duplicate(cwd, claude) => {
                         let shell = None;
                         let typed = claude.then(|| newsession::Start::Claude.typed(&self.settings_now.sessions.claude)).flatten();
-                        if let Ok(pane) = client.spawn_typing(cwd, shell, Size::new(80, 24), (8, 16), Place::NewWorkspace, typed.into_iter().collect()) {
+                        if let Ok(pane) =
+                            client.spawn_typing(cwd, shell, Size::new(80, 24), (8, 16), Place::NewWorkspace, typed.into_iter().collect())
+                        {
                             self.pending = Some(pane.id());
                         }
                     }
@@ -3489,7 +3766,13 @@ impl App {
         let mut y = area.top() + 44.0;
         for (k, tab) in shown.iter().enumerate() {
             if y + 36.0 > foot - 22.0 {
-                ui.painter().text(egui::pos2(area.center().x, y + 6.0), egui::Align2::CENTER_CENTER, format!("+{}", shown.len() - k), egui::FontId::proportional(11.0), pal.fg_dim);
+                ui.painter().text(
+                    egui::pos2(area.center().x, y + 6.0),
+                    egui::Align2::CENTER_CENTER,
+                    format!("+{}", shown.len() - k),
+                    egui::FontId::proportional(11.0),
+                    pal.fg_dim,
+                );
                 break;
             }
             let (Some(focus), Some(urgent)) = (tab.focus(), tab.urgent()) else { continue };
@@ -3548,7 +3831,13 @@ impl App {
             let pill = egui::Rect::from_center_size(egui::pos2(area.center().x, foot + 18.0), egui::vec2(36.0, 22.0));
             let resp = ui.interact(pill, egui::Id::new("rail-waiting"), egui::Sense::click()).on_hover_text(tr("sidebar.rail_waiting"));
             ui.painter().rect_filled(pill, 11.0, chrome::gold());
-            ui.painter().text(pill.center(), egui::Align2::CENTER_CENTER, waiting.to_string(), egui::FontId::proportional(12.0), crate::theme::colors().on_accent());
+            ui.painter().text(
+                pill.center(),
+                egui::Align2::CENTER_CENTER,
+                waiting.to_string(),
+                egui::FontId::proportional(12.0),
+                crate::theme::colors().on_accent(),
+            );
             if resp.clicked() {
                 self.jump_waiting = true;
             }
@@ -3560,7 +3849,11 @@ impl App {
     /// Acrylic, so the desktop's colour comes through; else as it is.
     fn chrome_fill(&self, c: egui::Color32) -> egui::Color32 {
         let a = self.alpha();
-        if self.material { c.gamma_multiply(a.min(0.55)) } else { c.gamma_multiply(a) }
+        if self.material {
+            c.gamma_multiply(a.min(0.55))
+        } else {
+            c.gamma_multiply(a)
+        }
     }
 
     /// Write down where the window is once it holds still, for the next
@@ -3605,7 +3898,11 @@ impl App {
     /// How much of the window covers the desktop (`[window] opacity`, once
     /// the window was opened see-through).
     fn alpha(&self) -> f32 {
-        if self.transparent { self.settings_now.window.alpha() } else { 1.0 }
+        if self.transparent {
+            self.settings_now.window.alpha()
+        } else {
+            1.0
+        }
     }
 
     /// The worktrees' comings and goings: start the session in one just
@@ -3649,30 +3946,42 @@ impl App {
         }
         let Some(path) = self.worktree_ask.clone() else { return };
         let mut answer = None;
-        egui::Area::new(egui::Id::new("worktree-ask")).order(egui::Order::Foreground).anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0)).show(ctx, |ui| {
-            egui::Frame::NONE
-                .fill(crate::theme::colors().panel)
-                .stroke(egui::Stroke::new(1.0, crate::theme::colors().border_strong()))
-                .corner_radius(12.0)
-                .inner_margin(egui::Margin::symmetric(20, 16))
-                .show(ui, |ui| {
-                    ui.set_max_width(460.0);
-                    ui.label(egui::RichText::new(tr("dialog.worktree_title")).size(15.0).strong().color(crate::theme::colors().strong()));
-                    ui.add_space(4.0);
-                    ui.label(egui::RichText::new(trf("dialog.worktree_lead", &[&home_short(&path)])).size(12.5).color(crate::theme::colors().dim));
-                    ui.add_space(10.0);
-                    ui.horizontal(|ui| {
-                        let remove = egui::Button::new(egui::RichText::new(tr("dialog.worktree_remove")).color(crate::theme::colors().on_accent()).strong()).fill(chrome::red());
-                        let (remove, keep) = chrome::foot(ui, remove, true, tr("dialog.worktree_keep"));
-                        if remove.clicked() {
-                            answer = Some(true);
-                        }
-                        if keep.clicked() {
-                            answer = Some(false);
-                        }
+        egui::Area::new(egui::Id::new("worktree-ask"))
+            .order(egui::Order::Foreground)
+            .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
+            .show(ctx, |ui| {
+                egui::Frame::NONE
+                    .fill(crate::theme::colors().panel)
+                    .stroke(egui::Stroke::new(1.0, crate::theme::colors().border_strong()))
+                    .corner_radius(12.0)
+                    .inner_margin(egui::Margin::symmetric(20, 16))
+                    .show(ui, |ui| {
+                        ui.set_max_width(460.0);
+                        ui.label(
+                            egui::RichText::new(tr("dialog.worktree_title")).size(15.0).strong().color(crate::theme::colors().strong()),
+                        );
+                        ui.add_space(4.0);
+                        ui.label(
+                            egui::RichText::new(trf("dialog.worktree_lead", &[&home_short(&path)]))
+                                .size(12.5)
+                                .color(crate::theme::colors().dim),
+                        );
+                        ui.add_space(10.0);
+                        ui.horizontal(|ui| {
+                            let remove = egui::Button::new(
+                                egui::RichText::new(tr("dialog.worktree_remove")).color(crate::theme::colors().on_accent()).strong(),
+                            )
+                            .fill(chrome::red());
+                            let (remove, keep) = chrome::foot(ui, remove, true, tr("dialog.worktree_keep"));
+                            if remove.clicked() {
+                                answer = Some(true);
+                            }
+                            if keep.clicked() {
+                                answer = Some(false);
+                            }
+                        });
                     });
-                });
-        });
+            });
         match answer {
             Some(true) => {
                 let (tx, rx) = std::sync::mpsc::channel();
@@ -3707,33 +4016,47 @@ impl App {
         }
         let Some(running) = self.closing else { return };
         let mut answer = None;
-        egui::Area::new(egui::Id::new("close-ask")).order(egui::Order::Foreground).anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0)).show(ctx, |ui| {
-            egui::Frame::NONE
-                .fill(crate::theme::colors().panel)
-                .stroke(egui::Stroke::new(1.0, crate::theme::colors().border_strong()))
-                .corner_radius(12.0)
-                .inner_margin(egui::Margin::symmetric(20, 16))
-                .show(ui, |ui| {
-                    ui.set_max_width(460.0);
-                    let title = if running == 1 { tr("dialog.close_one").to_owned() } else { trf("dialog.close_many", &[&running.to_string()]) };
-                    ui.label(egui::RichText::new(title).size(15.0).strong().color(crate::theme::colors().strong()));
-                    ui.add_space(4.0);
-                    let words = if general.keep_sessions { tr("dialog.close_keep").to_owned() } else { trf("dialog.close_stop", &[tr("prefs.general.keep_sessions")]) };
-                    ui.label(egui::RichText::new(words).size(12.5).color(crate::theme::colors().dim));
-                    ui.add_space(10.0);
-                    ui.horizontal(|ui| {
-                        let fill = if general.keep_sessions { chrome::gold() } else { chrome::red() };
-                        let close = egui::Button::new(egui::RichText::new(tr("dialog.close")).color(crate::theme::colors().on_accent()).strong()).fill(fill);
-                        let (close, cancel) = chrome::foot(ui, close, true, tr("dialog.cancel"));
-                        if close.clicked() {
-                            answer = Some(true);
-                        }
-                        if cancel.clicked() || ui.input(|i| i.key_pressed(egui::Key::Escape)) {
-                            answer = Some(false);
-                        }
+        egui::Area::new(egui::Id::new("close-ask"))
+            .order(egui::Order::Foreground)
+            .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
+            .show(ctx, |ui| {
+                egui::Frame::NONE
+                    .fill(crate::theme::colors().panel)
+                    .stroke(egui::Stroke::new(1.0, crate::theme::colors().border_strong()))
+                    .corner_radius(12.0)
+                    .inner_margin(egui::Margin::symmetric(20, 16))
+                    .show(ui, |ui| {
+                        ui.set_max_width(460.0);
+                        let title = if running == 1 {
+                            tr("dialog.close_one").to_owned()
+                        } else {
+                            trf("dialog.close_many", &[&running.to_string()])
+                        };
+                        ui.label(egui::RichText::new(title).size(15.0).strong().color(crate::theme::colors().strong()));
+                        ui.add_space(4.0);
+                        let words = if general.keep_sessions {
+                            tr("dialog.close_keep").to_owned()
+                        } else {
+                            trf("dialog.close_stop", &[tr("prefs.general.keep_sessions")])
+                        };
+                        ui.label(egui::RichText::new(words).size(12.5).color(crate::theme::colors().dim));
+                        ui.add_space(10.0);
+                        ui.horizontal(|ui| {
+                            let fill = if general.keep_sessions { chrome::gold() } else { chrome::red() };
+                            let close = egui::Button::new(
+                                egui::RichText::new(tr("dialog.close")).color(crate::theme::colors().on_accent()).strong(),
+                            )
+                            .fill(fill);
+                            let (close, cancel) = chrome::foot(ui, close, true, tr("dialog.cancel"));
+                            if close.clicked() {
+                                answer = Some(true);
+                            }
+                            if cancel.clicked() || ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+                                answer = Some(false);
+                            }
+                        });
                     });
-                });
-        });
+            });
         match answer {
             Some(true) => {
                 self.closing = None;
@@ -3750,36 +4073,48 @@ impl App {
     /// answer settles it; the server takes the box away from the others.
     fn send_asks(&mut self, ctx: &egui::Context, client: &Client, sessions: &[Info]) {
         let Some((n, id, text)) = client.asks().into_iter().next() else { return };
-        let name = sessions.iter().find(|s| s.id == id).map_or_else(|| format!("#{id}"), |s| format!("#{id} {} · {}", s.command, s.cwd.display()));
+        let name =
+            sessions.iter().find(|s| s.id == id).map_or_else(|| format!("#{id}"), |s| format!("#{id} {} · {}", s.command, s.cwd.display()));
         let mut answer = None;
-        egui::Area::new(egui::Id::new("send-ask")).order(egui::Order::Foreground).anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0)).show(ctx, |ui| {
-            egui::Frame::NONE
-                .fill(crate::theme::colors().panel)
-                .stroke(egui::Stroke::new(1.0, crate::theme::colors().border_strong()))
-                .corner_radius(12.0)
-                .inner_margin(egui::Margin::symmetric(20, 16))
-                .show(ui, |ui| {
-                    ui.set_max_width(520.0);
-                    ui.label(egui::RichText::new(trf("dialog.send_title", &[&name])).size(15.0).strong().color(crate::theme::colors().strong()));
-                    ui.add_space(6.0);
-                    egui::ScrollArea::vertical().max_height(220.0).show(ui, |ui| {
-                        ui.label(egui::RichText::new(&text).monospace().size(12.5).color(crate::theme::colors().strong()));
+        egui::Area::new(egui::Id::new("send-ask"))
+            .order(egui::Order::Foreground)
+            .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
+            .show(ctx, |ui| {
+                egui::Frame::NONE
+                    .fill(crate::theme::colors().panel)
+                    .stroke(egui::Stroke::new(1.0, crate::theme::colors().border_strong()))
+                    .corner_radius(12.0)
+                    .inner_margin(egui::Margin::symmetric(20, 16))
+                    .show(ui, |ui| {
+                        ui.set_max_width(520.0);
+                        ui.label(
+                            egui::RichText::new(trf("dialog.send_title", &[&name]))
+                                .size(15.0)
+                                .strong()
+                                .color(crate::theme::colors().strong()),
+                        );
+                        ui.add_space(6.0);
+                        egui::ScrollArea::vertical().max_height(220.0).show(ui, |ui| {
+                            ui.label(egui::RichText::new(&text).monospace().size(12.5).color(crate::theme::colors().strong()));
+                        });
+                        ui.add_space(4.0);
+                        ui.label(egui::RichText::new(tr("dialog.send_note")).size(12.0).color(crate::theme::colors().dim));
+                        ui.add_space(10.0);
+                        ui.horizontal(|ui| {
+                            let allow = egui::Button::new(
+                                egui::RichText::new(tr("dialog.send_allow")).color(crate::theme::colors().on_accent()).strong(),
+                            )
+                            .fill(chrome::red());
+                            let (allow, refuse) = chrome::foot(ui, allow, true, tr("dialog.send_refuse"));
+                            if allow.clicked() {
+                                answer = Some(true);
+                            }
+                            if refuse.clicked() || ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+                                answer = Some(false);
+                            }
+                        });
                     });
-                    ui.add_space(4.0);
-                    ui.label(egui::RichText::new(tr("dialog.send_note")).size(12.0).color(crate::theme::colors().dim));
-                    ui.add_space(10.0);
-                    ui.horizontal(|ui| {
-                        let allow = egui::Button::new(egui::RichText::new(tr("dialog.send_allow")).color(crate::theme::colors().on_accent()).strong()).fill(chrome::red());
-                        let (allow, refuse) = chrome::foot(ui, allow, true, tr("dialog.send_refuse"));
-                        if allow.clicked() {
-                            answer = Some(true);
-                        }
-                        if refuse.clicked() || ui.input(|i| i.key_pressed(egui::Key::Escape)) {
-                            answer = Some(false);
-                        }
-                    });
-                });
-        });
+            });
         if let Some(allow) = answer {
             client.decide(n, allow);
         }
@@ -3811,10 +4146,11 @@ impl App {
             // question: a pane just watched has none yet, and an empty
             // screen read as "no choices" sent the prompt into Claude
             // Code's 1. Yes / 2. No (the source review, 2026-10-07).
-            let ready = info.state == State::Done || info.state == State::Waiting && {
-                let lines = self.watch_lines(id);
-                !lines.iter().all(|l| l.trim().is_empty()) && answer::choices(&lines).is_empty()
-            };
+            let ready = info.state == State::Done
+                || info.state == State::Waiting && {
+                    let lines = self.watch_lines(id);
+                    !lines.iter().all(|l| l.trim().is_empty()) && answer::choices(&lines).is_empty()
+                };
             if !ready {
                 continue;
             }
@@ -3922,7 +4258,8 @@ impl App {
         let enter = self.new_session.is_none() && ui.input(|i| i.key_pressed(egui::Key::Enter));
         let rect = ui.max_rect();
         ui.painter().rect_filled(rect, 0.0, c.bg);
-        let mut inner = ui.new_child(egui::UiBuilder::new().max_rect(rect.shrink(40.0)).layout(egui::Layout::top_down(egui::Align::Center)));
+        let mut inner =
+            ui.new_child(egui::UiBuilder::new().max_rect(rect.shrink(40.0)).layout(egui::Layout::top_down(egui::Align::Center)));
         egui::ScrollArea::vertical().id_salt("first-run").show(&mut inner, |ui| {
             ui.vertical_centered(|ui| {
                 ui.add_space((rect.height() * 0.12).min(80.0));
@@ -3942,9 +4279,21 @@ impl App {
                         if k == 0 || resp.hovered() {
                             p.rect_filled(r, 8.0, c.chosen());
                         }
-                        p.text(egui::pos2(r.left() + 14.0, r.center().y), egui::Align2::LEFT_CENTER, home_short(f), egui::FontId::monospace(13.0), c.strong());
+                        p.text(
+                            egui::pos2(r.left() + 14.0, r.center().y),
+                            egui::Align2::LEFT_CENTER,
+                            home_short(f),
+                            egui::FontId::monospace(13.0),
+                            c.strong(),
+                        );
                         if k == 0 {
-                            p.text(egui::pos2(r.right() - 14.0, r.center().y), egui::Align2::RIGHT_CENTER, "↵", egui::FontId::monospace(11.0), c.dim);
+                            p.text(
+                                egui::pos2(r.right() - 14.0, r.center().y),
+                                egui::Align2::RIGHT_CENTER,
+                                "↵",
+                                egui::FontId::monospace(11.0),
+                                c.dim,
+                            );
                         }
                         if resp.clicked() {
                             picked = Some(f.clone());
@@ -3954,7 +4303,13 @@ impl App {
                     let (r, resp) = ui.allocate_exact_size(egui::vec2(520.0, 40.0), egui::Sense::click());
                     let p = ui.painter();
                     chrome::dashed_outline(p, r, if resp.hovered() { c.dim } else { c.border_strong() });
-                    p.text(egui::pos2(r.left() + 14.0, r.center().y), egui::Align2::LEFT_CENTER, tr("dialog.first_other"), egui::FontId::proportional(13.0), c.dim);
+                    p.text(
+                        egui::pos2(r.left() + 14.0, r.center().y),
+                        egui::Align2::LEFT_CENTER,
+                        tr("dialog.first_other"),
+                        egui::FontId::proportional(13.0),
+                        c.dim,
+                    );
                     other = resp.clicked();
                 });
                 if self.hooks_offered {
@@ -4034,7 +4389,14 @@ impl App {
         for m in made {
             match m {
                 Ok((path, task)) => {
-                    if let Err(e) = client.spawn_typing(path, None, Size::new(80, 24), (8, 16), Place::NewWorkspace, vec![parallel::typed(&claude, &task, how)]) {
+                    if let Err(e) = client.spawn_typing(
+                        path,
+                        None,
+                        Size::new(80, 24),
+                        (8, 16),
+                        Place::NewWorkspace,
+                        vec![parallel::typed(&claude, &task, how)],
+                    ) {
                         self.say(trf("toast.parallel_failed", &[&e.to_string()]), true);
                     }
                 }
@@ -4073,14 +4435,25 @@ impl App {
             client.mute_tag(new.clone(), true);
         }
         let s = &self.settings_now.tags;
-        let rules: Vec<tsumugi_mux::settings::TagRule> = s.rule.iter().cloned().map(|mut r| {
-            if r.tag == old {
-                r.tag = new.clone();
-            }
-            r
-        }).collect();
+        let rules: Vec<tsumugi_mux::settings::TagRule> = s
+            .rule
+            .iter()
+            .cloned()
+            .map(|mut r| {
+                if r.tag == old {
+                    r.tag = new.clone();
+                }
+                r
+            })
+            .collect();
         let colour = s.colors.get(&old).cloned();
-        let key = |n: &str| if n.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-') { n.to_owned() } else { tsumugi_mux::settings::quote(n) };
+        let key = |n: &str| {
+            if n.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-') {
+                n.to_owned()
+            } else {
+                tsumugi_mux::settings::quote(n)
+            }
+        };
         let (old_key, new_key) = (key(&old), key(&new));
         edit_settings(self.settings_tx.clone(), move |t| {
             let mut t = write_rules(t, &rules)?;
@@ -4183,7 +4556,12 @@ impl App {
         };
         // The host (`None` this machine), its line, its counts, why it is down.
         type Row = (Option<String>, machine::Link, (usize, usize), Option<String>);
-        let mut rows: Vec<Row> = vec![(None, if here.is_some() { machine::Link::Up } else { machine::Link::Lost }, here.unwrap_or((0, 0)), here.is_none().then(|| tr("sidebar.server_stopped").into()))];
+        let mut rows: Vec<Row> = vec![(
+            None,
+            if here.is_some() { machine::Link::Up } else { machine::Link::Lost },
+            here.unwrap_or((0, 0)),
+            here.is_none().then(|| tr("sidebar.server_stopped").into()),
+        )];
         for m in &self.machines {
             let counts = if self.on.as_deref() == Some(m.host.as_str()) { machine::counts(sessions) } else { m.counts() };
             rows.push((Some(m.host.clone()), m.link(), counts, m.error.clone()));
@@ -4204,10 +4582,15 @@ impl App {
                 let words = if shown { words.strong() } else { words };
                 let label = ui.add(egui::Label::new(words).sense(egui::Sense::click()));
                 let (hint, more) = match link {
-                    machine::Link::Up if waiting > 0 => (trf("sidebar.machine_waiting_hover", &[&n.to_string(), &waiting.to_string()]), trf("sidebar.machine_waiting", &[&n.to_string(), &waiting.to_string()])),
+                    machine::Link::Up if waiting > 0 => (
+                        trf("sidebar.machine_waiting_hover", &[&n.to_string(), &waiting.to_string()]),
+                        trf("sidebar.machine_waiting", &[&n.to_string(), &waiting.to_string()]),
+                    ),
                     machine::Link::Up => (trf("sidebar.machine_sessions", &[&n.to_string()]), n.to_string()),
                     machine::Link::Connecting => (tr("sidebar.connecting_hover").into(), tr("sidebar.connecting").into()),
-                    machine::Link::Lost => (error.clone().unwrap_or_else(|| tr("sidebar.not_connected_hover").into()), tr("sidebar.not_connected").into()),
+                    machine::Link::Lost => {
+                        (error.clone().unwrap_or_else(|| tr("sidebar.not_connected_hover").into()), tr("sidebar.not_connected").into())
+                    }
                 };
                 let colour = if waiting > 0 && link == machine::Link::Up { chrome::ink(chrome::gold()) } else { t.faint() };
                 ui.label(egui::RichText::new(more).size(11.0).color(colour));
@@ -4215,7 +4598,14 @@ impl App {
                 if let (machine::Link::Lost, Some(_)) = (link, &host) {
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         ui.add_space(10.0);
-                        again = ui.add(egui::Label::new(egui::RichText::new(tr("machine.reconnect")).size(11.5).color(chrome::ink(chrome::cyan()))).sense(egui::Sense::click())).clicked();
+                        again = ui
+                            .add(
+                                egui::Label::new(
+                                    egui::RichText::new(tr("machine.reconnect")).size(11.5).color(chrome::ink(chrome::cyan())),
+                                )
+                                .sense(egui::Sense::click()),
+                            )
+                            .clicked();
                     });
                 }
                 (label.on_hover_text(hint), again)
@@ -4241,7 +4631,8 @@ impl App {
                         did = Some(Do::Restart(h.clone()));
                         ui.close();
                     }
-                    let forget = ui.add_enabled(!shown, egui::Button::new(tr("machine.forget"))).on_disabled_hover_text(tr("machine.forget_shown"));
+                    let forget =
+                        ui.add_enabled(!shown, egui::Button::new(tr("machine.forget"))).on_disabled_hover_text(tr("machine.forget_shown"));
                     if forget.clicked() {
                         did = Some(Do::Forget(h.clone()));
                         ui.close();
@@ -4332,10 +4723,12 @@ impl App {
             Some(machine::Then::Create(c)) => self.create(&client, *c, None),
             // A machine with nothing running gets a shell in its home
             // folder, rather than an empty window.
-            Some(machine::Then::Show) if host.is_some() && client.workspaces().is_empty() => match new_session(&client, "~".into(), Place::NewWorkspace) {
-                Ok(pane) => self.pending = Some(pane.id()),
-                Err(e) => self.say(e, true),
-            },
+            Some(machine::Then::Show) if host.is_some() && client.workspaces().is_empty() => {
+                match new_session(&client, "~".into(), Place::NewWorkspace) {
+                    Ok(pane) => self.pending = Some(pane.id()),
+                    Err(e) => self.say(e, true),
+                }
+            }
             _ => {}
         }
     }
@@ -4446,16 +4839,29 @@ impl App {
         };
         let keyed = self.lists.is_some() && ctx.input_mut(|i| i.consume_key(egui::Modifiers::COMMAND, egui::Key::Z));
         let c = crate::theme::colors();
-        let undo = egui::Area::new(egui::Id::new("undo-forget")).order(egui::Order::Tooltip).anchor(egui::Align2::CENTER_BOTTOM, egui::vec2(0.0, -44.0)).show(ctx, |ui| {
-            egui::Frame::NONE.fill(c.raised()).stroke(egui::Stroke::new(1.0, c.border)).corner_radius(6.0).inner_margin(egui::Margin::symmetric(12, 6)).show(ui, |ui| {
-                ui.horizontal(|ui| {
-                    ui.add(egui::Label::new(egui::RichText::new(words).size(12.5).color(c.strong())).wrap_mode(egui::TextWrapMode::Extend));
-                    ui.button(egui::RichText::new(tr("toast.undo")).strong()).on_hover_text(trf("toast.undo_hover", &[if cfg!(target_os = "macos") { "Cmd+Z" } else { "Ctrl+Z" }])).clicked()
-                })
-                .inner
-            })
-            .inner
-        });
+        let undo = egui::Area::new(egui::Id::new("undo-forget"))
+            .order(egui::Order::Tooltip)
+            .anchor(egui::Align2::CENTER_BOTTOM, egui::vec2(0.0, -44.0))
+            .show(ctx, |ui| {
+                egui::Frame::NONE
+                    .fill(c.raised())
+                    .stroke(egui::Stroke::new(1.0, c.border))
+                    .corner_radius(6.0)
+                    .inner_margin(egui::Margin::symmetric(12, 6))
+                    .show(ui, |ui| {
+                        ui.horizontal(|ui| {
+                            ui.add(
+                                egui::Label::new(egui::RichText::new(words).size(12.5).color(c.strong()))
+                                    .wrap_mode(egui::TextWrapMode::Extend),
+                            );
+                            ui.button(egui::RichText::new(tr("toast.undo")).strong())
+                                .on_hover_text(trf("toast.undo_hover", &[if cfg!(target_os = "macos") { "Cmd+Z" } else { "Ctrl+Z" }]))
+                                .clicked()
+                        })
+                        .inner
+                    })
+                    .inner
+            });
         if undo.inner || keyed {
             let Some((taken, _)) = self.forgotten.take() else { return };
             history::restore(&mut self.ended, taken);
@@ -4472,16 +4878,31 @@ impl App {
         }
         // In and out over a moment, when things move at all.
         let shown = at.elapsed().as_secs_f32();
-        let alpha = if self.settings_now.appearance.animations { (shown / FADE.as_secs_f32()).min(left.as_secs_f32() / FADE.as_secs_f32()).clamp(0.0, 1.0) } else { 1.0 };
+        let alpha = if self.settings_now.appearance.animations {
+            (shown / FADE.as_secs_f32()).min(left.as_secs_f32() / FADE.as_secs_f32()).clamp(0.0, 1.0)
+        } else {
+            1.0
+        };
         ctx.request_repaint_after(if alpha < 1.0 { std::time::Duration::from_millis(16) } else { left.saturating_sub(FADE) });
         let c = crate::theme::colors();
         let (fill, color) = if *error { (crate::theme::mix(c.panel, c.err, 0.15), chrome::red()) } else { (c.raised(), c.strong()) };
-        egui::Area::new(egui::Id::new("toast")).order(egui::Order::Foreground).anchor(egui::Align2::CENTER_TOP, egui::vec2(0.0, 52.0)).show(ctx, |ui| {
-            ui.set_opacity(alpha);
-            egui::Frame::NONE.fill(fill).stroke(egui::Stroke::new(1.0, c.border)).corner_radius(6.0).inner_margin(egui::Margin::symmetric(12, 6)).show(ui, |ui| {
-                ui.add(egui::Label::new(egui::RichText::new(words.as_str()).size(12.5).color(color)).wrap_mode(egui::TextWrapMode::Extend));
+        egui::Area::new(egui::Id::new("toast"))
+            .order(egui::Order::Foreground)
+            .anchor(egui::Align2::CENTER_TOP, egui::vec2(0.0, 52.0))
+            .show(ctx, |ui| {
+                ui.set_opacity(alpha);
+                egui::Frame::NONE
+                    .fill(fill)
+                    .stroke(egui::Stroke::new(1.0, c.border))
+                    .corner_radius(6.0)
+                    .inner_margin(egui::Margin::symmetric(12, 6))
+                    .show(ui, |ui| {
+                        ui.add(
+                            egui::Label::new(egui::RichText::new(words.as_str()).size(12.5).color(color))
+                                .wrap_mode(egui::TextWrapMode::Extend),
+                        );
+                    });
             });
-        });
     }
 
     /// The last lines of session `id`'s screen, for the card's preview: the
@@ -4522,7 +4943,14 @@ impl App {
     fn faces_at(&self, size: f32) -> ito_pane::Faces {
         let face = |k: usize, name: &str| self.faces_found[k].then(|| egui::FontId::new(size, egui::FontFamily::Name(name.into())));
         let shaper = self.shaper.clone().filter(|_| self.settings_now.font.ligatures);
-        ito_pane::Faces { regular: egui::FontId::monospace(size), bold: face(0, fonts::BOLD), italic: face(1, fonts::ITALIC), bold_italic: face(2, fonts::BOLD_ITALIC), shaper, cursor: self.cursor_style() }
+        ito_pane::Faces {
+            regular: egui::FontId::monospace(size),
+            bold: face(0, fonts::BOLD),
+            italic: face(1, fonts::ITALIC),
+            bold_italic: face(2, fonts::BOLD_ITALIC),
+            shaper,
+            cursor: self.cursor_style(),
+        }
     }
 
     /// The palettes and font sizes of the profiles the shown sessions were
@@ -4535,7 +4963,9 @@ impl App {
         for id in ids {
             let Some(info) = sessions.iter().find(|i| i.id == *id).filter(|i| !i.profile.is_empty()) else { continue };
             let Some(p) = self.profiles.iter().find(|p| p.name == info.profile) else { continue };
-            let pal = (!p.theme.is_empty()).then(|| themes.get_or_insert_with(|| self.themes().0).iter().find(|t| t.name == p.theme).map(|t| t.colors.palette())).flatten();
+            let pal = (!p.theme.is_empty())
+                .then(|| themes.get_or_insert_with(|| self.themes().0).iter().find(|t| t.name == p.theme).map(|t| t.colors.palette()))
+                .flatten();
             let size = p.font_size.filter(|s| s.is_finite() && *s > 0.0).map(|s| font_size(s, self.font_step));
             if pal.is_some() || size.is_some() {
                 out.insert(*id, (pal, size));
@@ -4549,7 +4979,11 @@ impl App {
     fn strip(&self, ui: &egui::Ui, rect: egui::Rect, info: Option<&Info>, focused: bool) -> egui::Response {
         let resp = ui.interact(rect, egui::Id::new(("strip", info.map(|i| i.id))), egui::Sense::click_and_drag());
         let p = ui.painter_at(rect);
-        p.rect_filled(rect, 0.0, (if focused { crate::theme::colors().hover() } else { crate::theme::colors().panel }).gamma_multiply(self.alpha()));
+        p.rect_filled(
+            rect,
+            0.0,
+            (if focused { crate::theme::colors().hover() } else { crate::theme::colors().panel }).gamma_multiply(self.alpha()),
+        );
         let Some(info) = info else { return resp };
         let name = sort::display_title(&info.title, &info.command);
         let color = if focused { self.palette.fg } else { self.palette.fg_dim };
@@ -4588,12 +5022,26 @@ impl App {
         let (pointer, released) = ctx.input(|i| (i.pointer.latest_pos(), !i.pointer.primary_down()));
         // Its name with the pointer, so what is carried is plain.
         if let Some(p) = pointer {
-            let name = self.client.as_ref().and_then(|c| c.sessions().into_iter().find(|i| i.id == moving)).map(|i| sort::display_title(&i.title, &i.command)).unwrap_or_default();
-            egui::Area::new(egui::Id::new("carried")).order(egui::Order::Tooltip).fixed_pos(p + egui::vec2(14.0, 12.0)).interactable(false).show(&ctx, |ui| {
-                egui::Frame::NONE.fill(crate::theme::colors().raised()).stroke(egui::Stroke::new(1.0, chrome::cyan())).corner_radius(6.0).inner_margin(egui::Margin::symmetric(8, 4)).show(ui, |ui| {
-                    ui.label(egui::RichText::new(name).size(12.0).color(crate::theme::colors().strong()));
+            let name = self
+                .client
+                .as_ref()
+                .and_then(|c| c.sessions().into_iter().find(|i| i.id == moving))
+                .map(|i| sort::display_title(&i.title, &i.command))
+                .unwrap_or_default();
+            egui::Area::new(egui::Id::new("carried"))
+                .order(egui::Order::Tooltip)
+                .fixed_pos(p + egui::vec2(14.0, 12.0))
+                .interactable(false)
+                .show(&ctx, |ui| {
+                    egui::Frame::NONE
+                        .fill(crate::theme::colors().raised())
+                        .stroke(egui::Stroke::new(1.0, chrome::cyan()))
+                        .corner_radius(6.0)
+                        .inner_margin(egui::Margin::symmetric(8, 4))
+                        .show(ui, |ui| {
+                            ui.label(egui::RichText::new(name).size(12.0).color(crate::theme::colors().strong()));
+                        });
                 });
-            });
         }
         // On the sidebar, with others in the tab: a tab of its own there.
         let side = self.side_rect.filter(|_| rects.len() > 1);
@@ -4603,7 +5051,13 @@ impl App {
                 let show = side.shrink(6.0);
                 painter.rect_filled(show, 8.0, chrome::cyan().gamma_multiply(0.12));
                 painter.rect_stroke(show, 8.0, egui::Stroke::new(1.5, chrome::cyan()), egui::StrokeKind::Inside);
-                painter.text(show.center(), egui::Align2::CENTER_CENTER, "A tab of its own", egui::FontId::proportional(13.0), chrome::cyan());
+                painter.text(
+                    show.center(),
+                    egui::Align2::CENTER_CENTER,
+                    "A tab of its own",
+                    egui::FontId::proportional(13.0),
+                    chrome::cyan(),
+                );
                 if released {
                     if let Some(client) = &self.client {
                         client.own_tab(moving);
@@ -4613,7 +5067,8 @@ impl App {
                 return;
             }
         }
-        let target = pointer.and_then(|p| rects.iter().find(|(id, r)| *id != moving && from_rect(*r).contains(p)).map(|(id, r)| (p, *id, from_rect(*r))));
+        let target = pointer
+            .and_then(|p| rects.iter().find(|(id, r)| *id != moving && from_rect(*r).contains(p)).map(|(id, r)| (p, *id, from_rect(*r))));
         if let Some((p, to, r)) = target {
             let z = drop::zone(r, p);
             let show = drop::preview(r, z).shrink(2.0);
@@ -4737,7 +5192,11 @@ impl App {
                 // the dimming and the cursor say it.
                 // Square when see-through: the corners would show the desktop.
                 let round = if self.transparent { 0 } else { 8 };
-                p.rect_filled(head, egui::CornerRadius { nw: round, ne: round, sw: 0, se: 0 }, self.palette.on_cursor.gamma_multiply(alpha));
+                p.rect_filled(
+                    head,
+                    egui::CornerRadius { nw: round, ne: round, sw: 0, se: 0 },
+                    self.palette.on_cursor.gamma_multiply(alpha),
+                );
                 p.hline(head.x_range(), head.bottom() - 0.5, egui::Stroke::new(1.0, crate::theme::colors().border));
                 if let Some(info) = sessions.iter().find(|i| i.id == *id) {
                     // The state's mark on the left; its words, short, on the
@@ -4749,17 +5208,35 @@ impl App {
                     let mut right_x = head.right() - 10.0;
                     // Typing into every pane: said on each, in gold.
                     if self.typing_all.contains(&w.id) {
-                        let r = p.text(egui::pos2(right_x, head.center().y), egui::Align2::RIGHT_CENTER, "TYPING INTO ALL", egui::FontId::proportional(10.5), chrome::ink(chrome::gold()));
+                        let r = p.text(
+                            egui::pos2(right_x, head.center().y),
+                            egui::Align2::RIGHT_CENTER,
+                            "TYPING INTO ALL",
+                            egui::FontId::proportional(10.5),
+                            chrome::ink(chrome::gold()),
+                        );
                         right_x = r.left() - 10.0;
                     }
                     // Typing into it turned away (its menu lets it in).
                     if info.read_only {
-                        let r = p.text(egui::pos2(right_x, head.center().y), egui::Align2::RIGHT_CENTER, "READ-ONLY", egui::FontId::proportional(10.5), chrome::ink(chrome::gold()));
+                        let r = p.text(
+                            egui::pos2(right_x, head.center().y),
+                            egui::Align2::RIGHT_CENTER,
+                            "READ-ONLY",
+                            egui::FontId::proportional(10.5),
+                            chrome::ink(chrome::gold()),
+                        );
                         right_x = r.left() - 10.0;
                     }
                     // Being recorded to a .cast file (Ctrl+Shift+R stops).
                     if !info.recording.is_empty() {
-                        let r = p.text(egui::pos2(right_x, head.center().y), egui::Align2::RIGHT_CENTER, "● REC", egui::FontId::proportional(10.5), chrome::ink(chrome::red()));
+                        let r = p.text(
+                            egui::pos2(right_x, head.center().y),
+                            egui::Align2::RIGHT_CENTER,
+                            "● REC",
+                            egui::FontId::proportional(10.5),
+                            chrome::ink(chrome::red()),
+                        );
                         right_x = r.left() - 10.0;
                     }
                     // A work log being written (Ctrl+Shift+S finishes it); the
@@ -4770,28 +5247,47 @@ impl App {
                         // mark says a full-screen program holds the screen.
                         let text = if paused { "LOG ‖" } else { "LOG" };
                         let galley = p.layout_no_wrap(text.into(), egui::FontId::proportional(10.5), egui::Color32::WHITE);
-                        let tag = egui::Rect::from_min_max(egui::pos2(right_x - galley.size().x - 10.0, head.center().y - 8.0), egui::pos2(right_x, head.center().y + 8.0));
+                        let tag = egui::Rect::from_min_max(
+                            egui::pos2(right_x - galley.size().x - 10.0, head.center().y - 8.0),
+                            egui::pos2(right_x, head.center().y + 8.0),
+                        );
                         p.rect_filled(tag, 4.0, chrome::LOG_FILL);
                         p.galley(egui::pos2(tag.left() + 5.0, tag.center().y - galley.size().y / 2.0), galley, egui::Color32::WHITE);
                         right_x = tag.left() - 10.0;
                     }
                     // A character set other than UTF-8, said where it applies.
                     if !info.charset.is_empty() && info.charset != "UTF-8" {
-                        let r = p.text(egui::pos2(right_x, head.center().y), egui::Align2::RIGHT_CENTER, &info.charset, egui::FontId::monospace(10.5), chrome::ink(chrome::gold()));
+                        let r = p.text(
+                            egui::pos2(right_x, head.center().y),
+                            egui::Align2::RIGHT_CENTER,
+                            &info.charset,
+                            egui::FontId::monospace(10.5),
+                            chrome::ink(chrome::gold()),
+                        );
                         right_x = r.left() - 10.0;
                     }
                     if self.zoom {
                         right_x = chrome::zoom_mark(&p, egui::pos2(right_x, head.center().y), self.palette.fg_dim).left() - 10.0;
                     }
                     let words = chrome::short_words(info, now);
-                    let right = p.text(egui::pos2(right_x, head.center().y), egui::Align2::RIGHT_CENTER, words, egui::FontId::proportional(11.5), chrome::state_ink(info.state));
+                    let right = p.text(
+                        egui::pos2(right_x, head.center().y),
+                        egui::Align2::RIGHT_CENTER,
+                        words,
+                        egui::FontId::proportional(11.5),
+                        chrome::state_ink(info.state),
+                    );
                     let name = sort::display_title(&info.title, &info.command);
                     let color = if focused { self.palette.fg } else { self.palette.fg_dim };
                     let room = (right.left() - head.left() - 40.0).max(0.0);
                     let galley = ui.fonts_mut(|f| {
                         let mut job = egui::text::LayoutJob::default();
                         job.append(&name, 0.0, egui::TextFormat::simple(egui::FontId::proportional(12.0), color));
-                        job.append(&home_short(&info.cwd), 10.0, egui::TextFormat::simple(egui::FontId::monospace(11.0), self.palette.fg_dim));
+                        job.append(
+                            &home_short(&info.cwd),
+                            10.0,
+                            egui::TextFormat::simple(egui::FontId::monospace(11.0), self.palette.fg_dim),
+                        );
                         job.wrap = egui::text::TextWrapping::truncate_at_width(room);
                         f.layout_job(job)
                     });
@@ -4813,7 +5309,10 @@ impl App {
             let boxed = !narrow && focused && self.input.open && self.prefs.is_none();
             let box_rect = boxed.then(|| {
                 let h = self.input_h.clamp(120.0, (rect.height() - 4.0 * row_h).max(120.0));
-                let r = egui::Rect::from_min_max(egui::pos2(rect.left() + 12.0, rect.bottom() - 12.0 - h), egui::pos2(rect.right() - 12.0, rect.bottom() - 12.0));
+                let r = egui::Rect::from_min_max(
+                    egui::pos2(rect.left() + 12.0, rect.bottom() - 12.0 - h),
+                    egui::pos2(rect.right() - 12.0, rect.bottom() - 12.0),
+                );
                 rect.max.y = r.top() - 8.0;
                 r
             });
@@ -4830,7 +5329,12 @@ impl App {
                     (f, h)
                 });
                 let (Some(pane), view) = (self.panes.get_mut(id), self.views.entry(*id).or_default()) else { continue };
-                let opts = ViewOptions { focused, wheel: true, copy_on_select: self.settings_now.general.copy_on_select, highlights: &self.highlights };
+                let opts = ViewOptions {
+                    focused,
+                    wheel: true,
+                    copy_on_select: self.settings_now.general.copy_on_select,
+                    highlights: &self.highlights,
+                };
                 if self.transparent && rect.bottom() < card.bottom() {
                     // Round the input box: the window's colour, as when solid.
                     let below = egui::Rect::from_min_max(egui::pos2(card.left(), rect.bottom()), card.max);
@@ -4840,7 +5344,11 @@ impl App {
                     backdrop::paint(&ui.painter_at(rect), rect, t, alpha);
                 }
                 let (faces, row_h) = own_faces.as_ref().map_or((&faces, row_h), |(f, h)| (f, *h));
-                let shown = ui.push_id(id, |ui| ito_pane::show_faces(ui, Some(pane), view, rect, faces, row_h, own_pal.as_ref().unwrap_or(&pal), opts)).inner;
+                let shown = ui
+                    .push_id(id, |ui| {
+                        ito_pane::show_faces(ui, Some(pane), view, rect, faces, row_h, own_pal.as_ref().unwrap_or(&pal), opts)
+                    })
+                    .inner;
                 // The program rang the bell: the pane flashes a moment.
                 if let Some(at) = pane.rang().filter(|_| self.settings_now.appearance.visual_bell) {
                     let t = at.elapsed().as_secs_f32() / BELL_FLASH.as_secs_f32();
@@ -4851,8 +5359,20 @@ impl App {
                 }
                 // Typed into a read-only pane: the server turns it away; say
                 // why nothing happens, not more than every few seconds.
-                if focused && sessions.iter().any(|i| i.id == *id && i.read_only) && self.read_only_said.is_none_or(|t| t.elapsed() > std::time::Duration::from_secs(3)) {
-                    let typed = ui.input(|i| i.events.iter().any(|e| matches!(e, egui::Event::Text(_) | egui::Event::Paste(_) | egui::Event::Key { key: egui::Key::Enter | egui::Key::Backspace, pressed: true, .. })));
+                if focused
+                    && sessions.iter().any(|i| i.id == *id && i.read_only)
+                    && self.read_only_said.is_none_or(|t| t.elapsed() > std::time::Duration::from_secs(3))
+                {
+                    let typed = ui.input(|i| {
+                        i.events.iter().any(|e| {
+                            matches!(
+                                e,
+                                egui::Event::Text(_)
+                                    | egui::Event::Paste(_)
+                                    | egui::Event::Key { key: egui::Key::Enter | egui::Key::Backspace, pressed: true, .. }
+                            )
+                        })
+                    });
                     if typed {
                         self.read_only_said = Some(std::time::Instant::now());
                         // Not `say`: the pane is still borrowed.
@@ -4872,10 +5392,18 @@ impl App {
                     if on == *id {
                         let at = origin + egui::vec2(mode.cursor.0 as f32 * cell.x, mode.cursor.1 as f32 * cell.y);
                         let p = ui.painter_at(rect);
-                        p.rect_stroke(egui::Rect::from_min_size(at, cell), 1.0, egui::Stroke::new(2.0, chrome::gold()), egui::StrokeKind::Inside);
+                        p.rect_stroke(
+                            egui::Rect::from_min_size(at, cell),
+                            1.0,
+                            egui::Stroke::new(2.0, chrome::gold()),
+                            egui::StrokeKind::Inside,
+                        );
                         let words = if mode.marking { tr("pane.copy_marking") } else { tr("pane.copy_mode") };
                         let galley = p.layout_no_wrap(words.into(), egui::FontId::proportional(11.5), crate::theme::colors().on_accent());
-                        let badge = egui::Rect::from_min_size(egui::pos2(rect.right() - galley.size().x - 22.0, rect.top() + 6.0), galley.size() + egui::vec2(14.0, 6.0));
+                        let badge = egui::Rect::from_min_size(
+                            egui::pos2(rect.right() - galley.size().x - 22.0, rect.top() + 6.0),
+                            galley.size() + egui::vec2(14.0, 6.0),
+                        );
                         p.rect_filled(badge, 6.0, chrome::gold());
                         p.galley(badge.min + egui::vec2(7.0, 3.0), galley, egui::Color32::WHITE);
                     }
@@ -4894,7 +5422,11 @@ impl App {
                             p.line_segment([span.left_bottom(), span.right_bottom()], egui::Stroke::new(1.5, chrome::gold()));
                             let mut job = egui::text::LayoutJob::default();
                             let (done, rest) = hit.label.split_at(q.typed.len());
-                            job.append(done, 0.0, egui::TextFormat { font_id: font.clone(), color: ink.gamma_multiply(0.45), ..Default::default() });
+                            job.append(
+                                done,
+                                0.0,
+                                egui::TextFormat { font_id: font.clone(), color: ink.gamma_multiply(0.45), ..Default::default() },
+                            );
                             job.append(rest, 0.0, egui::TextFormat { font_id: font.clone(), color: ink, ..Default::default() });
                             let galley = p.layout_job(job);
                             let tag = egui::Rect::from_min_size(at, egui::vec2(galley.size().x + 6.0, cell.y));
@@ -4906,7 +5438,14 @@ impl App {
                         // At the top, or at the bottom when it would hide a label.
                         let size = galley.size() + egui::vec2(14.0, 6.0);
                         let top = egui::Rect::from_min_size(egui::pos2(rect.right() - size.x - 8.0, rect.top() + 6.0), size);
-                        let covers = |r: egui::Rect| q.live().any(|h| r.intersects(egui::Rect::from_min_size(origin + egui::vec2(h.cells.start as f32 * cell.x, h.row as f32 * cell.y), egui::vec2(h.cells.len() as f32 * cell.x, cell.y))));
+                        let covers = |r: egui::Rect| {
+                            q.live().any(|h| {
+                                r.intersects(egui::Rect::from_min_size(
+                                    origin + egui::vec2(h.cells.start as f32 * cell.x, h.row as f32 * cell.y),
+                                    egui::vec2(h.cells.len() as f32 * cell.x, cell.y),
+                                ))
+                            })
+                        };
                         let badge = if covers(top) { top.translate(egui::vec2(0.0, rect.height() - size.y - 12.0)) } else { top };
                         p.rect_filled(badge, 6.0, chrome::gold());
                         p.galley(badge.min + egui::vec2(7.0, 3.0), galley, egui::Color32::WHITE);
@@ -4959,7 +5498,11 @@ impl App {
                 let named = |i: &tsumugi_mux::Info| {
                     let n = sort::display_title(&i.title, &i.command);
                     let project = i.project.file_name().map(|f| f.to_string_lossy().into_owned()).unwrap_or_default();
-                    if project.is_empty() { n } else { format!("{n} · {project}") }
+                    if project.is_empty() {
+                        n
+                    } else {
+                        format!("{n} · {project}")
+                    }
                 };
                 let name = info.map(named);
                 let mut tags: Vec<String> = Vec::new();
@@ -4972,7 +5515,10 @@ impl App {
                 let colors = theme::colors();
                 let queued = self.queue.iter().filter(|q| q.id == *id).count();
                 let shown = ui.scope_builder(egui::UiBuilder::new().max_rect(at).layout(egui::Layout::bottom_up(egui::Align::Min)), |ui| {
-                    ui.with_layout(egui::Layout::top_down(egui::Align::Min), |ui| self.input.show(ui, &colors, *id, name.as_deref().unwrap_or("this pane"), &tags, &others, queued)).inner
+                    ui.with_layout(egui::Layout::top_down(egui::Align::Min), |ui| {
+                        self.input.show(ui, &colors, *id, name.as_deref().unwrap_or("this pane"), &tags, &others, queued)
+                    })
+                    .inner
                 });
                 self.input_h = shown.response.rect.height().max(1.0);
                 if let Some(send) = shown.inner {
@@ -5071,7 +5617,6 @@ use ito_layout::ui::{from_egui as to_rect, to_egui as from_rect};
 
 use chrome::state_color;
 
-
 /// `pwsh` out of `C:\Program Files\PowerShell\7\pwsh.exe`.
 pub(crate) fn program_name(command: &str) -> String {
     sort::program_name(command)
@@ -5121,7 +5666,10 @@ fn read_themes(dir: &std::path::Path, common: Option<&std::path::Path>) -> Resul
     }
     let folders = std::iter::once(dir.join("themes")).chain(common.map(ito_common::themes_dir));
     for entries in folders.filter_map(|d| std::fs::read_dir(d).ok()) {
-        let mut files: Vec<std::path::PathBuf> = entries.filter_map(|e| e.ok().map(|e| e.path())).filter(|p| p.extension().is_some_and(|x| x == "toml" || x == "json" || x == "itermcolors")).collect();
+        let mut files: Vec<std::path::PathBuf> = entries
+            .filter_map(|e| e.ok().map(|e| e.path()))
+            .filter(|p| p.extension().is_some_and(|x| x == "toml" || x == "json" || x == "itermcolors"))
+            .collect();
         files.sort();
         for f in files {
             // Other terminals' schemes, as they come (1k).
@@ -5142,7 +5690,11 @@ fn read_themes(dir: &std::path::Path, common: Option<&std::path::Path>) -> Resul
                 _ => {}
             }
             let t = table(&f)?;
-            let name = t.get("name").and_then(|v| v.as_str()).map(str::to_owned).unwrap_or_else(|| f.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default());
+            let name = t
+                .get("name")
+                .and_then(|v| v.as_str())
+                .map(str::to_owned)
+                .unwrap_or_else(|| f.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default());
             out.own.push((name, t));
         }
     }
@@ -5412,7 +5964,8 @@ fn copy_key(key: egui::Key, m: egui::Modifiers) -> Option<copymode::Key> {
 /// The last `n` lines of a screen with anything on them, their trailing
 /// blanks cut.
 fn last_lines(rows: &[Vec<ito_pane::CellView>], n: usize) -> Vec<String> {
-    let mut lines: Vec<String> = rows.iter().map(|r| r.iter().map(|c| if c.c == '\0' { ' ' } else { c.c }).collect::<String>().trim_end().to_owned()).collect();
+    let mut lines: Vec<String> =
+        rows.iter().map(|r| r.iter().map(|c| if c.c == '\0' { ' ' } else { c.c }).collect::<String>().trim_end().to_owned()).collect();
     while lines.last().is_some_and(String::is_empty) {
         lines.pop();
     }
@@ -5445,7 +5998,11 @@ impl eframe::App for App {
     /// See-through where nothing is drawn when the desktop is to show
     /// through (Mica or Acrylic).
     fn clear_color(&self, visuals: &egui::Visuals) -> [f32; 4] {
-        if self.material || self.transparent { [0.0; 4] } else { visuals.panel_fill.to_normalized_gamma_f32() }
+        if self.material || self.transparent {
+            [0.0; 4]
+        } else {
+            visuals.panel_fill.to_normalized_gamma_f32()
+        }
     }
 
     fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
@@ -5592,7 +6149,16 @@ impl App {
     /// Something drawn by egui is to be seen: the page's view, always above
     /// what egui paints, steps aside.
     fn over_browser(&self) -> bool {
-        self.new_session.is_some() || self.search.is_some() || self.lists.is_some() || self.help.is_some() || self.diff.is_some() || self.parallel.is_some() || self.menu_open || self.bell_open.is_some() || self.closing.is_some() || self.paste_ask.is_some()
+        self.new_session.is_some()
+            || self.search.is_some()
+            || self.lists.is_some()
+            || self.help.is_some()
+            || self.diff.is_some()
+            || self.parallel.is_some()
+            || self.menu_open
+            || self.bell_open.is_some()
+            || self.closing.is_some()
+            || self.paste_ask.is_some()
     }
 
     fn frame(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
@@ -5600,7 +6166,19 @@ impl App {
         // A menu open as the frame begins has the keys: an Esc closing it,
         // or what is typed in it, does not reach the shell.
         self.menu_open = egui::Popup::is_any_open(&ctx);
-        let own = self.new_session.is_some() || self.search.is_some() || self.lists.is_some() || self.help.is_some() || self.diff.is_some() || self.parallel.is_some() || self.prefs.is_some() || self.menu_open || self.bell_open.is_some() || self.renaming_card.is_some() || self.noting_card.is_some() || self.find.as_ref().is_some_and(find::Bar::keyed) || self.paste_ask.is_some();
+        let own = self.new_session.is_some()
+            || self.search.is_some()
+            || self.lists.is_some()
+            || self.help.is_some()
+            || self.diff.is_some()
+            || self.parallel.is_some()
+            || self.prefs.is_some()
+            || self.menu_open
+            || self.bell_open.is_some()
+            || self.renaming_card.is_some()
+            || self.noting_card.is_some()
+            || self.find.as_ref().is_some_and(find::Bar::keyed)
+            || self.paste_ask.is_some();
         keep_tab_for_pane(&ctx, own);
         self.poll_machines();
         let Some(client) = self.client.clone() else {
@@ -5755,9 +6333,13 @@ impl App {
             // Above the status bar until the file is fixed; the server keeps
             // its tag rules from before too.
             egui::Area::new(egui::Id::new("settings-error")).anchor(egui::Align2::CENTER_BOTTOM, egui::vec2(0.0, -32.0)).show(&ctx, |ui| {
-                egui::Frame::NONE.fill(crate::theme::mix(crate::theme::colors().panel, crate::theme::colors().err, 0.15)).corner_radius(6.0).inner_margin(egui::Margin::symmetric(10, 5)).show(ui, |ui| {
-                    ui.label(egui::RichText::new(e).size(12.0).color(chrome::red()));
-                });
+                egui::Frame::NONE
+                    .fill(crate::theme::mix(crate::theme::colors().panel, crate::theme::colors().err, 0.15))
+                    .corner_radius(6.0)
+                    .inner_margin(egui::Margin::symmetric(10, 5))
+                    .show(ui, |ui| {
+                        ui.label(egui::RichText::new(e).size(12.0).color(chrome::red()));
+                    });
             });
         }
         // Away when either says so: winit's event (`i.focused`, from the
@@ -5772,12 +6354,16 @@ impl App {
         let (anyone, teller) = client.attention();
         let muted_tags = client.muted_tags();
         let muted: std::collections::HashSet<SessionId> = sessions.iter().filter(|i| quiet(i, &muted_tags)).map(|i| i.id).collect();
-        let places: std::collections::HashMap<SessionId, String> = sessions.iter().map(|i| (i.id, i.project.file_name().map(|f| f.to_string_lossy().into_owned()).unwrap_or_default())).collect();
+        let places: std::collections::HashMap<SessionId, String> =
+            sessions.iter().map(|i| (i.id, i.project.file_name().map(|f| f.to_string_lossy().into_owned()).unwrap_or_default())).collect();
         // What each run has used so far, from the conversation's totals.
         let used = self.usage.get();
         let mut spent: std::collections::HashMap<SessionId, String> = std::collections::HashMap::new();
         for i in sessions.iter().filter(|i| i.claude && !i.conversation.is_empty()) {
-            let now = (used.conversations.get(&i.conversation).map_or(0, usage::Tokens::total), used.costs.get(&i.conversation).copied().unwrap_or(0.0));
+            let now = (
+                used.conversations.get(&i.conversation).map_or(0, usage::Tokens::total),
+                used.costs.get(&i.conversation).copied().unwrap_or(0.0),
+            );
             if i.state == State::Running {
                 self.run_base.entry(i.id).or_insert(now);
             }
@@ -5785,7 +6371,14 @@ impl App {
                 let tokens = now.0.saturating_sub(tokens);
                 let cost = (now.1 - cost).max(0.0);
                 if tokens > 0 {
-                    spent.insert(i.id, if cost > 0.0 { format!("{} tokens · ${cost:.2}", usage::short(tokens)) } else { format!("{} tokens", usage::short(tokens)) });
+                    spent.insert(
+                        i.id,
+                        if cost > 0.0 {
+                            format!("{} tokens · ${cost:.2}", usage::short(tokens))
+                        } else {
+                            format!("{} tokens", usage::short(tokens))
+                        },
+                    );
                 }
             }
         }
@@ -5801,7 +6394,8 @@ impl App {
                 // An answer from the toast, only to a session still waiting:
                 // the prompt it was about may be gone by now.
                 alert::Reply::Allow | alert::Reply::Deny => {
-                    let waiting = sessions.iter().find(|i| i.id == id).is_some_and(|i| matches!(i.state, State::Waiting | State::MaybeWaiting));
+                    let waiting =
+                        sessions.iter().find(|i| i.id == id).is_some_and(|i| matches!(i.state, State::Waiting | State::MaybeWaiting));
                     if waiting {
                         client.input(id, if reply == alert::Reply::Allow { vec![13] } else { vec![0x1b] });
                     }
@@ -5843,7 +6437,9 @@ impl App {
             match out {
                 alert::Out::Badge(..) => self.teller.send(out),
                 _ if hush => {}
-                alert::Out::Flash => ctx.send_viewport_cmd(egui::ViewportCommand::RequestUserAttention(egui::UserAttentionType::Informational)),
+                alert::Out::Flash => {
+                    ctx.send_viewport_cmd(egui::ViewportCommand::RequestUserAttention(egui::UserAttentionType::Informational))
+                }
                 alert::Out::Sound(error) => {
                     let n = &self.settings_now.notify;
                     sound::play(if error { &n.sound_error } else { &n.sound_waiting });
@@ -5913,14 +6509,30 @@ impl App {
             // keys while it is focused; the pane gets them otherwise.
             // A key being changed in the settings is the settings'.
             let capturing = self.prefs.as_ref().is_some_and(|p| p.edit.capturing.is_some());
-            let field = ctx.memory(|m| m.focused().is_some()) || self.new_session.is_some() || self.search.is_some() || self.lists.is_some() || self.help.is_some() || self.diff.is_some() || self.parallel.is_some() || self.menu_open || self.bell_open.is_some() || self.input.had_keys(&ctx) || capturing || self.renaming_card.is_some() || self.noting_card.is_some() || self.find.as_ref().is_some_and(find::Bar::keyed) || self.paste_ask.is_some();
+            let field = ctx.memory(|m| m.focused().is_some())
+                || self.new_session.is_some()
+                || self.search.is_some()
+                || self.lists.is_some()
+                || self.help.is_some()
+                || self.diff.is_some()
+                || self.parallel.is_some()
+                || self.menu_open
+                || self.bell_open.is_some()
+                || self.input.had_keys(&ctx)
+                || capturing
+                || self.renaming_card.is_some()
+                || self.noting_card.is_some()
+                || self.find.as_ref().is_some_and(find::Bar::keyed)
+                || self.paste_ask.is_some();
             if self.key_log {
                 // `TSUMUGI_KEYLOG=1`: every key press as the window gets it,
                 // to see on a real machine why a key does nothing.
                 for ev in ctx.input(|i| i.events.clone()) {
                     let held = ctx.memory(|m| m.focused());
                     match ev {
-                        egui::Event::Key { key, pressed: true, modifiers, .. } => eprintln!("key {key:?} {modifiers:?} -> {:?}; a widget has the keys: {held:?}", keys::action(key, modifiers)),
+                        egui::Event::Key { key, pressed: true, modifiers, .. } => {
+                            eprintln!("key {key:?} {modifiers:?} -> {:?}; a widget has the keys: {held:?}", keys::action(key, modifiers))
+                        }
                         // egui gives Ctrl+X, C and V (Shift held or not) as
                         // these and no key, so Ctrl+Shift+X was never in the
                         // log (the real machine, 2.37).
@@ -5963,7 +6575,16 @@ impl App {
             // The find bar's field keeps the keys, but Alt+arrows still move
             // to another pane (which closes the bar): they did nothing with
             // the field focused (the real machine, 2.31).
-            let only_find = self.find.as_ref().is_some_and(find::Bar::keyed) && !prefs_were_open && self.new_session.is_none() && self.search.is_none() && self.lists.is_none() && self.help.is_none() && self.diff.is_none() && self.parallel.is_none() && !self.menu_open && self.paste_ask.is_none();
+            let only_find = self.find.as_ref().is_some_and(find::Bar::keyed)
+                && !prefs_were_open
+                && self.new_session.is_none()
+                && self.search.is_none()
+                && self.lists.is_none()
+                && self.help.is_none()
+                && self.diff.is_none()
+                && self.parallel.is_none()
+                && !self.menu_open
+                && self.paste_ask.is_none();
             if only_find {
                 ctx.input_mut(|i| {
                     i.events.retain(|e| match e {
@@ -6127,19 +6748,30 @@ impl App {
             None
         } else {
             egui::Panel::bottom("status")
-            .exact_size(28.0)
-            .frame(egui::Frame::NONE.fill(self.chrome_fill(crate::theme::colors().side)))
-            .show(ui, |ui| {
-                let clock = self.clock();
-                let git = focus_info.as_ref().and_then(|i| self.git.get(&i.cwd, &i.branch));
-                let used = self.usage.get();
-                let conversation = focus_info.as_ref().filter(|i| !i.conversation.is_empty()).and_then(|i| used.conversations.get(&i.conversation).copied());
-                let tokens = (used.today.total() > 0 || conversation.is_some()).then_some((conversation, used.today));
-                let cost = (focus_info.as_ref().and_then(|i| used.costs.get(&i.conversation).copied()), used.today_cost);
-                let extra = chrome::StatusExtra { up_ms: up, nerd: self.nerd(), clock: clock.show.then_some(clock), git, tokens, block: used.block, cost };
-                chrome::status_bar(ui, &self.palette, &sessions, focus_info.as_ref(), size, &extra)
-            })
-            .inner
+                .exact_size(28.0)
+                .frame(egui::Frame::NONE.fill(self.chrome_fill(crate::theme::colors().side)))
+                .show(ui, |ui| {
+                    let clock = self.clock();
+                    let git = focus_info.as_ref().and_then(|i| self.git.get(&i.cwd, &i.branch));
+                    let used = self.usage.get();
+                    let conversation = focus_info
+                        .as_ref()
+                        .filter(|i| !i.conversation.is_empty())
+                        .and_then(|i| used.conversations.get(&i.conversation).copied());
+                    let tokens = (used.today.total() > 0 || conversation.is_some()).then_some((conversation, used.today));
+                    let cost = (focus_info.as_ref().and_then(|i| used.costs.get(&i.conversation).copied()), used.today_cost);
+                    let extra = chrome::StatusExtra {
+                        up_ms: up,
+                        nerd: self.nerd(),
+                        clock: clock.show.then_some(clock),
+                        git,
+                        tokens,
+                        block: used.block,
+                        cost,
+                    };
+                    chrome::status_bar(ui, &self.palette, &sessions, focus_info.as_ref(), size, &extra)
+                })
+                .inner
         };
         match status {
             Some(chrome::StatusClick::Bell) => {
@@ -6177,11 +6809,28 @@ impl App {
             path: i.logging.clone(),
             paused: self.panes.get(&i.id).is_some_and(|pane| ito_pane::Pane::screen(pane).alt_screen),
         });
-        let band_frame = chrome::BandFrame { log, own: self.own_frame && !self.system_frame, left: if self.own_frame && cfg!(target_os = "macos") && !lights_on_side { 76.0 } else { 0.0 }, maximized, settings: self.prefs.is_some(), old_server: Some(client.server_build()).filter(|b| !b.is_empty() && b != env!("CARGO_PKG_VERSION")) };
+        let band_frame = chrome::BandFrame {
+            log,
+            own: self.own_frame && !self.system_frame,
+            left: if self.own_frame && cfg!(target_os = "macos") && !lights_on_side { 76.0 } else { 0.0 },
+            maximized,
+            settings: self.prefs.is_some(),
+            old_server: Some(client.server_build()).filter(|b| !b.is_empty() && b != env!("CARGO_PKG_VERSION")),
+        };
         let band = egui::Panel::top("band")
             .exact_size(40.0)
             .frame(egui::Frame::NONE.fill(self.chrome_fill(crate::theme::colors().side)))
-            .show(ui, |ui| chrome::top_band(ui, &self.palette, &focus_tags, self.settings_now.tags.shown(), &muted_tags_now, &client.notices(), &band_frame))
+            .show(ui, |ui| {
+                chrome::top_band(
+                    ui,
+                    &self.palette,
+                    &focus_tags,
+                    self.settings_now.tags.shown(),
+                    &muted_tags_now,
+                    &client.notices(),
+                    &band_frame,
+                )
+            })
             .inner;
         if let Some(at) = band.bell_anchor {
             self.bell_anchor = egui::pos2(at.x.max(8.0), at.y);
@@ -6216,7 +6865,6 @@ impl App {
             None => {}
         }
 
-
         if !lights_on_side {
             self.side_panel(ui, &workspaces, &sessions, 0.0);
         }
@@ -6242,7 +6890,14 @@ impl App {
                 if let Ok(places) = self.places.lock() {
                     d.places.clone_from(&places);
                 }
-                newsession::show(&ctx, &self.palette, d, &Self::recents(&sessions, current.as_ref(), &self.closed), &self.profiles, &self.tag_rules)
+                newsession::show(
+                    &ctx,
+                    &self.palette,
+                    d,
+                    &Self::recents(&sessions, current.as_ref(), &self.closed),
+                    &self.profiles,
+                    &self.tag_rules,
+                )
             }
             None => None,
         };
@@ -6276,7 +6931,12 @@ impl App {
         self.show_undo(&ctx);
 
         let answer = match &mut self.search {
-            Some(view) => chrome::search_box(&ctx, &self.palette, view, &Self::search_entries(&sessions, &self.input.prompts, &self.layouts, &self.settings_now.scripts)),
+            Some(view) => chrome::search_box(
+                &ctx,
+                &self.palette,
+                view,
+                &Self::search_entries(&sessions, &self.input.prompts, &self.layouts, &self.settings_now.scripts),
+            ),
             None => None,
         };
         match answer {
@@ -6316,7 +6976,8 @@ impl App {
             }
         }
         // Files dropped on the window go with the next prompt.
-        let dropped: Vec<std::path::PathBuf> = ctx.input(|i| i.raw.dropped_files.iter().map(|f| f.path().to_path_buf()).filter(|p| !p.as_os_str().is_empty()).collect());
+        let dropped: Vec<std::path::PathBuf> =
+            ctx.input(|i| i.raw.dropped_files.iter().map(|f| f.path().to_path_buf()).filter(|p| !p.as_os_str().is_empty()).collect());
         if let (false, Some(w)) = (dropped.is_empty(), &current) {
             self.input.drop_files(w.focus, dropped.clone());
             // Their sizes for the chips, read on a thread.
@@ -6336,7 +6997,13 @@ impl App {
                 }
             } else {
                 let hidden = self.over_browser();
-                let words = ito_browser::Words { back: tr("browser.back"), reload: tr("browser.reload"), external: tr("browser.external"), close: tr("browser.close"), failed: tr("browser.failed") };
+                let words = ito_browser::Words {
+                    back: tr("browser.back"),
+                    reload: tr("browser.reload"),
+                    external: tr("browser.external"),
+                    close: tr("browser.close"),
+                    failed: tr("browser.failed"),
+                };
                 let shown = egui::Panel::right("browser")
                     .resizable(true)
                     .default_size(480.0)
@@ -6552,7 +7219,11 @@ impl App {
                         .into_iter()
                         .take(30)
                         .map(|h| {
-                            let name = sessions.iter().find(|i| i.id == h.id).map(|i| sort::display_title(&i.title, &i.command)).unwrap_or_default();
+                            let name = sessions
+                                .iter()
+                                .find(|i| i.id == h.id)
+                                .map(|i| sort::display_title(&i.title, &i.command))
+                                .unwrap_or_default();
                             lists::Found { id: h.id, name, text: h.text, line: h.line, col: h.col, len }
                         })
                         .collect();
@@ -6567,7 +7238,11 @@ impl App {
         }
         if view.page == lists::Page::All {
             for (k, s) in self.settings_now.scripts.iter().enumerate() {
-                templates.push(lists::Template { name: trf("palette.run_script", &[&s.name]), detail: s.command.chars().take(60).collect(), pick: palette::Pick::Script(k) });
+                templates.push(lists::Template {
+                    name: trf("palette.run_script", &[&s.name]),
+                    detail: s.command.chars().take(60).collect(),
+                    pick: palette::Pick::Script(k),
+                });
             }
         }
         let colors = theme::colors();
@@ -6609,14 +7284,24 @@ impl App {
                 lists::Do::StartAgain(k) => {
                     let Some(c) = self.ended.get(k) else { continue };
                     let claude = &self.settings_now.sessions.claude;
-                    let typed = if c.claude && c.conversation.chars().all(|ch| ch.is_ascii_alphanumeric() || ch == '-' || ch == '_') && !c.conversation.is_empty() {
+                    let typed = if c.claude
+                        && c.conversation.chars().all(|ch| ch.is_ascii_alphanumeric() || ch == '-' || ch == '_')
+                        && !c.conversation.is_empty()
+                    {
                         newsession::Start::Claude.typed(claude).map(|cmd| format!("{cmd} --resume {}", c.conversation))
                     } else if c.claude {
                         newsession::Start::Claude.typed(claude)
                     } else {
                         None
                     };
-                    match client.spawn_typing(c.cwd.clone(), None, Size::new(80, 24), (8, 16), Place::NewWorkspace, typed.into_iter().collect()) {
+                    match client.spawn_typing(
+                        c.cwd.clone(),
+                        None,
+                        Size::new(80, 24),
+                        (8, 16),
+                        Place::NewWorkspace,
+                        typed.into_iter().collect(),
+                    ) {
                         Ok(pane) => self.pending = Some(pane.id()),
                         Err(e) => self.failed = Some(e.to_string()),
                     }
@@ -6658,7 +7343,8 @@ impl App {
         let Some(why) = self.failed.clone() else { return };
         let rect = ui.max_rect();
         ui.painter().rect_filled(rect, 0.0, theme::colors().bg);
-        let mut inner = ui.new_child(egui::UiBuilder::new().max_rect(rect.shrink(40.0)).layout(egui::Layout::top_down(egui::Align::Center)));
+        let mut inner =
+            ui.new_child(egui::UiBuilder::new().max_rect(rect.shrink(40.0)).layout(egui::Layout::top_down(egui::Align::Center)));
         let Some(detail) = why.strip_prefix(OTHER_VERSION) else {
             inner.add_space((rect.height() / 2.0 - 80.0).max(0.0));
             inner.label(egui::RichText::new(&why).font(self.font.clone()).color(self.palette.fg));
@@ -6691,7 +7377,11 @@ impl App {
             self.replacing = Some(replace_server(None, move || ctx.request_repaint()));
         } else {
             let (enter, esc) = inner.input(|i| (i.key_pressed(egui::Key::Enter), i.key_pressed(egui::Key::Escape)));
-            let restart = inner.add(egui::Button::new(egui::RichText::new(trf("dialog.restart", &["Enter"])).color(c.on_accent()).strong()).fill(c.run).min_size(egui::vec2(220.0, 32.0)));
+            let restart = inner.add(
+                egui::Button::new(egui::RichText::new(trf("dialog.restart", &["Enter"])).color(c.on_accent()).strong())
+                    .fill(c.run)
+                    .min_size(egui::vec2(220.0, 32.0)),
+            );
             inner.add_space(6.0);
             let later = inner.add(egui::Button::new(egui::RichText::new(trf("dialog.not_now_key", &["Esc"])).size(12.5)).frame(false));
             if restart.clicked() || enter {
@@ -6784,7 +7474,11 @@ mod tests {
             vec![egui::Event::Key { key: egui::Key::Tab, physical_key: None, pressed: true, repeat: false, modifiers }]
         };
         let run = |events: Vec<egui::Event>, own: bool| {
-            let input = egui::RawInput { screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(400.0, 300.0))), events, ..Default::default() };
+            let input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(400.0, 300.0))),
+                events,
+                ..Default::default()
+            };
             let mut out = ctx.run_ui(input, |ui| {
                 keep_tab_for_pane(ui.ctx(), own);
                 let _ = ui.button("one");
@@ -6808,7 +7502,8 @@ mod tests {
         let mut text = String::new();
         (0..4)
             .map(|_| {
-                let mut out = ctx.run_ui(egui::RawInput::default(), |ui| keep(&ui.add(egui::TextEdit::singleline(&mut text).id(egui::Id::new("note")))));
+                let mut out = ctx
+                    .run_ui(egui::RawInput::default(), |ui| keep(&ui.add(egui::TextEdit::singleline(&mut text).id(egui::Id::new("note")))));
                 out.textures_delta.clear();
                 out.platform_output.ime.is_some_and(|ime| ime.should_interrupt_composition)
             })

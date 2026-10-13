@@ -41,7 +41,11 @@ pub enum Step {
     /// `right` is the half of the cell taken: the pane drops the first cell
     /// of a range whose side is the right and the last whose side is the
     /// left, so the cell faces away from the selection to stay in it.
-    Select { cell: (usize, usize), start: bool, right: bool },
+    Select {
+        cell: (usize, usize),
+        start: bool,
+        right: bool,
+    },
     Unselect,
     /// Put the selection on the clipboard.
     Copy,
@@ -166,7 +170,15 @@ mod tests {
     #[test]
     fn copy_with_no_mark_takes_the_line_and_a_second_mark_drops_it() {
         let mut m = CopyMode::new((3, 2));
-        assert_eq!(m.press(Key::Copy, 10, 5), vec![Step::Select { cell: (0, 2), start: true, right: false }, Step::Select { cell: (9, 2), start: false, right: true }, Step::Copy, Step::Exit]);
+        assert_eq!(
+            m.press(Key::Copy, 10, 5),
+            vec![
+                Step::Select { cell: (0, 2), start: true, right: false },
+                Step::Select { cell: (9, 2), start: false, right: true },
+                Step::Copy,
+                Step::Exit
+            ]
+        );
         let mut m = CopyMode::new((3, 2));
         m.press(Key::Mark, 10, 5);
         assert_eq!(m.press(Key::Mark, 10, 5), vec![Step::Unselect]);

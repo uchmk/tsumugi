@@ -70,7 +70,11 @@ pub fn short(text: &str) -> String {
     let head = text.split([',', '(', '—']).next().unwrap_or(text).trim();
     let words: Vec<&str> = head.split_whitespace().take(3).collect();
     let s = words.join(" ");
-    if s.chars().count() > 18 { format!("{}…", s.chars().take(17).collect::<String>()) } else { s }
+    if s.chars().count() > 18 {
+        format!("{}…", s.chars().take(17).collect::<String>())
+    } else {
+        s
+    }
 }
 
 /// What the question is about: the lines above the last menu, up to the
@@ -83,7 +87,9 @@ pub fn asking(lines: &[String]) -> Vec<String> {
         return Vec::new();
     }
     // The last line that is the menu's first choice.
-    let Some(first) = lines.iter().rposition(|l| choice(l).is_some_and(|c| c.key == '1' && c.text == found[0].text)) else { return Vec::new() };
+    let Some(first) = lines.iter().rposition(|l| choice(l).is_some_and(|c| c.key == '1' && c.text == found[0].text)) else {
+        return Vec::new();
+    };
     let mut out = Vec::new();
     for line in lines[..first].iter().rev().take(10) {
         let t = line.trim();
@@ -166,7 +172,13 @@ mod tests {
 
     #[test]
     fn yes_and_no_are_found_only_where_they_are_said() {
-        let menu = |texts: &[&str]| texts.iter().enumerate().map(|(k, t)| Choice { key: char::from_digit(k as u32 + 1, 10).unwrap(), text: t.to_string() }).collect::<Vec<_>>();
+        let menu = |texts: &[&str]| {
+            texts
+                .iter()
+                .enumerate()
+                .map(|(k, t)| Choice { key: char::from_digit(k as u32 + 1, 10).unwrap(), text: t.to_string() })
+                .collect::<Vec<_>>()
+        };
         let claude = menu(&["Yes", "Yes, and don't ask again", "No, and tell Claude what to do differently (esc)"]);
         assert_eq!((yes(&claude), no(&claude)), (Some('1'), Some('3')));
         let other = menu(&["Use the old one", "Nothing", "Notes"]);

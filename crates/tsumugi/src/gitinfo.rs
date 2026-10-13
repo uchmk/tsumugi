@@ -6,7 +6,7 @@
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
-use std::sync::mpsc::{Receiver, Sender, channel};
+use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -122,9 +122,11 @@ fn work(full: bool, questions: &Receiver<Key>, store: &Mutex<HashMap<Key, (Insta
         }
         let key = keys.pop().expect("one");
         let (cwd, _) = &key;
-        let ahead = run(Command::new("git").args(["rev-list", "--left-right", "--count", "@{upstream}...HEAD"]).current_dir(cwd)).and_then(|o| counts(&o));
+        let ahead = run(Command::new("git").args(["rev-list", "--left-right", "--count", "@{upstream}...HEAD"]).current_dir(cwd))
+            .and_then(|o| counts(&o));
         let pr = if gh {
-            let out = run(Command::new("gh").args(["pr", "view", "--json", "number,state,url,statusCheckRollup", "--jq", JQ]).current_dir(cwd));
+            let out =
+                run(Command::new("gh").args(["pr", "view", "--json", "number,state,url,statusCheckRollup", "--jq", JQ]).current_dir(cwd));
             if out.is_none() && !exists("gh") {
                 gh = false;
             }
@@ -159,8 +161,13 @@ fn run(cmd: &mut Command) -> Option<String> {
 
 /// The changes not committed in the repository `cwd` is in.
 fn changes(cwd: &Path) -> Option<Changes> {
-    let status = run(Command::new("git").args(["-c", "core.fsmonitor=false", "status", "--porcelain=v1", "--untracked-files=normal"]).current_dir(cwd))?;
-    let numstat = run(Command::new("git").args(["-c", "core.fsmonitor=false", "diff", "--numstat", "--no-ext-diff", "--no-textconv", "HEAD"]).current_dir(cwd)).unwrap_or_default();
+    let status = run(Command::new("git")
+        .args(["-c", "core.fsmonitor=false", "status", "--porcelain=v1", "--untracked-files=normal"])
+        .current_dir(cwd))?;
+    let numstat = run(Command::new("git")
+        .args(["-c", "core.fsmonitor=false", "diff", "--numstat", "--no-ext-diff", "--no-textconv", "HEAD"])
+        .current_dir(cwd))
+    .unwrap_or_default();
     let (added, removed) = sum_numstat(&numstat);
     Some(Changes { files: status.lines().filter(|l| !l.trim().is_empty()).map(String::from).collect(), added, removed })
 }
@@ -171,7 +178,10 @@ const DIFF_MOST: usize = 512 * 1024;
 /// What is changed and not committed, as `git diff HEAD` says it, then the
 /// files git does not know yet (a thread's work: git can take a moment).
 pub fn diff(cwd: &Path) -> Result<String, String> {
-    let mut text = run(Command::new("git").args(["-c", "core.quotepath=off", "-c", "core.fsmonitor=false", "diff", "HEAD", "--no-color", "--no-ext-diff", "--no-textconv"]).current_dir(cwd)).ok_or_else(|| format!("{} is not in a git repository with a commit", cwd.display()))?;
+    let mut text = run(Command::new("git")
+        .args(["-c", "core.quotepath=off", "-c", "core.fsmonitor=false", "diff", "HEAD", "--no-color", "--no-ext-diff", "--no-textconv"])
+        .current_dir(cwd))
+    .ok_or_else(|| format!("{} is not in a git repository with a commit", cwd.display()))?;
     if text.len() > DIFF_MOST {
         let mut cut = DIFF_MOST;
         while !text.is_char_boundary(cut) {
@@ -180,7 +190,10 @@ pub fn diff(cwd: &Path) -> Result<String, String> {
         text.truncate(cut);
         text.push_str("\n… (cut here: the diff is larger than 512 KB)\n");
     }
-    let status = run(Command::new("git").args(["-c", "core.quotepath=off", "-c", "core.fsmonitor=false", "status", "--porcelain=v1", "--untracked-files=normal"]).current_dir(cwd)).unwrap_or_default();
+    let status = run(Command::new("git")
+        .args(["-c", "core.quotepath=off", "-c", "core.fsmonitor=false", "status", "--porcelain=v1", "--untracked-files=normal"])
+        .current_dir(cwd))
+    .unwrap_or_default();
     let new: Vec<&str> = status.lines().filter_map(|l| l.strip_prefix("?? ")).collect();
     if !new.is_empty() {
         text.push_str(&format!("new files, not added to git yet ({})\n", new.len()));
@@ -215,13 +228,21 @@ pub fn create_pr(cwd: &Path) -> Result<String, String> {
     // Not from the default branch: pushing there would put the commits on
     // main itself, and gh would then refuse the pull request anyway (the
     // source review, 2026-10-07).
-    let default = said(Command::new("git").args(["symbolic-ref", "--short", "refs/remotes/origin/HEAD"])).ok().map(|r| r.trim_start_matches("origin/").to_owned());
+    let default = said(Command::new("git").args(["symbolic-ref", "--short", "refs/remotes/origin/HEAD"]))
+        .ok()
+        .map(|r| r.trim_start_matches("origin/").to_owned());
     let default = default.unwrap_or_else(|| if branch == "master" { "master".into() } else { "main".into() });
     if branch == default {
         return Err(format!("{branch} is the default branch: make a branch for the change first"));
     }
     said(Command::new("git").args(["push", "-u", "origin", "HEAD"])).map_err(|e| format!("git push: {e}"))?;
-    let out = said(Command::new("gh").args(["pr", "create", "--fill"])).map_err(|e| if e.is_empty() { "gh did not run: is the GitHub CLI installed and signed in?".to_owned() } else { format!("gh pr create: {e}") })?;
+    let out = said(Command::new("gh").args(["pr", "create", "--fill"])).map_err(|e| {
+        if e.is_empty() {
+            "gh did not run: is the GitHub CLI installed and signed in?".to_owned()
+        } else {
+            format!("gh pr create: {e}")
+        }
+    })?;
     out.lines().rev().find(|l| l.starts_with("https://")).map(str::to_owned).ok_or_else(|| format!("gh said: {out}"))
 }
 

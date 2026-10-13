@@ -279,7 +279,22 @@ impl Settings {
 /// The AI programs a session is told to be running by the name of a
 /// process under its shell (`codex`, or `codex-x86_64-…`, or a script
 /// `…/bin/gemini` run by node).
-pub const AGENTS: [&str; 14] = ["claude", "codex", "gemini", "opencode", "aider", "amp", "cursor-agent", "copilot", "qwen", "crush", "goose", "droid", "auggie", "kiro-cli"];
+pub const AGENTS: [&str; 14] = [
+    "claude",
+    "codex",
+    "gemini",
+    "opencode",
+    "aider",
+    "amp",
+    "cursor-agent",
+    "copilot",
+    "qwen",
+    "crush",
+    "goose",
+    "droid",
+    "auggie",
+    "kiro-cli",
+];
 
 /// What to do for one AI program.
 #[derive(Clone, Debug, Default, PartialEq, Deserialize)]
@@ -356,7 +371,17 @@ pub const LARGE_PASTE: usize = 5 * 1024;
 
 impl Default for General {
     fn default() -> Self {
-        Self { default_folder: String::new(), keep_sessions: true, ask_before_close: true, check_updates: true, restart_after_update: false, cmd_on_mac: true, warn_multiline_paste: true, warn_large_paste: true, copy_on_select: true }
+        Self {
+            default_folder: String::new(),
+            keep_sessions: true,
+            ask_before_close: true,
+            check_updates: true,
+            restart_after_update: false,
+            cmd_on_mac: true,
+            warn_multiline_paste: true,
+            warn_large_paste: true,
+            copy_on_select: true,
+        }
     }
 }
 
@@ -520,7 +545,15 @@ impl Window {
 
 impl Default for Window {
     fn default() -> Self {
-        Self { titlebar: "tsumugi".into(), material: "none".into(), opacity: 100, image: String::new(), image_opacity: 25, quake: String::new(), quake_height: 50 }
+        Self {
+            titlebar: "tsumugi".into(),
+            material: "none".into(),
+            opacity: 100,
+            image: String::new(),
+            image_opacity: 25,
+            quake: String::new(),
+            quake_height: 50,
+        }
     }
 }
 
@@ -598,7 +631,11 @@ pub struct Open {
 
 impl Default for Open {
     fn default() -> Self {
-        Self { editor: vec!["code {folder}".into()], filer: vec!["kura {folder}".into()], file: "code --goto {file}:{line}:{column}".into() }
+        Self {
+            editor: vec!["code {folder}".into()],
+            filer: vec!["kura {folder}".into()],
+            file: "code --goto {file}:{line}:{column}".into(),
+        }
     }
 }
 
@@ -625,7 +662,24 @@ pub struct MenuItem {
 }
 
 /// The words of the menu's own items, for `menu.hide`.
-pub const MENU_ITEMS: [&str; 16] = ["rename", "note", "tags", "mute", "pin", "read-only", "restart", "duplicate", "new-window", "filer", "editor", "copy-path", "save-output", "work-log", "pr", "close"];
+pub const MENU_ITEMS: [&str; 16] = [
+    "rename",
+    "note",
+    "tags",
+    "mute",
+    "pin",
+    "read-only",
+    "restart",
+    "duplicate",
+    "new-window",
+    "filer",
+    "editor",
+    "copy-path",
+    "save-output",
+    "work-log",
+    "pr",
+    "close",
+];
 
 /// The menu's items in the order `order` asks for: those it names first,
 /// in its order, then the rest in their own.
@@ -705,7 +759,11 @@ pub fn program_name(command: &str) -> String {
     };
     let base = first.rsplit(['/', '\\']).next().unwrap_or(first);
     let stem = base.strip_suffix(".exe").or_else(|| base.strip_suffix(".cmd")).or_else(|| base.strip_suffix(".bat")).unwrap_or(base);
-    if stem.is_empty() { command.trim().to_owned() } else { stem.to_owned() }
+    if stem.is_empty() {
+        command.trim().to_owned()
+    } else {
+        stem.to_owned()
+    }
 }
 
 /// `[open] file` for a file and the line and column in it.
@@ -716,7 +774,11 @@ pub fn fill_file(command: &str, file: &Path, line: u32, column: u32) -> String {
 /// A path as one word to the system's shell.
 fn shell_word(path: &Path) -> String {
     let f = path.display().to_string();
-    if cfg!(windows) { format!("\"{f}\"") } else { format!("'{}'", f.replace('\'', "'\\''")) }
+    if cfg!(windows) {
+        format!("\"{f}\"")
+    } else {
+        format!("'{}'", f.replace('\'', "'\\''"))
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Deserialize)]
@@ -807,7 +869,9 @@ impl Default for Notify {
     /// two that want a person, no flashing.
     fn default() -> Self {
         let words = |w: &[&str]| w.iter().map(|s| (*s).to_owned()).collect();
-        Self { system: words(&["waiting", "error", "done"]), taskbar: words(&["waiting", "error"]),
+        Self {
+            system: words(&["waiting", "error", "done"]),
+            taskbar: words(&["waiting", "error"]),
             flash: Vec::new(),
             sound: Vec::new(),
             long_run: 60,
@@ -921,7 +985,9 @@ pub fn parse(text: &str) -> Result<Settings, String> {
     if let Some(w) = s.menu.hide.iter().find(|w| !MENU_ITEMS.contains(&w.as_str())) {
         return Err(format!("menu.hide: `{w}` is not one of {}", MENU_ITEMS.join(", ")));
     }
-    for (key, words) in [("system", &s.notify.system), ("taskbar", &s.notify.taskbar), ("flash", &s.notify.flash), ("sound", &s.notify.sound)] {
+    for (key, words) in
+        [("system", &s.notify.system), ("taskbar", &s.notify.taskbar), ("flash", &s.notify.flash), ("sound", &s.notify.sound)]
+    {
         if let Some(w) = words.iter().find(|w| !matches!(w.as_str(), "waiting" | "error" | "done")) {
             return Err(format!("notify.{key}: `{w}` is not waiting, error or done"));
         }
@@ -933,7 +999,8 @@ pub fn parse(text: &str) -> Result<Settings, String> {
     }
     for (i, t) in s.triggers.iter().enumerate() {
         let at = format!("triggers[{}]", i + 1);
-        let r = ito_pane::regex::Regex::new(&t.regex).map_err(|e| format!("{at}: regex `{}` does not read: {}", t.regex, e.to_string().lines().last().unwrap_or("")))?;
+        let r = ito_pane::regex::Regex::new(&t.regex)
+            .map_err(|e| format!("{at}: regex `{}` does not read: {}", t.regex, e.to_string().lines().last().unwrap_or("")))?;
         if r.is_match("") {
             return Err(format!("{at}: regex `{}` matches an empty line, so it would match every line", t.regex));
         }
@@ -1084,7 +1151,11 @@ fn parts(p: &Path) -> Vec<String> {
         .filter(|c| !matches!(c, Component::CurDir | Component::RootDir))
         .map(|c| {
             let s = c.as_os_str().to_string_lossy();
-            if cfg!(windows) { s.to_lowercase() } else { s.into_owned() }
+            if cfg!(windows) {
+                s.to_lowercase()
+            } else {
+                s.into_owned()
+            }
         })
         .collect()
 }
@@ -1173,11 +1244,13 @@ mod tests {
 
     #[test]
     fn keys_go_and_tables_are_rewritten() {
-        let text = "# mine\n[shell.env]\nA = \"1\"\nB = \"2\"\n\n[[tags.rule]]\n# old\nfolder = \"~/a\"\ntag = \"a\"\n\n[clock]\nshow = true\n";
+        let text =
+            "# mine\n[shell.env]\nA = \"1\"\nB = \"2\"\n\n[[tags.rule]]\n# old\nfolder = \"~/a\"\ntag = \"a\"\n\n[clock]\nshow = true\n";
         let t = remove_key(text, Some("shell.env"), "A").unwrap();
         assert_eq!(t, "# mine\n[shell.env]\nB = \"2\"\n\n[[tags.rule]]\n# old\nfolder = \"~/a\"\ntag = \"a\"\n\n[clock]\nshow = true\n");
         assert_eq!(remove_key(text, Some("shell.env"), "Z").unwrap(), text, "not there: as it was");
-        let rules = vec![vec![("folder", quote("~/b")), ("tag", quote("b"))], vec![("branch", quote("claude/*")), ("tag", quote("claude"))]];
+        let rules =
+            vec![vec![("folder", quote("~/b")), ("tag", quote("b"))], vec![("branch", quote("claude/*")), ("tag", quote("claude"))]];
         let t = set_tables(text, "tags.rule", &rules).unwrap();
         assert!(t.starts_with("# mine\n[shell.env]\nA = \"1\"\nB = \"2\"\n") && t.contains("[clock]\nshow = true\n"), "{t}");
         assert!(t.contains("[[tags.rule]]\n# old\nfolder = \"~/b\""), "edited in place, its comment kept: {t}");
@@ -1202,12 +1275,28 @@ mod tests {
 
     #[test]
     fn the_example_reads() {
-        let text = include_str!("settings.rs").lines().filter_map(|l| l.strip_prefix("//! ")).skip_while(|l| !l.starts_with("# Tag")).take_while(|l| !l.starts_with("```")).collect::<Vec<_>>().join("\n");
+        let text = include_str!("settings.rs")
+            .lines()
+            .filter_map(|l| l.strip_prefix("//! "))
+            .skip_while(|l| !l.starts_with("# Tag"))
+            .take_while(|l| !l.starts_with("```"))
+            .collect::<Vec<_>>()
+            .join("\n");
         let s = parse(&text).expect("the example in the module's comment reads");
         let by_branch = TagRule { branch: "claude/*".into(), tag: "claude".into(), ..TagRule::default() };
         assert_eq!(s.tags.rule, vec![rule("~/dev/filer", "filer"), rule("~/dev/*", "{name}"), by_branch]);
         assert_eq!(s.tags.colors.get("claude").map(String::as_str), Some("#5e4a86"));
-        assert_eq!(s.notify, Notify { flash: vec![], webhook: "https://ntfy.sh/my-topic".into(), webhook_states: vec!["waiting".into(), "error".into(), "done".into()], spend_day: 20, spend_block: 10, ..Notify::default() });
+        assert_eq!(
+            s.notify,
+            Notify {
+                flash: vec![],
+                webhook: "https://ntfy.sh/my-topic".into(),
+                webhook_states: vec!["waiting".into(), "error".into(), "done".into()],
+                spend_day: 20,
+                spend_block: 10,
+                ..Notify::default()
+            }
+        );
         assert_eq!(s.prices.get("claude-opus-5-5"), Some(&Price { input: 4.0, output: 20.0, cache_read: Some(0.2) }));
         assert!(parse("[notify]\nwebhook = \"file:///etc\"\n").is_err(), "an http(s) address only");
         assert!(parse("[notify]\nwebhook_format = \"xml\"\n").is_err());
@@ -1229,15 +1318,22 @@ mod tests {
 
     #[test]
     fn scripts_are_read_and_checked() {
-        let s = parse("[[scripts]]
+        let s = parse(
+            "[[scripts]]
 name = \"Dev\"
 command = \"tsumugi layout Dev {folder}\"
-").expect("a script reads");
+",
+        )
+        .expect("a script reads");
         assert_eq!(s.scripts, vec![MenuItem { name: "Dev".into(), command: "tsumugi layout Dev {folder}".into() }]);
-        assert!(parse("[[scripts]]
+        assert!(parse(
+            "[[scripts]]
 name = \"Dev\"
 command = \" \"
-").unwrap_err().contains("scripts[1]"));
+"
+        )
+        .unwrap_err()
+        .contains("scripts[1]"));
     }
 
     #[test]
@@ -1246,8 +1342,26 @@ command = \" \"
         let path = dir.join("profiles.toml");
         assert_eq!(load_profiles(&path), Ok(vec![]), "no file, no profiles");
         let list = vec![
-            Profile { name: "filer".into(), folder: "~/dev/filer".into(), start: "claude".into(), tags: vec!["review".into()], panes: vec!["claude".into(), "shell".into()], place: "ssh:box".into(), theme: "Nord".into(), font_size: Some(16.0) },
-            Profile { name: "a \"quoted\" one".into(), folder: r"C:\dev\x".into(), start: "shell".into(), tags: vec![], panes: vec![], place: String::new(), theme: String::new(), font_size: None },
+            Profile {
+                name: "filer".into(),
+                folder: "~/dev/filer".into(),
+                start: "claude".into(),
+                tags: vec!["review".into()],
+                panes: vec!["claude".into(), "shell".into()],
+                place: "ssh:box".into(),
+                theme: "Nord".into(),
+                font_size: Some(16.0),
+            },
+            Profile {
+                name: "a \"quoted\" one".into(),
+                folder: r"C:\dev\x".into(),
+                start: "shell".into(),
+                tags: vec![],
+                panes: vec![],
+                place: String::new(),
+                theme: String::new(),
+                font_size: None,
+            },
         ];
         save_profiles(&path, &list).unwrap();
         assert_eq!(load_profiles(&path), Ok(list));

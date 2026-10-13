@@ -28,7 +28,10 @@ pub fn to_toml(list: &[Prompt]) -> String {
         .collect();
     let mut top = toml::Table::new();
     top.insert("prompt".into(), toml::Value::Array(items));
-    format!("# The input box's saved prompts. {{folder}}, {{project}} and {{branch}} become the session's.\n{}", toml::to_string(&top).unwrap_or_default())
+    format!(
+        "# The input box's saved prompts. {{folder}}, {{project}} and {{branch}} become the session's.\n{}",
+        toml::to_string(&top).unwrap_or_default()
+    )
 }
 
 /// The prompts read back; what does not read is left out.
@@ -80,7 +83,10 @@ mod tests {
 
     #[test]
     fn prompts_come_back_and_fill_in() {
-        let list = vec![Prompt { name: "Tests".into(), text: "Run the tests in {project} on {branch}\nand fix \"what\" fails".into() }, Prompt { name: "Review".into(), text: "Review {folder}".into() }];
+        let list = vec![
+            Prompt { name: "Tests".into(), text: "Run the tests in {project} on {branch}\nand fix \"what\" fails".into() },
+            Prompt { name: "Review".into(), text: "Review {folder}".into() },
+        ];
         assert_eq!(from_toml(&to_toml(&list)), list);
         assert!(from_toml("not = [toml").is_empty());
         let p = std::path::Path::new("/home/u/dev/filer");
