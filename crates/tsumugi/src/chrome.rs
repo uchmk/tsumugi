@@ -365,7 +365,12 @@ pub fn status_bar(
     let (up_ms, nerd) = (*up_ms, *nerd);
     let mut click = None;
     let small = |t: String, c: Color32| RichText::new(t).font(FontId::proportional(11.5)).color(c);
-    ui.horizontal_centered(|ui| {
+    // The design's two lines: after the counts, and before the right.
+    let divider = |ui: &mut egui::Ui| {
+        let (r, _) = ui.allocate_exact_size(egui::vec2(1.0, 14.0), egui::Sense::hover());
+        ui.painter().vline(r.center().x, r.y_range(), egui::Stroke::new(1.0, crate::theme::colors().border_strong()));
+    };
+    let draw_left = |ui: &mut egui::Ui, click: &mut Option<StatusClick>| {
         ui.add_space(10.0);
         ui.label(small(trf("status.up", &[&elapsed(up_ms)]), pal.fg_dim));
         ui.add_space(14.0);
@@ -389,30 +394,40 @@ pub fn status_bar(
             };
             let r = ui.add(egui::Label::new(small(words, state_ink(state))).sense(egui::Sense::click()));
             if r.on_hover_text(tr("status.bell_hover")).clicked() {
-                click = Some(StatusClick::Bell);
+                *click = Some(StatusClick::Bell);
             }
             ui.add_space(6.0);
         }
-        // The design's two lines: after the counts, and before the right.
-        let divider = |ui: &mut egui::Ui| {
-            let (r, _) = ui.allocate_exact_size(egui::vec2(1.0, 14.0), egui::Sense::hover());
-            ui.painter().vline(r.center().x, r.y_range(), egui::Stroke::new(1.0, crate::theme::colors().border_strong()));
-        };
         if let Some(i) = focus {
             ui.add_space(4.0);
             divider(ui);
             ui.add_space(10.0);
-            ui.label(RichText::new(crate::home_short(&i.cwd)).font(FontId::monospace(11.0)).color(pal.fg));
+            // The folder gives way first: what the branch and its marks
+            // need is kept, and the rest is the folder's, cut with an ellipsis.
+            let mut keep = if i.branch.is_empty() { 0.0 } else { 40.0 + 12.0 + 4.0 + 12.0 };
+            if !i.branch.is_empty() {
+                keep += ui.fonts_mut(|f| f.layout_no_wrap(i.branch.clone(), FontId::proportional(11.5), pal.fg).size().x);
+                if git.is_some() {
+                    keep += 90.0;
+                }
+            }
+            let room = (ui.available_width() - keep).max(40.0);
+            ui.scope(|ui| {
+                ui.set_max_width(room);
+                ui.add(egui::Label::new(RichText::new(crate::home_short(&i.cwd)).font(FontId::monospace(11.0)).color(pal.fg)).truncate());
+            });
             if !i.branch.is_empty() {
                 ui.add_space(4.0);
                 let (r, _) = ui.allocate_exact_size(egui::vec2(12.0, 12.0), egui::Sense::hover());
                 branch_mark(ui.painter(), r, pal.fg_dim, nerd);
                 ui.label(small(i.branch.clone(), pal.fg));
                 if let Some(g) = git {
-                    git_marks(ui, pal, g, &mut click);
+                    git_marks(ui, pal, g, click);
                 }
             }
         }
+    };
+    ui.horizontal_centered(|ui| {
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             ui.add_space(10.0);
             if let Some(clock) = clock {
@@ -484,6 +499,11 @@ pub fn status_bar(
             }
             ui.add_space(10.0);
             divider(ui);
+            // What is left of the right side is the left side's, clipped there.
+            let rect = ui.available_rect_before_wrap();
+            let mut left = ui.new_child(egui::UiBuilder::new().max_rect(rect).layout(egui::Layout::left_to_right(egui::Align::Center)));
+            left.set_clip_rect(rect.intersect(ui.clip_rect()));
+            draw_left(&mut left, &mut click);
         });
     });
     click
