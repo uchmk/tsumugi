@@ -1869,6 +1869,9 @@ fn run_pump(shared: Arc<Shared>, dirty: Receiver<SessionId>) {
                 sessions = lock(&shared.sessions);
                 if apply_looks(&mut sessions, seen) {
                     broadcast(&shared, &sessions);
+                    // An agent newly seen is what a restart resumes: it has to
+                    // reach the state file without waiting for another change (#89).
+                    save_soon(&shared, SAVE_AFTER_CHANGE);
                 }
             }
         }
