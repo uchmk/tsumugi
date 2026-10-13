@@ -6743,6 +6743,36 @@ impl App {
             for a in actions {
                 self.act(a, w, &workspaces, area);
             }
+        } else if workspaces.is_empty() && self.restore.is_none() && self.failed.is_none() && self.prefs.is_none() {
+            // The Welcome screen has no tab, so none of the window's keys
+            // were read; the ones that need no pane are (#70).
+            let typing =
+                ctx.memory(|m| m.focused().is_some()) || self.new_session.is_some() || self.search.is_some() || self.help.is_some();
+            let chords: Vec<keys::Action> = ctx.input(|i| {
+                i.events
+                    .iter()
+                    .filter_map(|e| match e {
+                        egui::Event::Key { key, pressed: true, modifiers, .. } => keys::action(*key, *modifiers),
+                        _ => None,
+                    })
+                    .collect()
+            });
+            let none = Workspace::new(0, Node::Leaf(0), 0);
+            let area = to_rect(ctx.content_rect());
+            for a in chords {
+                let usable = match a {
+                    keys::Action::NewTab
+                    | keys::Action::Settings
+                    | keys::Action::Overview
+                    | keys::Action::Notices
+                    | keys::Action::Waiting => !typing,
+                    keys::Action::Search | keys::Action::Help => !typing || self.search.is_some() && a == keys::Action::Search,
+                    _ => false,
+                };
+                if usable {
+                    self.act(a, &none, &workspaces, area);
+                }
+            }
         }
 
         // The status bar along the bottom (the design's 1d).
