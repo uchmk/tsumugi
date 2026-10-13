@@ -614,7 +614,10 @@ fn a_restart_brings_the_tabs_back() {
     let leaves = ws[0].layout.leaves();
     assert!(matches!(ws[0].layout, crate::Node::Split { dir: Dir::Down, .. }), "split as before: {:?}", ws[0].layout);
     let infos = c2.list().unwrap();
-    assert!(infos.iter().all(|i| i.cwd == dir), "each in its folder: {infos:?}");
+    // A Windows runner may name the temp folder in its 8.3 form (RUNNER~1)
+    // for one pane and in full for the other: compare the resolved paths.
+    let same = |p: &std::path::Path| std::fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf());
+    assert!(infos.iter().all(|i| same(std::path::Path::new(&i.cwd)) == same(&dir)), "each in its folder: {infos:?}");
     let muted: Vec<_> = infos.iter().filter(|i| i.muted).map(|i| i.id).collect();
     assert_eq!(muted, vec![leaves[0]], "the muted pane stays muted");
     let tags: Vec<_> = leaves.iter().map(|id| infos.iter().find(|i| i.id == *id).unwrap().tags.clone()).collect();
