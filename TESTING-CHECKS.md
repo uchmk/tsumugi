@@ -109,17 +109,17 @@
 ## 3. The sidebar
 
 - [ ] **3.1** Open three tabs in different git repositories → Each card: the name in bold sans-serif (IBM Plex Sans JP, else Segoe UI / the system's), then `~/folder · branch` in the terminal's font, then the state and how long in the state's colour (waiting gold, running cyan, error red, done green, probably waiting grey); one state mark, on the left
-- [ ] **3.2** The **+** beside SESSIONS, and the one at the top of the rail → The new-session dialog opens with the focused pane's folder
-- [ ] **3.3** Sort button → each of the five orders → The cards reorder accordingly; **Manual** keeps a dragged order across restarts
-- [ ] **3.4** Drag a card in Manual order → The grip shows on hover; the card lands where it is dropped
+- [x] **3.2** The **+** beside SESSIONS, and the one at the top of the rail → The new-session dialog opens with the focused pane's folder
+- [x] **3.3** Sort button → each of the five orders → The cards reorder accordingly; **Manual** keeps a dragged order across restarts
+- [~] **3.4** Drag a card in Manual order → The grip shows on hover; the card lands where it is dropped
 - [~] **3.5** The state and folder filters at the foot → Only matching cards; the heading reads `SESSIONS  N of M` (also `5 of 5` with no filter), then the order button, then **+**
 - [ ] **3.6** Right-click a card: rename, tag, mute, pin, restart, duplicate, new window, open in editor / filer, copy path, close → Each does what it says; close is red and last; Rename, Duplicate and Close show their keys on the right, in grey
 - [~] **3.7** Sort → One line each; then `Ctrl+Shift+B` → One line per tab; then the 60px rail with first letters and state rings
 - [ ] **3.8** Rest the pointer on a card of another tab → Its last 12 lines in a box, the waiting pane's in a tab of several
-- [ ] **3.9** A tab in a repository with uncommitted changes → `+N −M` (or `N new`) on the card's second line; on hover, the files as `git status` lists them
+- [x] **3.9** A tab in a repository with uncommitted changes → `+N −M` (or `N new`) on the card's second line; on hover, the files as `git status` lists them
 - [ ] **3.10** Drag the sidebar's edge left past 120px, and back → It becomes the rail; dragged back out, the sidebar
 - [ ] **3.11** One session of each state (notify them) and a plain shell → Each card ringed in its state's colour with its own mark -- a clock (waiting, breathing), a turning arc (running), a dotted circle (probably waiting), a triangle (error), a tick (done, its ground sunken) -- and the shell grey with a small dot and no words; the foot's filters and the status bar count the shell as Shell, not Running
-- [ ] **3.12** Two waiting, then `[keys] next_waiting = "F8"` → Under a line at the foot: the key as a cap (`F8` once changed) and **Jump to waiting · 2** in grey; a click on either jumps
+- [~] **3.12** Two waiting, then `[keys] next_waiting = "F8"` → Under a line at the foot: the key as a cap (`F8` once changed) and **Jump to waiting · 2** in grey; a click on either jumps
 - [ ] **3.13** Theme tsumugi Light (and each light theme) → The waiting and error words and counts read clearly on white (WCAG 4.5 or more)
 - [ ] **3.14** A tab on a branch with an open pull request (`gh` signed in) → `· PR #N` after the branch on the second line, green when its checks pass, red when they fail, cyan while they run, grey with none; its tooltip says which
 - [ ] **3.15** The card of the tab with the keys, Claude Code talked to a few times → A line `N prompts · 12m · 3.4k tokens`; the other cards have none. A running card's third line ends with `· N tokens`
@@ -127,7 +127,7 @@
 - [ ] **3.17** `Ctrl+Shift+D` (macOS `Cmd+Option+D`) in a Claude Code pane, then in a shell → A new tab in the same folder: `claude` typed in the first, a shell in the second
 - [~] **3.18** Look at the sidebar on first start → 288px wide
 - [~] **3.19** Right-click a card → Note…, type `the release`, Enter; restart the machine (or the server) → `“the release”` on the card under the folder; Edit the note… and an empty Enter takes it off; after the restart the note is back
-- [ ] **3.20** A tab with uncommitted changes: click its `+N −M` (or search `changes`) → The diff over the window: each file under its name, added lines green, removed red, hunks cyan, new files at the end; Esc or a click outside closes it; a lock file's large diff is cut at 512 KB
+- [~] **3.20** A tab with uncommitted changes: click its `+N −M` (or search `changes`) → The diff over the window: each file under its name, added lines green, removed red, hunks cyan, new files at the end; Esc or a click outside closes it; a lock file's large diff is cut at 512 KB
 - [ ] **3.21** Right-click a card → Save the output to a file (or search `save the pane`) → A toast names `Downloads\tsumugi-<name>-<date>-<time>.txt`; it holds the whole scrollback as the program wrote it, Japanese whole, long lines unbroken
 - [ ] **3.22** A tab on a branch other than main (a worktree's), right-click → Create a pull request (`gh` signed in) → The branch pushed, a pull request made from its commits and opened in the browser; a toast with its address; on `main` the item is not there; without `gh`, a toast says why
 - [ ] **3.23** Run `codex` (or `gemini`, `opencode`) in a session → The card is an agent's, not a grey shell: its name (`codex`) on a line under the folder, its states shown; on Windows, Gemini CLI (run by node) stays a shell
