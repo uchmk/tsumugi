@@ -34,7 +34,7 @@ fn lines() -> Vec<(String, String)> {
         // No key of its own: tick it once given one in Settings → Keys.
         let (win, mac) = if win.is_empty() { ("none (give one)", "none (give one)") } else { (win, mac) };
         out.push((
-            "The window, changeable (Settings → Keys, `[keys]`)".to_owned(),
+            "The window, changeable (Settings → Keys, keymap.toml)".to_owned(),
             format!("`{win}` · `{mac}` — {} · `{name}`", keys::title(a)),
         ));
     }

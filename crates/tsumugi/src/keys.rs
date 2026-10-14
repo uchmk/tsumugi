@@ -1,6 +1,26 @@
 //! The window's own keys (QUESTIONS.md Q1): Windows Terminal's on Windows and
 //! Linux, iTerm2's (Cmd) on macOS. Everything else goes to the shell. None of
 //! these is a key Claude Code uses (`Ctrl+C`, `Esc`, `Shift+Tab`, `Ctrl+R`).
+//!
+//! Another key for one of them is written in `keymap.toml` beside the
+//! settings, laid out like kura's and yagura's (yazi's), in one layer:
+//!
+//! ```toml
+//! [[window.prepend_keymap]]
+//! on = "<C-S-k>"
+//! run = "new_tab"
+//!
+//! [[window.prepend_keymap]]
+//! on = "<C-S-z>"
+//! run = "none"      # the key goes to the program in the pane
+//! ```
+//!
+//! `C` is Ctrl on every machine and `D` is a Mac's Cmd (it is not pressed
+//! elsewhere): the panes' programs need Ctrl on a Mac too, so it is not made
+//! Cmd there as kura's and yagura's keys are. An action given a key there leaves its
+//! own key to the program. `[keys]` in config.toml, which came before, is
+//! still read (keymap.toml first), and moves to keymap.toml when the
+//! settings screen next changes a key.
 
 use eframe::egui::{Key, Modifiers};
 use ito_layout::Toward;
@@ -101,11 +121,10 @@ pub enum Action {
 }
 
 /// The action for a key press, if it is one of the window's: a key the
-/// settings gave it (`[keys]`), else its own key unless the settings moved
-/// that action elsewhere or took it away.
+/// settings gave it (keymap.toml, then `[keys]`), else its own key unless the
+/// settings moved that action elsewhere or took it away.
 pub fn action(key: Key, m: Modifiers) -> Option<Action> {
-    let bound = bindings();
-    action_with(key, m, mac(), &bound)
+    action_with(key, m, mac(), &bound())
 }
 
 /// `[general] cmd_on_mac`: off, a Mac takes the keys of Windows and Linux.
@@ -120,15 +139,19 @@ pub fn mac() -> bool {
     cfg!(target_os = "macos") && CMD_ON_MAC.load(std::sync::atomic::Ordering::Relaxed)
 }
 
-fn action_with(key: Key, m: Modifiers, mac: bool, bound: &[(Action, Option<Chord>)]) -> Option<Action> {
-    if let Some((a, _)) = bound.iter().find(|(_, c)| c.as_ref().is_some_and(|c| c.matches(key, m))) {
-        return Some(*a);
+fn action_with(key: Key, m: Modifiers, mac: bool, bound: &Bound) -> Option<Action> {
+    // A key given to nothing (`none`) is the program's, whatever it was.
+    if let Some((_, a)) = bound.keys.iter().find(|(c, _)| c.matches(key, m)) {
+        return *a;
     }
     let own = action_on(key, m, mac)?;
-    (!bound.iter().any(|(a, _)| *a == own)).then_some(own)
+    // `none` on its own key takes the action away, from the keys that go
+    // with that one too (Ctrl+Shift+= with Ctrl+=).
+    let off = own_key(own, mac).is_some_and(|o| bound.keys.iter().any(|(c, a)| a.is_none() && c.same(&o)));
+    (!off && !bound.moved.contains(&own)).then_some(own)
 }
 
-/// The actions the settings can give another key, by the name `[keys]`
+/// The actions the settings can give another key, by the name keymap.toml
 /// uses, with their own keys (elsewhere, then on macOS).
 ///
 /// An empty own key is no key: the action has none until the settings give it
@@ -301,7 +324,7 @@ pub fn title(a: Action) -> &'static str {
     }
 }
 
-/// A key with the modifiers held, as `[keys]` writes it: `Ctrl+Shift+T`.
+/// A key with the modifiers held, as the settings screen shows it: `Ctrl+Shift+T`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Chord {
     pub key: Key,
@@ -338,15 +361,109 @@ impl Chord {
     }
 
     fn matches(&self, key: Key, m: Modifiers) -> bool {
-        // With Shift held a US keyboard says `+` for the `=` key, so `=` and
-        // `+` are one key to a chord (a JIS `=`, Shift and `-`, is made
-        // `-` before it gets here: see `physical_minus`).
-        let plus = |k: Key| matches!(k, Key::Equals | Key::Plus);
-        let same_key = key == self.key || (plus(self.key) && plus(key));
-        same_key && m.ctrl == self.ctrl && m.shift == self.shift && m.alt == self.alt && m.mac_cmd == self.cmd
+        self.same(&Chord::pressed(key, m))
     }
 
-    /// As `[keys]` writes it.
+    /// One key to a person: with Shift held a US keyboard says `+` for the
+    /// `=` key, so `=` and `+` are one (a JIS `=`, Shift and `-`, is made
+    /// `-` before it gets here: see `physical_minus`).
+    fn same(&self, other: &Chord) -> bool {
+        let plus = |k: Key| matches!(k, Key::Equals | Key::Plus);
+        let same_key = other.key == self.key || (plus(self.key) && plus(other.key));
+        same_key && other.ctrl == self.ctrl && other.shift == self.shift && other.alt == self.alt && other.cmd == self.cmd
+    }
+
+    /// The key in keymap.toml's notation: `<C-S-t>`, `<A-S-+>`, `<D-,>`,
+    /// `<F2>`; `C` is Ctrl and `D` is Cmd (see the top of this file).
+    pub fn notation(&self) -> Result<String, String> {
+        use ito_keys::{Code, Named};
+        let letter = self.key.name().len() == 1 && self.key.name().chars().all(|c| c.is_ascii_uppercase());
+        let bare = !(self.ctrl || self.alt || self.cmd);
+        let (code, shift) = match self.key {
+            // A bare shifted letter is the capital it types, as yazi writes it.
+            _ if letter && self.shift && bare => (Code::Char(self.key.name().chars().next().unwrap_or('A')), false),
+            _ if letter => (Code::Char(self.key.name().to_ascii_lowercase().chars().next().unwrap_or('a')), self.shift),
+            // `+` is Shift with a key already: written so, it says the Shift.
+            Key::Plus | Key::Equals if self.shift => (Code::Char('+'), false),
+            Key::Plus | Key::Equals => (Code::Char('='), false),
+            Key::Space => (Code::Char(' '), self.shift),
+            Key::Enter => (Code::Named(Named::Enter), self.shift),
+            Key::Escape => (Code::Named(Named::Esc), self.shift),
+            Key::Tab => (Code::Named(Named::Tab), self.shift),
+            Key::Backspace => (Code::Named(Named::Backspace), self.shift),
+            Key::Delete => (Code::Named(Named::Delete), self.shift),
+            Key::Insert => (Code::Named(Named::Insert), self.shift),
+            Key::Home => (Code::Named(Named::Home), self.shift),
+            Key::End => (Code::Named(Named::End), self.shift),
+            Key::PageUp => (Code::Named(Named::PageUp), self.shift),
+            Key::PageDown => (Code::Named(Named::PageDown), self.shift),
+            Key::ArrowUp => (Code::Named(Named::Up), self.shift),
+            Key::ArrowDown => (Code::Named(Named::Down), self.shift),
+            Key::ArrowLeft => (Code::Named(Named::Left), self.shift),
+            Key::ArrowRight => (Code::Named(Named::Right), self.shift),
+            k => match k.name().strip_prefix('F').and_then(|n| n.parse::<u8>().ok()) {
+                Some(n) => (Code::Named(Named::F(n)), self.shift),
+                None => {
+                    let label = key_label(k);
+                    let mut cs = label.chars();
+                    match (cs.next(), cs.next()) {
+                        (Some(c), None) if key_named(&label) == Some(k) && !(self.shift && bare) => (Code::Char(c), self.shift),
+                        _ => return Err(format!("`{}` cannot be written in keymap.toml", self.label())),
+                    }
+                }
+            },
+        };
+        let k = ito_keys::Key { code, ctrl: self.ctrl, alt: self.alt, shift, sup: self.cmd };
+        Ok(match code {
+            // `<C-->` reads, but `<C-minus>` reads as what it is.
+            Code::Char('-') if !bare => k.to_string().replace("-->", "-minus>"),
+            _ => k.to_string(),
+        })
+    }
+
+    /// A key of keymap.toml's notation as a chord, when it is one the window
+    /// can tell (letters, digits, the symbols of [`key_named`], named keys).
+    pub fn from_notation(k: &ito_keys::Key) -> Result<Chord, String> {
+        use ito_keys::{Code, Named};
+        let mut c = Chord { key: Key::A, ctrl: k.ctrl, shift: k.shift, alt: k.alt, cmd: k.sup };
+        c.key = match k.code {
+            Code::Char(' ') => Key::Space,
+            // Shift and `=` on a US keyboard, Shift and `;` on a JIS one.
+            Code::Char('+') => {
+                c.shift = true;
+                Key::Plus
+            }
+            Code::Char(ch) if ch.is_ascii_alphabetic() => {
+                c.shift |= ch.is_ascii_uppercase();
+                key_named(&ch.to_ascii_uppercase().to_string()).ok_or_else(|| format!("`{k}` is not a key"))?
+            }
+            Code::Char(ch) => key_named(&ch.to_string()).ok_or_else(|| format!("`{k}`: the window cannot tell the key `{ch}`"))?,
+            Code::Named(n) => match n {
+                Named::Enter => Key::Enter,
+                Named::Esc => Key::Escape,
+                Named::Tab => Key::Tab,
+                Named::BackTab => {
+                    c.shift = true;
+                    Key::Tab
+                }
+                Named::Backspace => Key::Backspace,
+                Named::Delete => Key::Delete,
+                Named::Insert => Key::Insert,
+                Named::Home => Key::Home,
+                Named::End => Key::End,
+                Named::PageUp => Key::PageUp,
+                Named::PageDown => Key::PageDown,
+                Named::Up => Key::ArrowUp,
+                Named::Down => Key::ArrowDown,
+                Named::Left => Key::ArrowLeft,
+                Named::Right => Key::ArrowRight,
+                Named::F(n) => Key::from_name(&format!("F{n}")).ok_or_else(|| format!("`{k}`: there is no F{n} key"))?,
+            },
+        };
+        Ok(c)
+    }
+
+    /// As the settings screen shows it.
     pub fn label(&self) -> String {
         let mut out = String::new();
         for (on, name) in [(self.cmd, "Cmd"), (self.ctrl, "Ctrl"), (self.alt, "Alt"), (self.shift, "Shift")] {
@@ -414,37 +531,237 @@ fn key_label(key: Key) -> String {
     }
 }
 
-/// The keys the settings gave, or took away (`None`), by action.
-static BINDINGS: std::sync::RwLock<Vec<(Action, Option<Chord>)>> = std::sync::RwLock::new(Vec::new());
+/// The keys the settings gave: each to an action, or to the program in the
+/// pane (`None`); and the actions that have left their own key.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Bound {
+    pub keys: Vec<(Chord, Option<Action>)>,
+    pub moved: Vec<Action>,
+}
 
-fn bindings() -> Vec<(Action, Option<Chord>)> {
-    BINDINGS.read().map(|b| b.clone()).unwrap_or_default()
+impl Bound {
+    fn then(mut self, more: Bound) -> Bound {
+        self.keys.extend(more.keys);
+        self.moved.extend(more.moved);
+        self
+    }
+}
+
+/// keymap.toml's keys, and `[keys]`'s from config.toml (which came first).
+static KEYMAP: std::sync::RwLock<Bound> = std::sync::RwLock::new(Bound { keys: Vec::new(), moved: Vec::new() });
+static LEGACY: std::sync::RwLock<Bound> = std::sync::RwLock::new(Bound { keys: Vec::new(), moved: Vec::new() });
+
+fn bound() -> Bound {
+    let read = |b: &std::sync::RwLock<Bound>| b.read().map(|b| b.clone()).unwrap_or_default();
+    read(&KEYMAP).then(read(&LEGACY))
+}
+
+/// The action an action name stands for.
+fn named(name: &str) -> Option<Action> {
+    NAMED.iter().find(|(_, n, ..)| *n == name).map(|(a, ..)| *a)
+}
+
+/// An action's own key, on this machine's keys; `None` when it has none.
+fn own_key(a: Action, mac: bool) -> Option<Chord> {
+    let (_, _, win, m) = NAMED.iter().find(|(x, ..)| *x == a)?;
+    Chord::parse(if mac { m } else { win }).ok()
+}
+
+/// `[keys]` read: action name, then a key or `"none"`.
+fn read_legacy(table: &std::collections::BTreeMap<String, String>) -> Result<Bound, String> {
+    let mut out = Bound::default();
+    for (name, text) in table {
+        let Some(a) = named(name) else {
+            let names: Vec<&str> = NAMED.iter().map(|(_, n, ..)| *n).collect();
+            return Err(format!("keys.{name}: not one of {}", names.join(", ")));
+        };
+        if !text.trim().eq_ignore_ascii_case("none") {
+            out.keys.push((Chord::parse(text).map_err(|e| format!("keys.{name}: {e}"))?, Some(a)));
+        }
+        out.moved.push(a);
+    }
+    Ok(out)
 }
 
 /// Read `[keys]` from the settings: action name, then a key or `"none"`.
 /// The keys in force change only when all of them read.
 pub fn set_bindings(table: &std::collections::BTreeMap<String, String>) -> Result<(), String> {
-    let mut out = Vec::new();
-    for (name, text) in table {
-        let Some((a, ..)) = NAMED.iter().find(|(_, n, ..)| n == name) else {
-            let names: Vec<&str> = NAMED.iter().map(|(_, n, ..)| *n).collect();
-            return Err(format!("keys.{name}: not one of {}", names.join(", ")));
-        };
-        let chord = if text.trim().eq_ignore_ascii_case("none") {
-            None
-        } else {
-            Some(Chord::parse(text).map_err(|e| format!("keys.{name}: {e}"))?)
-        };
-        out.push((*a, chord));
-    }
-    if let Ok(mut b) = BINDINGS.write() {
+    let out = read_legacy(table)?;
+    if let Ok(mut b) = LEGACY.write() {
         *b = out;
     }
     Ok(())
 }
 
+/// keymap.toml, read: its keys, and what in it could not be taken.
+#[derive(Debug, Default)]
+pub struct Keymap {
+    pub bound: Bound,
+    pub warnings: Vec<String>,
+    /// Whether the file read as TOML: when not (half saved, say), the keys
+    /// in force stay as they were.
+    pub read: bool,
+}
+
+/// The window's layer: keymap.toml has no built-in keys of its own, the
+/// actions' own keys being where they always were (`action_on`).
+const SPEC: ito_keymap::Spec = ito_keymap::Spec { layers: &[ito_keymap::Layer::new("window")], ignored: &[], defaults: "" };
+
+/// Read keymap.toml's text (`None`: there is none). A binding that does not
+/// read is left out and said.
+pub fn read_keymap(text: Option<&str>) -> Keymap {
+    let mut command = |s: &str, warn: &mut Vec<String>| match s.trim() {
+        "none" => Some(None),
+        name => match named(name) {
+            Some(a) => Some(Some(a)),
+            None => {
+                warn.push(format!("[window] `{name}` is not an action (new_tab, close_tab, … or none; see the help)"));
+                None
+            }
+        },
+    };
+    let files: Vec<(&str, &str)> = text.map(|t| ("keymap.toml", t)).into_iter().collect();
+    let mut km = ito_keymap::load(&SPEC, &files, &mut command);
+    let read = text.is_none_or(ito_keymap::parses);
+    let mut out = Keymap { bound: Bound::default(), warnings: std::mem::take(&mut km.warnings), read };
+    for b in km.take("window") {
+        let seq = ito_keys::render_seq(&b.on);
+        let (Some(k), 1, [a]) = (b.on.first(), b.on.len(), b.run.as_slice()) else {
+            out.warnings.push(format!("[window] `{seq}` runs `{}`: the window's keys are one key and one action each", b.raw));
+            continue;
+        };
+        match Chord::from_notation(k) {
+            Ok(c) => {
+                out.bound.keys.push((c, *a));
+                out.bound.moved.extend(*a);
+            }
+            Err(e) => out.warnings.push(format!("[window] {e}")),
+        }
+    }
+    for w in &mut out.warnings {
+        if !w.starts_with("keymap.toml") {
+            *w = format!("keymap.toml: {w}");
+        }
+    }
+    out
+}
+
+/// Put keymap.toml's keys in force.
+pub fn set_keymap(bound: Bound) {
+    if let Ok(mut b) = KEYMAP.write() {
+        *b = bound;
+    }
+}
+
+/// keymap.toml's text with `name`'s key made `value`, as the settings screen
+/// writes it: a key (`Ctrl+Shift+N`), its own key again, or `none`. The
+/// `[keys]` of config.toml (`legacy`) comes along, so the caller can take
+/// it out of there. Comments and keys of other layers stay; the window's
+/// lists are written again.
+pub fn edit_keymap(text: &str, legacy: &std::collections::BTreeMap<String, String>, name: &str, value: &str) -> Result<String, String> {
+    edit_keymap_on(text, legacy, name, value, mac())
+}
+
+fn edit_keymap_on(
+    text: &str,
+    legacy: &std::collections::BTreeMap<String, String>,
+    name: &str,
+    value: &str,
+    mac: bool,
+) -> Result<String, String> {
+    const LISTS: [&str; 3] = ["prepend_keymap", "keymap", "append_keymap"];
+    if !text.trim().is_empty() && !ito_keymap::parses(text) {
+        return Err("keymap.toml does not read: fix it, or take it away, before a key is changed here".into());
+    }
+    let action = named(name).ok_or_else(|| format!("`{name}` is not an action"))?;
+    let own = own_key(action, mac);
+    let table: toml::Table = toml::from_str(text).map_err(|e| format!("keymap.toml: {}", e.message()))?;
+    let window = table.get("window").and_then(|w| w.as_table());
+    let mut lists: Vec<Vec<toml::Table>> = LISTS
+        .iter()
+        .map(|l| {
+            window
+                .and_then(|w| w.get(*l))
+                .and_then(|v| v.as_array())
+                .map(|a| a.iter().filter_map(|e| e.as_table().cloned()).collect())
+                .unwrap_or_default()
+        })
+        .collect();
+    let entry = |on: &Chord, run: &str| -> Result<toml::Table, String> {
+        let mut t = toml::Table::new();
+        t.insert("on".into(), on.notation()?.into());
+        t.insert("run".into(), run.into());
+        Ok(t)
+    };
+    let new = match value.trim() {
+        v if v.eq_ignore_ascii_case("none") => None,
+        v => Some(Chord::parse(v)?),
+    };
+    let key_of = |t: &toml::Table| -> Option<Chord> {
+        let on = match t.get("on")? {
+            toml::Value::String(s) => s.clone(),
+            toml::Value::Array(a) if a.len() == 1 => a[0].as_str()?.to_owned(),
+            _ => return None,
+        };
+        Chord::from_notation(&ito_keys::Key::parse(on.trim())?).ok()
+    };
+    let runs = |t: &toml::Table, what: &str| match t.get("run") {
+        Some(toml::Value::String(s)) => s.trim() == what,
+        Some(toml::Value::Array(a)) => a.len() == 1 && a[0].as_str().is_some_and(|s| s.trim() == what),
+        _ => false,
+    };
+    // `[keys]` after what keymap.toml holds (keymap.toml wins, as when both
+    // are read), less what keymap.toml already says of the key or the
+    // action: a move that came before and was not finished, or a key given
+    // here since, does not come back.
+    let old = read_legacy(legacy).map_err(|e| format!("config.toml: {e}"))?;
+    let name_of = |a: Action| NAMED.iter().find(|n| n.0 == a).map_or("none", |n| n.1);
+    let held = |on: &Chord, a: Option<Action>| {
+        lists.iter().flatten().any(|t| key_of(t).is_some_and(|k| k.same(on)) || a.is_some_and(|a| runs(t, name_of(a))))
+    };
+    let mut moved = Vec::new();
+    for (c, a) in &old.keys {
+        if !held(c, *a) {
+            let run = a.map_or("none", name_of);
+            moved.push(entry(c, run).map_err(|e| format!("config.toml: keys.{run}: {e}"))?);
+        }
+    }
+    for a in old.moved.iter().filter(|a| !old.keys.iter().any(|(_, k)| k == &Some(**a))) {
+        if let Some(own) = own_key(*a, mac).filter(|own| !held(own, Some(*a))) {
+            moved.push(entry(&own, "none")?);
+        }
+    }
+    let stale = |t: &toml::Table| {
+        let key = key_of(t);
+        runs(t, name)
+            || (runs(t, "none") && key.is_some_and(|k| own.is_some_and(|o| o.same(&k))))
+            || new.is_some_and(|n| key.is_some_and(|k| n.same(&k)))
+    };
+    lists[0].extend(moved);
+    for list in &mut lists {
+        list.retain(|t| !stale(t));
+    }
+    let back_to_own = match (new, own) {
+        (Some(n), Some(o)) => n.same(&o),
+        (None, None) => true,
+        _ => false,
+    };
+    // `none` where another binding has the action's own key already: that
+    // one has it, and a `none` in front would take it away.
+    let taken = new.is_none() && own.is_some_and(|o| lists.iter().flatten().any(|t| key_of(t).is_some_and(|k| k.same(&o))));
+    if !back_to_own && !taken {
+        lists[0].insert(0, entry(new.as_ref().or(own.as_ref()).ok_or("no key")?, if new.is_some() { name } else { "none" })?);
+    }
+    let mut out = text.to_owned();
+    for (l, list) in LISTS.iter().zip(&lists) {
+        let blocks: Vec<Vec<(&str, String)>> = list.iter().map(|t| t.iter().map(|(k, v)| (k.as_str(), v.to_string())).collect()).collect();
+        out = ito_common::set_tables(&out, &format!("window.{l}"), &blocks)?;
+    }
+    Ok(out)
+}
+
 /// Keys Claude Code and the shells use, which a window key would take from
-/// them: the chord as `[keys]` writes it, and whose it is.
+/// them: the chord as the settings screen shows it, and whose it is.
 pub(crate) const OTHERS: [(&str, &str); 14] = [
     ("Ctrl+C", "Claude Code's interrupt"),
     ("Ctrl+D", "Claude Code's exit"),
@@ -484,16 +801,16 @@ pub fn clash(chord: &Chord, action: Action) -> Option<Clash> {
 /// The key an action is on now, as shown beside it: the settings' key,
 /// `none`, or its own.
 pub fn label(action: Action) -> String {
-    let mac = mac();
-    if let Some((_, c)) = bindings().into_iter().find(|(a, _)| *a == action) {
-        return c.map_or_else(|| "none".into(), |c| c.label());
+    label_with(action, mac(), &bound())
+}
+
+fn label_with(action: Action, mac: bool, bound: &Bound) -> String {
+    if let Some((c, _)) = bound.keys.iter().find(|(_, a)| *a == Some(action)) {
+        return c.label();
     }
-    let own = NAMED.iter().find(|(a, ..)| *a == action).map(|(_, _, win, m)| if mac { *m } else { *win }).unwrap_or_default();
-    if own.is_empty() {
-        "none".into()
-    } else {
-        own.to_owned()
-    }
+    // Its own key, unless it left it or another binding has that key.
+    let own = own_key(action, mac).filter(|o| !bound.moved.contains(&action) && !bound.keys.iter().any(|(c, _)| c.same(o)));
+    own.map_or_else(|| "none".into(), |_| NAMED.iter().find(|n| n.0 == action).map_or("none", |n| if mac { n.3 } else { n.2 }).into())
 }
 
 fn action_on(key: Key, m: Modifiers, mac: bool) -> Option<Action> {
@@ -706,10 +1023,18 @@ mod tests {
         assert_eq!(action_on(Key::Space, CTRL_SHIFT, false), Some(Action::QuickSelect));
     }
 
+    /// `[keys]` as config.toml held it.
+    fn legacy(pairs: &[(&str, &str)]) -> std::collections::BTreeMap<String, String> {
+        pairs.iter().map(|(a, k)| (a.to_string(), k.to_string())).collect()
+    }
+
+    fn given(pairs: &[(&str, &str)]) -> Bound {
+        read_legacy(&legacy(pairs)).unwrap()
+    }
+
     #[test]
     fn the_settings_move_a_key() {
-        let new = Chord::parse("Ctrl+Shift+N").unwrap();
-        let bound = vec![(Action::NewTab, Some(new)), (Action::Zoom, None)];
+        let bound = given(&[("new_tab", "Ctrl+Shift+N"), ("zoom", "none")]);
         assert_eq!(action_with(Key::N, CTRL_SHIFT, false, &bound), Some(Action::NewTab), "the key given");
         assert_eq!(action_with(Key::T, CTRL_SHIFT, false, &bound), None, "its own key is the shell's again");
         assert_eq!(action_with(Key::Z, CTRL_SHIFT, false, &bound), None, "taken away");
@@ -723,7 +1048,7 @@ mod tests {
         assert!(Chord::parse("Hyper+X").is_err());
         assert!(Chord::parse("Ctrl+Nothing").is_err());
         // Alt+Shift+= arrives as Plus from a US keyboard.
-        let split = vec![(Action::SplitRight, Some(Chord::parse("Ctrl+Alt+=").unwrap()))];
+        let split = given(&[("split_right", "Ctrl+Alt+=")]);
         let ctrl_alt = Modifiers { alt: true, ctrl: true, shift: false, mac_cmd: false, command: true };
         assert_eq!(action_with(Key::Plus, ctrl_alt, false, &split), Some(Action::SplitRight));
         // A clash is named: with another action, or with Claude Code.
@@ -733,7 +1058,7 @@ mod tests {
         assert_eq!(clash(&Chord::parse("Ctrl+Shift+K").unwrap(), Action::NewTab), None);
         // The ones with no key of their own are none until given one.
         assert_eq!(label(Action::RestartServer), "none");
-        assert_eq!(action_with(Key::K, Modifiers::NONE, false, &[(Action::Changes, Some(Chord::parse("Ctrl+Alt+K").unwrap()))]), None);
+        assert_eq!(action_with(Key::K, Modifiers::NONE, false, &given(&[("changes", "Ctrl+Alt+K")])), None);
         // Every named action's own key reads.
         for (_, _, win, mac) in NAMED {
             assert!(win.is_empty() && mac.is_empty() || Chord::parse(win).is_ok() && Chord::parse(mac).is_ok(), "{win} {mac}");
@@ -784,9 +1109,175 @@ mod tests {
         assert_eq!(action_on(Key::Minus, alt_shift, false), Some(Action::SplitDown));
         assert_eq!(action_on(Key::Plus, alt_shift, false), Some(Action::SplitRight));
         // A key written as `Alt+Shift+=` in the settings is the same key.
-        let split = [(Action::SplitRight, Some(Chord::parse("Alt+Shift+=").unwrap()))];
+        let split = given(&[("split_right", "Alt+Shift+=")]);
         assert_eq!(action_with(Key::Plus, alt_shift, false, &split), Some(Action::SplitRight));
-        let split = [(Action::SplitRight, Some(Chord::parse("Alt+Shift++").unwrap()))];
+        let split = given(&[("split_right", "Alt+Shift++")]);
         assert_eq!(action_with(Key::Equals, alt_shift, false, &split), Some(Action::SplitRight));
+        // And as keymap.toml writes it.
+        let km = read_keymap(Some("[[window.prepend_keymap]]\non = \"<C-A-+>\"\nrun = \"zoom\"\n"));
+        assert!(km.warnings.is_empty(), "{:?}", km.warnings);
+        assert_eq!(action_with(Key::Equals, Modifiers { ctrl: true, ..alt_shift }, false, &km.bound), Some(Action::Zoom));
+    }
+
+    /// Every key of the window's own is written in keymap.toml's notation
+    /// and reads back as itself.
+    #[test]
+    fn the_notation_goes_both_ways() {
+        for (_, name, win, mac) in NAMED {
+            for own in [win, mac].into_iter().filter(|k| !k.is_empty()) {
+                let c = Chord::parse(own).unwrap();
+                let text = c.notation().unwrap_or_else(|e| panic!("{name}: {e}"));
+                let back = Chord::from_notation(&ito_keys::Key::parse(&text).unwrap()).unwrap();
+                assert!(back.same(&c), "{name}: {own} -> {text} -> {}", back.label());
+            }
+        }
+        let n = |s: &str| Chord::parse(s).unwrap().notation().unwrap();
+        assert_eq!(n("Ctrl+Shift+T"), "<C-S-t>");
+        assert_eq!(n("Alt+Shift++"), "<A-+>");
+        assert_eq!(n("Ctrl+="), "<C-=>");
+        assert_eq!(n("Ctrl+-"), "<C-minus>");
+        assert_eq!(n("Cmd+Shift+P"), "<S-D-p>");
+        assert_eq!(n("Ctrl+Shift+Tab"), "<C-S-Tab>");
+        assert_eq!(n("Ctrl+,"), "<C-,>");
+        assert_eq!(n("F2"), "<F2>");
+        assert_eq!(n("Shift+K"), "K");
+        assert_eq!(n("Ctrl+Shift+Space"), "<C-S-Space>");
+        let from = |s: &str| Chord::from_notation(&ito_keys::Key::parse(s).unwrap()).map(|c| c.label());
+        assert_eq!(from("<C-S-N>").unwrap(), "Ctrl+Shift+N");
+        assert_eq!(from("<D-,>").unwrap(), "Cmd+,");
+        assert_eq!(from("<A-S-Right>").unwrap(), "Alt+Shift+Right");
+        assert!(from("<C-lt>").is_err(), "a key the window cannot tell");
+        assert!(Chord::parse("Shift+,").unwrap().notation().is_err());
+    }
+
+    #[test]
+    fn keymap_toml_gives_and_takes_keys() {
+        let text = r#"
+            [[window.prepend_keymap]]
+            on = "<C-S-k>"
+            run = "new_tab"
+
+            [[window.prepend_keymap]]
+            on = "<C-S-z>"
+            run = "none"
+
+            [[window.keymap]]
+            on = "<C-A-1>"
+            run = "none"
+
+            [[window.append_keymap]]
+            on = "<F5>"
+            run = "fly"
+
+            [[window.append_keymap]]
+            on = "g g"
+            run = "zoom"
+
+            [[window.append_keymap]]
+            on = "<C-lt>"
+            run = "zoom"
+
+            [window2]
+        "#;
+        let km = read_keymap(Some(text));
+        let w = km.warnings.join("\n");
+        assert_eq!(km.warnings.len(), 4, "{w}");
+        assert!(km.warnings.iter().all(|w| w.starts_with("keymap.toml: ")), "{w}");
+        assert!(w.contains("`fly` is not an action") && w.contains("one key and one action") && w.contains("[window2]"), "{w}");
+        let b = &km.bound;
+        assert_eq!(action_with(Key::K, CTRL_SHIFT, false, b), Some(Action::NewTab));
+        assert_eq!(action_with(Key::T, CTRL_SHIFT, false, b), None, "its own key is the program's");
+        assert_eq!(action_with(Key::Z, CTRL_SHIFT, false, b), None, "zoom's key is the program's");
+        assert_eq!(action_with(Key::Num1, CTRL_ALT, false, b), None, "a fixed key given back too");
+        assert_eq!(action_with(Key::Num2, CTRL_ALT, false, b), Some(Action::Tab(1)));
+        assert_eq!(label_with(Action::NewTab, false, b), "Ctrl+Shift+K");
+        assert_eq!(label_with(Action::Zoom, false, b), "none");
+        assert_eq!(label_with(Action::CloseTab, false, b), "Ctrl+Shift+W");
+        // keymap.toml first, then `[keys]`.
+        let both = km.bound.then(given(&[("new_tab", "Ctrl+Shift+M"), ("close_tab", "Ctrl+Shift+K")]));
+        assert_eq!(action_with(Key::K, CTRL_SHIFT, false, &both), Some(Action::NewTab));
+        assert_eq!(label_with(Action::NewTab, false, &both), "Ctrl+Shift+K");
+        assert!(read_keymap(None).warnings.is_empty() && read_keymap(None).bound == Bound::default());
+        let km = read_keymap(Some("[[window.keymap]\n"));
+        assert!(km.warnings[0].starts_with("keymap.toml: TOML parse error"), "{:?}", km.warnings);
+    }
+
+    #[test]
+    fn the_settings_screen_writes_keymap_toml() {
+        let read = |text: &str| {
+            let km = read_keymap(Some(text));
+            assert!(km.warnings.is_empty(), "{:?}\n{text}", km.warnings);
+            km.bound
+        };
+        // `[keys]` comes along, the new key in front.
+        let old = legacy(&[("new_tab", "Ctrl+Shift+K"), ("zoom", "none")]);
+        let text = edit_keymap_on("# mine\n", &old, "split_right", "Ctrl+Alt+R", false).unwrap();
+        assert!(text.contains("# mine\n"), "{text}");
+        let b = read(&text);
+        assert_eq!(action_with(Key::R, CTRL_ALT, false, &b), Some(Action::SplitRight));
+        assert_eq!(action_with(Key::K, CTRL_SHIFT, false, &b), Some(Action::NewTab));
+        assert_eq!(action_with(Key::Z, CTRL_SHIFT, false, &b), None);
+        assert_eq!(b.keys.len(), 3, "{text}");
+        // Back to its own key: the entry goes.
+        let text = edit_keymap_on(&text, &legacy(&[]), "new_tab", "Ctrl+Shift+T", false).unwrap();
+        let b = read(&text);
+        assert_eq!(action_with(Key::T, CTRL_SHIFT, false, &b), Some(Action::NewTab));
+        assert_eq!(action_with(Key::K, CTRL_SHIFT, false, &b), None);
+        let text = edit_keymap_on(&text, &legacy(&[]), "zoom", "Ctrl+Shift+Z", false).unwrap();
+        assert_eq!(action_with(Key::Z, CTRL_SHIFT, false, &read(&text)), Some(Action::Zoom));
+        // Taken away; given to one with no key; a key taken from another.
+        let text = edit_keymap_on(&text, &legacy(&[]), "find", "none", false).unwrap();
+        let text = edit_keymap_on(&text, &legacy(&[]), "restart_server", "Ctrl+Alt+R", false).unwrap();
+        let b = read(&text);
+        assert_eq!(action_with(Key::F, CTRL_SHIFT, false, &b), None);
+        assert_eq!(action_with(Key::R, CTRL_ALT, false, &b), Some(Action::RestartServer));
+        assert_eq!(label_with(Action::SplitRight, false, &b), "Alt+Shift++", "split_right left Ctrl+Alt+R");
+        assert_eq!(b.keys.len(), 2, "{text}");
+        let text = edit_keymap_on(&text, &legacy(&[]), "restart_server", "none", false).unwrap();
+        let text = edit_keymap_on(&text, &legacy(&[]), "find", "Ctrl+Shift+F", false).unwrap();
+        assert_eq!(read(&text), Bound::default(), "{text}");
+        assert!(text.contains("# mine\n"), "{text}");
+        // Another layer, and a file that does not read, are left alone.
+        let other = "[[main.keymap]]\non = \"q\"\nrun = \"quit\"\n";
+        let km = read_keymap(Some(other));
+        assert_eq!(km.warnings.len(), 1, "{:?}", km.warnings);
+        let text = edit_keymap_on(other, &legacy(&[]), "zoom", "F6", false).unwrap();
+        assert!(text.contains("[[main.keymap]]") && text.contains("run = \"zoom\""), "{text}");
+        assert!(edit_keymap_on("[[window.keymap]\n", &legacy(&[]), "zoom", "F6", false).is_err());
+        assert!(edit_keymap_on("", &legacy(&[("zoom", "Hyper+X")]), "zoom", "F6", false).is_err());
+    }
+
+    #[test]
+    fn none_on_its_own_key_takes_the_action_away() {
+        // Ctrl+Shift+= goes with Ctrl+=.
+        let b = read_keymap(Some(
+            "[[window.keymap]]
+on = \"<C-=>\"
+run = \"none\"
+",
+        ))
+        .bound;
+        assert_eq!(action_with(Key::Equals, CTRL, false, &b), None);
+        assert_eq!(action_with(Key::Plus, CTRL_SHIFT, false, &b), None);
+        assert_eq!(label_with(Action::FontBigger, false, &b), "none");
+        // `none` for an action whose own key another binding has: that one
+        // keeps it.
+        let text = edit_keymap_on("", &legacy(&[]), "new_tab", "Ctrl+Shift+K", false).unwrap();
+        let text = edit_keymap_on(&text, &legacy(&[]), "zoom", "Ctrl+Shift+T", false).unwrap();
+        let text = edit_keymap_on(&text, &legacy(&[]), "new_tab", "none", false).unwrap();
+        let b = read_keymap(Some(&text)).bound;
+        assert_eq!(action_with(Key::T, CTRL_SHIFT, false, &b), Some(Action::Zoom), "{text}");
+        assert_eq!(action_with(Key::K, CTRL_SHIFT, false, &b), None, "{text}");
+        assert_eq!(label_with(Action::NewTab, false, &b), "none");
+        // keymap.toml wins over `[keys]`, and `[keys]` does not come back
+        // over what keymap.toml says.
+        let text = edit_keymap_on("", &legacy(&[("zoom", "Ctrl+Shift+K")]), "new_tab", "Ctrl+Shift+K", false).unwrap();
+        let b = read_keymap(Some(&text)).bound;
+        assert_eq!(action_with(Key::K, CTRL_SHIFT, false, &b), Some(Action::NewTab), "{text}");
+        let text = edit_keymap_on(&text, &legacy(&[("zoom", "Ctrl+Shift+K")]), "rail", "F7", false).unwrap();
+        assert_eq!(text.matches("<C-S-k>").count(), 1, "{text}");
+        // A `[keys]` key keymap.toml cannot write says where it is.
+        let e = edit_keymap_on("", &legacy(&[("zoom", "Shift+,")]), "rail", "F7", false);
+        assert!(e.as_ref().is_err_and(|e| e.starts_with("config.toml: keys.zoom")), "{e:?}");
     }
 }

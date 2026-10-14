@@ -225,7 +225,7 @@ pub struct Screen {
 /// What is being changed on the screen and not yet written.
 #[derive(Default)]
 pub struct Edit {
-    /// The key the next press goes to (`[keys]`'s name), while one is being
+    /// The key the next press goes to (its name in keymap.toml), while one is being
     /// changed.
     pub capturing: Option<&'static str>,
     /// The press that clashed: the key's name, what it clashes with, and the
@@ -740,7 +740,7 @@ fn keys(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut Vec<
     let mut changeable = |ui: &mut egui::Ui, a: Action| {
         let Some((_, name, win, m)) = NAMED.iter().find(|(x, ..)| *x == a) else { return };
         let own = if mac { *m } else { *win };
-        // No key of its own reads as `none`, which `[keys]` takes too.
+        // No key of its own reads as `none`, which keymap.toml takes too.
         let own = if own.is_empty() { "none" } else { own };
         let now = label(a);
         let clash = edit.clash.clone().filter(|(n, ..)| n == name);

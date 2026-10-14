@@ -1358,6 +1358,8 @@ struct App {
     /// The divider the key log last said the pointer was over.
     divider_logged: Option<String>,
     settings_error: Option<String>,
+    /// What in keymap.toml could not be taken (the first of it).
+    keymap_warning: Option<String>,
     /// What is wrong with common.toml, or not known in it.
     common_warning: Option<String>,
     /// From the settings and `profiles.toml`, for the new-session dialog.
@@ -1720,6 +1722,7 @@ impl App {
             replaced_unasked: false,
             animated: false,
             settings_error: None,
+            keymap_warning: None,
             common_warning: None,
             tag_rules: Vec::new(),
             profiles: Vec::new(),
@@ -2180,6 +2183,8 @@ impl App {
         let changes = prefs::show(ui, &self.palette, screen, &seen);
         for change in changes {
             match change {
+                // The window's keys live in keymap.toml.
+                prefs::Change::Set(Some("keys"), key, value) => edit_keymap(self.settings_tx.clone(), key, value),
                 prefs::Change::Set(table, key, value) => {
                     edit_settings(self.settings_tx.clone(), move |t| tsumugi_mux::settings::set_key(t, table, key, &value))
                 }
@@ -2231,6 +2236,7 @@ impl App {
                     export::export(&dir, &to).map(|f| trf("toast.exported", &[&home_short(&f)]))
                 }),
                 prefs::Change::Import(from) => self.job(move || {
+                    let _turn = ONE_AT_A_TIME.lock().unwrap_or_else(|e| e.into_inner());
                     let dir = tsumugi_mux::settings::default_path()
                         .and_then(|p| p.parent().map(std::path::Path::to_path_buf))
                         .ok_or("no settings folder")?;
@@ -2874,7 +2880,7 @@ impl App {
             let waiting = sessions.iter().filter(|i| matches!(i.state, State::Waiting | State::MaybeWaiting)).count();
             if waiting > 0 {
                 // The design's: under a line, the key as a cap and the words
-                // in grey; the key the one in force (`[keys] next_waiting`).
+                // in grey; the key the one in force (keymap.toml's `next_waiting`).
                 let (line, _) = ui.allocate_exact_size(egui::vec2(ui.available_width(), 9.0), egui::Sense::hover());
                 ui.painter().hline(line.x_range().shrink(12.0), line.center().y, egui::Stroke::new(1.0, crate::theme::colors().border));
                 let key = keys::label(keys::Action::NextWaiting);
@@ -5655,6 +5661,16 @@ enum Read {
     /// The common.toml uchmk's apps share (the language, the theme, the
     /// clock), and what in it is not known.
     Common(Result<(ito_common::Common, Vec<String>), String>),
+    /// keymap.toml: the window's keys given elsewhere.
+    Keymap(keys::Keymap),
+}
+
+/// Read keymap.toml (none there: no keys of one's own).
+fn load_keymap(path: &std::path::Path) -> keys::Keymap {
+    match files::read_or_empty(path) {
+        Ok(text) => keys::read_keymap(Some(&text)),
+        Err(e) => keys::Keymap { warnings: vec![e], ..Default::default() },
+    }
 }
 
 #[derive(Default)]
@@ -5732,7 +5748,8 @@ fn watch_settings(ctx: egui::Context, tx: std::sync::mpsc::Sender<Read>) {
     use tsumugi_mux::settings;
     let _ = std::thread::Builder::new().name("settings".into()).spawn(move || {
         let (Some(path), Some(profiles)) = (settings::default_path(), settings::profiles_path()) else { return };
-        let (mut seen, mut seen_profiles, mut seen_themes, mut seen_common) = (None, None, None, None);
+        let (mut seen, mut seen_profiles, mut seen_themes, mut seen_common, mut seen_keymap) = (None, None, None, None, None);
+        let keymap = settings::keymap_path();
         let common = ito_i18n::base_dir();
         loop {
             let stamp = settings::stamp(&path);
@@ -5742,6 +5759,16 @@ fn watch_settings(ctx: egui::Context, tx: std::sync::mpsc::Sender<Read>) {
                 sent = true;
                 if tx.send(Read::Settings(Box::new(settings::load(&path)))).is_err() {
                     return;
+                }
+            }
+            if let Some(keymap) = &keymap {
+                let stamp = settings::stamp(keymap);
+                if seen_keymap != Some(stamp) {
+                    seen_keymap = Some(stamp);
+                    sent = true;
+                    if tx.send(Read::Keymap(load_keymap(keymap))).is_err() {
+                        return;
+                    }
                 }
             }
             let stamp = settings::stamp(&profiles);
@@ -5786,9 +5813,6 @@ fn watch_settings(ctx: egui::Context, tx: std::sync::mpsc::Sender<Read>) {
 /// Change one key of `config.toml`, on a thread of its own, and say what
 /// the file now holds at once rather than at the next look.
 fn edit_settings(tx: std::sync::mpsc::Sender<Read>, change: impl FnOnce(&str) -> Result<String, String> + Send + 'static) {
-    // One change at a time, each on the file the last one wrote: several in
-    // one frame (the environment's Save) no longer write over each other.
-    static ONE_AT_A_TIME: std::sync::Mutex<()> = std::sync::Mutex::new(());
     let _ = std::thread::Builder::new().name("write-setting".into()).spawn(move || {
         let _turn = ONE_AT_A_TIME.lock().unwrap_or_else(|e| e.into_inner());
         let Some(path) = tsumugi_mux::settings::default_path() else { return };
@@ -5800,6 +5824,55 @@ fn edit_settings(tx: std::sync::mpsc::Sender<Read>, change: impl FnOnce(&str) ->
             Err(e) => Err(e),
         };
         let _ = tx.send(Read::Settings(Box::new(read)));
+    });
+}
+
+/// One change to the settings' files at a time, each on the file the last
+/// one wrote: several in one frame (the environment's Save) no longer write
+/// over each other.
+static ONE_AT_A_TIME: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+/// Give the window's action `name` the key `value` (TOML: `"Ctrl+Shift+N"`,
+/// `"none"`) in keymap.toml, on a thread of its own. `[keys]` in config.toml,
+/// where the keys were before, moves there with it.
+fn edit_keymap(tx: std::sync::mpsc::Sender<Read>, name: &'static str, value: String) {
+    use tsumugi_mux::settings;
+    let _ = std::thread::Builder::new().name("write-keymap".into()).spawn(move || {
+        let _turn = ONE_AT_A_TIME.lock().unwrap_or_else(|e| e.into_inner());
+        let (Some(config), Some(path)) = (settings::default_path(), settings::keymap_path()) else { return };
+        let written = (|| -> Result<(), String> {
+            let value: toml::Table = toml::from_str(&format!("v = {value}")).map_err(|e| e.message().to_owned())?;
+            let value = value.get("v").and_then(|v| v.as_str()).unwrap_or_default().to_owned();
+            // Only `[keys]`: the rest of config.toml being wrong does not
+            // stop a key (and a file that is not TOML has none to move).
+            let config_text = files::read_or_empty(&config)?;
+            let legacy: std::collections::BTreeMap<String, String> =
+                match config_text.parse::<toml::Table>().ok().and_then(|mut t| t.remove("keys")) {
+                    Some(k) => k.try_into().map_err(|e: toml::de::Error| format!("{}: keys: {}", config.display(), e.message()))?,
+                    None => Default::default(),
+                };
+            let next = keys::edit_keymap(&files::read_or_empty(&path)?, &legacy, name, &value)?;
+            files::write_atomic(&path, next)?;
+            if !legacy.is_empty() {
+                // `[keys]` first in the file leaves the blank line after it.
+                let rest = settings::remove_key(&config_text, None, "keys")?;
+                files::write_atomic(&config, rest.trim_start_matches(['\r', '\n']))?;
+            }
+            Ok(())
+        })();
+        // A key that could not be given is said with keymap.toml's
+        // warnings, so it goes when the file is fixed (or the next key is).
+        let mut km = load_keymap(&path);
+        match written {
+            Ok(()) => {
+                let _ = tx.send(Read::Keymap(km));
+                let _ = tx.send(Read::Settings(Box::new(settings::load(&config))));
+            }
+            Err(e) => {
+                km.warnings.insert(0, e);
+                let _ = tx.send(Read::Keymap(km));
+            }
+        }
     });
 }
 
@@ -6335,13 +6408,24 @@ impl App {
                 }
                 Read::Common(Err(e)) => self.common_warning = Some(e),
                 Read::Profiles(Err(e)) => self.settings_error = Some(e),
+                Read::Keymap(km) => {
+                    self.keymap_warning = km.warnings.first().map(|w| match km.warnings.len() {
+                        1 => w.clone(),
+                        n => format!("{w} (+{} more)", n - 1),
+                    });
+                    if km.read {
+                        keys::set_keymap(km.bound);
+                    }
+                }
             }
         }
         if facts_again {
             self.read_facts();
         }
         self.apply_theme(&ctx);
-        if let Some(e) = self.settings_error.as_ref().or(self.common_warning.as_ref()).or(self.theme_error.as_ref()) {
+        if let Some(e) =
+            self.settings_error.as_ref().or(self.keymap_warning.as_ref()).or(self.common_warning.as_ref()).or(self.theme_error.as_ref())
+        {
             // Above the status bar until the file is fixed; the server keeps
             // its tag rules from before too.
             egui::Area::new(egui::Id::new("settings-error")).anchor(egui::Align2::CENTER_BOTTOM, egui::vec2(0.0, -32.0)).show(&ctx, |ui| {

@@ -46,12 +46,9 @@
 //! quake = ""
 //! quake_height = 50
 //!
-//! # The window's keys, moved: an action's name and a key, or "none" to give
-//! # the key back to the shell. The names: new_tab, close_tab, next_tab,
-//! # prev_tab, next_waiting, split_right, split_down, zoom, search, rail,
-//! # settings, input.
-//! [keys]
-//! new_tab = "Ctrl+Shift+N"
+//! # The window's keys are moved in keymap.toml beside this file (see
+//! # `keymap_path`); a `[keys]` table from before still reads, and moves
+//! # there the first time the settings screen changes a key.
 //!
 //! # The panes' font: a font file's name (or part of it, "JetBrainsMono")
 //! # or its path; "" for the Nerd Font found, else the built-in one. Its Bold
@@ -211,8 +208,9 @@ pub struct Settings {
     pub appearance: Appearance,
     pub font: Font,
     pub window: Window,
-    /// The window's keys moved: an action's name, then a key (`Ctrl+Shift+N`)
-    /// or `none`. Read by the window, which knows the keys.
+    /// The window's keys moved, as before keymap.toml: an action's name,
+    /// then a key (`Ctrl+Shift+N`) or `none`. Read by the window, which
+    /// knows the keys; keymap.toml comes first.
     pub keys: std::collections::BTreeMap<String, String>,
     pub tags: Tags,
     pub notify: Notify,
@@ -1051,6 +1049,12 @@ pub struct Profile {
 struct ProfileFile {
     #[serde(default)]
     profile: Vec<Profile>,
+}
+
+/// `keymap.toml`, beside the settings file: the window's keys, moved, as
+/// kura and yagura lay theirs out (`[[window.prepend_keymap]]`).
+pub fn keymap_path() -> Option<PathBuf> {
+    default_path().map(|p| p.with_file_name("keymap.toml"))
 }
 
 /// `profiles.toml`, beside the settings file.

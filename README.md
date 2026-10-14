@@ -704,18 +704,6 @@ image_opacity = 25
 quake = ""
 quake_height = 50
 
-# The window's keys, moved: an action and a key, or "none" to give its key
-# back to the shell (Settings -> Keys: click a key, press the new one).
-# new_tab, close_tab, next_tab, prev_tab, next_waiting, split_right,
-# split_down, zoom, search, rail, settings, input, rename, duplicate,
-# waiting_list, type_into_all, notifications, font_bigger, font_smaller,
-# font_reset, overview, copy_mode, find, prev_prompt, next_prompt, help,
-# swap_pane, equalize, pane_to_tab, record, copy_output, quick_select,
-# closed_sessions, changes, read_only, save_layout, save_output,
-# restart_server (these six have no key until you give one).
-[keys]
-new_tab = "Ctrl+Shift+N"
-
 # The panes' font: a font file's name (or part of it) or its path, "" for
 # the Nerd Font found; its Bold and Italic files beside it are used too.
 [font]
@@ -762,6 +750,35 @@ order = ["rename", "close"]
 name = "Open lazygit here"
 command = "wt -d {folder} lazygit"
 ```
+
+The window's keys are in keymap.toml beside config.toml, in the form yazi
+uses (as kura's and yagura's are). Settings → Keys writes it: click a key,
+press the new one. A key given there leaves the action's own key to the
+program in the pane; `run = "none"` gives a key back to the shell.
+
+```toml
+# keymap.toml
+# C is Ctrl, A Alt, S Shift and D Cmd (a Mac's).
+[[window.prepend_keymap]]
+on = "<C-S-k>"
+run = "new_tab"
+
+[[window.prepend_keymap]]
+on = "<C-S-z>"
+run = "none"
+
+# new_tab, close_tab, next_tab, prev_tab, next_waiting, split_right,
+# split_down, zoom, search, rail, settings, input, rename, duplicate,
+# waiting_list, type_into_all, notifications, font_bigger, font_smaller,
+# font_reset, overview, copy_mode, find, prev_prompt, next_prompt, help,
+# swap_pane, equalize, pane_to_tab, record, work_log, save_layout,
+# copy_output, quick_select, closed_sessions, changes, browser, read_only,
+# save_output, restart_server (these last six have no key until you give
+# one).
+```
+
+A `[keys]` table left in config.toml from before still works, and moves to
+keymap.toml the next time Settings → Keys changes a key.
 
 The tab's right-click menu: **Rename…** (`F2`, a field on the card),
 **Note…** (a line of one's own on the card, kept across restarts), tags,

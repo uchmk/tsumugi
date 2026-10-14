@@ -254,7 +254,7 @@ nth_tab = "N 番目のタブ"
 move = "ペインを移る"
 resize = "ペインの大きさを変える"
 arrows = "矢印"
-footer = "キーは config.toml の [keys] に書かれます。そこで \"none\" にするとシェルに返します。"
+footer = "キーは config.toml の隣の keymap.toml に書かれます。run を \"none\" にするとそのキーはシェルに渡ります。"
 
 [prefs.notify]
 chime = "やわらかいチャイム"

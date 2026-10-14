@@ -1,8 +1,10 @@
 //! "Export or import settings" (Settings, Advanced): one text file holding
-//! the settings, the profiles, the saved prompts, `theme.toml` and the themes in `themes/`, to
+//! the settings, the keys, the profiles, the saved prompts, `theme.toml` and the themes in `themes/`, to
 //! carry to another machine. Each file is a block under a line
 //! `=== <its path in the settings folder> ===`; importing writes each back,
-//! the one there kept beside it as `<name>.bak` first.
+//! the one there kept beside it as `<name>.bak` first. An export with the
+//! settings but no keymap.toml (one from before it) puts the keymap.toml
+//! there aside too, or its keys would stand over the export's `[keys]`.
 
 use std::path::{Path, PathBuf};
 
@@ -10,7 +12,7 @@ const HEAD: &str = "# tsumugi settings export";
 
 /// The files of the settings folder that go in, by their path in it.
 fn files(dir: &Path) -> Vec<String> {
-    let mut out: Vec<String> = ["config.toml", "profiles.toml", "prompts.toml", "layouts.toml", "theme.toml"]
+    let mut out: Vec<String> = ["config.toml", "keymap.toml", "profiles.toml", "prompts.toml", "layouts.toml", "theme.toml"]
         .iter()
         .filter(|n| dir.join(n).is_file())
         .map(|n| n.to_string())
@@ -70,7 +72,8 @@ pub fn unpack(text: &str) -> Result<Vec<(String, String)>, String> {
 
 fn allowed(name: &str) -> bool {
     let theme = name.strip_prefix("themes/").is_some_and(|n| n.ends_with(".toml") && !n.contains(['/', '\\']) && !n.starts_with('.'));
-    matches!(name, "config.toml" | "settings.toml" | "profiles.toml" | "prompts.toml" | "layouts.toml" | "theme.toml") || theme
+    matches!(name, "config.toml" | "settings.toml" | "keymap.toml" | "profiles.toml" | "prompts.toml" | "layouts.toml" | "theme.toml")
+        || theme
 }
 
 /// Write the export into `to` (a folder): its file's path (a thread's work).
@@ -98,6 +101,11 @@ pub fn import(dir: &Path, from: &Path) -> Result<usize, String> {
             std::fs::copy(&path, bak).map_err(|e| format!("{}: {e}", path.display()))?;
         }
         std::fs::write(&path, body).map_err(|e| format!("{}: {e}", path.display()))?;
+    }
+    let has = |n: &str| files.iter().any(|(name, _)| name == n);
+    let keymap = dir.join("keymap.toml");
+    if has("config.toml") && !has("keymap.toml") && keymap.is_file() {
+        std::fs::rename(&keymap, dir.join("keymap.toml.bak")).map_err(|e| format!("{}: {e}", keymap.display()))?;
     }
     Ok(files.len())
 }
@@ -180,11 +188,18 @@ mod tests {
         std::fs::create_dir_all(dir.join("themes")).unwrap();
         std::fs::write(dir.join("config.toml"), "old = 1\n").unwrap();
         std::fs::write(dir.join("themes/A.toml"), "a = 1\n").unwrap();
+        std::fs::write(dir.join("keymap.toml"), "[[window.keymap]]\n").unwrap();
         let file = export(&dir, &dir).unwrap();
         std::fs::write(dir.join("config.toml"), "newer = 2\n").unwrap();
-        assert_eq!(import(&dir, &file).unwrap(), 2);
+        assert_eq!(import(&dir, &file).unwrap(), 3);
         assert_eq!(std::fs::read_to_string(dir.join("config.toml")).unwrap(), "old = 1\n");
         assert_eq!(std::fs::read_to_string(dir.join("config.toml.bak")).unwrap(), "newer = 2\n");
+        // An export from before keymap.toml: the one here is put aside.
+        let older = dir.join("older.txt");
+        std::fs::write(&older, pack(&[("config.toml".into(), "[keys]\nhelp = \"F9\"\n".into())])).unwrap();
+        assert_eq!(import(&dir, &older).unwrap(), 1);
+        assert!(!dir.join("keymap.toml").exists());
+        assert_eq!(std::fs::read_to_string(dir.join("keymap.toml.bak")).unwrap(), "[[window.keymap]]\n");
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

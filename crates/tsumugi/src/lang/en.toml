@@ -261,7 +261,7 @@ nth_tab = "The Nth tab"
 move = "Move between panes"
 resize = "Resize the pane"
 arrows = "Arrows"
-footer = "A key is written to [keys] in config.toml; \"none\" there gives it back to the shell."
+footer = "Keys are written to keymap.toml beside config.toml; run = \"none\" there gives a key back to the shell."
 
 [prefs.notify]
 chime = "Soft chime"

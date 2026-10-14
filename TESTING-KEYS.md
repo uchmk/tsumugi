@@ -8,7 +8,7 @@ A key is ticked when it did what the line says **and nothing else**: the shell d
 stray character, no `^[` sequence), no other window opened, the pane with the keys is the same one.
 Windows and Linux keys first; the macOS key is after `·`.
 
-## The window, changeable (Settings → Keys, `[keys]`)
+## The window, changeable (Settings → Keys, keymap.toml)
 
 - [x] `Ctrl+Shift+T` · `Cmd+T` — New session · `new_tab`
 - [x] `Ctrl+Shift+W` · `Cmd+W` — Close the session · `close_tab`

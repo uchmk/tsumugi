@@ -119,7 +119,7 @@
 - [x] **3.9** A tab in a repository with uncommitted changes → `+N −M` (or `N new`) on the card's second line; on hover, the files as `git status` lists them
 - [ ] **3.10** Drag the sidebar's edge left past 120px, and back → It becomes the rail; dragged back out, the sidebar
 - [ ] **3.11** One session of each state (notify them) and a plain shell → Each card ringed in its state's colour with its own mark -- a clock (waiting, breathing), a turning arc (running), a dotted circle (probably waiting), a triangle (error), a tick (done, its ground sunken) -- and the shell grey with a small dot and no words; the foot's filters and the status bar count the shell as Shell, not Running
-- [~] **3.12** Two waiting, then `[keys] next_waiting = "F8"` → Under a line at the foot: the key as a cap (`F8` once changed) and **Jump to waiting · 2** in grey; a click on either jumps
+- [ ] **3.12** Two waiting, then Settings → Keys → Go to the session waiting longest → `F8` → Under a line at the foot: the key as a cap (`F8` once changed) and **Jump to waiting · 2** in grey; a click on either jumps
 - [ ] **3.13** Theme tsumugi Light (and each light theme) → The waiting and error words and counts read clearly on white (WCAG 4.5 or more)
 - [ ] **3.14** A tab on a branch with an open pull request (`gh` signed in) → `· PR #N` after the branch on the second line, green when its checks pass, red when they fail, cyan while they run, grey with none; its tooltip says which
 - [ ] **3.15** The card of the tab with the keys, Claude Code talked to a few times → A line `N prompts · 12m · 3.4k tokens`; the other cards have none. A running card's third line ends with `· N tokens`
@@ -347,12 +347,14 @@
 
 ## 16. Keys
 
-- [x] **16.1** Settings → Keys → click New session, press `Ctrl+Shift+K` → `[keys] new_tab = "Ctrl+Shift+K"` in the file; `Ctrl+Shift+K` opens the dialog; `Ctrl+Shift+T` goes to the shell
-- [x] **16.2** Its own → The key goes back; the search box and the dialog name the key in force
-- [x] **16.3** `zoom = "none"` → `Ctrl+Shift+Z` reaches the shell
+- [ ] **16.1** Settings → Keys → click New session, press `Ctrl+Shift+K` → keymap.toml beside config.toml has `on = "<C-S-k>"` `run = "new_tab"`; `Ctrl+Shift+K` opens the dialog; `Ctrl+Shift+T` goes to the shell
+- [ ] **16.2** Its own → The key goes back; the search box and the dialog name the key in force
+- [ ] **16.3** `on = "<C-S-z>"` `run = "none"` in keymap.toml's `[[window.prepend_keymap]]` → `Ctrl+Shift+Z` reaches the shell
 - [x] **16.4** Press only Ctrl while a key is being changed → Nothing is written until a real key comes
 - [ ] **16.5** Settings → Keys, each section → Every row's key button lines up in one column at the right, also after a key is changed; the VIEW section has Keys (F1), the overview and the font sizes
 - [ ] **16.6** Switch to a Japanese IME, click a pane (or a Claude Code prompt), type `nihongo` and Space, Enter → The composition shows underlined at the cursor, the candidate window opens beside it; Enter types the converted text (`日本語`) into the session; a settings field still takes Japanese on its own
+- [ ] **16.7** With `[keys] help = "F9"` left in config.toml from before: F9, then Settings → Keys → New session → `Ctrl+Shift+K` → F9 opens the help; after the change keymap.toml has both keys (`<F9>` for help, `<C-S-k>` for new_tab), config.toml has no `[keys]`, and both keys still work
+- [ ] **16.8** Write `on = "<C-S-q>"` `run = "fly"` into keymap.toml by hand → Within a couple of seconds a banner names keymap.toml and `fly`; the other keys work; fixed, the banner goes
 
 ## 17. What the settings' rows do
 
@@ -385,7 +387,7 @@
 - [x] **17.28** Scrollback 200; a new session; `seq 1000` → Only about 200 lines to scroll back
 - [x] **17.29** Log what each pane sends and receives on; a new session → `pane-logs/session-N.log` beside the saved tabs grows as it runs
 - [ ] **17.30** Export…, then Import on another machine (or after changing things) → One file in Downloads; importing brings the settings, themes and profiles back, the old ones kept as `.bak`
-- [ ] **17.31** Keys → set a key to `Ctrl+[` by hand in `config.toml`, then change another key and a font size in Settings → `config.toml` still has every table and comment it had; only the changed lines differ
+- [ ] **17.31** Write a comment and a binding by hand in `keymap.toml` and a comment in `config.toml`, then change another key and a font size in Settings → Both files keep every table and comment they had; only the changed lines differ
 - [~] **17.32** Put a mistake in `config.toml` (`[broken`), then change anything in Settings → A toast says the file does not read and is left as it is; the file is unchanged
 - [~] **17.33** `[[menu.session]] command = "\"C:\\Program Files\\Microsoft VS Code\\Code.exe\" {folder}"` (Windows), then the card menu item → VS Code opens on the tab's folder (cmd took the line whole)
 - [~] **17.34** Open with → Editor: type `sakura {folder}` into Add another; right-click a card → `[open] editor = ["code {folder}", "sakura {folder}"]`; Open in the editor has ▶; a click on it opens VS Code, hovering opens `code` and `sakura` to its right and each opens its own; × on the second row (or emptying its field) leaves one again
