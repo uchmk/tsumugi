@@ -347,21 +347,21 @@
 
 ## 16. Keys
 
-- [ ] **16.1** Settings → Keys → ＋ on New session, press `Ctrl+Shift+K`, then Enter → Nothing is written before Enter. Then keymap.toml beside config.toml has only `[[window.prepend_keymap]]` with `on = "<C-S-k>"` `run = "new_tab"`; the row shows `Ctrl+Shift+T` and `Ctrl+Shift+K` (marked •); both open the dialog
-- [ ] **16.2** ↺ on that row → The row has `Ctrl+Shift+T` alone again, with no •; keymap.toml has no entry left (its comments stay); the search box and the dialog name the key in force
+- [x] **16.1** Settings → Keys → ＋ on New session, press `Ctrl+Shift+K`, then Enter → Nothing is written before Enter. Then keymap.toml beside config.toml has only `[[window.prepend_keymap]]` with `on = "<C-S-k>"` `run = "new_tab"`; the row shows `Ctrl+Shift+T` and `Ctrl+Shift+K` (marked •); both open the dialog
+- [x] **16.2** ↺ on that row → The row has `Ctrl+Shift+T` alone again, with no •; keymap.toml has no entry left (its comments stay); the search box and the dialog name the key in force
 - [x] **16.3** `on = "<C-S-z>"` `run = "none"` in keymap.toml's `[[window.prepend_keymap]]` → `Ctrl+Shift+Z` reaches the shell
-- [ ] **16.4** Press only Ctrl while a key is being taken, then Esc twice → Nothing is written and the chip waits for a real key; the first Esc leaves the key, the second closes the settings screen
-- [ ] **16.5** Settings → Keys → Above the table: MAC (Use Cmd on macOS) and KEYS THAT STAY (the Nth tab, moving and resizing panes). In the table every operation has a row (those with no key, such as Restart the server, have only ＋): its name, its `run` and its keys as chips in one column
+- [x] **16.4** Press only Ctrl while a key is being taken, then Esc twice → Nothing is written and the chip waits for a real key; the first Esc leaves the key, the second closes the settings screen
+- [x] **16.5** Settings → Keys → Above the table: MAC (Use Cmd on macOS) and KEYS THAT STAY (the Nth tab, moving and resizing panes). In the table every operation has a row (those with no key, such as Restart the server, have only ＋): its name, its `run` and its keys as chips in one column
 - [ ] **16.6** Switch to a Japanese IME, click a pane (or a Claude Code prompt), type `nihongo` and Space, Enter → The composition shows underlined at the cursor, the candidate window opens beside it; Enter types the converted text (`日本語`) into the session; a settings field still takes Japanese on its own
-- [ ] **16.7** With `[keys] help = "F9"` left in config.toml from before: F9, then Settings → Keys → ＋ on New session → `Ctrl+Shift+K` → Enter → F9 opens the help; after the change keymap.toml has both keys (`<F9>` for help, `<C-S-k>` for new_tab), config.toml has no `[keys]`, and both keys still work
+- [x] **16.7** With `[keys] help = "F9"` left in config.toml from before: F9, then Settings → Keys → ＋ on New session → `Ctrl+Shift+K` → Enter → F9 opens the help; after the change keymap.toml has both keys (`<F9>` for help, `<C-S-k>` for new_tab), config.toml has no `[keys]`, and both keys still work
 - [x] **16.8** Write `on = "<C-S-q>"` `run = "fly"` into keymap.toml by hand → Within a couple of seconds a banner names keymap.toml and `fly`; the other keys work; fixed, the banner goes
-- [ ] **16.9** Type `zoom` in the table's search; then clear it and type `browser` in the settings search → Only Zoom one pane is left. The settings search stays on Keys and narrows the table to the Browser row (its search box says `browser`); the settings search cleared, the whole table is back
-- [ ] **16.10** ⌨ Find by key, press `Ctrl+Shift+W` → Only Close the session is left; Esc ends the find and the table is whole
-- [ ] **16.11** ＋ on Zoom one pane, press `Ctrl+Shift+W`, Enter → Before Enter the row says the key is Close the session's and that setting it here takes it from that. After: `Ctrl+Shift+W` zooms; ↺ on Zoom one pane gives it back
-- [ ] **16.12** ＋ on Narrow rail, press `Ctrl+C`, then Esc → The row says `Ctrl+C` is Claude Code's interrupt and the window would take it; Esc leaves the key unset and nothing is written
-- [ ] **16.13** ＋ on Settings, press `Ctrl+Shift+Enter`, Enter; then ＋ again → Special keys ▾ → The chip reads `Ctrl+Shift+Enter`, keymap.toml has `<C-S-Enter>`, and that key opens the settings. The menu offers Enter, Esc, Backspace and Tab; the chosen one shows in the chip; Esc leaves it unset. ↺ at the end
-- [ ] **16.14** × on Next tab's `Ctrl+Tab` → The chip is struck through; keymap.toml has `{ on = "<C-Tab>", run = "none" }` and `Ctrl+Tab` reaches the shell; ↺ brings it back and the line goes
-- [ ] **16.15** ＋ on Restart the server, press `F6`, Enter; then Changed only → F6 restarts the server; only the changed rows are left; ↺ and the file has nothing of it
+- [x] **16.9** Type `zoom` in the table's search; then clear it and type `browser` in the settings search → Only Zoom one pane is left. The settings search stays on Keys and narrows the table to the Browser row (its search box says `browser`); the settings search cleared, the whole table is back
+- [x] **16.10** ⌨ Find by key, press `Ctrl+Shift+W` → Only Close the session is left; Esc ends the find and the table is whole
+- [x] **16.11** ＋ on Zoom one pane, press `Ctrl+Shift+W`, Enter → Before Enter the row says the key is Close the session's and that setting it here takes it from that. After: `Ctrl+Shift+W` zooms; ↺ on Zoom one pane gives it back
+- [x] **16.12** ＋ on Narrow rail, press `Ctrl+C`, then Esc → The row says `Ctrl+C` is Claude Code's interrupt and the window would take it; Esc leaves the key unset and nothing is written
+- [x] **16.13** ＋ on Settings, press `Ctrl+Shift+Enter`, Enter; then ＋ again → Special keys ▾ → The chip reads `Ctrl+Shift+Enter`, keymap.toml has `<C-S-Enter>`, and that key opens the settings. The menu offers Enter, Esc, Backspace and Tab; the chosen one shows in the chip; Esc leaves it unset. ↺ at the end
+- [x] **16.14** × on Next tab's `Ctrl+Tab` → The chip is struck through; keymap.toml has `{ on = "<C-Tab>", run = "none" }` and `Ctrl+Tab` reaches the shell; ↺ brings it back and the line goes
+- [x] **16.15** ＋ on Restart the server, press `F6`, Enter; then Changed only → F6 restarts the server; only the changed rows are left; ↺ and the file has nothing of it
 
 ## 17. What the settings' rows do
 
@@ -372,7 +372,7 @@
 - [~] **17.5** Default folder `~/dev`; start with no session → The first shell starts in `~/dev`
 - [ ] **17.6** Appearance → Cursor, each of the six → The focused pane's cursor is a block, a bar or a line under, blinking when asked; a pane without the keys shows an outline
 - [ ] **17.7** Nerd Font icons off, with a Nerd Font installed → The branch mark is drawn, not the font's icon
-- [ ] **17.8** Keys → ＋ on New session → press `Ctrl+Shift+W`, Esc, ＋ again and `Ctrl+C` → The row says whose each is; nothing is written until Enter, which sets the key anyway
+- [x] **17.8** Keys → ＋ on New session → press `Ctrl+Shift+W`, Esc, ＋ again and `Ctrl+C` → The row says whose each is; nothing is written until Enter, which sets the key anyway
 - [~] **17.9** `Alt+Shift+Arrows` in a split → The nearest divider moves that way a step at a time; the split is kept after a restart
 - [ ] **17.10** Notifications → ▶ beside each sound, each of the four → Four different system sounds
 - [ ] **17.11** Focus mode on in Windows; a session waits while the window is behind → No sound, flash or toast; the taskbar number still comes
@@ -394,7 +394,7 @@
 - [x] **17.28** Scrollback 200; a new session; `seq 1000` → Only about 200 lines to scroll back
 - [x] **17.29** Log what each pane sends and receives on; a new session → `pane-logs/session-N.log` beside the saved tabs grows as it runs
 - [ ] **17.30** Export…, then Import on another machine (or after changing things) → One file in Downloads; importing brings the settings, themes and profiles back, the old ones kept as `.bak`
-- [ ] **17.31** Write a comment and a binding by hand in `keymap.toml` and a comment in `config.toml`, then give another key in Settings → Keys (＋, the key, Enter) and change a font size → Both files keep every table and comment they had; only the changed lines differ
+- [x] **17.31** Write a comment and a binding by hand in `keymap.toml` and a comment in `config.toml`, then give another key in Settings → Keys (＋, the key, Enter) and change a font size → Both files keep every table and comment they had; only the changed lines differ
 - [~] **17.32** Put a mistake in `config.toml` (`[broken`), then change anything in Settings → A toast says the file does not read and is left as it is; the file is unchanged
 - [~] **17.33** `[[menu.session]] command = "\"C:\\Program Files\\Microsoft VS Code\\Code.exe\" {folder}"` (Windows), then the card menu item → VS Code opens on the tab's folder (cmd took the line whole)
 - [~] **17.34** Open with → Editor: type `sakura {folder}` into Add another; right-click a card → `[open] editor = ["code {folder}", "sakura {folder}"]`; Open in the editor has ▶; a click on it opens VS Code, hovering opens `code` and `sakura` to its right and each opens its own; × on the second row (or emptying its field) leaves one again
