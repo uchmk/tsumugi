@@ -387,7 +387,7 @@
 - [x] **17.28** Scrollback 200; a new session; `seq 1000` → Only about 200 lines to scroll back
 - [x] **17.29** Log what each pane sends and receives on; a new session → `pane-logs/session-N.log` beside the saved tabs grows as it runs
 - [ ] **17.30** Export…, then Import on another machine (or after changing things) → One file in Downloads; importing brings the settings, themes and profiles back, the old ones kept as `.bak`
-- [ ] **17.31** Write a comment and a binding by hand in `keymap.toml` and a comment in `config.toml`, then change another key and a font size in Settings → Both files keep every table and comment they had; only the changed lines differ
+- [x] **17.31** Write a comment and a binding by hand in `keymap.toml` and a comment in `config.toml`, then change another key and a font size in Settings → Both files keep every table and comment they had; only the changed lines differ
 - [~] **17.32** Put a mistake in `config.toml` (`[broken`), then change anything in Settings → A toast says the file does not read and is left as it is; the file is unchanged
 - [~] **17.33** `[[menu.session]] command = "\"C:\\Program Files\\Microsoft VS Code\\Code.exe\" {folder}"` (Windows), then the card menu item → VS Code opens on the tab's folder (cmd took the line whole)
 - [~] **17.34** Open with → Editor: type `sakura {folder}` into Add another; right-click a card → `[open] editor = ["code {folder}", "sakura {folder}"]`; Open in the editor has ▶; a click on it opens VS Code, hovering opens `code` and `sakura` to its right and each opens its own; × on the second row (or emptying its field) leaves one again
