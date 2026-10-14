@@ -46,6 +46,8 @@ tsumugi のやること。`【人】` は持ち主の作業、`【金】` は 20
       `TSUMUGI_KEYS_DONE` に状態（`focus`・`overlay`・`scale` と `tabs`・`panes`・`zoom`・`title`）を書く。`mcp` と `shell-hook` は tsumugi だけのものとして残す。
 - [x] 古い `TSUMUGI_SETTINGS`（ファイル）と `TSUMUGI_STATE` を読むのをやめた（v0.104.0。設定されていたら起動のときに 1 回警告する。#20）。
 - [x] keymap.toml（`[keys]` を yagura・kura と同じ層の書き方に。#38 の 1）。v0.108.0 で ito-keymap の上に載せた。
+- [x] （v0.109.0）設定 → キーを ito の共有の画面（1 つの操作が 1 行、＋・×・↺、Enter で決める）に入れ替えた。
+- [ ] yagura と minato の設定にも同じキーの画面（ito-prefs の `keys_page`）を入れる。keymap.toml に `noop` に当たる動作が無ければ足す。
 - [ ] `tsumugi.com` の前段（出力をコンソールに確実に出す）、`--keys` の ito-keyscript への載せ替えとシェルのフックの ito-pane への移し替え（#38 の 2・6）。ito 側のクレート（uchmk/ito#3）を待つ。（要確認: #39）
 
 ## 実機のレーンから

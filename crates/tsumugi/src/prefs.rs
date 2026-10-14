@@ -9,7 +9,7 @@
 use eframe::egui::{self, Color32, FontId, RichText};
 use ito_common::{Clock, CommonChange};
 use ito_pane::Palette;
-use ito_prefs::{button, field, keycap, row, section, select, sep, status, switch, Drafts, Look, Words};
+use ito_prefs::{button, field, row, section, select, sep, status, switch, Drafts, KeyWords, Look, Words};
 use tsumugi_mux::settings::{self as cfg, MenuItem, Profile, Settings, TagRule};
 
 use crate::facts::Facts;
@@ -105,7 +105,6 @@ const INDEX: &[(Page, &str)] = &[
     (Page::Appearance, "prefs.appearance.cursor_glide"),
     (Page::Appearance, "prefs.appearance.animations"),
     (Page::Appearance, "prefs.appearance.visual_bell"),
-    (Page::Keys, "prefs.keys.preset"),
     (Page::Keys, "prefs.keys.use_cmd"),
     (Page::Keys, "prefs.keys.nth_tab"),
     (Page::Keys, "prefs.keys.move"),
@@ -167,22 +166,8 @@ const INDEX: &[(Page, &str)] = &[
 /// language in force, the shared parts' rows (the language, the clock, the
 /// theme) and the keys' names; in English too, so either finds a row.
 pub fn index() -> Vec<(Page, &'static str)> {
-    use crate::keys::Action;
     let w = words();
-    let keys = [
-        Action::NewTab,
-        Action::CloseTab,
-        Action::Rename,
-        Action::Duplicate,
-        Action::NextTab,
-        Action::PrevTab,
-        Action::NextWaiting,
-        Action::Waiting,
-        Action::TypeAll,
-        Action::SplitRight,
-        Action::SplitDown,
-        Action::Zoom,
-    ];
+    let keys = crate::keys::NAMED.map(|n| n.0);
     // Rows this system does not draw are not found either.
     let here = |k: &&str| crate::secure::HERE || *k != "prefs.advanced.secure_input";
     let mut out: Vec<(Page, &'static str)> = INDEX.iter().filter(|(_, k)| here(k)).map(|(p, k)| (*p, tr(k))).collect();
@@ -201,10 +186,12 @@ pub fn index() -> Vec<(Page, &'static str)> {
     };
     out.extend(shared(w));
     out.extend(keys.map(|a| (Page::Keys, tr_desc(crate::keys::title(a)))));
+    out.extend(keys_index(key_words()).map(|k| (Page::Keys, k)));
     if crate::i18n::current_language() != "en" {
         out.extend(keys.map(|a| (Page::Keys, crate::keys::title(a))));
         out.extend(INDEX.iter().filter(|(_, k)| here(k)).map(|(p, k)| (*p, crate::i18n::tr_en(k))));
         out.extend(shared(&ito_prefs::EN));
+        out.extend(keys_index(&ito_prefs::KEYS_EN).map(|k| (Page::Keys, k)));
     }
     out
 }
@@ -225,12 +212,12 @@ pub struct Screen {
 /// What is being changed on the screen and not yet written.
 #[derive(Default)]
 pub struct Edit {
-    /// The key the next press goes to (its name in keymap.toml), while one is being
-    /// changed.
-    pub capturing: Option<&'static str>,
-    /// The press that clashed: the key's name, what it clashes with, and the
-    /// chord, to use anyway.
-    clash: Option<(&'static str, String, String)>,
+    /// The Keys page's search, filters and the key being pressed for an
+    /// action.
+    pub keys: ito_prefs::KeysEdit,
+    /// The settings search as the Keys page last saw it: one that names an
+    /// operation narrows the table to it.
+    keys_search: String,
     /// The text fields' words while they are typed in, and just after.
     drafts: Drafts,
     profile: Option<ProfileDraft>,
@@ -313,6 +300,8 @@ pub enum Change {
     /// One key of `config.toml`: its table (`None` at the top), its name
     /// and its value as TOML.
     Set(Option<&'static str>, &'static str, String),
+    /// The Keys page's changes, for keymap.toml.
+    Keys(Vec<ito_keymap::Edit>),
     /// One key of a table named at run time (`[tags.colors]`, `[shell.env]`),
     /// the key as TOML writes it; `None` takes it out.
     SetIn(String, String, Option<String>),
@@ -383,12 +372,26 @@ pub struct Seen<'a> {
     /// `light_theme`), and its clock.
     pub choice: (&'a str, &'a str, &'a str),
     pub clock: &'a Clock,
+    /// The window's keys as keymap.toml last read ([`crate::keys::Keymap::layers`]).
+    pub keymap: &'a [(String, Vec<ito_keymap::Binding<Option<crate::keys::Action>>>)],
 }
 
 /// The shared parts' words (the search, the language, the clock, the
 /// theme) in the language tsumugi's menus are in.
 fn words() -> &'static Words {
     Words::of(crate::i18n::current_language())
+}
+
+/// The Keys page's words, likewise.
+/// The Keys page's words the search may find it by: only those always on
+/// it (with one layer there is no layer filter, and the rest are tooltips
+/// or come only while a key is being taken).
+fn keys_index(w: &KeyWords) -> [&'static str; 2] {
+    [w.by_key, w.changed_only]
+}
+
+fn key_words() -> &'static KeyWords {
+    KeyWords::of(crate::i18n::current_language())
 }
 
 pub fn show(ui: &mut egui::Ui, pal: &Palette, screen: &mut Screen, seen: &Seen) -> Vec<Change> {
@@ -409,9 +412,11 @@ pub fn show(ui: &mut egui::Ui, pal: &Palette, screen: &mut Screen, seen: &Seen) 
     let nav = ito_prefs::Nav { pages: &pages, index: &index, words: words(), file: "config.toml" };
     let page = Page::ALL.iter().position(|p| *p == screen.page).unwrap_or(0);
     let mut state = ito_prefs::State { page, query: std::mem::take(&mut screen.query), held: screen.held };
-    // Esc leaves the screen, unless a control or a key being changed has it.
-    let busy = state.busy(ui) || screen.edit.capturing.is_some();
-    let pressed = ito_prefs::Keys::standard(ui, busy);
+    // Esc leaves the screen, unless a control or the Keys page (a key being
+    // pressed for an action, or looked for) has it.
+    // While a key is being taken, every key goes to the Keys page: Ctrl+Tab
+    // or Ctrl+F there are keys being given, not the screen's.
+    let pressed = if screen.edit.keys.busy() { ito_prefs::Keys::default() } else { ito_prefs::Keys::standard(ui, state.busy(ui)) };
     let edit = &mut screen.edit;
     let done = ito_prefs::show(ui, seen.current, &mut state, &nav, pressed, |ui, page, l| {
         match Page::ALL[page] {
@@ -428,6 +433,15 @@ pub fn show(ui: &mut egui::Ui, pal: &Palette, screen: &mut Screen, seen: &Seen) 
         follow_focus(ui);
     });
     (screen.page, screen.query, screen.held) = (Page::ALL[state.page], state.query, state.held);
+    if screen.page == Page::Keys {
+        follow_search(&mut screen.edit, &screen.query);
+    }
+    // Keys taken on the Keys page stop with it: left to another page by a
+    // click, they would keep Esc and Ctrl+Tab from the screen.
+    if screen.page != Page::Keys {
+        screen.edit.keys.capture = None;
+        screen.edit.keys.listening = false;
+    }
     if done.close {
         out.insert(0, Change::Close);
     }
@@ -679,57 +693,34 @@ fn appearance(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mu
     });
 }
 
-fn keys(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut Vec<Change>) {
-    use crate::keys::{label, Action, NAMED};
-    let c = l.c;
-    // A key being changed takes the next press: Esc leaves it as it was.
-    if let Some(name) = edit.capturing {
-        let pressed = ui.input_mut(|i| {
-            // A modifier alone is not a key yet: wait for the one it holds.
-            let found = i.events.iter().find_map(|e| match e {
-                egui::Event::Key { key, pressed: true, modifiers, .. } if !crate::keys::is_modifier(*key) => Some((*key, *modifiers)),
-                _ => None,
-            });
-            if let Some((k, m)) = found {
-                i.consume_key(m, k);
-            }
-            found
-        });
-        match pressed {
-            Some((egui::Key::Escape, m)) if !m.any() => {
-                edit.capturing = None;
-                edit.clash = None;
-            }
-            Some((k, m)) => {
-                let chord = crate::keys::Chord::pressed(k, m);
-                let action = NAMED.iter().find(|(_, n, ..)| *n == name).map(|(a, ..)| *a);
-                match action.and_then(|a| crate::keys::clash(&chord, a)) {
-                    Some(c) => {
-                        let why = match c {
-                            crate::keys::Clash::Window(a) => {
-                                trf("prefs.keys.clash_window", &[&chord.label(), tr_desc(crate::keys::title(a))])
-                            }
-                            crate::keys::Clash::Other(whose) => trf("prefs.keys.clash_other", &[&chord.label(), tr_desc(whose)]),
-                        };
-                        edit.clash = Some((name, why, chord.label()));
-                    }
-                    None => {
-                        out.push(Change::Set(Some("keys"), name, cfg::quote(&chord.label())));
-                        edit.capturing = None;
-                        edit.clash = None;
-                    }
-                }
-            }
-            None => {}
+/// The settings search found the Keys page by an operation (its rows are
+/// many, the one looked for may be far down): the table is narrowed to it,
+/// and opened up again when the search goes. What is typed in the table's
+/// own search is left alone.
+fn follow_search(edit: &mut Edit, query: &str) {
+    if edit.keys_search == query {
+        return;
+    }
+    let q = query.trim().to_lowercase();
+    let names = |n: &&(crate::keys::Action, &str, &str, &str)| {
+        let title = crate::keys::title(n.0);
+        n.1.contains(&q) || tr_desc(title).to_lowercase().contains(&q) || title.to_lowercase().contains(&q)
+    };
+    if edit.keys.query.is_empty() || edit.keys.query == edit.keys_search.trim() {
+        if !q.is_empty() && crate::keys::NAMED.iter().any(|n| names(&n)) {
+            edit.keys.query = query.trim().to_owned();
+        } else {
+            edit.keys.query.clear();
         }
     }
+    edit.keys_search = query.to_owned();
+}
+
+fn keys(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut Vec<Change>) {
+    use crate::keys::{title, Chord, NAMED};
+    let c = l.c;
     let mac = crate::keys::mac();
-    let preset = if mac { "macOS" } else { "Windows Terminal" };
-    section(ui, l, tr("prefs.head.preset"), |ui| {
-        row(ui, l, tr("prefs.keys.preset"), tr("prefs.keys.preset_note"), |ui| {
-            select(ui, "preset", preset, &[(preset, preset)]);
-        });
-        sep(ui, l);
+    section(ui, l, tr("prefs.head.mac"), |ui| {
         let on = seen.settings.general.cmd_on_mac;
         let note = if cfg!(target_os = "macos") { tr("prefs.keys.cmd_note") } else { tr("prefs.keys.cmd_note_other") };
         if row(ui, l, tr("prefs.keys.use_cmd"), note, |ui| switch(ui, l, on)) {
@@ -737,126 +728,44 @@ fn keys(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut Vec<
         }
     });
     let fixed = |win: &str, m: &str| (if mac { m } else { win }).replace("{0}", tr("prefs.keys.arrows"));
-    let mut changeable = |ui: &mut egui::Ui, a: Action| {
-        let Some((_, name, win, m)) = NAMED.iter().find(|(x, ..)| *x == a) else { return };
-        let own = if mac { *m } else { *win };
-        // No key of its own reads as `none`, which keymap.toml takes too.
-        let own = if own.is_empty() { "none" } else { own };
-        let now = label(a);
-        let clash = edit.clash.clone().filter(|(n, ..)| n == name);
-        let note = match &clash {
-            Some((_, why, _)) => trf("prefs.keys.clash", &[why]),
-            None if now != own => trf("prefs.keys.own_note", &[own]),
-            None => String::new(),
-        };
-        row(ui, l, tr_desc(crate::keys::title(a)), &note, |ui| {
-            crate::chrome::in_order(ui, |ui| {
-                let waiting = edit.capturing == Some(*name);
-                let text = if waiting { tr("prefs.keys.press").to_owned() } else { now.clone() };
-                if keycap(ui, l, &text, waiting).on_hover_text(tr("prefs.keys.press_hover")).clicked() {
-                    edit.capturing = Some(name);
-                    edit.clash = None;
-                }
-                if let Some((_, _, chord)) = &clash {
-                    if ui.small_button(tr("prefs.keys.use_anyway")).clicked() {
-                        out.push(Change::Set(Some("keys"), name, cfg::quote(chord)));
-                        edit.capturing = None;
-                        edit.clash = None;
-                    }
-                } else if now != own && ui.small_button(tr("prefs.keys.own")).clicked() {
-                    out.push(Change::Set(Some("keys"), name, cfg::quote(own)));
-                }
-            })
-        });
-    };
     let fixed_row = |ui: &mut egui::Ui, title: &str, key: &str| {
         row(ui, l, title, "", |ui| {
             ui.label(RichText::new(key).font(FontId::monospace(12.0)).color(c.dim));
         });
     };
-    section(ui, l, tr("prefs.head.sessions"), |ui| {
-        for (k, a) in [
-            Action::NewTab,
-            Action::CloseTab,
-            Action::Rename,
-            Action::Duplicate,
-            Action::NextTab,
-            Action::PrevTab,
-            Action::NextWaiting,
-            Action::Waiting,
-            Action::Notices,
-            Action::TypeAll,
-            Action::Search,
-            Action::Input,
-            Action::Rail,
-            Action::Settings,
-        ]
-        .into_iter()
-        .enumerate()
-        {
-            if k > 0 {
-                sep(ui, l);
-            }
-            changeable(ui, a);
-        }
-        sep(ui, l);
+    // Above the table, so they are seen without scrolling past it.
+    section(ui, l, tr("prefs.head.fixed"), |ui| {
         fixed_row(ui, tr("prefs.keys.nth_tab"), &fixed("Ctrl+Alt+1 … 9", "Cmd+1 … 9"));
-    });
-    section(ui, l, tr("prefs.head.panes"), |ui| {
-        changeable(ui, Action::SplitRight);
-        sep(ui, l);
-        changeable(ui, Action::SplitDown);
         sep(ui, l);
         fixed_row(ui, tr("prefs.keys.move"), &fixed("Alt+{0}", "Cmd+Option+{0}"));
         sep(ui, l);
         fixed_row(ui, tr("prefs.keys.resize"), &fixed("Alt+Shift+{0}", "Cmd+Ctrl+{0}"));
-        sep(ui, l);
-        changeable(ui, Action::Zoom);
-        sep(ui, l);
-        changeable(ui, Action::CopyMode);
-        sep(ui, l);
-        changeable(ui, Action::QuickSelect);
-        sep(ui, l);
-        changeable(ui, Action::Find);
-        sep(ui, l);
-        changeable(ui, Action::PrevPrompt);
-        sep(ui, l);
-        changeable(ui, Action::NextPrompt);
-        for a in [
-            Action::SwapPane,
-            Action::Equalize,
-            Action::PaneToTab,
-            Action::Record,
-            Action::CopyOutput,
-            Action::SaveOutput,
-            Action::Changes,
-            Action::Browser,
-            Action::ReadOnly,
-            Action::SaveLayout,
-        ] {
-            sep(ui, l);
-            changeable(ui, a);
-        }
     });
-    section(ui, l, tr("prefs.head.view"), |ui| {
-        for (k, a) in [
-            Action::Help,
-            Action::Overview,
-            Action::FontBigger,
-            Action::FontSmaller,
-            Action::FontReset,
-            Action::ClosedList,
-            Action::RestartServer,
-        ]
-        .into_iter()
-        .enumerate()
-        {
-            if k > 0 {
-                sep(ui, l);
-            }
-            changeable(ui, a);
-        }
-    });
+    // The actions with no key of their own have a row too, to give one.
+    let unbound: Vec<(&str, &str, &str)> =
+        NAMED.iter().filter(|n| (if mac { n.3 } else { n.2 }).is_empty()).map(|n| ("window", n.1, title(n.0))).collect();
+    let layer_name = |_: &str| tr("prefs.keys.window").to_owned();
+    let tr_key = |d: &str| tr_desc(d).to_owned();
+    // A key Claude Code or the shells use is said, as the window takes it
+    // from them.
+    let other = |_: &str, on: &[ito_keys::Key]| -> Vec<String> {
+        let label = on.first().and_then(|k| Chord::from_notation(k).ok()).map(|c| c.label()).unwrap_or_default();
+        crate::keys::other(on).map(|whose| trf("prefs.keys.clash_other", &[&label, tr_desc(whose)])).into_iter().collect()
+    };
+    let table = ito_prefs::KeyTable {
+        now: seen.keymap,
+        built_in: crate::keys::built_in(mac),
+        noop: "none",
+        own: "keymap.toml",
+        layer_name: &layer_name,
+        tr: &tr_key,
+        extra: &other,
+        unbound: &unbound,
+        sup: cfg!(target_os = "macos"),
+    };
+    if let Some(edits) = ito_prefs::keys_page(ui, l, key_words(), &table, &mut edit.keys) {
+        out.push(Change::Keys(edits));
+    }
     ui.label(RichText::new(tr("prefs.keys.footer")).size(12.0).color(c.dim));
 }
 
@@ -2020,6 +1929,7 @@ mod tests {
                 settings: &self.settings,
                 themes: &self.themes,
                 current: crate::theme::colors(),
+                keymap: crate::keys::built_in(false),
                 profiles: &[],
                 tags: &tags,
                 muted_tags: &[],
@@ -2126,18 +2036,18 @@ mod tests {
     }
 
     #[test]
-    fn the_keys_line_up_at_the_right() {
+    fn the_keys_line_up_in_their_column() {
         let run = Run::new();
         let mut screen = at_page(Page::Keys);
         for _ in 0..3 {
             run.frame(&mut screen, Vec::new());
         }
         let (_, texts) = run.frame(&mut screen, Vec::new());
-        // Each row's own width was once kept under one id for all of them,
-        // so the caps drifted right row by row.
-        let caps: Vec<f32> = ["Ctrl+Shift+T", "Ctrl+Tab", "Ctrl+Shift+Tab", "Ctrl+I", "Ctrl+Shift+B", "Alt+Shift++", "Ctrl+Shift+Z"]
+        // Each row's first key starts at the keys' column, whatever the
+        // operation's name is long.
+        let caps: Vec<f32> = ["Ctrl+Shift+T", "Ctrl+Tab", "Ctrl+Shift+Tab", "Ctrl+I", "Ctrl+Shift+B", "Alt++", "Ctrl+Shift+Z"]
             .iter()
-            .map(|w| find(&texts, w).unwrap_or_else(|| panic!("{w}")).right())
+            .map(|w| find(&texts, w).unwrap_or_else(|| panic!("{w}")).left())
             .collect();
         assert!(caps.iter().all(|x| (x - caps[0]).abs() < 1.0), "{caps:?}");
     }
@@ -2184,6 +2094,15 @@ mod tests {
             let (_, texts) = run.frame(&mut screen, Vec::new());
             assert!(find(&texts, page.title()).is_some(), "{page:?}: its title");
             for (_, words) in index().into_iter().filter(|(p, words)| *p == page && !SOMETIMES.contains(words)) {
+                // The Keys page is longer than the screen: its operations
+                // are found by the search narrowing the table.
+                let texts = if page == Page::Keys && find(&texts, words).is_none() {
+                    let mut screen = Screen { query: words.into(), ..at_page(page) };
+                    run.frame(&mut screen, Vec::new());
+                    run.frame(&mut screen, Vec::new()).1
+                } else {
+                    texts.clone()
+                };
                 assert!(find(&texts, words).is_some(), "{page:?} has no `{words}`: {:?}", texts.iter().map(|t| &t.0).collect::<Vec<_>>());
             }
         }
@@ -2198,7 +2117,8 @@ mod tests {
         run.click(&mut screen, keys.center());
         assert_eq!(screen.page, Page::Keys);
 
-        screen.query = "scrollback".into();
+        // (Not "scrollback": a key's operation says it, so Keys has it too.)
+        screen.query = "graphics backend".into();
         run.frame(&mut screen, Vec::new());
         let (_, texts) = run.frame(&mut screen, Vec::new());
         assert_eq!(screen.page, Page::Advanced, "to the page that has it");
@@ -2254,34 +2174,113 @@ mod tests {
     }
 
     #[test]
-    fn a_key_is_taken_unless_it_clashes() {
+    fn a_key_is_set_with_enter_and_clashes_are_said() {
         let run = Run::new();
+        let ctrl = egui::Modifiers { ctrl: true, ..Default::default() };
         let ctrl_shift = egui::Modifiers { ctrl: true, shift: true, ..Default::default() };
         let mut screen = at_page(Page::Keys);
         run.frame(&mut screen, Vec::new());
-        screen.edit.capturing = Some("new_tab");
+        let capture = |run: &str| ito_prefs::Capture { layer: "window".into(), run: run.into(), keys: Vec::new(), replace: None };
+        screen.edit.keys.capture = Some(capture("new_tab"));
+        // Pressed, it is not written until Enter.
         let changes = run.key(&mut screen, egui::Key::K, ctrl_shift);
-        assert_eq!(changes, vec![Change::Set(Some("keys"), "new_tab", "\"Ctrl+Shift+K\"".into())]);
-        assert_eq!(screen.edit.capturing, None);
+        assert!(changes.is_empty(), "{changes:?}");
+        let changes = run.key(&mut screen, egui::Key::Enter, egui::Modifiers::NONE);
+        let [Change::Keys(edits)] = &changes[..] else { panic!("{changes:?}") };
+        let [ito_keymap::Edit::Add { layer, on, run: name, .. }] = &edits[..] else { panic!("{edits:?}") };
+        assert_eq!((layer.as_str(), ito_keys::render_seq(on).as_str(), name.as_str()), ("window", "<C-S-k>", "new_tab"));
+        assert!(screen.edit.keys.capture.is_none());
 
-        // Another of the window's keys: named, and nothing written.
-        screen.edit.capturing = Some("new_tab");
+        // Another of the window's keys, and one of Claude Code's: said, and
+        // nothing written.
+        screen.edit.keys.capture = Some(capture("new_tab"));
         let changes = run.key(&mut screen, egui::Key::W, ctrl_shift);
         assert!(changes.is_empty(), "{changes:?}");
         let (_, texts) = run.frame(&mut screen, Vec::new());
-        assert!(find(&texts, "Ctrl+Shift+W is Close the session already").is_some());
-        // One of Claude Code's.
-        let changes = run.key(&mut screen, egui::Key::C, egui::Modifiers { ctrl: true, ..Default::default() });
+        let said = |texts: &[(String, egui::Rect)], part: &str| texts.iter().any(|(t, _)| t.contains(part));
+        assert!(said(&texts, "Close the session"), "{:?}", texts.iter().map(|t| &t.0).collect::<Vec<_>>());
+        run.key(&mut screen, egui::Key::Escape, egui::Modifiers::NONE);
+        screen.edit.keys.capture = Some(capture("new_tab"));
+        let changes = run.key(&mut screen, egui::Key::C, ctrl);
         assert!(changes.is_empty());
         let (_, texts) = run.frame(&mut screen, Vec::new());
-        assert!(find(&texts, "Ctrl+C is Claude Code's interrupt").is_some());
+        assert!(said(&texts, "Claude Code's interrupt"), "{:?}", texts.iter().map(|t| &t.0).collect::<Vec<_>>());
 
         // Esc while a key is being changed leaves the key, not the screen.
         let changes = run.key(&mut screen, egui::Key::Escape, egui::Modifiers::NONE);
         assert!(changes.is_empty());
-        assert_eq!(screen.edit.capturing, None);
+        assert!(screen.edit.keys.capture.is_none());
         let changes = run.key(&mut screen, egui::Key::Escape, egui::Modifiers::NONE);
         assert_eq!(changes, vec![Change::Close]);
+    }
+
+    /// The settings search that names an operation narrows the table to it;
+    /// the search gone, the table is whole again. One that names none
+    /// leaves the table's own search.
+    #[test]
+    fn the_settings_search_narrows_the_keys_table() {
+        let run = Run::new();
+        let mut screen = Screen { query: "browser".into(), ..at_page(Page::Keys) };
+        run.frame(&mut screen, Vec::new());
+        let (_, texts) = run.frame(&mut screen, Vec::new());
+        assert_eq!((screen.page, screen.edit.keys.query.as_str()), (Page::Keys, "browser"));
+        assert!(find(&texts, "Browser: the page of a port this tab listens on").is_some());
+        assert!(find(&texts, "New session").is_none(), "only the operations it names");
+        screen.query.clear();
+        let (_, texts) = run.frame(&mut screen, Vec::new());
+        assert_eq!(screen.edit.keys.query, "");
+        run.frame(&mut screen, Vec::new());
+        assert!(find(&texts, "New session").is_some() || find(&run.frame(&mut screen, Vec::new()).1, "New session").is_some());
+        screen.edit.keys.query = "zoom".into();
+        screen.query = "use cmd".into();
+        run.frame(&mut screen, Vec::new());
+        assert_eq!(screen.edit.keys.query, "zoom", "kept");
+    }
+
+    /// A key being pressed for an action stops when the page is left.
+    #[test]
+    fn leaving_the_keys_page_lets_the_keys_go() {
+        let run = Run::new();
+        let mut screen = at_page(Page::Keys);
+        screen.edit.keys.capture =
+            Some(ito_prefs::Capture { layer: "window".into(), run: "new_tab".into(), keys: Vec::new(), replace: None });
+        screen.page = Page::General;
+        run.frame(&mut screen, Vec::new());
+        assert!(!screen.edit.keys.busy());
+    }
+
+    /// What was typed in the Keys table's own search is not taken over.
+    #[test]
+    fn the_keys_tables_own_search_stays() {
+        let mut edit = Edit::default();
+        follow_search(&mut edit, "zoom");
+        assert_eq!(edit.keys.query, "zoom");
+        follow_search(&mut edit, "");
+        assert_eq!(edit.keys.query, "");
+        edit.keys.query = "tab".into();
+        follow_search(&mut edit, "browser");
+        assert_eq!(edit.keys.query, "tab");
+        follow_search(&mut edit, "");
+        assert_eq!(edit.keys.query, "tab");
+        // In other words than English too, by the English name.
+        edit.keys.query.clear();
+        follow_search(&mut edit, "Zoom one pane");
+        assert_eq!(edit.keys.query, "Zoom one pane");
+    }
+
+    /// While a key is being taken, Ctrl+Tab is that key, not the next page.
+    #[test]
+    fn a_key_being_taken_keeps_ctrl_tab() {
+        let run = Run::new();
+        let mut screen = at_page(Page::Keys);
+        screen.edit.keys.capture =
+            Some(ito_prefs::Capture { layer: "window".into(), run: "new_tab".into(), keys: Vec::new(), replace: None });
+        let tab =
+            egui::Event::Key { key: egui::Key::Tab, physical_key: None, pressed: true, repeat: false, modifiers: egui::Modifiers::CTRL };
+        run.frame(&mut screen, vec![tab]);
+        assert_eq!(screen.page, Page::Keys);
+        let keys = screen.edit.keys.capture.as_ref().map(|c| ito_keys::render_seq(&c.keys));
+        assert_eq!(keys.as_deref(), Some("<C-Tab>"));
     }
 
     #[test]

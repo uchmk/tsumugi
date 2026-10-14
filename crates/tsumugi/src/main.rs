@@ -1360,6 +1360,9 @@ struct App {
     settings_error: Option<String>,
     /// What in keymap.toml could not be taken (the first of it).
     keymap_warning: Option<String>,
+    /// The window's keys as keymap.toml last read, for the settings
+    /// screen's table.
+    keymap_layers: Vec<(String, Vec<ito_keymap::Binding<Option<keys::Action>>>)>,
     /// What is wrong with common.toml, or not known in it.
     common_warning: Option<String>,
     /// From the settings and `profiles.toml`, for the new-session dialog.
@@ -1723,6 +1726,7 @@ impl App {
             animated: false,
             settings_error: None,
             keymap_warning: None,
+            keymap_layers: keys::built_in(keys::mac()).to_vec(),
             common_warning: None,
             tag_rules: Vec::new(),
             profiles: Vec::new(),
@@ -2178,13 +2182,14 @@ impl App {
             scale: self.common.scale_or_one(),
             choice: (&self.theme_choice.0, &self.theme_choice.1, &self.theme_choice.2),
             clock: &clock,
+            keymap: &self.keymap_layers,
         };
         let Some(screen) = &mut self.prefs else { return };
         let changes = prefs::show(ui, &self.palette, screen, &seen);
         for change in changes {
             match change {
                 // The window's keys live in keymap.toml.
-                prefs::Change::Set(Some("keys"), key, value) => edit_keymap(self.settings_tx.clone(), key, value),
+                prefs::Change::Keys(edits) => edit_keymap(self.settings_tx.clone(), edits),
                 prefs::Change::Set(table, key, value) => {
                     edit_settings(self.settings_tx.clone(), move |t| tsumugi_mux::settings::set_key(t, table, key, &value))
                 }
@@ -5665,11 +5670,25 @@ enum Read {
     Keymap(keys::Keymap),
 }
 
-/// Read keymap.toml (none there: no keys of one's own).
-fn load_keymap(path: &std::path::Path) -> keys::Keymap {
-    match files::read_or_empty(path) {
-        Ok(text) => keys::read_keymap(Some(&text)),
-        Err(e) => keys::Keymap { warnings: vec![e], ..Default::default() },
+/// Read keymap.toml (none there: no keys of one's own), with what of
+/// config.toml (`config`) bears on it: whether the Mac's keys are Cmd's, and
+/// `[keys]`, shown in the settings' table as it will be once moved.
+fn load_keymap(path: &std::path::Path, config: &std::path::Path) -> keys::Keymap {
+    let text = match files::read_or_empty(path) {
+        Ok(text) => text,
+        Err(e) => return keys::Keymap { warnings: vec![e], ..Default::default() },
+    };
+    let table = files::read_or_empty(config).ok().and_then(|t| t.parse::<toml::Table>().ok()).unwrap_or_default();
+    let cmd_on_mac = table.get("general").and_then(|g| g.get("cmd_on_mac")).and_then(toml::Value::as_bool).unwrap_or(true);
+    let legacy = legacy_keys(&table, config).unwrap_or_default();
+    keys::read_keymap_with(Some(&text), &legacy, cmd_on_mac)
+}
+
+/// `[keys]` of config.toml, where the window's keys were before keymap.toml.
+fn legacy_keys(table: &toml::Table, config: &std::path::Path) -> Result<std::collections::BTreeMap<String, String>, String> {
+    match table.get("keys") {
+        Some(k) => k.clone().try_into().map_err(|e: toml::de::Error| format!("{}: keys: {}", config.display(), e.message())),
+        None => Ok(Default::default()),
     }
 }
 
@@ -5760,13 +5779,15 @@ fn watch_settings(ctx: egui::Context, tx: std::sync::mpsc::Sender<Read>) {
                 if tx.send(Read::Settings(Box::new(settings::load(&path)))).is_err() {
                     return;
                 }
+                // `[keys]` and `cmd_on_mac` bear on keymap.toml's table.
+                seen_keymap = None;
             }
             if let Some(keymap) = &keymap {
                 let stamp = settings::stamp(keymap);
                 if seen_keymap != Some(stamp) {
                     seen_keymap = Some(stamp);
                     sent = true;
-                    if tx.send(Read::Keymap(load_keymap(keymap))).is_err() {
+                    if tx.send(Read::Keymap(load_keymap(keymap, &path))).is_err() {
                         return;
                     }
                 }
@@ -5832,27 +5853,25 @@ fn edit_settings(tx: std::sync::mpsc::Sender<Read>, change: impl FnOnce(&str) ->
 /// over each other.
 static ONE_AT_A_TIME: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
-/// Give the window's action `name` the key `value` (TOML: `"Ctrl+Shift+N"`,
-/// `"none"`) in keymap.toml, on a thread of its own. `[keys]` in config.toml,
-/// where the keys were before, moves there with it.
-fn edit_keymap(tx: std::sync::mpsc::Sender<Read>, name: &'static str, value: String) {
+/// Make the settings screen's key changes in keymap.toml, on a thread of
+/// its own: only what differs from the built-in keys is written, and no
+/// file is made for nothing. `[keys]` in config.toml, where the keys were
+/// before, moves there with them.
+fn edit_keymap(tx: std::sync::mpsc::Sender<Read>, edits: Vec<ito_keymap::Edit>) {
     use tsumugi_mux::settings;
     let _ = std::thread::Builder::new().name("write-keymap".into()).spawn(move || {
         let _turn = ONE_AT_A_TIME.lock().unwrap_or_else(|e| e.into_inner());
         let (Some(config), Some(path)) = (settings::default_path(), settings::keymap_path()) else { return };
         let written = (|| -> Result<(), String> {
-            let value: toml::Table = toml::from_str(&format!("v = {value}")).map_err(|e| e.message().to_owned())?;
-            let value = value.get("v").and_then(|v| v.as_str()).unwrap_or_default().to_owned();
             // Only `[keys]`: the rest of config.toml being wrong does not
             // stop a key (and a file that is not TOML has none to move).
             let config_text = files::read_or_empty(&config)?;
-            let legacy: std::collections::BTreeMap<String, String> =
-                match config_text.parse::<toml::Table>().ok().and_then(|mut t| t.remove("keys")) {
-                    Some(k) => k.try_into().map_err(|e: toml::de::Error| format!("{}: keys: {}", config.display(), e.message()))?,
-                    None => Default::default(),
-                };
-            let next = keys::edit_keymap(&files::read_or_empty(&path)?, &legacy, name, &value)?;
-            files::write_atomic(&path, next)?;
+            let legacy = legacy_keys(&config_text.parse::<toml::Table>().unwrap_or_default(), &config)?;
+            let text = files::read_or_empty(&path)?;
+            let next = keys::edit_keymap(&text, &legacy, &edits)?;
+            if next != text {
+                files::write_atomic(&path, next)?;
+            }
             if !legacy.is_empty() {
                 // `[keys]` first in the file leaves the blank line after it.
                 let rest = settings::remove_key(&config_text, None, "keys")?;
@@ -5862,7 +5881,7 @@ fn edit_keymap(tx: std::sync::mpsc::Sender<Read>, name: &'static str, value: Str
         })();
         // A key that could not be given is said with keymap.toml's
         // warnings, so it goes when the file is fixed (or the next key is).
-        let mut km = load_keymap(&path);
+        let mut km = load_keymap(&path, &config);
         match written {
             Ok(()) => {
                 let _ = tx.send(Read::Keymap(km));
@@ -6415,6 +6434,7 @@ impl App {
                     });
                     if km.read {
                         keys::set_keymap(km.bound);
+                        self.keymap_layers = km.layers;
                     }
                 }
             }
@@ -6603,8 +6623,9 @@ impl App {
             let mut actions = Vec::new();
             // A field of the window's own (a menu's "Add a tag") has the
             // keys while it is focused; the pane gets them otherwise.
-            // A key being changed in the settings is the settings'.
-            let capturing = self.prefs.as_ref().is_some_and(|p| p.edit.capturing.is_some());
+            // A key being changed in the settings (or looked for there) is
+            // the settings'.
+            let capturing = self.prefs.as_ref().is_some_and(|p| p.edit.keys.busy());
             let field = ctx.memory(|m| m.focused().is_some())
                 || self.new_session.is_some()
                 || self.search.is_some()
