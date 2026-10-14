@@ -13,18 +13,19 @@ Testing on real Windows machines has only just begun
 
 ## What it looks like
 
-![tsumugi on Windows: three sessions in the sidebar, each a card with its folder, branch and tags, and the open tab split into four pwsh panes; the first pane's heading and card carry a green tick and "Done · 10s"](docs/images/split.png)
+![tsumugi on Windows: four sessions in the sidebar, each a card with its folder, branch and state (one Claude Code session running, one waiting for its plan to be approved with the answers on its card), and the open tab split into a pwsh pane and a running Claude Code pane](docs/images/split.png)
 
-Split a pane with the keys, then drag it by its header to put it somewhere
-else: onto the middle of another pane to trade places, onto an edge to sit on
+Open a session, split it from the keys, move between tabs, and jump straight to
+the session that has waited longest for you. Panes can also be dragged by their
+headers: onto the middle of another pane to trade places, onto an edge to sit on
 that side.
 
-![Splitting the one pane of a tab into several from the keyboard, then dragging panes by their headers to rearrange them](docs/images/tsumugi.gif)
+![Ctrl+Shift+T opens a new session in a new tab, Alt+Shift++ and Alt+Shift+- split it right and down, Ctrl+Tab moves to the next tab, and Ctrl+Shift+U jumps to the Claude Code session waiting for its plan to be approved; each key is captioned as it is pressed](docs/images/tsumugi.gif)
 
 Each session's state shows on its card and in its pane's heading, so two
 Claude Code sessions side by side say which one is still working:
 
-![Two Claude Code sessions side by side in one tab, both ringed in cyan with a turning arc and "Running" in their headings, and the sidebar card of the focused one saying "Running · 33s"](docs/images/claude.png)
+![Two Claude Code sessions side by side in one tab: the left one finished with a green tick and "Done" in its heading, the right one still reading files with "Running" and a turning arc, and the sidebar card saying "Running · 35s"](docs/images/claude.png)
 
 ```sh
 cargo run -p tsumugi

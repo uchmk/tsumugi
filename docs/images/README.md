@@ -15,3 +15,4 @@ README の冒頭に載せるキャプチャーの置き場。持ち主が Window
 - 写るパスやブランチ名、Claude Code の会話に、外に出したくないもの（社内の名前、トークン、メールアドレス）が無いかを見る。
 - 窓の影や背景の壁紙は入れない（窓だけを撮る。Windows なら `Alt+PrtSc` か、Snipping Tool の「ウィンドウ」）。
 - 紹介画像（GitHub の Social preview）は別で、`docs/social-preview.png`（元は `docs/banner.html`）。
+  右に入れる実画面は `banner-shot.png`（窓を 1400x1010 にして撮る）。
