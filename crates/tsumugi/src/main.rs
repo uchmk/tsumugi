@@ -5874,7 +5874,7 @@ fn edit_keymap(tx: std::sync::mpsc::Sender<Read>, edits: Vec<ito_keymap::Edit>) 
             }
             if !legacy.is_empty() {
                 // `[keys]` first in the file leaves the blank line after it.
-                let rest = settings::remove_key(&config_text, None, "keys")?;
+                let rest = drop_keys_table(&config_text)?;
                 files::write_atomic(&config, rest.trim_start_matches(['\r', '\n']))?;
             }
             Ok(())
@@ -5893,6 +5893,24 @@ fn edit_keymap(tx: std::sync::mpsc::Sender<Read>, edits: Vec<ito_keymap::Edit>) 
             }
         }
     });
+}
+
+/// config.toml without its `[keys]` table, the comment lines right above
+/// the table's header kept: TOML counts them as the header's, so taking the
+/// table out alone would take them too, and they may be about the file.
+fn drop_keys_table(text: &str) -> Result<String, String> {
+    let rest = tsumugi_mux::settings::remove_key(text, None, "keys")?;
+    let lines: Vec<&str> = text.split_inclusive('\n').collect();
+    let header = |l: &str| l.split('#').next().is_some_and(|h| h.trim() == "[keys]");
+    let Some(h) = lines.iter().position(|l| header(l)) else { return Ok(rest) };
+    let start = lines[..h].iter().rposition(|l| !(l.trim().is_empty() || l.trim_start().starts_with('#'))).map_or(0, |i| i + 1);
+    // The blank lines after the comments go with the table, as its own were.
+    let end = lines[..h].iter().rposition(|l| l.trim_start().starts_with('#')).map_or(start, |i| (i + 1).max(start));
+    let (before, comments) = (lines[..start].concat(), lines[start..end].concat());
+    match rest.strip_prefix(&before) {
+        Some(after) if !comments.is_empty() => Ok(format!("{before}{comments}{after}")),
+        _ => Ok(rest),
+    }
 }
 
 /// Make a change to the common.toml uchmk's apps share (the language, the
@@ -7581,6 +7599,16 @@ fn web_dir() -> Option<std::path::PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::{escape_line, json_string, keep_tab_for_pane, unescape_line, View};
+
+    #[test]
+    fn moving_the_keys_keeps_the_comments_above_them() {
+        let t = super::drop_keys_table("# my config comment\n[keys]\nhelp = \"F9\"\n").unwrap();
+        assert_eq!(t, "# my config comment\n");
+        let t = super::drop_keys_table("theme = \"x\"\n\n# about the file\n\n[keys]\nhelp = \"F9\"\n\n[clock]\nshow = true\n").unwrap();
+        assert_eq!(t, "theme = \"x\"\n\n# about the file\n\n[clock]\nshow = true\n");
+        let t = super::drop_keys_table("[keys]\nhelp = \"F9\"\n[clock]\nshow = true\n").unwrap();
+        assert_eq!(t, "[clock]\nshow = true\n");
+    }
 
     #[test]
     fn a_machine_reached_is_remembered_once() {
