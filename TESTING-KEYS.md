@@ -30,7 +30,7 @@ Windows and Linux keys first; the macOS key is after `·`.
 - [x] `Ctrl+=` · `Cmd+=` — Bigger letters (= or +) · `font_bigger`
 - [x] `Ctrl+-` · `Cmd+-` — Smaller letters · `font_smaller`
 - [x] `Ctrl+0` · `Cmd+0` — Letters as the settings have them · `font_reset`
-- [~] `Ctrl+Shift+O` · `Cmd+Shift+O` — All sessions: find a session or a line in any scrollback, or open a saved layout or script · `overview`
+- [x] `Ctrl+Shift+O` · `Cmd+Shift+O` — All sessions: find a session or a line in any scrollback, or open a saved layout or script · `overview`
 - [x] `Ctrl+Shift+M` · `Cmd+Shift+M` — Copy mode: select the output with the keys · `copy_mode`
 - [x] `Ctrl+Shift+Up` · `Cmd+Shift+Up` — To the prompt above · `prev_prompt`
 - [x] `Ctrl+Shift+Down` · `Cmd+Shift+Down` — To the prompt below · `next_prompt`
@@ -95,10 +95,10 @@ Windows and Linux keys first; the macOS key is after `·`.
 
 ## All sessions
 
-- [~] `Letters` · `Letters` — Narrow the sessions; 3 letters or more also list the lines of every scrollback that hold them
+- [x] `Letters` · `Letters` — Narrow the sessions; 3 letters or more also list the lines of every scrollback that hold them
 - [~] `Up / Down` · `Up / Down` — Walk the sessions, then the scrollback lines
 - [x] `Enter` · `Enter` — Go to the session (a line: go there and show it)
-- [~] `Left / Right` · `Left / Right` — The page beside it, while nothing is typed
+- [x] `Left / Right` · `Left / Right` — The page beside it, while nothing is typed
 - [x] `Esc` · `Esc` — Close it
 
 ## Copy mode
