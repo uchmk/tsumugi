@@ -173,3 +173,13 @@ michi は worktree の表に Claude の状態を出すため、`tsumugi ls --jso
   出力はほかの `new` と同じくセッションの番号で、`tests/cli.rs` で確かめる。
 - [ ] `tsumugi focus N|NAME` を足す。窓を前に出し、そのセッションのタブ（とペイン）を選ぶ。michi の worktree の表で Claude の状態を押したときに使う。
   窓が前に出るか・タブが選ばれるかは TESTING.md に行を足す（Windows は前面に出せる条件が厳しい `SetForegroundWindow` の制限も見る）【実機】。
+
+## トリプルクリックで行を選ぶ（2026-10-15、yagura のセッションから）
+
+ito 0.35.2（rev `5d413895d2f9eb2dd2a490c54615ebf3f96c5681`）の ito-select に、ダブルクリックで語・トリプルクリックで行・Ctrl（Cmd）+クリックで URL が入った。
+yagura のセッションは「tsumugi の選択を ito-select に移す」と言ってきたが、ito-select は描いた文字（galley）を選ぶ部品で、端末の格子には使えない。
+tsumugi には描いた文字の選択が無く、端末のペインの語と Ctrl+クリックのリンクは ito-pane（`view.rs`）に前からある。足りないのはトリプルクリックだけ。
+
+- [ ] 端末のペインでトリプルクリックすると、その行（折り返した続きも）を選んでコピーする。直すのは ito-pane: `view.rs` の `double_clicked` の前で `triple_clicked` を見て、
+  alacritty の `SelectionType::Lines` で選ぶ。`Pane` に `select_line` を足し、tsumugi-mux は `ToServer::SelectLine` を足す（取り決めの版が上がる）。
+  ito を上げるときは全部のクレートを同じ `rev` に。kura も同じペインなので一緒に効く。TESTING.md に行を足す【実機】。
