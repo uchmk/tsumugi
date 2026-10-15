@@ -27,15 +27,15 @@ Windows and Linux keys first; the macOS key is after `·`.
 - [x] `Ctrl+Shift+Y` · `Cmd+Shift+Y` — The waiting sessions, answered together · `waiting_list`
 - [x] `Ctrl+Shift+I` · `Cmd+Shift+I` — Type into every pane of the tab · `type_into_all`
 - [x] `Ctrl+Shift+N` · `Cmd+Shift+N` — Notifications (the bell) · `notifications`
-- [~] `Ctrl+=` · `Cmd+=` — Bigger letters (= or +) · `font_bigger`
+- [x] `Ctrl+=` · `Cmd+=` — Bigger letters (= or +) · `font_bigger`
 - [x] `Ctrl+-` · `Cmd+-` — Smaller letters · `font_smaller`
 - [x] `Ctrl+0` · `Cmd+0` — Letters as the settings have them · `font_reset`
 - [~] `Ctrl+Shift+O` · `Cmd+Shift+O` — All sessions: find a session or a line in any scrollback, or open a saved layout or script · `overview`
 - [x] `Ctrl+Shift+M` · `Cmd+Shift+M` — Copy mode: select the output with the keys · `copy_mode`
 - [x] `Ctrl+Shift+Up` · `Cmd+Shift+Up` — To the prompt above · `prev_prompt`
 - [x] `Ctrl+Shift+Down` · `Cmd+Shift+Down` — To the prompt below · `next_prompt`
-- [~] `Ctrl+Shift+F` · `Cmd+F` — Find in the pane · `find`
-- [~] `F1` · `F1` — Every key (this help) · `help`
+- [x] `Ctrl+Shift+F` · `Cmd+F` — Find in the pane · `find`
+- [x] `F1` · `F1` — Every key (this help) · `help`
 - [x] `Ctrl+Shift+X` · `Cmd+Shift+X` — Swap the pane with the next one · `swap_pane`
 - [x] `Ctrl+Shift+E` · `Cmd+Shift+E` — Give every pane the same room · `equalize`
 - [x] `Ctrl+Shift+J` · `Cmd+Shift+J` — The pane to a tab of its own · `pane_to_tab`
@@ -71,13 +71,13 @@ Windows and Linux keys first; the macOS key is after `·`.
 ## The new-session dialog
 
 - [x] `Enter` · `Enter` — Create in a new tab (on a button: press it)
-- [~] `Alt+Enter` · `Option+Enter` — Create split to the right of the pane with the keys
+- [x] `Alt+Enter` · `Option+Enter` — Create split to the right of the pane with the keys
 - [x] `Tab` · `Tab` — In the folder: complete it from the list; complete, or elsewhere: the next field
 - [x] `Shift+Tab` · `Shift+Tab` — The field before
 - [x] `Left / Right` · `Left / Right` — On a way to start: the one beside it
 - [~] `Space` · `Space` — Press the button that has the keys
-- [~] `Up / Down` · `Up / Down` — Walk the folder list
-- [~] `Esc` · `Esc` — Cancel
+- [x] `Up / Down` · `Up / Down` — Walk the folder list
+- [x] `Esc` · `Esc` — Cancel
 
 ## The input box
 

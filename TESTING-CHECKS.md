@@ -29,7 +29,7 @@
 ## 2. Panes and splits
 
 - [x] **2.1** `Alt+Shift++`, then `Alt+Shift+-` → A shell to the right, then one below it, each in the folder of the pane it split
-- [~] **2.2** `Alt+Arrows` → The keys move to the pane on that side; its cursor fills, the others' go hollow, and the others are dimmed
+- [x] **2.2** `Alt+Arrows` → The keys move to the pane on that side; its cursor fills, the others' go hollow, and the others are dimmed
 - [x] **2.3** Bring the pointer to a gap between panes, drag → A cyan line appears, the split follows the pointer; a double-click halves it
 - [~] **2.4** `Ctrl+Shift+Z` with a hidden pane waiting (notify it) → One pane fills the tab, its heading says ZOOM with a small split; a gold-ringed note at the bottom right says how many wait behind and the key, and a click goes there; `Ctrl+Shift+Z` again restores the split
 - [~] **2.5** Drag a pane by its header onto the middle of another → A cyan outline and **Swap** while dragging; on release the two trade places
@@ -128,7 +128,7 @@
 - [ ] **3.13** Theme tsumugi Light (and each light theme) → The waiting and error words and counts read clearly on white (WCAG 4.5 or more)
 - [ ] **3.14** A tab on a branch with an open pull request (`gh` signed in) → `· PR #N` after the branch on the second line, green when its checks pass, red when they fail, cyan while they run, grey with none; its tooltip says which
 - [ ] **3.15** The card of the tab with the keys, Claude Code talked to a few times → A line `N prompts · 12m · 3.4k tokens`; the other cards have none. A running card's third line ends with `· N tokens`
-- [~] **3.16** `F2` → A field on the card with the name selected; Enter renames, Esc leaves it as it was
+- [x] **3.16** `F2` → A field on the card with the name selected; Enter renames, Esc leaves it as it was
 - [ ] **3.17** `Ctrl+Shift+D` (macOS `Cmd+Option+D`) in a Claude Code pane, then in a shell → A new tab in the same folder: `claude` typed in the first, a shell in the second
 - [~] **3.18** Look at the sidebar on first start → 288px wide
 - [~] **3.19** Right-click a card → Note…, type `the release`, Enter; restart the machine (or the server) → `“the release”` on the card under the folder; Edit the note… and an empty Enter takes it off; after the restart the note is back
@@ -189,7 +189,7 @@
 
 - [x] **5.1** `Ctrl+Shift+O`, type part of a session's name (then a tag as `#tag`, then a word from a card's last lines) → Only the cards that match, that session first; `Down` / `Up` move, Enter goes there
 - [~] **5.2** Type a folder another session is in → **Folder** entries: Enter starts a session there
-- [~] **5.3** Type `split` → The commands, with their keys beside them
+- [x] **5.3** Type `split` → The commands, with their keys beside them
 - [~] **5.4** `Ctrl+Shift+O`, type three letters printed long ago in another tab's scrollback → **IN THE SCROLLBACK** lines under the cards a moment later; `Down` walks the cards then the lines; Enter (or a click) on one goes to that tab, scrolls back to the line, the match selected
 - [x] **5.5** `Esc`, and a click outside → Closes without doing anything
 - [x] **5.6** Keep a prompt `Say {project}` in the input box's **Prompts…**; in the search box type `send`, pick **Send prompt: …**; then `Ctrl+Shift+I` in a split tab and pick it again → It is sent to the pane with the keys, the project's name in it; the second time every pane of the tab gets it
@@ -263,7 +263,7 @@
 
 ## 9. The settings screen
 
-- [~] **9.1** `Ctrl+,` → The screen with its nine pages and the search field over them; the band says Settings in the middle with an X; no sidebar or status bar; `Esc` and the X close it
+- [x] **9.1** `Ctrl+,` → The screen with its nine pages and the search field over them; the band says Settings in the middle with an X; no sidebar or status bar; `Esc` and the X close it
 - [ ] **9.2** Change something on each page → Only that line of `config.toml` changes (diff the file); comments stay. Language, the clock and the theme change that line of `common.toml` in the uchmk folder instead
 - [ ] **9.3** Write a mistake into `config.toml` by hand → A red line above the status bar says what and where, until it is fixed; nothing else changes
 - [ ] **9.4** Open config.toml / Open the settings folder → The system's editor / file manager opens
@@ -271,7 +271,7 @@
 - [ ] **9.6** Next to the design's "Settings: every page" → The same pages, sections and rows in the same order
 - [ ] **9.7** Only the keyboard: `Ctrl+Tab` / `Ctrl+Shift+Tab` through the pages, `Tab` through a page, `Space` on a switch, `Esc` twice → A cyan ring on the control with the keys; Tab never stops on the top band or the list of pages; Space flips the switch (the file changes); the first Esc leaves the control, the second closes the screen; nothing typed reaches the shell behind it
 - [ ] **9.8** Notifications → WHEN A SESSION… → A line between rows; the three state columns the same width, each switch in the middle of its column and row, under its heading's dot
-- [~] **9.9** `Ctrl+,` (macOS `Cmd+,`) with the settings open → They close and stay closed (not reopened on their first page)
+- [x] **9.9** `Ctrl+,` (macOS `Cmd+,`) with the settings open → They close and stay closed (not reopened on their first page)
 - [~] **9.10** Settings → General → Scale, pick 150% → The whole window (bands, sidebar, settings and panes) grows at once; `scale = 1.5` in `common.toml`, `config.toml` unchanged; `Ctrl+=` and `Ctrl+-` still change only the panes' font size
 - [ ] **9.11** With tsumugi and kura (or yagura) open, write `scale = 1.25` into `common.toml` by hand → Both windows grow to 125% within a couple of seconds; Settings → General → Scale shows 125%
 
