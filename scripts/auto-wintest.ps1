@@ -87,7 +87,9 @@
 # Scratch: R:\Temp when there is an R: drive, else %TEMP%\tsumugi-scratch; each
 # run gets run-<time> under it, TEMP and TMP point there, the newest three are
 # kept. Build output: the worktree's `target` is a junction to
-# R:\cargo-target\<worktree> when R: has 8 GB free. The screen saver is held
+# R:\cargo-target\<worktree> when R: has 8 GB free (short of that, the PC's
+# %LOCALAPPDATA%\uchmk-build\cargo-ramdisk.ps1 -IfLow, when there is one, is
+# run first to empty the targets unused the longest). The screen saver is held
 # off for the run and put back in `finally` (or by the next firing). The log
 # is %LOCALAPPDATA%\tsumugi-wintest\auto-wintest.log; the state files stay
 # there whatever -LogDir says. The run gets --model $Model (Sonnet by default,
@@ -159,6 +161,15 @@ function Set-BuildTarget {
     $dir = if ($TargetDir) { $TargetDir } elseif (Test-Path 'R:\') { Join-Path 'R:\cargo-target' (Split-Path -Leaf $Work) } else { $null }
     if (-not $dir) { return $link }
     $drive = Get-PSDrive -Name ($dir.Substring(0, 1)) -ErrorAction SilentlyContinue
+    # Short of room: first the PC's cleanup (outside the repos), which empties the targets on R:
+    # unused the longest; the SSD below only if that was not enough.
+    $tidy = Join-Path $env:LOCALAPPDATA 'uchmk-build\cargo-ramdisk.ps1'
+    if ($drive -and $drive.Free -lt 8GB -and (Test-Path -LiteralPath $tidy)) {
+        $was = $drive.Free / 1GB
+        & (Get-Process -Id $PID).Path -NoProfile -File $tidy -IfLow *> $null
+        $drive = Get-PSDrive -Name $drive.Name -ErrorAction SilentlyContinue
+        Say ("Only {0:N1} GB free on {1}: {2} made it {3:N1} GB." -f $was, $drive.Root, $tidy, ($drive.Free / 1GB)) | Out-Host
+    }
     $item = Get-Item -LiteralPath $link -Force -ErrorAction SilentlyContinue
     $isLink = $item -and ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)
     if (-not $isLink -and $drive -and $drive.Free -lt 8GB) {
