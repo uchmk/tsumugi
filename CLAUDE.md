@@ -9,7 +9,7 @@ Claude Code などの AI CLI のセッションを何本も並べて動かすた
 - **uchmk のアプリの共通仕様**（common.toml・設定の画面・テーマ・時計、共有のクレート `ito-common`・`ito-theme`・`ito-prefs`）は
   ito の [docs/common-spec.md](https://github.com/uchmk/ito/blob/main/docs/common-spec.md)。kura（旧 filer）と yagura（旧 mimamori）もこれに従う。仕様を変えたら ito の文書も直す。
 - Cargo の workspace。クレートは `crates/` の下に置く。版はルートの `Cargo.toml` の `[workspace.package]` で 1 つ。
-- **push の前に `scripts/verify.sh` を 1 回回す。**最後の行が `ALL OK: …` なら push してよい（test、clippy を Linux と `x86_64-pc-windows-msvc` の両方で `-D warnings`）。
+- **push の前に `scripts/verify.sh` を 1 回回す。**最後の行が `ALL OK: …` なら push してよい（test、clippy を Linux・`x86_64-pc-windows-msvc`・`aarch64-apple-darwin` の 3 つで `-D warnings`。どの機械からでも 3 つとも回る。Mac の外の macOS は objc2 が C を要るので cargo-zigbuild で（無ければ PyPI から入れる））。
 
 ## 作業ルール
 
