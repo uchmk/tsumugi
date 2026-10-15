@@ -1850,10 +1850,14 @@ impl App {
 
     /// The tab shown, following a new session to the tab it landed in.
     fn current(&mut self, workspaces: &[Workspace]) -> Option<Workspace> {
+        // The tab whose saved shape went out this frame: keys moved below go
+        // with that shape, not with the tab as the splits made it (#113).
+        let mut shaped = None;
         if let Some((tree, first, since)) = &self.opening {
             let ids = tree.leaves();
             if let (Some(client), Some(w)) = (&self.client, workspaces.iter().find(|w| ids.iter().all(|id| w.layout.contains(id)))) {
                 client.set_layout(w.id, tree.clone(), *first);
+                shaped = Some((w.id, tree.clone()));
                 // The shape carries the keys to the first pane. Setting them
                 // there below would send the tab as the splits made it, and
                 // that would land after the shape (#113).
@@ -1875,12 +1879,16 @@ impl App {
                 self.following = None;
             }
         }
+        let focus = |me: &Self, w: &Workspace, id: SessionId| match (&me.client, &shaped) {
+            (Some(client), Some((tab, tree))) if *tab == w.id => client.set_layout(w.id, tree.clone(), id),
+            _ => me.set_focus(w, id),
+        };
         if let Some((id, since)) = self.showing {
             if let Some(w) = workspaces.iter().find(|w| w.layout.contains(&id)) {
                 self.active = Some(w.id);
                 self.showing = None;
                 if w.focus != id {
-                    self.set_focus(w, id);
+                    focus(self, w, id);
                 }
             } else if since.elapsed() > std::time::Duration::from_secs(5) {
                 self.showing = None;
@@ -1890,10 +1898,11 @@ impl App {
             if let Some(w) = workspaces.iter().find(|w| w.layout.contains(&new)) {
                 self.active = Some(w.id);
                 self.pending = None;
-                // `tsumugi attach` names a pane, maybe not the tab's focus. A
-                // layout still opening sets the keys with its shape (#113).
-                if w.focus != new && self.opening.is_none() {
-                    self.set_focus(w, new);
+                // `tsumugi attach` names a pane, maybe not the tab's focus. In
+                // a layout still opening, the shape puts the keys (#113).
+                let opening_here = self.opening.as_ref().is_some_and(|(_, first, _)| w.layout.contains(first));
+                if w.focus != new && !opening_here {
+                    focus(self, w, new);
                 }
             }
         }
