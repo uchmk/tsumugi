@@ -76,6 +76,8 @@ struct State {
     shows: Vec<SessionId>,
     /// The answer to `show`, taken by it.
     shown: Option<Result<(), String>>,
+    /// Called on the reader thread as a `show` comes in (`on_show`).
+    on_show: Option<Arc<dyn Fn() + Send + Sync>>,
     /// The connection is gone (the server stopped, or never answered).
     lost: bool,
 }
@@ -471,6 +473,13 @@ impl Client {
         std::mem::take(&mut self.0.lock().shows)
     }
 
+    /// `f` runs on the reader thread when a window is asked to show a
+    /// session, before the wake: a minimized window draws no frame, so the
+    /// wake alone would not bring it back.
+    pub fn on_show(&self, f: impl Fn() + Send + Sync + 'static) {
+        self.0.lock().on_show = Some(Arc::new(f));
+    }
+
     /// Send raw bytes to a session as if typed (a notification's Allow is
     /// Enter, its Deny Esc).
     pub fn input(&self, id: SessionId, bytes: Vec<u8>) {
@@ -665,7 +674,13 @@ fn receive(inner: &Inner, msg: ToClient) {
         ToClient::Asked { n, id, text } => st.asks.push((n, id, text)),
         ToClient::AskGone { n } => st.asks.retain(|a| a.0 != n),
         ToClient::AskDone(r) => st.ask_done = Some(r),
-        ToClient::Show { id } => st.shows.push(id),
+        ToClient::Show { id } => {
+            st.shows.push(id);
+            if let Some(f) = st.on_show.clone() {
+                drop(st);
+                f();
+            }
+        }
         ToClient::Shown(r) => st.shown = Some(r),
         // An error answers the request waiting on one (a spawn), if any.
         ToClient::Error(e) => st.spawned.push_back(Err(e)),

@@ -230,9 +230,10 @@ pub fn set_answer_buttons(on: bool) {
 }
 
 /// The window out of the taskbar and in front (a click on a notification
-/// while it is minimized; the click gives the right to the front).
+/// while it is minimized, or `tsumugi focus`; the click, or the CLI's
+/// AllowSetForegroundWindow, gives the right to the front).
 #[cfg(windows)]
-fn restore_window(handle: isize) {
+pub fn restore_window(handle: isize) {
     use windows::Win32::Foundation::HWND;
     use windows::Win32::UI::WindowsAndMessaging::{IsIconic, SetForegroundWindow, ShowWindow, SW_RESTORE};
     let hwnd = HWND(handle as *mut _);

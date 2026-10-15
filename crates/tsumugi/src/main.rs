@@ -326,6 +326,18 @@ fn focus(args: &[String]) -> std::process::ExitCode {
     match client.show(id, Duration::from_secs(5)) {
         Ok(()) => std::process::ExitCode::SUCCESS,
         Err(e) if e.contains("no tsumugi window") => {
+            // The window outlives this command; if it inherited the caller's
+            // pipes, whoever reads this command's output would wait on it.
+            #[cfg(windows)]
+            unsafe {
+                use windows::Win32::Foundation::{SetHandleInformation, HANDLE_FLAGS, HANDLE_FLAG_INHERIT};
+                use windows::Win32::System::Console::{GetStdHandle, STD_ERROR_HANDLE, STD_INPUT_HANDLE, STD_OUTPUT_HANDLE};
+                for which in [STD_INPUT_HANDLE, STD_OUTPUT_HANDLE, STD_ERROR_HANDLE] {
+                    if let Ok(h) = GetStdHandle(which) {
+                        let _ = SetHandleInformation(h, HANDLE_FLAG_INHERIT.0, HANDLE_FLAGS(0));
+                    }
+                }
+            }
             let opened = std::env::current_exe().and_then(|exe| {
                 std::process::Command::new(exe)
                     .args(["attach", &id.to_string()])
@@ -1167,6 +1179,11 @@ struct App {
     /// A pane sent to a tab of its own with the keys, the tab it left and
     /// when: its new tab is shown once the server has made it.
     following: Option<(SessionId, WorkspaceId, std::time::Instant)>,
+    /// A session `tsumugi focus` asked for and when: its tab is shown once
+    /// it is in one, or never after a few seconds (a tab closed meanwhile).
+    showing: Option<(SessionId, std::time::Instant)>,
+    /// The window's own handle (Windows), for `raise_on_show`.
+    window: Option<isize>,
     /// The WSL distributions and SSH hosts the new-session dialog offers,
     /// looked for again each time it opens.
     places: std::sync::Arc<std::sync::Mutex<Vec<remote::Where>>>,
@@ -1637,6 +1654,10 @@ impl App {
             },
             Err(e) => (None, Some(e), None),
         };
+        let window = window_handle(cc);
+        if let Some(client) = &client {
+            raise_on_show(client, window);
+        }
         Self {
             client,
             failed,
@@ -1644,6 +1665,8 @@ impl App {
             active: std::env::var(menu::SHOW_TAB).ok().and_then(|v| v.parse().ok()),
             pending: SHOW_SESSION.get().copied(),
             following: None,
+            showing: None,
+            window,
             places: Default::default(),
             panes: HashMap::new(),
             views: HashMap::new(),
@@ -1759,7 +1782,7 @@ impl App {
             bell_opening: false,
             alerts: alert::Alerts::default(),
             spend: spend::Watch::default(),
-            teller: alert::Teller::start(window_handle(cc), {
+            teller: alert::Teller::start(window, {
                 let ctx = cc.egui_ctx.clone();
                 move || ctx.request_repaint()
             }),
@@ -1831,6 +1854,17 @@ impl App {
                 self.following = None;
             } else if since.elapsed() > std::time::Duration::from_secs(5) {
                 self.following = None;
+            }
+        }
+        if let Some((id, since)) = self.showing {
+            if let Some(w) = workspaces.iter().find(|w| w.layout.contains(&id)) {
+                self.active = Some(w.id);
+                self.showing = None;
+                if w.focus != id {
+                    self.set_focus(w, id);
+                }
+            } else if since.elapsed() > std::time::Duration::from_secs(5) {
+                self.showing = None;
             }
         }
         if let Some(new) = self.pending {
@@ -3998,7 +4032,9 @@ impl App {
                 match made {
                     Ok(path) => {
                         self.say(trf("toast.worktree_made", &[&home_short(&path)]), false);
-                        self.worktrees.push(path.clone());
+                        if !self.worktrees.contains(&path) {
+                            self.worktrees.push(path.clone());
+                        }
                         c.folder = path;
                         self.create(client, c, current);
                     }
@@ -4050,6 +4086,9 @@ impl App {
                     Ok(()) => {
                         self.say(trf("toast.worktree_removed", &[&home_short(&path)]), false);
                         self.worktrees.retain(|w| *w != path);
+                        // A read still out may have been made before the
+                        // removing and would bring the path back.
+                        self.worktree_reading = None;
                     }
                     Err(e) => self.say(e, true),
                 }
@@ -6190,6 +6229,17 @@ fn quiet(i: &Info, muted_tags: &[String]) -> bool {
     i.muted || i.tags.iter().any(|t| muted_tags.contains(t))
 }
 
+/// `tsumugi focus` to a minimized window, which draws no frame: the
+/// client's reader thread brings it back (Windows).
+fn raise_on_show(client: &Client, window: Option<isize>) {
+    #[cfg(windows)]
+    if let Some(h) = window {
+        client.on_show(move || alert::restore_window(h));
+    }
+    #[cfg(not(windows))]
+    let _ = (client, window);
+}
+
 /// The window's own handle, for the taskbar's number (Windows).
 fn window_handle(cc: &eframe::CreationContext<'_>) -> Option<isize> {
     use raw_window_handle::{HasWindowHandle, RawWindowHandle};
@@ -6687,7 +6737,7 @@ impl App {
         // `tsumugi focus`: to the front, with that session's tab shown and
         // its pane given the keys.
         for id in client.take_shows() {
-            self.pending = Some(id);
+            self.showing = Some((id, std::time::Instant::now()));
             ctx.send_viewport_cmd(egui::ViewportCommand::Visible(true));
             ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(false));
             ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
@@ -7680,6 +7730,7 @@ impl App {
                 // server): every tab comes back at once, with no Welcome
                 // back to answer again.
                 self.restore = if restore.is_some() && client.restore().unwrap_or(0) > 0 { None } else { restore };
+                raise_on_show(&client, self.window);
                 self.client = Some(client);
                 self.failed = None;
             }

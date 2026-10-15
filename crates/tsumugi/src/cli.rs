@@ -89,9 +89,19 @@ pub fn new(client: &Client, n: New) -> Result<SessionId, String> {
         None => folder,
     };
     let shell = None;
-    let pane = client
-        .spawn_typing(folder, shell, Size::new(80, 24), (8, 16), Place::NewWorkspace, n.command)
-        .map_err(|e| format!("the session did not start: {e}"))?;
+    let pane = match client.spawn_typing(folder.clone(), shell, Size::new(80, 24), (8, 16), Place::NewWorkspace, n.command) {
+        Ok(pane) => pane,
+        Err(e) => {
+            // No session will ever end in the worktree just made, so no
+            // window would ask to remove it: take it back here.
+            if n.worktree.is_some() {
+                if let Err(w) = crate::worktree::remove(&folder) {
+                    return Err(format!("the session did not start: {e} (the worktree {} stays: {w})", folder.display()));
+                }
+            }
+            return Err(format!("the session did not start: {e}"));
+        }
+    };
     let id = pane.id();
     for t in n.tags.iter().filter_map(|t| tsumugi_mux::proto::tag_name(t)) {
         client.tag(vec![id], t, true);
