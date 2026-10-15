@@ -36,7 +36,8 @@ row a look, find something that can be **read**:
 
 Start a test with its own state and settings so nothing of the owner's is
 touched: `TSUMUGI_STATE_HOME=<scratch>` and `TSUMUGI_CONFIG_HOME=<scratch>` (the state and `config.toml` go in it),
-and `TSUMUGI_ADDRESS=<a pipe name of its own>` so the run's server is not the
+`UCHMK_CONFIG_DIR=<scratch>\uchmk` holding a copy of the owner's `common.toml` and `themes` (the shared settings:
+language, scale, clock, theme), and `TSUMUGI_ADDRESS=<a pipe name of its own>` so the run's server is not the
 owner's. An unattended run has them set already, and `scripts\wintest-kit.ps1`
 sets them when dot-sourced by hand. **Never stop or restart the owner's own
 server**: their Claude Code sessions live in it.

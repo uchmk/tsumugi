@@ -33,10 +33,13 @@
 #   Stop-Mine                           every window and the server this kit started; never the owner's
 #
 # Isolation: auto-wintest.ps1 sets TSUMUGI_ADDRESS, TSUMUGI_STATE_HOME,
-# TSUMUGI_CONFIG_HOME, TSUMUGI_PTY_LOG and TSUMUGI_KEYLOG for the whole run, and
-# WINTEST_KIT (the kit's folder) and WINTEST_EXE, so even a bare `tsumugi ls`
-# reaches the run's own server: the owner's server, sessions and settings are
-# never touched. By hand, the kit sets them itself (a folder under TEMP).
+# TSUMUGI_CONFIG_HOME, UCHMK_CONFIG_DIR, TSUMUGI_PTY_LOG and TSUMUGI_KEYLOG for
+# the whole run, and WINTEST_KIT (the kit's folder) and WINTEST_EXE, so even a
+# bare `tsumugi ls` reaches the run's own server: the owner's server, sessions
+# and settings are never touched. UCHMK_CONFIG_DIR is a copy of the owner's
+# common.toml and themes (Copy-UchmkFolder), so the shared settings (language,
+# scale, clock, theme) read the same and a switch writes the copy (#59). By
+# hand, the kit sets them itself (a folder under TEMP).
 
 $ErrorActionPreference = 'Stop'
 
@@ -213,6 +216,21 @@ public static class Native {
     [void][TsumugiKit.Native]::SetProcessDpiAwarenessContext([IntPtr]::new(-4))
 }
 
+# The uchmk folder for a test (UCHMK_CONFIG_DIR): the owner's common.toml and
+# themes copied once into $To, which then stays as the test left it. Returns
+# $To.
+function Copy-UchmkFolder([string]$To) {
+    if (-not (Test-Path -LiteralPath $To)) {
+        New-Item -ItemType Directory -Force -Path $To | Out-Null
+        $from = Join-Path $env:APPDATA 'uchmk'
+        foreach ($name in 'common.toml', 'themes') {
+            $p = Join-Path $from $name
+            if (Test-Path -LiteralPath $p) { Copy-Item -Recurse -LiteralPath $p -Destination $To }
+        }
+    }
+    $To
+}
+
 # Sets the isolation when the run's script has not (by hand). Idempotent.
 function Use-Isolation {
     if (-not $env:WINTEST_KIT) { $env:WINTEST_KIT = Join-Path $env:TEMP 'tsumugi-kit' }
@@ -224,6 +242,7 @@ function Use-Isolation {
         $env:TSUMUGI_CONFIG_HOME = $script:KitDir
         $env:TSUMUGI_PTY_LOG = Join-Path $script:KitDir 'pty.log'
     }
+    if (-not $env:UCHMK_CONFIG_DIR) { $env:UCHMK_CONFIG_DIR = Copy-UchmkFolder (Join-Path $script:KitDir 'uchmk') }
     $env:TSUMUGI_KEYLOG = '1'
     Remove-Item Env:TSUMUGI_SESSION -ErrorAction SilentlyContinue
     if (-not $env:WINTEST_EXE) { $env:WINTEST_EXE = (Resolve-Path 'target\release\tsumugi.exe').Path }
