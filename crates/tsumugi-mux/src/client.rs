@@ -752,6 +752,10 @@ impl Pane for RemotePane {
         self.inner.send(ToServer::SelectWord { id: self.id, cell });
     }
 
+    fn select_line(&self, cell: (usize, usize)) {
+        self.inner.send(ToServer::SelectLine { id: self.id, cell });
+    }
+
     fn clear_selection(&self) {
         self.inner.send(ToServer::ClearSelection { id: self.id });
     }

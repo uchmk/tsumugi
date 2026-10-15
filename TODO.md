@@ -180,6 +180,6 @@ ito 0.35.2（rev `5d413895d2f9eb2dd2a490c54615ebf3f96c5681`）の ito-select に
 yagura のセッションは「tsumugi の選択を ito-select に移す」と言ってきたが、ito-select は描いた文字（galley）を選ぶ部品で、端末の格子には使えない。
 tsumugi には描いた文字の選択が無く、端末のペインの語と Ctrl+クリックのリンクは ito-pane（`view.rs`）に前からある。足りないのはトリプルクリックだけ。
 
-- [ ] 端末のペインでトリプルクリックすると、その行（折り返した続きも）を選んでコピーする。直すのは ito-pane: `view.rs` の `double_clicked` の前で `triple_clicked` を見て、
+- [x] 端末のペインでトリプルクリックすると、その行（折り返した続きも）を選んでコピーする。（v0.109.18）直すのは ito-pane: `view.rs` の `double_clicked` の前で `triple_clicked` を見て、
   alacritty の `SelectionType::Lines` で選ぶ。`Pane` に `select_line` を足し、tsumugi-mux は `ToServer::SelectLine` を足す（取り決めの版が上がる）。
   ito を上げるときは全部のクレートを同じ `rev` に。kura も同じペインなので一緒に効く。TESTING.md に行を足す【実機】。
