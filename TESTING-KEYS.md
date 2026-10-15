@@ -36,10 +36,10 @@ Windows and Linux keys first; the macOS key is after `·`.
 - [x] `Ctrl+Shift+Down` · `Cmd+Shift+Down` — To the prompt below · `next_prompt`
 - [~] `Ctrl+Shift+F` · `Cmd+F` — Find in the pane · `find`
 - [~] `F1` · `F1` — Every key (this help) · `help`
-- [ ] `Ctrl+Shift+X` · `Cmd+Shift+X` — Swap the pane with the next one · `swap_pane`
+- [x] `Ctrl+Shift+X` · `Cmd+Shift+X` — Swap the pane with the next one · `swap_pane`
 - [x] `Ctrl+Shift+E` · `Cmd+Shift+E` — Give every pane the same room · `equalize`
 - [x] `Ctrl+Shift+J` · `Cmd+Shift+J` — The pane to a tab of its own · `pane_to_tab`
-- [ ] `Ctrl+Shift+H` · `Cmd+Shift+H` — The next tab joins this one, beside the pane · `join_tab`
+- [x] `Ctrl+Shift+H` · `Cmd+Shift+H` — The next tab joins this one, beside the pane · `join_tab`
 - [x] `Ctrl+Shift+R` · `Cmd+Shift+R` — Record the pane (asciinema .cast) · `record`
 - [x] `Ctrl+Shift+S` · `Cmd+Shift+S` — Write a work log of the pane (text in Downloads) · `work_log`
 - [x] `Ctrl+Shift+G` · `Cmd+Shift+G` — Save this tab's layout · `save_layout`
