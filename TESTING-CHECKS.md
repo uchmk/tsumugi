@@ -154,21 +154,21 @@
 
 ## 4. States, notifications and answering
 
-- [ ] **4.1** `claude` in a pane, ask it to do something that needs permission → The card turns gold with **Waiting for you** and Claude's words
-- [ ] **4.2** With the hooks (12.x), Claude finishing a reply → The card turns green, **Done**
-- [ ] **4.3** The waiting card's `1 Yes` button, without going to the tab → Claude goes on, as if `1` were typed there; the card leaves the waiting state
-- [ ] **4.4** A card waiting with no menu on screen → No buttons
+- [~] **4.1** `claude` in a pane, ask it to do something that needs permission → The card turns gold with **Waiting for you** and Claude's words
+- [~] **4.2** With the hooks (12.x), Claude finishing a reply → The card turns green, **Done**
+- [x] **4.3** The waiting card's `1 Yes` button, without going to the tab → Claude goes on, as if `1` were typed there; the card leaves the waiting state
+- [~] **4.4** A card waiting with no menu on screen → No buttons
 - [ ] **4.5** Another window in front while a session starts waiting → A Windows toast titled `<folder> is waiting for you`, the work's name and words below, with **Open** and **Later** (and **Allow** and **Deny** while it waits, 4.26); the title starts with ⏳ (waiting), ❌ (failed) or ✅ (done), and a waiting or failed one stays on screen until dismissed while a done one goes away by itself; the tsumugi logo (two threads on a dark tile) is the big image at the left and the small mark by the app name in the header; a second notice from the same session replaces it in the Action Center
 - [ ] **4.6** Click the toast, or Open; then Later on another → tsumugi comes to the front on that pane; Later only puts the toast away
 - [ ] **4.7** The taskbar button while two wait, then one fails → A gold `2` with dark digits; red with white once one has failed; it clears when the window is looked at
 - [ ] **4.8** Settings → Notifications: flash and sound on for waiting, then 4.5 again → The taskbar button flashes and the system's message sound plays once (the error sound for an error)
 - [ ] **4.9** Right-click a tag chip → mute → Sessions with the tag tell only in the bell
-- [ ] **4.10** The bell, right of the search box at the top; then `Ctrl+Shift+N` (macOS `Cmd+Shift+N`) twice in a shell → The list of notices under it, newest first, its names without Claude Code's `✳`; a click goes to the session and marks it read; no bell in the sidebar's heading. The key opens the same list and closes it, and nothing reaches the shell. With the list open, `Down` / `Up` move a highlight over the rows (the list scrolls to it), `Enter` goes to that session and marks it read, `Esc` closes the list; none of them reach the shell
+- [~] **4.10** The bell, right of the search box at the top; then `Ctrl+Shift+N` (macOS `Cmd+Shift+N`) twice in a shell → The list of notices under it, newest first, its names without Claude Code's `✳`; a click goes to the session and marks it read; no bell in the sidebar's heading. The key opens the same list and closes it, and nothing reaches the shell. With the list open, `Down` / `Up` move a highlight over the rows (the list scrolls to it), `Enter` goes to that session and marks it read, `Esc` closes the list; none of them reach the shell
 - [x] **4.11** `printf '\e]9;hello\a'` in a pane → Marked waiting with `hello`, no hooks needed
 - [x] **4.12** `Ctrl+Shift+U` with two waiting → The one waiting longest first, then the other
-- [ ] **4.13** Two Claude Code sessions asking permission, then `Ctrl+Shift+Y` (or **List ›** at the sidebar's foot) → A panel: each waiting session with what it said, how long, its choices as buttons and a tick; a choice's button types its number there
-- [ ] **4.14** In that panel, **Yes to 2** → Both go on as if `1` were typed in each; untick one first and only the other is answered; **No to N** types each menu's "No" choice
-- [ ] **4.15** A session waiting with a menu of other words (no "Yes"/"No") → Not counted in Yes to N / No to N; its own buttons still work
+- [~] **4.13** Two Claude Code sessions asking permission, then `Ctrl+Shift+Y` (or **List ›** at the sidebar's foot) → A panel: each waiting session with what it said, how long, its choices as buttons and a tick; a choice's button types its number there
+- [x] **4.14** In that panel, **Yes to 2** → Both go on as if `1` were typed in each; untick one first and only the other is answered; **No to N** types each menu's "No" choice
+- [~] **4.15** A session waiting with a menu of other words (no "Yes"/"No") → Not counted in Yes to N / No to N; its own buttons still work
 - [x] **4.16** `exit` a Claude Code session after some work; then the panel's **Recently closed** (or search `recently`) → It is listed: today at …, done, its tokens, and its last lines without a click (all of them on the picked one, two on the rest); `Up` / `Down` move the pick; `Enter` (and a double click) opens a new tab in its folder typing `claude --resume <id>`; `Delete` takes the picked one off and the pick stays in place, and a note at the bottom offers **Undo** for eight seconds (the button or `Ctrl+Z`), which puts it back in its place (several deletes, or **Clear the list**, come back together); the list survives a restart of tsumugi
 - [ ] **4.17** A Claude Code session asking to run a Bash command; `Ctrl+Shift+Y` → Under what it said: "Bash command", the command and its description, "Do you want to proceed?", in the terminal's font, before the buttons
 - [ ] **4.18** A Claude Code session asking to run one Bash command → `Ctrl+Shift+Y` → **Always allow…** → **Add and say yes** → Before: the rule `Bash(<command>)` and the file named; after: the project's `.claude/settings.local.json` has it under `permissions.allow` (the old file as `.tsumugi-backup`), `1` typed, a toast; next time Claude Code runs it without asking. No **Always allow…** for an edit or a command of several lines
