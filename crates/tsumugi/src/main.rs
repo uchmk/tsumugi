@@ -4123,7 +4123,9 @@ impl App {
         }
         let Some(path) = self.worktree_ask.clone() else { return };
         let mut answer = None;
-        chrome::modal(ctx, egui::LayerId::new(egui::Order::Foreground, egui::Id::new("worktree-ask")));
+        let mut first = None;
+        let layer = egui::LayerId::new(egui::Order::Foreground, egui::Id::new("worktree-ask"));
+        chrome::modal(ctx, layer);
         egui::Area::new(egui::Id::new("worktree-ask"))
             .order(egui::Order::Foreground)
             .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
@@ -4151,15 +4153,19 @@ impl App {
                             )
                             .fill(chrome::red());
                             let (remove, keep) = chrome::foot(ui, remove, true, tr("dialog.worktree_keep"));
+                            first = Some(keep.id);
                             if remove.clicked() {
                                 answer = Some(true);
                             }
-                            if keep.clicked() {
+                            if keep.clicked() || ui.input(|i| i.key_pressed(egui::Key::Escape)) {
                                 answer = Some(false);
                             }
                         });
                     });
             });
+        // The keys stay in the ask, on Keep first (#110): Tab past Remove
+        // comes back round, and Enter keeps.
+        chrome::hold_tab(ctx, layer, first);
         match answer {
             Some(true) => {
                 let (tx, rx) = std::sync::mpsc::channel();
@@ -4194,7 +4200,9 @@ impl App {
         }
         let Some(running) = self.closing else { return };
         let mut answer = None;
-        chrome::modal(ctx, egui::LayerId::new(egui::Order::Foreground, egui::Id::new("close-ask")));
+        let mut first = None;
+        let layer = egui::LayerId::new(egui::Order::Foreground, egui::Id::new("close-ask"));
+        chrome::modal(ctx, layer);
         egui::Area::new(egui::Id::new("close-ask"))
             .order(egui::Order::Foreground)
             .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
@@ -4227,6 +4235,7 @@ impl App {
                             )
                             .fill(fill);
                             let (close, cancel) = chrome::foot(ui, close, true, tr("dialog.cancel"));
+                            first = Some(cancel.id);
                             if close.clicked() {
                                 answer = Some(true);
                             }
@@ -4236,6 +4245,8 @@ impl App {
                         });
                     });
             });
+        // The keys stay in the ask, on Cancel first (#110).
+        chrome::hold_tab(ctx, layer, first);
         match answer {
             Some(true) => {
                 self.closing = None;
@@ -4255,7 +4266,9 @@ impl App {
         let name =
             sessions.iter().find(|s| s.id == id).map_or_else(|| format!("#{id}"), |s| format!("#{id} {} · {}", s.command, s.cwd.display()));
         let mut answer = None;
-        chrome::modal(ctx, egui::LayerId::new(egui::Order::Foreground, egui::Id::new("send-ask")));
+        let mut first = None;
+        let layer = egui::LayerId::new(egui::Order::Foreground, egui::Id::new("send-ask"));
+        chrome::modal(ctx, layer);
         egui::Area::new(egui::Id::new("send-ask"))
             .order(egui::Order::Foreground)
             .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
@@ -4286,6 +4299,7 @@ impl App {
                             )
                             .fill(chrome::red());
                             let (allow, refuse) = chrome::foot(ui, allow, true, tr("dialog.send_refuse"));
+                            first = Some(refuse.id);
                             if allow.clicked() {
                                 answer = Some(true);
                             }
@@ -4295,6 +4309,8 @@ impl App {
                         });
                     });
             });
+        // The keys stay in the ask, on Refuse first (#110).
+        chrome::hold_tab(ctx, layer, first);
         if let Some(allow) = answer {
             client.decide(n, allow);
         }
@@ -6388,8 +6404,10 @@ impl App {
         let find = self.find.as_ref().is_some_and(find::Bar::keyed);
         // In the order they are drawn over each other, the top first.
         let overlays = [
-            (self.closing.is_some(), "close"),
             (self.paste_ask.is_some(), "paste"),
+            (self.send_asking(), "send"),
+            (self.closing.is_some(), "close"),
+            (self.worktree_ask.is_some(), "worktree"),
             (self.prefs.is_some(), "settings"),
             (self.help.is_some(), "help"),
             (self.search.is_some(), "palette"),
@@ -6469,6 +6487,13 @@ impl App {
             || self.bell_open.is_some()
             || self.closing.is_some()
             || self.paste_ask.is_some()
+            || self.worktree_ask.is_some()
+            || self.send_asking()
+    }
+
+    /// An MCP client's ask to type into a session is on the screen.
+    fn send_asking(&self) -> bool {
+        self.client.as_ref().is_some_and(|c| !c.asks().is_empty())
     }
 
     fn frame(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
@@ -6488,7 +6513,10 @@ impl App {
             || self.renaming_card.is_some()
             || self.noting_card.is_some()
             || self.find.as_ref().is_some_and(find::Bar::keyed)
-            || self.paste_ask.is_some();
+            || self.paste_ask.is_some()
+            || self.closing.is_some()
+            || self.worktree_ask.is_some()
+            || self.send_asking();
         keep_tab_for_pane(&ctx, own);
         self.poll_machines();
         let Some(client) = self.client.clone() else {
@@ -6854,7 +6882,10 @@ impl App {
                 || self.renaming_card.is_some()
                 || self.noting_card.is_some()
                 || self.find.as_ref().is_some_and(find::Bar::keyed)
-                || self.paste_ask.is_some();
+                || self.paste_ask.is_some()
+                || self.closing.is_some()
+                || self.worktree_ask.is_some()
+                || self.send_asking();
             if self.key_log {
                 // `TSUMUGI_KEYLOG=1`: every key press as the window gets it,
                 // to see on a real machine why a key does nothing.
