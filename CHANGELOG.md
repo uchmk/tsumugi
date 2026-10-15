@@ -5,6 +5,13 @@
 
 ## [未リリース]
 
+## [0.111.11] - 2026-10-16
+
+### 修正
+
+- Merge lanes（`scripts/merge-lanes.py`、ito 0.37.5 から写した）: レーンの報告の Proposals・Queue・Votes に「無い」とだけ書いた行
+  （`None.`、``No open `vote` issues.`` など）からも `finding` の issue を立てていた（#65、#72、#75、#108、#121）。その行は飛ばす。
+
 ## [0.111.10] - 2026-10-16
 
 ### 修正
