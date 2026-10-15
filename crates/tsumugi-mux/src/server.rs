@@ -17,7 +17,7 @@ use crossbeam_channel::{Receiver, Sender};
 use ito_pane::{Pane, Terminal};
 
 use crate::frame;
-use crate::proto::{Info, Notice, Place, ScrollBy, SessionId, State, ToClient, ToServer, Workspace, WorkspaceId, VERSION};
+use crate::proto::{Dir, Info, Node, Notice, Place, ScrollBy, SessionId, State, ToClient, ToServer, Workspace, WorkspaceId, VERSION};
 use crate::transport::{Address, Conn, Listener};
 
 type ClientId = u64;
@@ -578,6 +578,20 @@ fn handle(shared: &Arc<Shared>, client: ClientId, tx: &Sender<ToClient>, msg: To
                 let at = now.iter().position(|w| *w == wid).map_or(now.len(), |k| k + 1);
                 now.insert(at, ws);
                 *lock(&shared.order) = now;
+                broadcast_workspaces(shared, &workspaces);
+                save_soon(shared, SAVE_AFTER_CHANGE);
+            }
+        }
+        ToServer::JoinTab { from, into, dir, after } => {
+            let mut workspaces = lock(&shared.workspaces);
+            let holder = workspaces.values().find(|w| w.id != from && w.layout.contains(&into)).map(|w| w.id);
+            if let (Some(dst), true) = (holder, workspaces.contains_key(&from)) {
+                let src = workspaces.remove(&from).expect("just found");
+                if let Some(w) = workspaces.get_mut(&dst) {
+                    w.layout = graft(w.layout.clone(), &into, dir, after, src.layout);
+                }
+                // The tab is gone from the sidebar's own order too.
+                lock(&shared.order).retain(|w| *w != from);
                 broadcast_workspaces(shared, &workspaces);
                 save_soon(shared, SAVE_AFTER_CHANGE);
             }
@@ -1338,6 +1352,27 @@ fn place_session(shared: &Shared, workspaces: &mut BTreeMap<WorkspaceId, Workspa
 
 /// Tell every client the workspaces as they are now.
 /// The tabs in the sidebar's order: as dragged, then the rest by id.
+/// `layout` with the tree `sub` set beside the pane `at` (after it or
+/// before it, in `dir`), the two sharing what was the pane's room. `layout`
+/// as it was when there is no such pane.
+fn graft(layout: Node<SessionId>, at: &SessionId, dir: Dir, after: bool, sub: Node<SessionId>) -> Node<SessionId> {
+    match layout {
+        Node::Leaf(x) if x == *at => {
+            let (old, new) = (Box::new(Node::Leaf(x)), Box::new(sub));
+            let (first, second) = if after { (old, new) } else { (new, old) };
+            Node::Split { dir, ratio: 0.5, first, second }
+        }
+        Node::Leaf(x) => Node::Leaf(x),
+        Node::Split { dir: d, ratio, first, second } => {
+            if first.contains(at) {
+                Node::Split { dir: d, ratio, first: Box::new(graft(*first, at, dir, after, sub)), second }
+            } else {
+                Node::Split { dir: d, ratio, first, second: Box::new(graft(*second, at, dir, after, sub)) }
+            }
+        }
+    }
+}
+
 fn ordered<'a>(shared: &Shared, workspaces: &'a BTreeMap<WorkspaceId, Workspace>) -> Vec<&'a Workspace> {
     let order = lock(&shared.order);
     let mut list: Vec<&Workspace> = order.iter().filter_map(|id| workspaces.get(id)).collect();

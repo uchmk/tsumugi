@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 
 /// Bumped whenever a message changes shape: a client and a server that
 /// disagree say so at `Hello` instead of misreading each other.
-pub const VERSION: u32 = 42;
+pub const VERSION: u32 = 43;
 
 /// A `Hello` with this version asks the server to stop, writing down its
 /// tabs first so the next window can bring them back. `Hello` stays the
@@ -315,6 +315,16 @@ pub enum ToServer {
     /// one it was in (a pane dropped on the sidebar).
     OwnTab {
         id: SessionId,
+    },
+    /// Fold the whole tab `from` into the tab holding the pane `into`
+    /// (tmux's `join-pane`): the tab's panes keep their shape, set beside
+    /// that pane (in `dir`, after it or, not `after`, before it), the tab is
+    /// gone, and the keys stay where they were.
+    JoinTab {
+        from: WorkspaceId,
+        into: SessionId,
+        dir: Dir,
+        after: bool,
     },
     /// Record a session into an asciinema `.cast` file at `path` (its
     /// folder made if need be); `None` stops.

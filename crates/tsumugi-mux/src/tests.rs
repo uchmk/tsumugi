@@ -575,6 +575,43 @@ fn a_pane_becomes_a_tab_of_its_own() {
     }
 }
 
+/// A whole tab folded into another's split, beside a pane: its panes keep
+/// their shape, its tab is gone, and the keys stay in the tab that took it.
+#[test]
+fn a_tab_joins_another_tabs_split() {
+    use crate::{Dir, Node, Place};
+    use ito_layout::Toward;
+    let at = address();
+    let _srv = serve(&at).expect("the server starts");
+    let c = Client::connect(&at, || {}).expect("a client connects");
+    let size = Size::new(80, 24);
+    let a = c.spawn(std::env::temp_dir(), None, size, (8, 16)).expect("a starts");
+    let b = c.spawn(std::env::temp_dir(), None, size, (8, 16)).expect("b starts");
+    let d = c.spawn_at(std::env::temp_dir(), None, size, (8, 16), Place::Split { beside: b.id(), dir: Dir::Down }).expect("d starts");
+    let other = c.spawn(std::env::temp_dir(), None, size, (8, 16)).expect("a tab left alone");
+    c.list().unwrap();
+    let ws = c.workspaces();
+    assert_eq!(ws.len(), 3);
+    let (tab_a, tab_b) = (ws[0].id, ws[1].id);
+    c.join_tab(tab_b, a.id(), Toward::Right);
+    c.list().unwrap();
+    let ws = c.workspaces();
+    assert_eq!(ws.len(), 2, "b's tab is gone: {ws:?}");
+    assert_eq!(ws[0].id, tab_a);
+    assert_eq!(ws[0].layout.leaves(), vec![a.id(), b.id(), d.id()], "a, then b's split as it was");
+    assert!(matches!(&ws[0].layout, Node::Split { dir: Dir::Right, .. }));
+    assert_eq!(ws[0].focus, a.id(), "the keys stay");
+    assert_eq!(ws[1].layout, Node::Leaf(other.id()));
+    // A tab into itself, or into a pane that is not anywhere: nothing.
+    c.join_tab(tab_a, b.id(), Toward::Left);
+    c.join_tab(ws[1].id, u64::MAX, Toward::Left);
+    c.list().unwrap();
+    assert_eq!(c.workspaces().len(), 2);
+    for p in [a, b, d, other] {
+        p.kill();
+    }
+}
+
 /// After a restart: a new server with the old one's state file starts the
 /// same tab again, split the same way, each shell in its folder, and types
 /// `claude --resume` where Claude Code ran.

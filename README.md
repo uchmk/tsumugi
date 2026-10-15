@@ -771,7 +771,7 @@ run = "none"
 # split_down, zoom, search, rail, settings, input, rename, duplicate,
 # waiting_list, type_into_all, notifications, font_bigger, font_smaller,
 # font_reset, overview, copy_mode, find, prev_prompt, next_prompt, help,
-# swap_pane, equalize, pane_to_tab, record, work_log, save_layout,
+# swap_pane, equalize, pane_to_tab, join_tab, record, work_log, save_layout,
 # copy_output, quick_select, closed_sessions, changes, browser, read_only,
 # save_output, restart_server (these last six have no key until you give
 # one).

@@ -1398,6 +1398,9 @@ struct App {
     dragging_tab: Option<WorkspaceId>,
     /// Where the pointer was last seen during that drag, in the window.
     drag_seen: Option<egui::Pos2>,
+    /// The pane of this tab that tab being dragged is over, and the side of
+    /// it the tab would join on; let go there, the tab folds in.
+    join_target: Option<(SessionId, ito_layout::Toward)>,
     /// The search box, while it is open (the design's 1c).
     search: Option<palette::View>,
     /// What is being typed into a tab menu's "Add a tag".
@@ -1794,6 +1797,7 @@ impl App {
             view: View::load(),
             dragging_tab: None,
             drag_seen: None,
+            join_target: None,
             search: None,
             tag_input: String::new(),
             settings: settings_rx,
@@ -1985,6 +1989,14 @@ impl App {
                 if w.layout.leaves().len() > 1 {
                     client.own_tab(w.focus);
                     self.following = Some((w.focus, w.id, std::time::Instant::now()));
+                }
+            }
+            keys::Action::JoinTab => {
+                // The next tab in the sidebar's order, to the right of the
+                // pane with the keys; the keys stay in this tab.
+                let n = workspaces.len();
+                if n > 1 {
+                    client.join_tab(workspaces[(at + 1) % n].id, w.focus, ito_layout::Toward::Right);
                 }
             }
             keys::Action::Zoom => self.zoom = !self.zoom,
@@ -2670,6 +2682,7 @@ impl App {
                     palette::Command::Help => keys::Action::Help,
                     palette::Command::SwapPane => keys::Action::SwapPane,
                     palette::Command::Equalize => keys::Action::Equalize,
+                    palette::Command::JoinTab => keys::Action::JoinTab,
                     palette::Command::WorkLog => keys::Action::WorkLog,
                     palette::Command::Closed => keys::Action::ClosedList,
                     palette::Command::Changes => keys::Action::Changes,
@@ -3755,7 +3768,9 @@ impl App {
             }
             let screen = ui.ctx().content_rect();
             let out = self.drag_seen.is_some_and(|p| !screen.contains(p));
-            let gap = pointer.filter(|_| manual && !out).map(|p| rows.iter().take_while(|(_, r)| p.y > r.center().y).count());
+            let gap = pointer
+                .filter(|_| manual && !out && self.join_target.is_none())
+                .map(|p| rows.iter().take_while(|(_, r)| p.y > r.center().y).count());
             ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
             if let (Some(gap), Some((_, first))) = (gap, rows.first()) {
                 let y = match rows.get(gap) {
@@ -3766,14 +3781,18 @@ impl App {
                 ui.painter().line_segment([egui::pos2(x.min + 8.0, y), egui::pos2(x.max - 8.0, y)], egui::Stroke::new(2.0, chrome::cyan()));
             }
             if ui.input(|i| !i.pointer.any_down()) {
-                if out {
+                if let Some((into, toward)) = self.join_target.take().filter(|_| !out) {
+                    if let Some(client) = &self.client {
+                        client.join_tab(dragged, into, toward);
+                    }
+                } else if out {
                     menu::new_window(dragged, self.drag_seen.and_then(|p| torn_at(ui.ctx(), p)));
                 } else if let Some(gap) = gap {
                     if let Some(to) = drop_index(workspaces, &rows, dragged, gap) {
                         ops.push(SideOp::Move(dragged, to));
                     }
                 }
-                (self.dragging_tab, self.drag_seen) = (None, None);
+                (self.dragging_tab, self.drag_seen, self.join_target) = (None, None, None);
             }
         }
         let mut toasts = Vec::new();
@@ -5162,6 +5181,25 @@ impl App {
         resp.on_hover_text(chrome::state_words(info, chrome::now_ms()))
     }
 
+    /// Another tab dragged from the sidebar over a pane here: the side of the
+    /// pane it would join on, shown as the half it would take (`join_target`
+    /// keeps it for the release, which the sidebar sees).
+    fn join_preview(&mut self, ui: &egui::Ui, w: &Workspace, rects: &[(SessionId, Rect)]) {
+        self.join_target = None;
+        if !self.dragging_tab.is_some_and(|t| t != w.id) {
+            return;
+        }
+        let Some(p) = ui.ctx().pointer_latest_pos() else { return };
+        let Some((id, r)) = rects.iter().find(|(_, r)| from_rect(*r).contains(p)) else { return };
+        let (r, toward) = (from_rect(*r), drop::side(from_rect(*r), p));
+        let show = drop::preview(r, drop::Zone::Side(toward)).shrink(2.0);
+        let painter = ui.painter();
+        painter.rect_filled(show, 6.0, chrome::cyan().gamma_multiply(0.16));
+        painter.rect_stroke(show, 6.0, egui::Stroke::new(1.5, chrome::cyan()), egui::StrokeKind::Inside);
+        painter.text(show.center(), egui::Align2::CENTER_CENTER, tr("pane.join_here"), egui::FontId::proportional(13.0), chrome::cyan());
+        self.join_target = Some((*id, toward));
+    }
+
     /// A pane carried by its header: where it would land, shown on the pane
     /// under the pointer, and on release the tab's new shape (1f).
     fn carry(&mut self, ui: &egui::Ui, w: &Workspace, rects: &[(SessionId, Rect)]) {
@@ -5701,6 +5739,7 @@ impl App {
             self.set_focus(w, id);
         }
         self.carry(ui, w, &rects);
+        self.join_preview(ui, w, &rects);
 
         if self.zoom {
             // A pane hidden by the zoom that wants a person: a gold-ringed

@@ -60,6 +60,8 @@ pub enum Command {
     SwapPane,
     /// Give every pane of the tab the same room.
     Equalize,
+    /// Fold the next tab into this one, beside the pane with the keys.
+    JoinTab,
     /// Write a work log of the pane to a file as it goes, or finish it.
     WorkLog,
     /// Turn away typing and pasting into the pane, or let them in again.
@@ -71,13 +73,14 @@ pub enum Command {
 }
 
 impl Command {
-    pub const ALL: [Command; 29] = [
+    pub const ALL: [Command; 30] = [
         Command::NewSession,
         Command::SplitRight,
         Command::SplitDown,
         Command::Zoom,
         Command::SwapPane,
         Command::Equalize,
+        Command::JoinTab,
         Command::NextWaiting,
         Command::Waiting,
         Command::Notices,
@@ -127,6 +130,7 @@ impl Command {
             Command::Help => tr("palette.help").into(),
             Command::SwapPane => tr("palette.swap_pane").into(),
             Command::Equalize => tr("palette.equalize").into(),
+            Command::JoinTab => tr("palette.join_tab").into(),
             Command::WorkLog => tr("palette.work_log").into(),
             Command::ReadOnly => tr("palette.read_only").into(),
             Command::SecureInput => tr("palette.secure_input").into(),
@@ -153,6 +157,7 @@ impl Command {
             Command::Help => Action::Help,
             Command::SwapPane => Action::SwapPane,
             Command::Equalize => Action::Equalize,
+            Command::JoinTab => Action::JoinTab,
             Command::WorkLog => Action::WorkLog,
             Command::Closed => Action::ClosedList,
             Command::Changes => Action::Changes,

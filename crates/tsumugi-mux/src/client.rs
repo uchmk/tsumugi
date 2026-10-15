@@ -370,6 +370,19 @@ impl Client {
         self.0.send(ToServer::OwnTab { id });
     }
 
+    /// Fold the tab `from` into the tab holding the pane `into`, on the side
+    /// `toward` of it.
+    pub fn join_tab(&self, from: WorkspaceId, into: SessionId, toward: ito_layout::Toward) {
+        use ito_layout::{Dir, Toward};
+        let (dir, after) = match toward {
+            Toward::Left => (Dir::Right, false),
+            Toward::Right => (Dir::Right, true),
+            Toward::Up => (Dir::Down, false),
+            Toward::Down => (Dir::Down, true),
+        };
+        self.0.send(ToServer::JoinTab { from, into, dir, after });
+    }
+
     /// Record a session into a `.cast` file at `path`; `None` stops. What
     /// went wrong comes back as an error.
     pub fn record(&self, id: SessionId, path: Option<PathBuf>) {

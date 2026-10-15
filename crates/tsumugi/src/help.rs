@@ -39,6 +39,7 @@ const KINDS: [(&str, &[Action]); 4] = [
             Action::SwapPane,
             Action::Equalize,
             Action::PaneToTab,
+            Action::JoinTab,
             Action::Record,
             Action::WorkLog,
             Action::CopyOutput,

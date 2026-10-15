@@ -95,6 +95,9 @@ pub enum Action {
     /// The pane with the keys out of its split into a tab of its own (the
     /// drop on the sidebar, with the keys).
     PaneToTab,
+    /// The next tab folded into this one, beside the pane with the keys
+    /// (tmux's `join-pane`; the drop of a tab from the sidebar on a pane).
+    JoinTab,
     /// Record the pane with the keys to an asciinema `.cast` file, or stop.
     Record,
     /// Write the pane with the keys to a text file in Downloads as it goes
@@ -169,7 +172,7 @@ fn action_with(key: Key, m: Modifiers, mac: bool, bound: &Bound) -> Option<Actio
 ///
 /// An empty own key is no key: the action has none until the settings give it
 /// one (the palette and the settings screen's button do it without a key).
-pub const NAMED: [(Action, &str, &str, &str); 40] = [
+pub const NAMED: [(Action, &str, &str, &str); 41] = [
     (Action::NewTab, "new_tab", "Ctrl+Shift+T", "Cmd+T"),
     (Action::CloseTab, "close_tab", "Ctrl+Shift+W", "Cmd+W"),
     (Action::NextTab, "next_tab", "Ctrl+Tab", "Ctrl+Tab"),
@@ -212,6 +215,8 @@ pub const NAMED: [(Action, &str, &str, &str); 40] = [
     (Action::SwapPane, "swap_pane", "Ctrl+Shift+X", "Cmd+Shift+X"),
     (Action::Equalize, "equalize", "Ctrl+Shift+E", "Cmd+Shift+E"),
     (Action::PaneToTab, "pane_to_tab", "Ctrl+Shift+J", "Cmd+Shift+J"),
+    // H for hitch: tmux's join-pane, the other way round from J.
+    (Action::JoinTab, "join_tab", "Ctrl+Shift+H", "Cmd+Shift+H"),
     // R for record. Ctrl+R alone stays the shell's history search.
     (Action::Record, "record", "Ctrl+Shift+R", "Cmd+Shift+R"),
     // S for save, as the menu's "Save the output to a file".
@@ -320,6 +325,7 @@ pub fn title(a: Action) -> &'static str {
         Action::SwapPane => "Swap the pane with the next one",
         Action::Equalize => "Give every pane the same room",
         Action::PaneToTab => "The pane to a tab of its own",
+        Action::JoinTab => "The next tab joins this one, beside the pane",
         Action::Record => "Record the pane (asciinema .cast)",
         Action::WorkLog => "Write a work log of the pane (text in Downloads)",
         Action::CopyOutput => "Copy the last command's output",
@@ -908,6 +914,7 @@ fn action_on(key: Key, m: Modifiers, mac: bool) -> Option<Action> {
             Key::X if cmd && m.shift => Some(Action::SwapPane),
             Key::E if cmd && m.shift => Some(Action::Equalize),
             Key::J if cmd && m.shift => Some(Action::PaneToTab),
+            Key::H if cmd && m.shift => Some(Action::JoinTab),
             Key::R if cmd && m.shift => Some(Action::Record),
             Key::S if cmd && m.shift => Some(Action::WorkLog),
             Key::L if cmd && m.shift => Some(Action::CopyOutput),
@@ -944,6 +951,7 @@ fn action_on(key: Key, m: Modifiers, mac: bool) -> Option<Action> {
         Key::X if ctrl_shift => Some(Action::SwapPane),
         Key::E if ctrl_shift => Some(Action::Equalize),
         Key::J if ctrl_shift => Some(Action::PaneToTab),
+        Key::H if ctrl_shift => Some(Action::JoinTab),
         Key::R if ctrl_shift => Some(Action::Record),
         Key::S if ctrl_shift => Some(Action::WorkLog),
         Key::L if ctrl_shift => Some(Action::CopyOutput),
@@ -1032,6 +1040,8 @@ mod tests {
         assert_eq!(action_on(Key::X, CTRL_SHIFT, false), Some(Action::SwapPane));
         assert_eq!(action_on(Key::E, CTRL_SHIFT, false), Some(Action::Equalize));
         assert_eq!(action_on(Key::J, CTRL_SHIFT, false), Some(Action::PaneToTab));
+        assert_eq!(action_on(Key::H, CTRL_SHIFT, false), Some(Action::JoinTab));
+        assert_eq!(action_on(Key::H, CTRL, false), None, "Ctrl+H is the terminal's backspace");
     }
 
     /// The keys a shell or Claude Code needs stay theirs.
