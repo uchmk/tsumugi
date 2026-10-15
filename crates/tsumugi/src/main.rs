@@ -2589,10 +2589,7 @@ impl App {
     /// shell) under the tab's name, replacing a layout of that name.
     fn save_layout(&mut self, client: &Client, w: &Workspace) {
         let sessions = client.sessions();
-        let tree = w.layout.clone().map(&mut |id| match sessions.iter().find(|i| i.id == id) {
-            Some(i) if i.claude => layouts::Pane::of(newsession::Start::Claude),
-            _ => layouts::Pane::of(newsession::Start::Shell),
-        });
+        let tree = w.layout.clone().map(&mut |id| layout_pane(sessions.iter().find(|i| i.id == id)));
         let name = if !w.name.trim().is_empty() {
             w.name.trim().to_owned()
         } else {
@@ -7857,9 +7854,54 @@ fn web_dir() -> Option<std::path::PathBuf> {
     Some(ito_common::env_dir("TSUMUGI_STATE_HOME").or_else(|| ito_common::state_dir("tsumugi"))?.join("webview"))
 }
 
+/// What a saved layout starts in the pane of session `i`: Claude Code when
+/// its hooks named a conversation or its process was seen, else a shell.
+/// The process counts because the hooks may not have run yet (#116).
+fn layout_pane(i: Option<&Info>) -> layouts::Pane {
+    match i {
+        Some(i) if i.claude || i.agent == "claude" => layouts::Pane::of(newsession::Start::Claude),
+        _ => layouts::Pane::of(newsession::Start::Shell),
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{escape_line, json_string, keep_tab_for_pane, shape, unescape_line, View};
+    use super::{escape_line, json_string, keep_tab_for_pane, layout_pane, shape, unescape_line, View};
+
+    #[test]
+    fn a_claude_pane_is_saved_as_claude_before_its_hooks_run() {
+        use crate::newsession::Start;
+        let mut i = tsumugi_mux::Info {
+            id: 1,
+            cwd: "/p".into(),
+            title: "claude".into(),
+            command: "/bin/bash".into(),
+            state: tsumugi_mux::State::Running,
+            note: String::new(),
+            since_ms: 0,
+            branch: String::new(),
+            project: "/p".into(),
+            muted: false,
+            tags: vec![],
+            claude: false,
+            conversation: String::new(),
+            charset: String::new(),
+            agent: String::new(),
+            ports: Vec::new(),
+            recording: String::new(),
+            logging: String::new(),
+            read_only: false,
+            profile: String::new(),
+        };
+        assert_eq!(layout_pane(Some(&i)).start, Start::Shell, "a plain shell");
+        i.agent = "claude".into();
+        assert_eq!(layout_pane(Some(&i)).start, Start::Claude, "seen by its process, no hook yet");
+        i.agent = "codex".into();
+        assert_eq!(layout_pane(Some(&i)).start, Start::Shell, "another agent has no start word");
+        i.claude = true;
+        assert_eq!(layout_pane(Some(&i)).start, Start::Claude, "named by its hooks");
+        assert_eq!(layout_pane(None).start, Start::Shell, "a pane whose session is gone");
+    }
 
     #[test]
     fn the_keys_state_writes_a_tabs_splits() {
