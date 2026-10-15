@@ -32,6 +32,8 @@ Claude Code などの AI CLI のセッションを何本も並べて動かすた
 - **`cargo fmt --all` で整形する。**設定は `rustfmt.toml`（`max_width = 140`、`use_small_heuristics = "Max"`。ito・yagura と同じ）。CI と `scripts/verify.sh` が `cargo fmt --all --check` で確かめる。整形だけのコミットは `.git-blame-ignore-revs` に書く。
 - clippy は `--all-targets -- -D warnings` で警告ゼロを保つ。検証は CI と同じ stable で回す。
   CI の `clippy` も Linux の機械から Linux・`x86_64-pc-windows-msvc`・`aarch64-apple-darwin` の 3 つを見る（macOS は 2026-10-16 から、verify.sh と同じく cargo-zigbuild で）。
+  macOS で C が要るのは objc2-exception-helper（wry が objc2 の `exception` を入れ、`setURLSchemeHandler` の呼び出しを包む）だけ。
+  Rust の代わりは無い（stable の Rust は Objective-C の例外を捕まえられない）ので、Mac の外では zig を C のコンパイラーにする。
 
 ## 共有のクレート（ito）
 
