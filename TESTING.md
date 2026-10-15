@@ -298,6 +298,7 @@ to `cli.rs` and a line to this table instead of a row.
 | 4.29 | Linux: a Claude Code session at a permission prompt, another window in front; the notification (libnotify 0.7.12+ and a server with actions, e.g. GNOME) | It has Open, Allow and Deny; Allow answers with Enter, Deny with Esc, and Open (or the body) goes to the session; with `answer_buttons = false` only Open; an older `notify-send` shows it plainly |
 | 4.30 | v0.104.3 (toasts, sound and webhook now come from `ito-notify`): 4.5, 4.6 and 4.26 again on Windows, and a sound (Settings → Notifications), and 4.24 | The same as before: the logo and name on the toast, Open / Allow / Deny / Later, one toast per session replacing the last, the sound plays, the webhook gets the text |
 | 4.31 | Windows: Settings → Notifications, turn off "Keep a waiting or failed notification on screen"; make a session wait (`tsumugi notify --state waiting "x"` from outside, no tsumugi window in front) | The toast goes away by itself in a few seconds and stays in the notification centre; with it on (the default) it stays until Later or a click |
+| 4.32 | `[notify] webhook` = a Discord channel's incoming webhook, `webhook_format = "discord"` (Settings → Notifications → Webhook format shows "Discord"), `webhook_states = ["error"]`; `tsumugi notify --state error "@everyone look"` from a session, the window minimized | The channel shows `<folder> failed` in bold over `@everyone look`, and no one is pinged (no mention highlight) |
 
 ## 5. Search
 

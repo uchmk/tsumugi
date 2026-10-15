@@ -155,13 +155,14 @@ Away from the machine, `[notify] webhook` (Settings, Notifications, WHILE YOU
 ARE AWAY) sends a session that has waited `webhook_after` seconds (2 minutes
 by default) while no tsumugi window is looked at -- an ntfy topic's address
 (`https://ntfy.sh/my-topic`, the phone's notification), a Slack incoming
-webhook (`webhook_format = "slack"`) or any address taking JSON (`"json"`:
+webhook (`webhook_format = "slack"`), a Discord one (`"discord"`: the title in
+bold, and no `@everyone` pings anyone) or any address taking JSON (`"json"`:
 `title`, `message`, `folder`, `state`). `webhook_states` (default
 `["waiting"]`) picks what is sent: add `"error"` and `"done"` (a run past
 `long_run`) and a failure or a finish goes at once. The server sends it, once
 a wait, through the system's `curl` (tried again after 30 seconds if it did not
-get through), so it works with the window closed; muted sessions and quiet
-tags are not sent.
+get through, or the address refused it with an HTTP error), so it works with
+the window closed; muted sessions and quiet tags are not sent.
 
 `[notify] spend_day` and `spend_block` (Settings, Notifications, WHAT IT
 COSTS) say once when the day's estimated cost, or a 5-hour block's, passes

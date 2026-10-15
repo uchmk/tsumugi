@@ -914,7 +914,7 @@ fn notifications(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: 
             out.push(Change::Set(Some("notify"), "webhook", cfg::quote(t.trim())));
         }
         sep(ui, l);
-        let formats = [("ntfy", "ntfy"), ("slack", "Slack"), ("json", "JSON")];
+        let formats = [("ntfy", "ntfy"), ("slack", "Slack"), ("discord", "Discord"), ("json", "JSON")];
         if let Some(v) = row(ui, l, tr("prefs.notify.webhook_format"), tr("prefs.notify.webhook_format_note"), |ui| {
             select(ui, "webhook-format", n.webhook_format.as_str(), &formats)
         }) {
