@@ -778,6 +778,7 @@ fn handle(shared: &Arc<Shared>, client: ClientId, tx: &Sender<ToClient>, msg: To
                 ToServer::Scroll { by, .. } => term.scroll(scroll(by)),
                 ToServer::Select { cell, right_half, start: true, block: true, .. } => term.select_block(cell, right_half),
                 ToServer::Select { cell, right_half, start, .. } => term.select(cell, right_half, start),
+                ToServer::SelectCells { cell, start, .. } => term.select_cells(cell, start),
                 ToServer::SelectWord { cell, .. } => term.select_word(cell),
                 ToServer::SelectLine { cell, .. } => term.select_line(cell),
                 ToServer::ClearSelection { .. } => term.clear_selection(),
@@ -819,6 +820,7 @@ fn target(msg: &ToServer) -> Option<SessionId> {
         | ToServer::Resize { id, .. }
         | ToServer::Scroll { id, .. }
         | ToServer::Select { id, .. }
+        | ToServer::SelectCells { id, .. }
         | ToServer::SelectWord { id, .. }
         | ToServer::SelectLine { id, .. }
         | ToServer::ClearSelection { id }

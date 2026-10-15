@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 
 /// Bumped whenever a message changes shape: a client and a server that
 /// disagree say so at `Hello` instead of misreading each other.
-pub const VERSION: u32 = 43;
+pub const VERSION: u32 = 44;
 
 /// A `Hello` with this version asks the server to stop, writing down its
 /// tabs first so the next window can bring them back. `Hello` stays the
@@ -235,6 +235,13 @@ pub enum ToServer {
         right_half: bool,
         start: bool,
         block: bool,
+    },
+    /// The keys' selection (copy mode): the whole cell at both ends,
+    /// whichever way it runs (`Pane::select_cells`).
+    SelectCells {
+        id: SessionId,
+        cell: (usize, usize),
+        start: bool,
     },
     SelectWord {
         id: SessionId,

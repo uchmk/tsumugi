@@ -7017,7 +7017,7 @@ impl App {
                             copymode::Step::PageDown => ito_pane::Pane::scroll(pane, Scroll::PageDown),
                             copymode::Step::Top => ito_pane::Pane::scroll(pane, Scroll::Top),
                             copymode::Step::Bottom => ito_pane::Pane::scroll(pane, Scroll::Bottom),
-                            copymode::Step::Select { cell, start, right } => ito_pane::Pane::select(pane, cell, right, start),
+                            copymode::Step::Select { cell, start } => ito_pane::Pane::select_cells(pane, cell, start),
                             copymode::Step::Unselect => ito_pane::Pane::clear_selection(pane),
                             // A server's pane answers through take_clipboard.
                             copymode::Step::Copy => {

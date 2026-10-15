@@ -806,6 +806,10 @@ impl Pane for RemotePane {
         self.inner.send(ToServer::Select { id: self.id, cell, right_half, start, block: false });
     }
 
+    fn select_cells(&self, cell: (usize, usize), start: bool) {
+        self.inner.send(ToServer::SelectCells { id: self.id, cell, start });
+    }
+
     fn select_block(&self, cell: (usize, usize), right_half: bool) {
         self.inner.send(ToServer::Select { id: self.id, cell, right_half, start: true, block: true });
     }
