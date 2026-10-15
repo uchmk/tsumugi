@@ -171,6 +171,14 @@ fn attach_console() {
 }
 
 fn server() -> std::process::ExitCode {
+    // Started in a process group of its own, which turns Ctrl+C off for the
+    // server and every shell it starts: Ctrl+C in a pane did not stop ping.
+    // Turn it back on; with no console the server itself still gets none.
+    #[cfg(windows)]
+    unsafe {
+        use windows::Win32::System::Console::SetConsoleCtrlHandler;
+        let _ = SetConsoleCtrlHandler(None, false);
+    }
     match tsumugi_mux::server::start(&tsumugi_mux::address()) {
         // A server no window ever started a session on goes after a minute.
         Ok(srv) => {

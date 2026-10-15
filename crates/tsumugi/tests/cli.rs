@@ -230,6 +230,38 @@ fn new_gives_the_words_to_the_program_as_they_are() {
     assert_eq!(lines, ["a  b", "it's"]);
 }
 
+/// #76: a program in a pane stops on Ctrl+C. The server is started in a
+/// process group of its own, which turned Ctrl+C off for every shell it
+/// started, so `ping` ran on. The script sends the console Ctrl+C itself
+/// (ignoring it) and says whether `ping` went.
+#[cfg(windows)]
+#[test]
+fn ctrl_c_stops_a_program_in_a_session() {
+    let s = Server::new("ctrlc");
+    std::fs::write(
+        s.dir.join("cc.ps1"),
+        "Add-Type -Namespace CC -Name N -MemberDefinition '[DllImport(\"kernel32.dll\")] public static extern bool \
+         GenerateConsoleCtrlEvent(uint e, uint g); [DllImport(\"kernel32.dll\")] public static extern bool \
+         SetConsoleCtrlHandler(System.IntPtr h, bool add);'\r\n\
+         $p = Start-Process ping -ArgumentList '-n', '30', '127.0.0.1' -NoNewWindow -PassThru\r\n\
+         Start-Sleep 2\r\n\
+         [void][CC.N]::SetConsoleCtrlHandler([IntPtr]::Zero, $true)\r\n\
+         [void][CC.N]::GenerateConsoleCtrlEvent(0, 0)\r\n\
+         $r = if ($p.WaitForExit(5000)) { 'STOPPED' } else { 'RUNNING' }\r\n\
+         Set-Content -Path cc.txt -Value $r\r\n\
+         if (-not $p.HasExited) { $p.Kill() }\r\n",
+    )
+    .unwrap();
+    let id = s.new_session(&["--", "powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "cc.ps1"]);
+    let out = s.dir.join("cc.txt");
+    let deadline = Instant::now() + PATIENCE;
+    while !std::fs::read_to_string(&out).is_ok_and(|t| !t.trim().is_empty()) {
+        assert!(Instant::now() < deadline, "no cc.txt; the session shows:\n{}", s.ok(&["read", &id, "--all"]));
+        std::thread::sleep(Duration::from_millis(200));
+    }
+    assert_eq!(std::fs::read_to_string(&out).unwrap().trim(), "STOPPED", "Ctrl+C did not stop ping");
+}
+
 /// 18.1: one array, a session an object with the keys a script reads.
 #[test]
 fn ls_json_is_one_array_of_sessions() {
