@@ -155,6 +155,7 @@ v0.74.2 で 8 件のうち 7 件を、v0.74.3 で残りを直した（kitty の�
   `[notify]` には `webhook` と `webhook_after`（TESTING.md 4.20 前後）が既にあるので、それとの分け方（誰に・いつ・どの状態を）から決める。
 - [ ] 通知の届け方そのものを実装する。今は Windows のトースト・タスクバー・音と、macOS（osascript）・Linux（notify-send）の画面の通知だけ。
   スマホ向けの経路、通知ごとの先の切り替え（状態ごとに先を選ぶ）、届かなかったときの扱いが要る。
+  （v0.112.0）スマホ向けの経路（ntfy・Slack・Discord）と届かなかったときの送り直しは入った。残りは状態ごとに先を選ぶこと（要確認: #164）。
 - [x] （v0.104.12）トーストの Allow / Deny を実機で確かめたので、`main.rs` の `toast answer` の `eprintln!`（v0.104.1 の仮の診断）を外した。
 - [x] （v0.103.15）トーストの Allow / Deny を切る設定 `[notify] answer_buttons`（設定の Notifications にも）。
 - [x] （v0.103.20）Linux の通知にも Allow / Deny（`notify-send --action`）。macOS は osascript が押したことを取れないので、署名したアプリの通知まで待つ。
