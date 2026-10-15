@@ -32,14 +32,14 @@
 - [x] **2.2** `Alt+Arrows` → The keys move to the pane on that side; its cursor fills, the others' go hollow, and the others are dimmed
 - [x] **2.3** Bring the pointer to a gap between panes, drag → A cyan line appears, the split follows the pointer; a double-click halves it
 - [~] **2.4** `Ctrl+Shift+Z` with a hidden pane waiting (notify it) → One pane fills the tab, its heading says ZOOM with a small split; a gold-ringed note at the bottom right says how many wait behind and the key, and a click goes there; `Ctrl+Shift+Z` again restores the split
-- [~] **2.5** Drag a pane by its header onto the middle of another → A cyan outline and **Swap** while dragging; on release the two trade places
-- [~] **2.6** Drag a header to another pane's edge → **Move here** on that half; on release the pane goes to that side and the two share the room
-- [~] **2.7** Split right until a pane is narrower than 20 columns → It folds into a strip with its state's dot and its name (on its side when tall); a click gives it the keys, a drag carries it
+- [x] **2.5** Drag a pane by its header onto the middle of another → A cyan outline and **Swap** while dragging; on release the two trade places
+- [x] **2.6** Drag a header to another pane's edge → **Move here** on that half; on release the pane goes to that side and the two share the room
+- [x] **2.7** Split right until a pane is narrower than 20 columns → It folds into a strip with its state's dot and its name (on its side when tall); a click gives it the keys, a drag carries it
 - [x] **2.8** `exit` in one pane of a split → The pane goes and its neighbour takes its room
 - [x] **2.9** `lazygit` in a pane, move with `j`/`k`, `?` then `Esc`, then `q` → It draws, takes the keys, its menu closes on `Esc`, and quitting leaves a working prompt
 - [x] **2.10** A person: type Japanese with the IME in a pane → The candidate window sits at the cursor; the committed text stays where it was composed (no gap, no retyping from the left) and arrives once
 - [x] **2.11** On a JIS keyboard: `Alt+Shift+;` (`+`), then `Alt+Shift+-` → To the right, then below: neither is taken for the other
-- [~] **2.12** Drag a pane of a split by its header onto the sidebar → The sidebar lights up, **A tab of its own**, the pane's name with the pointer; dropped, the pane is a tab of its own after the one it left
+- [x] **2.12** Drag a pane of a split by its header onto the sidebar → The sidebar lights up, **A tab of its own**, the pane's name with the pointer; dropped, the pane is a tab of its own after the one it left
 - [~] **2.13** One pane alone, and each pane of a split → Every pane is a card with room round it and a 30px heading: the state's mark, the name, the folder, short words on the right (none for a shell); its ring in the state's colour, the one with the keys too; the heading is not lit for the keys
 - [x] **2.14** A split tab, `Ctrl+Shift+I`, type `echo hi`, Enter; `Ctrl+Shift+I` again → **TYPING INTO ALL** on every pane's heading; `hi` in each; after the second press only the pane with the keys gets keys; the window's own keys (`Ctrl+Shift+T`) act once
 - [x] **2.15** Three panes split both ways: hover each divider, drag it, double-click it → Near it the cyan line and the resize pointer; the split follows the drag and stays where dropped (and after a restart); a double-click halves it. Unchanged from before the dividers moved into `tsumugi-layout` (v0.52.0)
@@ -56,9 +56,9 @@
 - [x] **2.26** `Ctrl+Shift+M`, `G`, `0`, `Enter`; again, `Esc`; again, then `Alt+Arrows` to another pane → The cursor's line copied; `Esc` leaves with nothing selected; moving away ends the mode
 - [x] **2.27** pwsh started by tsumugi (no hook in the profile, then with `tsumugi shell-hook pwsh` and Starship, whose prompt is two lines; once more in a pane narrow enough to wrap it): run `dir` five times; `Ctrl+Shift+Up` three times, `Ctrl+Shift+Down` twice → Each press moves one command: the first line of the next prompt above (below) at the top of the pane; the prompt looks as before (Starship's included), with no stray characters
 - [x] **2.28** The same in bash (Git Bash on Windows) with `tsumugi shell-hook bash` in the rc file, and in zsh with `zsh` where it is installed → The same jumps; `cd` still updates the pane's folder
-- [~] **2.29** `seq 300`, `Ctrl+Shift+F`, type `1`, then `Shift+Enter` a few times, `Enter`, then `Err` → A bar at the pane's top right; `291` (the newest `1`) selected and on screen, then older ones (up), then a newer one (down); **No match** in red for `Err`; letters typed reach the bar, not the shell
+- [x] **2.29** `seq 300`, `Ctrl+Shift+F`, type `1`, then `Shift+Enter` a few times, `Enter`, then `Err` → A bar at the pane's top right; `291` (the newest `1`) selected and on screen, then older ones (up), then a newer one (down); **No match** in red for `Err`; letters typed reach the bar, not the shell
 - [x] **2.30** In the bar: `Enter` until it passes the oldest match; then `Esc`; then type in the pane → **Wrapped** once it starts over; `Esc` closes the bar, drops the selection and is not sent to the shell (Claude Code is not interrupted); keys reach the shell again
-- [~] **2.31** Open the bar, click into the pane, `Ctrl+Shift+F` again; `Alt+Arrows` to another pane → The second press puts the keys back in the bar; moving to another pane closes it
+- [x] **2.31** Open the bar, click into the pane, `Ctrl+Shift+F` again; `Alt+Arrows` to another pane → The second press puts the keys back in the bar; moving to another pane closes it
 - [x] **2.32** Copy three lines (`echo a`, `echo b`, `echo c`); paste with `Ctrl+V` and with a right click into `cat` (no bracketed paste) and into pwsh 7 → **Paste 3 lines?** with the lines shown; `Esc` sends nothing (nothing reaches `cat`); `Enter` (or **Paste**) sends all three
 - [x] **2.33** Paste the same three lines into Claude Code and into bash 5.1+; paste one line ending in a line break into `cat` → No dialog: they arrive as one paste (Claude Code shows "[Pasted text]" or the lines); the one line goes straight in
 - [x] **2.34** Paste 10 KB of text into Claude Code; turn off both switches in Settings → General → Copy and paste and paste again; typing into all panes, paste three lines into `cat` panes → **Paste 10 KB?** even there; with the switches off, no dialog; with all panes, the dialog says it goes to all of them and **Paste** sends it to each
@@ -117,7 +117,7 @@
 - [ ] **3.1** Open three tabs in different git repositories → Each card: the name in bold sans-serif (IBM Plex Sans JP, else Segoe UI / the system's), then `~/folder · branch` in the terminal's font, then the state and how long in the state's colour (waiting gold, running cyan, error red, done green, probably waiting grey); one state mark, on the left
 - [x] **3.2** The **+** beside SESSIONS, and the one at the top of the rail → The new-session dialog opens with the focused pane's folder
 - [x] **3.3** Sort button → each of the five orders → The cards reorder accordingly; **Manual** keeps a dragged order across restarts
-- [~] **3.4** Drag a card in Manual order → The grip shows on hover; the card lands where it is dropped
+- [x] **3.4** Drag a card in Manual order → The grip shows on hover; the card lands where it is dropped
 - [~] **3.5** The state and folder filters at the foot → Only matching cards; the heading reads `SESSIONS  N of M` (also `5 of 5` with no filter), then the order button, then **+**
 - [ ] **3.6** Right-click a card: rename, tag, mute, pin, restart, duplicate, new window, open in editor / filer, copy path, close → Each does what it says; close is red and last; Rename, Duplicate and Close show their keys on the right, in grey
 - [~] **3.7** Sort → One line each; then `Ctrl+Shift+B` → One line per tab; then the 60px rail with first letters and state rings
@@ -131,7 +131,7 @@
 - [ ] **3.15** The card of the tab with the keys, Claude Code talked to a few times → A line `N prompts · 12m · 3.4k tokens`; the other cards have none. A running card's third line ends with `· N tokens`
 - [x] **3.16** `F2` → A field on the card with the name selected; Enter renames, Esc leaves it as it was
 - [ ] **3.17** `Ctrl+Shift+D` (macOS `Cmd+Option+D`) in a Claude Code pane, then in a shell → A new tab in the same folder: `claude` typed in the first, a shell in the second
-- [~] **3.18** Look at the sidebar on first start → 288px wide
+- [x] **3.18** Look at the sidebar on first start → 288px wide
 - [~] **3.19** Right-click a card → Note…, type `the release`, Enter; restart the machine (or the server) → `“the release”` on the card under the folder; Edit the note… and an empty Enter takes it off; after the restart the note is back
 - [~] **3.20** A tab with uncommitted changes: click its `+N −M` (or search `changes`) → The diff over the window: each file under its name, added lines green, removed red, hunks cyan, new files at the end; Esc or a click outside closes it; a lock file's large diff is cut at 512 KB
 - [x] **3.21** Right-click a card → Save the output to a file (or search `save the pane`) → A toast names `Downloads\tsumugi-<name>-<date>-<time>.txt`; it holds the whole scrollback as the program wrote it, Japanese whole, long lines unbroken
@@ -208,7 +208,7 @@
 ## 6. New sessions
 
 - [ ] **6.1** `Ctrl+Shift+T`, Enter → Claude Code starts in a new tab in the focused pane's folder
-- [~] **6.2** `Ctrl+Shift+T`, Shell, `Alt+Enter` → A shell split to the right instead of a tab
+- [x] **6.2** `Ctrl+Shift+T`, Shell, `Alt+Enter` → A shell split to the right instead of a tab
 - [~] **6.3** Type part of a folder, `Tab` → Completes from the folders listed, including **closed** ones from sessions that ended; the cursor at its end; a second `Tab` moves on
 - [ ] **6.4** Add a tag, and take a dashed (folder rule) tag off → The new session wears exactly what the dialog showed
 - [~] **6.5** Beside it → + Pane twice (Claude Code, Shell), Create → One tab of three panes: the first, one to its right, one below that
