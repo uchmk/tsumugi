@@ -162,3 +162,14 @@ v0.74.2 で 8 件のうち 7 件を、v0.74.3 で残りを直した（kitty の�
 ## 内蔵ブラウザ（2026-10-12、持ち主の発案）
 
 - [ ] ペインの横に開発サーバーのページ（`http://localhost:...`）を描く内蔵ブラウザを足す。持ち主の回答は #66 の 2: Windows と macOS だけ OS 標準の WebView、Linux は外部のブラウザのまま。v0.106.0 で実装。実機で確かめる（TESTING 3.25）【実機】。
+
+## michi（Git クライアント）とのつなぎ（2026-10-15、持ち主の依頼）
+
+Git クライアント michi の設計メモ（https://claude.ai/artifact/BF7WRQQBmSqmPmq7YTGH5f）の 8 章「Claude を並べて動かす」で、tsumugi 側に足すことにした（推奨）2 つ。
+michi は worktree の表に Claude の状態を出すため、`tsumugi ls --json` を窓が前なら 2 秒、後ろなら 10 秒ごとに読む（後で ito-ipc に移す）。
+
+- [ ] `tsumugi new` に `--worktree BRANCH` と、元にする点の `--from REF`（無ければ今のコミット）を足す。worktree は `worktree.rs` と同じ置き方（リポジトリの横に `<repo>-<branch>`、あれば `-2`…）で作り、
+  tsumugi が作った worktree の一覧に覚える（最後のセッションが終わったときの「消しますか」が効くように）。michi の「新しい作業を 1 回で始める」がこれを呼ぶ。michi が自分で作った worktree は一覧に入らない。
+  出力はほかの `new` と同じくセッションの番号で、`tests/cli.rs` で確かめる。
+- [ ] `tsumugi focus N|NAME` を足す。窓を前に出し、そのセッションのタブ（とペイン）を選ぶ。michi の worktree の表で Claude の状態を押したときに使う。
+  窓が前に出るか・タブが選ばれるかは TESTING.md に行を足す（Windows は前面に出せる条件が厳しい `SetForegroundWindow` の制限も見る）【実機】。
