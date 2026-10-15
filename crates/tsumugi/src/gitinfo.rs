@@ -146,9 +146,13 @@ fn work(full: bool, questions: &Receiver<Key>, store: &Mutex<HashMap<Key, (Insta
 /// commit status's state), comma-separated.
 const JQ: &str = r#"[.number, .state, .url, ([.statusCheckRollup[] | (if (.conclusion // "") != "" then .conclusion else (.state // .status // "") end)] | join(","))] | @tsv"#;
 
-/// What a command printed, when it ran and said yes.
+/// What a command printed, when it ran and said yes. Only for reading:
+/// git takes no optional locks, so a `git status` here never holds
+/// `index.lock` while Claude commits in the same worktree (#142). A
+/// `git diff` refreshes the index on its own all the same; its calls turn
+/// that off with `diff.autoRefreshIndex=false`.
 fn run(cmd: &mut Command) -> Option<String> {
-    cmd.stdin(Stdio::null()).stderr(Stdio::null());
+    cmd.stdin(Stdio::null()).stderr(Stdio::null()).env("GIT_OPTIONAL_LOCKS", "0");
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
@@ -165,7 +169,17 @@ fn changes(cwd: &Path) -> Option<Changes> {
         .args(["-c", "core.fsmonitor=false", "status", "--porcelain=v1", "--untracked-files=normal"])
         .current_dir(cwd))?;
     let numstat = run(Command::new("git")
-        .args(["-c", "core.fsmonitor=false", "diff", "--numstat", "--no-ext-diff", "--no-textconv", "HEAD"])
+        .args([
+            "-c",
+            "core.fsmonitor=false",
+            "-c",
+            "diff.autoRefreshIndex=false",
+            "diff",
+            "--numstat",
+            "--no-ext-diff",
+            "--no-textconv",
+            "HEAD",
+        ])
         .current_dir(cwd))
     .unwrap_or_default();
     let (added, removed) = sum_numstat(&numstat);
@@ -179,7 +193,19 @@ const DIFF_MOST: usize = 512 * 1024;
 /// files git does not know yet (a thread's work: git can take a moment).
 pub fn diff(cwd: &Path) -> Result<String, String> {
     let mut text = run(Command::new("git")
-        .args(["-c", "core.quotepath=off", "-c", "core.fsmonitor=false", "diff", "HEAD", "--no-color", "--no-ext-diff", "--no-textconv"])
+        .args([
+            "-c",
+            "core.quotepath=off",
+            "-c",
+            "core.fsmonitor=false",
+            "-c",
+            "diff.autoRefreshIndex=false",
+            "diff",
+            "HEAD",
+            "--no-color",
+            "--no-ext-diff",
+            "--no-textconv",
+        ])
         .current_dir(cwd))
     .ok_or_else(|| format!("{} is not in a git repository with a commit", cwd.display()))?;
     if text.len() > DIFF_MOST {
@@ -309,5 +335,53 @@ mod tests {
         assert_eq!(pr("7\tOPEN\tu\tSUCCESS,FAILURE,PENDING").unwrap().checks, Checks::Fail);
         assert_eq!(pr("7\tOPEN\tu\t").unwrap().checks, Checks::None);
         assert_eq!(pr("no pull requests found"), None);
+    }
+
+    /// Reading the changes and the diff leaves the index as it was: a
+    /// plain `git status` refreshes stale stat data and writes the index
+    /// back under `index.lock`, which a `git commit` in the same worktree
+    /// then cannot take (#142).
+    #[test]
+    fn reading_the_changes_leaves_the_index_alone() {
+        let base = std::env::temp_dir().join(format!("tsumugi-locks-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&base).unwrap();
+        // Nothing of the machine's git or of a hook running the tests: no
+        // signing or hooks, and none of the variables that point git
+        // elsewhere or turn its locks off.
+        let git = |args: &[&str]| {
+            Command::new("git")
+                .args(["-c", "user.email=a@b", "-c", "user.name=t", "-c", "commit.gpgsign=false", "-c", "core.hooksPath="])
+                .args(args)
+                .current_dir(&base)
+                .stdin(Stdio::null())
+                .env_remove("GIT_DIR")
+                .env_remove("GIT_INDEX_FILE")
+                .env_remove("GIT_WORK_TREE")
+                .env_remove("GIT_OPTIONAL_LOCKS")
+                .output()
+                .is_ok_and(|o| o.status.success())
+        };
+        if !git(&["init", "-q"]) {
+            return; // no git here
+        }
+        let file = base.join("a.txt");
+        std::fs::write(&file, "one\n").unwrap();
+        std::fs::write(base.join("b.txt"), "two\n").unwrap();
+        assert!(git(&["add", "."]) && git(&["commit", "-q", "--no-verify", "-m", "first"]));
+        std::fs::write(base.join("b.txt"), "two\nthree\n").unwrap();
+        // The same bytes, a later time: the index's stat data is stale.
+        let later = std::time::SystemTime::now() + Duration::from_secs(120);
+        std::fs::File::options().write(true).open(&file).unwrap().set_modified(later).unwrap();
+        let index = base.join(".git").join("index");
+        let before = std::fs::read(&index).unwrap();
+        let got = changes(&base).expect("the changes are read");
+        assert_eq!((got.files, got.added, got.removed), (vec![" M b.txt".to_string()], 1, 0), "only the real change");
+        let text = diff(&base).expect("the diff");
+        assert!(text.contains("+three") && !text.contains("a.txt"), "only the real change: {text}");
+        assert!(std::fs::read(&index).unwrap() == before, "the index is not written");
+        assert!(git(&["status", "--porcelain"]), "a plain status still works");
+        assert!(std::fs::read(&index).unwrap() != before, "and it does refresh the index, so the test can tell");
+        let _ = std::fs::remove_dir_all(&base);
     }
 }
