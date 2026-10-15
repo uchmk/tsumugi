@@ -890,6 +890,13 @@ tsumugi split N|NAME [--down] [-p PERCENT | -n COUNT] [-- CMD]
 tsumugi layout NAME [FOLDER]             open a saved layout as a new tab; prints each pane's number
 tsumugi layout --list                    the saved layouts
 tsumugi new . --name NAME [--at N]       name the new tab, put it at place N
+tsumugi new . --worktree BRANCH [--from REF] [-- claude]
+                                         a git worktree beside the repository (`<repo>-<branch>`),
+                                         the branch made from REF (or the current commit) if new;
+                                         the session starts in it, and the window offers to remove
+                                         it when the last session there ends
+tsumugi focus N|NAME                     the window to the front, that session's tab shown and its
+                                         pane given the keys (a window is opened if none is)
 tsumugi close N|NAME                     end the session
 tsumugi wait N|NAME [--state S] [--timeout SECS]
                                          until it is waiting, done or failed

@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 
 /// Bumped whenever a message changes shape: a client and a server that
 /// disagree say so at `Hello` instead of misreading each other.
-pub const VERSION: u32 = 41;
+pub const VERSION: u32 = 42;
 
 /// A `Hello` with this version asks the server to stop, writing down its
 /// tabs first so the next window can bring them back. `Hello` stays the
@@ -426,6 +426,11 @@ pub enum ToServer {
         n: u64,
         allow: bool,
     },
+    /// Bring a window to the front with this session's tab shown and its
+    /// pane given the keys (`tsumugi focus`); answered with `Shown`.
+    Show {
+        id: SessionId,
+    },
 }
 
 /// A line `SearchAll` found.
@@ -539,4 +544,11 @@ pub enum ToClient {
     },
     /// To the asker: whether the text was typed.
     AskDone(Result<(), String>),
+    /// To the window that had the keys last: come to the front and show
+    /// this session (`ToServer::Show`).
+    Show {
+        id: SessionId,
+    },
+    /// To the one that sent `ToServer::Show`: whether a window was told.
+    Shown(Result<(), String>),
 }

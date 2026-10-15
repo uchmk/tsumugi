@@ -365,6 +365,24 @@ fn handle(shared: &Arc<Shared>, client: ClientId, tx: &Sender<ToClient>, msg: To
                 }
             }
         }
+        ToServer::Show { id } => {
+            let answer = if sessions.contains_key(&id) {
+                // The window that had the keys last; else any window.
+                let judges = lock(&shared.judges).clone();
+                let last = lock(&shared.attention).order.iter().rev().find(|c| judges.contains(c)).copied();
+                let clients = lock(&shared.clients);
+                match last.or_else(|| judges.iter().next_back().copied()).and_then(|w| clients.get(&w)) {
+                    Some(w) => {
+                        let _ = w.send(ToClient::Show { id });
+                        Ok(())
+                    }
+                    None => Err("no tsumugi window is open".to_owned()),
+                }
+            } else {
+                Err("no such session".to_owned())
+            };
+            let _ = tx.send(ToClient::Shown(answer));
+        }
         ToServer::AskCancel => {
             drop(sessions);
             drop_asks_of(shared, client);

@@ -131,6 +131,77 @@ fn new_starts_a_server_and_ls_lists_the_session() {
     assert_eq!(cols[6], "a,b,c");
 }
 
+/// 1.15 (text): `new --worktree BRANCH` makes a worktree beside the repository, on
+/// a new branch (from `--from` when given), starts the session in it and
+/// puts it on the list the window asks about when its last session ends;
+/// `--from` with a branch there already, or a ref that is not there, makes nothing.
+#[test]
+fn new_worktree_starts_the_session_in_a_worktree_of_its_own() {
+    let s = Server::new("worktree");
+    let repo = s.dir.join("repo");
+    std::fs::create_dir_all(&repo).unwrap();
+    let git = |args: &[&str]| {
+        let out = Command::new("git").arg("-C").arg(&repo).args(args).stdin(Stdio::null()).output().expect("git runs");
+        assert!(out.status.success(), "git {args:?}: {}", String::from_utf8_lossy(&out.stderr));
+        String::from_utf8_lossy(&out.stdout).trim().to_owned()
+    };
+    git(&["init", "-q", "-b", "main"]);
+    git(&["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "first"]);
+    let first = git(&["rev-parse", "HEAD"]);
+    git(&["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "second"]);
+
+    let id = s.ok(&["new", "repo", "--worktree", "side", "--from", &first]).trim().to_owned();
+    let tree = s.dir.join("repo-side");
+    assert!(tree.is_dir(), "no worktree at {}", tree.display());
+    let ls = s.ok(&["ls"]);
+    let cols = s.line_of(&ls, &id).unwrap_or_else(|| {
+        panic!(
+            "session {id} not in:
+{ls}"
+        )
+    });
+    assert!(same_folder(cols[3], &tree), "folder {:?} is not {}", cols[3], tree.display());
+    assert_eq!(git(&["rev-parse", "side"]), first, "the branch was not made from --from");
+    let list = std::fs::read_to_string(s.dir.join("worktrees")).expect("the worktree list");
+    assert!(
+        list.lines().any(|l| same_folder(l, &tree)),
+        "not on the list:
+{list}"
+    );
+
+    let refused = s.run(&["new", "repo", "--worktree", "side", "--from", "main"]);
+    assert!(!refused.status.success() && String::from_utf8_lossy(&refused.stderr).contains("there already"));
+    let bad = s.run(&["new", "repo", "--worktree", "other", "--from", "no-such-ref"]);
+    assert!(!bad.status.success() && String::from_utf8_lossy(&bad.stderr).contains("no such commit"));
+    assert!(!s.dir.join("repo-other").exists(), "a worktree for a bad ref");
+}
+
+/// 1.16 (half), the half that needs no window on the screen: `focus` asks the
+/// window that had the keys last to show the session, by number or name,
+/// and says so when there is no such session.
+#[test]
+fn focus_asks_a_window_to_show_the_session() {
+    let s = Server::new("focus");
+    let id = s.new_session(&["--tag", "here"]);
+    let n: u64 = id.parse().unwrap();
+    let window = Client::connect(&Address(s.address.clone()), || {}).expect("a window connects");
+    window.judge();
+    window.list().expect("the server answers the window");
+    s.ok(&["focus", &id]);
+    s.ok(&["focus", "here"]);
+    let deadline = Instant::now() + PATIENCE;
+    let mut shown = Vec::new();
+    while shown.len() < 2 {
+        shown.extend(window.take_shows());
+        assert!(Instant::now() < deadline, "the window was asked {shown:?}");
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    assert_eq!(shown, [n, n]);
+    let none = s.run(&["focus", "999"]);
+    assert!(!none.status.success() && String::from_utf8_lossy(&none.stderr).contains("no session 999"));
+    assert_eq!(s.run(&["focus"]).status.code(), Some(2), "no name is a usage error");
+}
+
 /// `new … -- PROGRAM ARGS` gives each word to the program as it was, quoted
 /// for the shell it is typed into: a program in a folder with a space in its
 /// name made pwsh read the line as an expression (`ParserError`, the ARM64

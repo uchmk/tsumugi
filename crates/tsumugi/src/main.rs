@@ -114,6 +114,7 @@ fn main() -> std::process::ExitCode {
         Some("new") => new_cli(&args[1..]),
         Some("layout") => layout_cli(&args[1..]),
         Some("attach") => attach(&args[1..]),
+        Some("focus") => focus(&args[1..]),
         Some("serial") => serial::run(&args[1..]),
         Some("tmux") => tmux::run(&args[1..]),
         Some("tmux-pane") => tmux::bridge(&args[1..]),
@@ -150,7 +151,7 @@ fn main() -> std::process::ExitCode {
             std::process::ExitCode::SUCCESS
         }
         Some(other) => {
-            eprintln!("tsumugi: unknown command `{other}` (server, proxy, ls, new, attach, send, read, split, close, wait, notify, tag, serial, tmux, shell-hook, env, mcp, help, --keys, --version)");
+            eprintln!("tsumugi: unknown command `{other}` (server, proxy, ls, new, attach, focus, send, read, split, close, wait, notify, tag, serial, tmux, shell-hook, env, mcp, help, --keys, --version)");
             std::process::ExitCode::from(2)
         }
     }
@@ -187,8 +188,9 @@ fn server() -> std::process::ExitCode {
     }
 }
 
-/// `tsumugi new [FOLDER] [--tag TAG]... [-- COMMAND...]`: a session in a tab
-/// of its own, the server started if need be; prints its number.
+/// `tsumugi new [FOLDER] [--tag TAG]... [--worktree BRANCH [--from REF]]
+/// [-- COMMAND...]`: a session in a tab of its own, the server started if
+/// need be; prints its number.
 fn new_cli(args: &[String]) -> std::process::ExitCode {
     let n = match cli::parse_new(args) {
         Ok(n) => n,
@@ -287,6 +289,61 @@ fn attach(args: &[String]) -> std::process::ExitCode {
         }
         Err(e) => {
             eprintln!("tsumugi attach: {e}");
+            std::process::ExitCode::FAILURE
+        }
+    }
+}
+
+/// `tsumugi focus NAME`: the window that had the keys last comes to the
+/// front with that session's tab shown and its pane given the keys; with no
+/// window open, one is opened on it (`attach`, left running).
+fn focus(args: &[String]) -> std::process::ExitCode {
+    let [name] = args else {
+        eprintln!("usage: tsumugi focus NUMBER|NAME (tsumugi ls lists them)");
+        return std::process::ExitCode::from(2);
+    };
+    let client = match Client::connect(&tsumugi_mux::address(), || {}) {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("tsumugi focus: no server ({e})");
+            return std::process::ExitCode::FAILURE;
+        }
+    };
+    let id = match client.list().map_err(|e| e.to_string()).and_then(|list| cli::find(&list, name)) {
+        Ok(id) => id,
+        Err(e) => {
+            eprintln!("tsumugi focus: {e}");
+            return std::process::ExitCode::FAILURE;
+        }
+    };
+    // Windows lets only the program in front bring another to the front;
+    // this one was started from it, so it hands that on to the window.
+    #[cfg(windows)]
+    unsafe {
+        use windows::Win32::UI::WindowsAndMessaging::{AllowSetForegroundWindow, ASFW_ANY};
+        let _ = AllowSetForegroundWindow(ASFW_ANY);
+    }
+    match client.show(id, Duration::from_secs(5)) {
+        Ok(()) => std::process::ExitCode::SUCCESS,
+        Err(e) if e.contains("no tsumugi window") => {
+            let opened = std::env::current_exe().and_then(|exe| {
+                std::process::Command::new(exe)
+                    .args(["attach", &id.to_string()])
+                    .stdin(std::process::Stdio::null())
+                    .stdout(std::process::Stdio::null())
+                    .stderr(std::process::Stdio::null())
+                    .spawn()
+            });
+            match opened {
+                Ok(_) => std::process::ExitCode::SUCCESS,
+                Err(e) => {
+                    eprintln!("tsumugi focus: no window, and none opened ({e})");
+                    std::process::ExitCode::FAILURE
+                }
+            }
+        }
+        Err(e) => {
+            eprintln!("tsumugi focus: {e}");
             std::process::ExitCode::FAILURE
         }
     }
@@ -1216,6 +1273,10 @@ struct App {
     worktree_making: Option<(std::sync::mpsc::Receiver<Result<std::path::PathBuf, String>>, newsession::Create)>,
     worktree_lived: std::collections::HashSet<std::path::PathBuf>,
     worktree_ask: Option<std::path::PathBuf>,
+    /// The sessions there were when the list was last read again, and the
+    /// reading in flight: `tsumugi new --worktree` adds to it from outside.
+    worktree_seen: std::collections::HashSet<SessionId>,
+    worktree_reading: Option<std::sync::mpsc::Receiver<Vec<std::path::PathBuf>>>,
     /// The window was asked to close while sessions were running: how many,
     /// until the question is answered.
     closing: Option<usize>,
@@ -1651,6 +1712,8 @@ impl App {
             worktree_making: None,
             worktree_lived: std::collections::HashSet::new(),
             worktree_ask: None,
+            worktree_seen: std::collections::HashSet::new(),
+            worktree_reading: None,
             closing: None,
             input_sent: None,
             input_h: 170.0,
@@ -3942,6 +4005,34 @@ impl App {
                     Err(e) => self.say(e, true),
                 }
             }
+        }
+        // A session the window did not start may be in a worktree made from
+        // the command line: read the list again (off this thread) when one
+        // comes, and take the paths new to it.
+        if let Some(rx) = &self.worktree_reading {
+            match rx.try_recv() {
+                Ok(list) => {
+                    for p in list {
+                        if !self.worktrees.contains(&p) {
+                            self.worktrees.push(p);
+                        }
+                    }
+                    self.worktree_reading = None;
+                }
+                Err(std::sync::mpsc::TryRecvError::Disconnected) => self.worktree_reading = None,
+                Err(std::sync::mpsc::TryRecvError::Empty) => {}
+            }
+        }
+        if self.worktree_reading.is_none() && sessions.iter().any(|i| !self.worktree_seen.contains(&i.id)) {
+            self.worktree_seen = sessions.iter().map(|i| i.id).collect();
+            let (tx, rx) = std::sync::mpsc::channel();
+            let ctx = ctx.clone();
+            let _ = std::thread::Builder::new().name("worktrees".into()).spawn(move || {
+                // Those still there: one removed while this read is not taken back.
+                let _ = tx.send(worktree::ours().into_iter().filter(|p| p.is_dir()).collect());
+                ctx.request_repaint();
+            });
+            self.worktree_reading = Some(rx);
         }
         for w in &self.worktrees {
             let alive = sessions.iter().any(|i| i.cwd.starts_with(w));
@@ -6592,6 +6683,14 @@ impl App {
                 }
                 self.say(words, false);
             }
+        }
+        // `tsumugi focus`: to the front, with that session's tab shown and
+        // its pane given the keys.
+        for id in client.take_shows() {
+            self.pending = Some(id);
+            ctx.send_viewport_cmd(egui::ViewportCommand::Visible(true));
+            ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(false));
+            ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
         }
         let current = self.current(&workspaces);
         // A program that asked (vim, nvim, tmux) hears when its pane gains

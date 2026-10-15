@@ -103,6 +103,8 @@ b
 | 18.10a (half) | An ask to type (`Client::ask_send`) is refused with no window; a window's Refuse types nothing, its Allow types the line and runs it; an asker that gives up takes its box away and a late Decide does nothing | `an_ask_to_type_waits_for_a_window_and_a_refusal_types_nothing` |
 | 18.10 (half) | `tsumugi mcp`: answers `initialize` and `tools/list`; `tsumugi_sessions` says tsumugi is not running without a server, lists the session with one; `tsumugi_screen` by number and by tag | `mcp_lists_sessions_and_reads_a_screen` |
 | 18.13 | `tsumugi env`: the version, the OS, the settings and state places, the shell; the server line says it is not answering without a server and running with its session count with one; a variable that could hold a secret is hidden | `env_reports_the_places_and_the_server` |
+| 1.15 (text) | `tsumugi new repo --worktree side --from <first commit>`: a worktree `repo-side` beside the repository on a new branch made from that commit, the session in it, the worktree on the list; `--from` with a branch there already, or a ref that is not there, makes nothing | `new_worktree_starts_the_session_in_a_worktree_of_its_own` |
+| 1.16 (half) | `tsumugi focus N` and `focus <tag>`: the window that had the keys last is asked to show it; a number with no session exits 1 saying so; no name is a usage error | `focus_asks_a_window_to_show_the_session` |
 
 A row that only needs text belongs here, not in a section below: add a test
 to `cli.rs` and a line to this table instead of a row.
@@ -123,6 +125,8 @@ to `cli.rs` and a line to this table instead of a row.
 | 1.12 | Build and start a newer window while the server of the build before runs, when the two speak the same version (no **tsumugi was updated**); then Settings → Advanced → Restart the server | A toast "The server is still tsumugi <old> (this is <new>): Settings → Advanced → Restart the server…", once; Settings → Advanced shows "Running · <old> · <up>"; after the restart it shows the new version and no toast comes |
 | 1.13 | Start tsumugi on a machine (or a Windows user) it never ran on | The window opens 1280 × 800 |
 | 1.14 | With a `settings.toml` of 0.86.0 in `%APPDATA%\tsumugi\` and its state in `%LOCALAPPDATA%\tsumugi\`, start the newer tsumugi (an unattended run: lay the kit's files out that way in a scratch folder and point `APPDATA` and `LOCALAPPDATA` there, with `TSUMUGI_*_HOME`, the older names and `UCHMK_CONFIG_DIR` unset) | The same settings and the same tabs as before; `config.toml` is in `%APPDATA%\uchmk\tsumugi\`, the state in `%LOCALAPPDATA%\uchmk\tsumugi\`; the old folders have no settings or state left (an old `server` folder may stay) |
+| 1.15 | With the window open, in a git repository: `tsumugi new . --worktree side -- claude` from another terminal; then `exit` the session (or `/exit` Claude Code) | A new tab in the worktree `<repo>-side` (its branch `side` in the tab's heading); when the session ends the window asks whether to remove the worktree, as for one made with **in a worktree** (the text and the list file: `cli.rs`) |
+| 1.16 | With two tabs, the second's pane split, and the window behind another program (or minimized): from a terminal in front, `tsumugi focus <the number of the second tab's lower pane>`; then close the window and run it again | The window comes to the front (not just a flashing taskbar button), shows the second tab, and the lower pane has the keys; with no window, one opens on that session. A second window open: the one that had the keys last answers |
 
 ## 2. Panes and splits
 

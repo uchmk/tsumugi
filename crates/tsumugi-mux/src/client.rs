@@ -72,6 +72,10 @@ struct State {
     asks: Vec<(u64, SessionId, String)>,
     /// The answer to `ask_send`, taken by it.
     ask_done: Option<Result<(), String>>,
+    /// Sessions `tsumugi focus` asked this window to show, not taken yet.
+    shows: Vec<SessionId>,
+    /// The answer to `show`, taken by it.
+    shown: Option<Result<(), String>>,
     /// The connection is gone (the server stopped, or never answered).
     lost: bool,
 }
@@ -439,6 +443,34 @@ impl Client {
         }
     }
 
+    /// Ask the window that had the keys last to come to the front with
+    /// session `id` shown, and wait up to `wait` for the server's word that
+    /// a window was told. The error says why not (no such session, no window).
+    pub fn show(&self, id: SessionId, wait: Duration) -> Result<(), String> {
+        self.0.lock().shown = None;
+        self.0.send(ToServer::Show { id });
+        let deadline = std::time::Instant::now() + wait;
+        let mut st = self.0.lock();
+        loop {
+            if let Some(r) = st.shown.take() {
+                return r;
+            }
+            if st.lost {
+                return Err("the tsumugi server went away".into());
+            }
+            let left = deadline.saturating_duration_since(std::time::Instant::now());
+            if left.is_zero() {
+                return Err("the tsumugi server did not answer".into());
+            }
+            st = self.0.answered.wait_timeout(st, left).unwrap_or_else(|e| e.into_inner()).0;
+        }
+    }
+
+    /// The sessions a window was asked to show (`show`) since the last call.
+    pub fn take_shows(&self) -> Vec<SessionId> {
+        std::mem::take(&mut self.0.lock().shows)
+    }
+
     /// Send raw bytes to a session as if typed (a notification's Allow is
     /// Enter, its Deny Esc).
     pub fn input(&self, id: SessionId, bytes: Vec<u8>) {
@@ -633,6 +665,8 @@ fn receive(inner: &Inner, msg: ToClient) {
         ToClient::Asked { n, id, text } => st.asks.push((n, id, text)),
         ToClient::AskGone { n } => st.asks.retain(|a| a.0 != n),
         ToClient::AskDone(r) => st.ask_done = Some(r),
+        ToClient::Show { id } => st.shows.push(id),
+        ToClient::Shown(r) => st.shown = Some(r),
         // An error answers the request waiting on one (a spawn), if any.
         ToClient::Error(e) => st.spawned.push_back(Err(e)),
     }
