@@ -145,14 +145,40 @@ pub struct View {
     screen: egui::Vec2,
     /// It fits (or can get no smaller): shown, and left as it is.
     settled: bool,
-    /// Drawn once as it is now: the first frame after a change wraps in the
-    /// widths of the one before, so only the second is measured.
-    drawn: bool,
+    /// The height the frame before measured, and how many frames it has been
+    /// drawn as it is now. A change takes some frames to settle: each wraps
+    /// in the grid's widths of the one before, and the Japanese lines (5.10)
+    /// came out taller on the third frame than on the second. So it is
+    /// judged only when two frames in a row agree.
+    last: f32,
+    frames: u8,
 }
 
 impl View {
     pub fn new() -> Self {
-        Self { opening: true, cols: 0, scale: 1.0, screen: egui::Vec2::ZERO, settled: false, drawn: false }
+        Self { opening: true, cols: 0, scale: 1.0, screen: egui::Vec2::ZERO, settled: false, last: f32::NAN, frames: 0 }
+    }
+
+    /// Measured `tall` this frame: refit once it has stopped changing.
+    fn measured(&mut self, tall: f32, room: f32, most: usize) {
+        if self.settled {
+            // Grown after it was shown (the widths moved on): smaller again
+            // while it can still go smaller. Only ever smaller, so it stops.
+            if tall > room + 0.5 && (self.cols < most || self.scale > SMALLEST) {
+                self.settled = false;
+                self.last = f32::NAN;
+                self.frames = 0;
+            }
+            return;
+        }
+        if (tall - self.last).abs() <= 0.5 || self.frames >= 6 {
+            self.refit(tall.max(self.last.max(0.0)), room, most);
+            self.last = f32::NAN;
+            self.frames = 0;
+        } else {
+            self.last = tall;
+            self.frames += 1;
+        }
     }
 
     /// The next try after the content came out `tall` for `room`.
@@ -162,8 +188,10 @@ impl View {
         } else if self.cols < most {
             self.cols += 1;
         } else if self.scale > SMALLEST {
-            // About as much smaller as it is over, at least a step.
-            self.scale = (self.scale * room / tall).min(self.scale - 0.02).max(SMALLEST);
+            // Part of the way to as much smaller as it is over, at least a
+            // step: the margins and the title do not shrink with it, so the
+            // whole way overshoots, and it only ever gets smaller.
+            self.scale = (self.scale * (room / tall).sqrt()).min(self.scale - 0.02).max(SMALLEST);
         } else {
             self.settled = true;
         }
@@ -209,7 +237,8 @@ pub fn show(ctx: &egui::Context, view: &mut View, c: &Colors) -> bool {
         view.cols = columns_for(width);
         view.scale = 1.0;
         view.settled = false;
-        view.drawn = false;
+        view.last = f32::NAN;
+        view.frames = 0;
     }
     let (n, s) = (view.cols, view.scale);
     let dealt = deal(&all, n);
@@ -248,7 +277,7 @@ pub fn show(ctx: &egui::Context, view: &mut View, c: &Colors) -> bool {
                                 ui.columns(n, |cols| {
                                     for (col, ui) in dealt.iter().zip(cols.iter_mut()) {
                                         for &g in col {
-                                            group(ui, &all[g], c, g, s);
+                                            group(ui, &all[g], c, s);
                                         }
                                     }
                                 });
@@ -260,18 +289,15 @@ pub fn show(ctx: &egui::Context, view: &mut View, c: &Colors) -> bool {
                 });
         },
     );
+    view.measured(tall, room, most_columns(width));
     if !view.settled {
-        if view.drawn {
-            view.refit(tall, room, most_columns(width));
-        }
-        view.drawn = !view.drawn;
         ctx.request_repaint();
     }
     keep
 }
 
 /// One group, its letters and spaces times `s`.
-fn group(ui: &mut egui::Ui, g: &Group, c: &Colors, id: usize, s: f32) {
+fn group(ui: &mut egui::Ui, g: &Group, c: &Colors, s: f32) {
     ui.add_space(6.0 * s);
     ui.label(RichText::new(tr_desc(g.title).to_uppercase()).size(11.0 * s).strong().color(c.dim));
     ui.add_space(2.0 * s);
@@ -284,16 +310,27 @@ fn group(ui: &mut egui::Ui, g: &Group, c: &Colors, id: usize, s: f32) {
         .map(|(k, _)| ui.fonts_mut(|f| f.layout_no_wrap(k.clone(), font.clone(), c.fg).size().x))
         .fold(0.0_f32, f32::max)
         .min(ui.available_width() * 0.45);
-    // The rows as low as the letters: egui's 18 pixels would keep them as
-    // tall at the smallest letters, and it would scroll anyway.
-    egui::Grid::new(("help-group", id)).num_columns(2).min_row_height(16.0 * s).spacing(egui::vec2(10.0, 3.0) * s).show(ui, |ui| {
+    // Laid out by hand, not in an `egui::Grid`: a grid sizes its columns from
+    // the frame before, so the wrapped words came out taller frame after
+    // frame and it was measured before they stopped (5.10). The rows as low
+    // as the letters: egui's 18 pixels would keep them as tall at the
+    // smallest letters, and it would scroll anyway.
+    let gap = 10.0 * s;
+    let words_w = (ui.available_width() - key_w - gap).max(40.0);
+    ui.scope(|ui| {
+        ui.spacing_mut().item_spacing = egui::vec2(gap, 3.0 * s);
         for (k, what) in &g.rows {
-            ui.allocate_ui_with_layout(egui::vec2(key_w, 16.0 * s), egui::Layout::left_to_right(egui::Align::Center), |ui| {
-                ui.set_min_width(key_w);
-                ui.label(RichText::new(k).font(font.clone()).color(c.wait_text()));
+            ui.horizontal_top(|ui| {
+                ui.allocate_ui_with_layout(egui::vec2(key_w, 16.0 * s), egui::Layout::top_down(egui::Align::Min), |ui| {
+                    ui.set_width(key_w);
+                    ui.set_min_height(16.0 * s);
+                    ui.add(egui::Label::new(RichText::new(k).font(font.clone()).color(c.wait_text())).wrap());
+                });
+                ui.allocate_ui_with_layout(egui::vec2(words_w, 16.0 * s), egui::Layout::top_down(egui::Align::Min), |ui| {
+                    ui.set_width(words_w);
+                    ui.add(egui::Label::new(RichText::new(tr_desc(what)).size(12.0 * s).color(c.fg)).wrap());
+                });
             });
-            ui.add(egui::Label::new(RichText::new(tr_desc(what)).size(12.0 * s).color(c.fg)).wrap());
-            ui.end_row();
         }
     });
     ui.add_space(6.0 * s);
@@ -349,10 +386,13 @@ mod tests {
 
     /// Draws it on a `w` × `h` window until it settles: the texts and where.
     fn draw(w: f32, h: f32) -> (View, Vec<(String, egui::Rect)>) {
-        let ctx = egui::Context::default();
+        draw_in(egui::Context::default(), w, h)
+    }
+
+    fn draw_in(ctx: egui::Context, w: f32, h: f32) -> (View, Vec<(String, egui::Rect)>) {
         let mut view = View::new();
         let mut texts = Vec::new();
-        for _ in 0..30 {
+        for _ in 0..80 {
             let input =
                 egui::RawInput { screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(w, h))), ..Default::default() };
             let mut out = ctx.run_ui(input, |ui| {
@@ -416,6 +456,48 @@ mod tests {
         }
     }
 
+    /// In Japanese, with the fonts tsumugi draws it in, it fits too: the
+    /// real machine found the last column running off the bottom at
+    /// 1280 × 800 (5.10), its lines wrapping taller frames after it was
+    /// measured.
+    #[test]
+    fn it_fits_in_japanese() {
+        crate::i18n::set_language_here("ja");
+        let fonts = crate::fonts::load("").defs;
+        for (w, h) in [(1280.0, 800.0), (1280.0, 600.0), (1000.0, 700.0), (1366.0, 640.0)] {
+            let ctx = egui::Context::default();
+            ctx.set_fonts(fonts.clone());
+            let (view, texts) = draw_in(ctx, w, h);
+            assert!(view.settled && view.scale > SMALLEST + 0.05, "{w}x{h}: cols {}, scale {}", view.cols, view.scale);
+            let bottom = texts.iter().map(|(_, r)| r.bottom()).fold(0.0_f32, f32::max);
+            assert!(bottom < h, "{w}x{h}: runs to {bottom} (cols {}, scale {})", view.cols, view.scale);
+            for g in all() {
+                let title = crate::i18n::tr_desc(g.title).to_uppercase();
+                assert!(texts.iter().any(|(t, _)| *t == title), "{w}x{h}: {title} is not drawn");
+            }
+        }
+    }
+
+    /// It is judged on a height two frames agree on, and grows smaller
+    /// again if it grew after it was shown.
+    #[test]
+    fn it_waits_for_the_height_to_stop_changing() {
+        let mut v = View::new();
+        v.cols = 4;
+        v.measured(500.0, 600.0, 4);
+        assert!(!v.settled);
+        v.measured(650.0, 600.0, 4);
+        assert!(!v.settled && v.scale == 1.0);
+        v.measured(650.0, 600.0, 4);
+        assert!(!v.settled && v.scale < 1.0);
+        let shrunk = v.scale;
+        v.measured(590.0, 600.0, 4);
+        v.measured(590.0, 600.0, 4);
+        assert!(v.settled && v.scale == shrunk);
+        v.measured(620.0, 600.0, 4);
+        assert!(!v.settled);
+    }
+
     #[test]
     fn it_takes_columns_before_smaller_letters() {
         let mut v = View::new();
@@ -423,9 +505,14 @@ mod tests {
         v.refit(900.0, 600.0, 3);
         assert_eq!((v.cols, v.scale, v.settled), (3, 1.0, false));
         v.refit(900.0, 600.0, 3);
-        assert!(v.scale < 0.7 + 0.01 && !v.settled);
-        v.refit(650.0, 600.0, 3);
+        assert!(v.scale < 0.82 && v.scale > 0.8 && !v.settled);
+        v.refit(590.0, 600.0, 3);
         assert!(v.settled);
+        let mut v = View::new();
+        v.cols = 3;
+        v.scale = SMALLEST;
+        v.refit(900.0, 600.0, 3);
+        assert!(v.settled, "at the smallest it stays, and scrolls");
         let mut v = View::new();
         v.cols = 3;
         v.refit(610.0, 600.0, 3);
