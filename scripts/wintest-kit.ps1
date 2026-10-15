@@ -81,6 +81,7 @@ public static class Native {
     [DllImport("user32.dll", SetLastError = true)] public static extern IntPtr OpenInputDesktop(uint flags, bool inherit, uint access);
     [DllImport("user32.dll")] public static extern bool CloseDesktop(IntPtr d);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern bool GetUserObjectInformation(IntPtr obj, int index, StringBuilder info, int length, out int needed);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int GetWindowText(IntPtr h, StringBuilder text, int length);
 
     public static int InputSize() { return Marshal.SizeOf(typeof(INPUT)); }
 
@@ -208,6 +209,13 @@ public static class Native {
             return name.ToString();
         } finally { CloseDesktop(h); }
     }
+
+    // The title of a window ("" when it has none).
+    public static string WindowTitle(IntPtr h) {
+        StringBuilder text = new StringBuilder(512);
+        GetWindowText(h, text, text.Capacity);
+        return text.ToString();
+    }
 }
 }
 '@
@@ -320,14 +328,21 @@ function Get-KitHandle {
 
 # Keys and clicks reach our window: the input desktop is Default (not the
 # lock screen, not a screen saver) and the window in front is ours. Nothing
-# measured after this turned false counts.
+# measured after this turned false counts. When not, the line names the
+# window in front (process and title), so the report says which dialog held
+# the desk (a firewall prompt, #24).
 function Test-InputReady {
     $desk = [TsumugiKit.Native]::InputDesktop()
     $fg = [TsumugiKit.Native]::GetForegroundWindow()
     $pid_ = [uint32]0
     [void][TsumugiKit.Native]::GetWindowThreadProcessId($fg, [ref]$pid_)
     $ours = (Test-Path -LiteralPath (Join-Path $script:KitDir 'window.json')) -and $pid_ -eq (Get-KitWindow).Pid
-    if ($desk -ne 'Default' -or -not $ours) { "Input not ready: desktop '$desk', foreground pid $pid_" | Out-Host; return $false }
+    if ($desk -ne 'Default' -or -not $ours) {
+        $name = (Get-Process -Id $pid_ -ErrorAction SilentlyContinue).ProcessName
+        $title = [TsumugiKit.Native]::WindowTitle($fg)
+        "Input not ready: desktop '$desk', foreground pid $pid_ ($name) '$title'" | Out-Host
+        return $false
+    }
     $true
 }
 
