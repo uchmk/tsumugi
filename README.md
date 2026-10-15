@@ -972,7 +972,8 @@ macOS), `<…>*3` presses one three times, and a plain space is `<Space>`.
 script ends, `TSUMUGI_KEYS_DONE` gets the state and a last line
 `keys: done`. The state is `key: value` lines: `focus` (`pane`, the open
 dialog or `none`), `overlay`, `scale`, then `tabs`, `panes` (in the tab
-shown), `zoom` and `title`.
+shown), `shape` (its splits, the sessions' numbers in them:
+`right 0.35 (1, down 0.35 (2, 3))`), `zoom` and `title`.
 
 ### From Claude Code (MCP)
 

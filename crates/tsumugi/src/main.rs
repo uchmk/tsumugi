@@ -1854,6 +1854,13 @@ impl App {
             let ids = tree.leaves();
             if let (Some(client), Some(w)) = (&self.client, workspaces.iter().find(|w| ids.iter().all(|id| w.layout.contains(id)))) {
                 client.set_layout(w.id, tree.clone(), *first);
+                // The shape carries the keys to the first pane. Setting them
+                // there below would send the tab as the splits made it, and
+                // that would land after the shape (#113).
+                if self.pending == Some(*first) {
+                    self.active = Some(w.id);
+                    self.pending = None;
+                }
                 self.opening = None;
             } else if since.elapsed() > std::time::Duration::from_secs(10) {
                 // A pane that never came: the tab stays as the splits made it.
@@ -1883,8 +1890,9 @@ impl App {
             if let Some(w) = workspaces.iter().find(|w| w.layout.contains(&new)) {
                 self.active = Some(w.id);
                 self.pending = None;
-                // `tsumugi attach` names a pane, maybe not the tab's focus.
-                if w.focus != new {
+                // `tsumugi attach` names a pane, maybe not the tab's focus. A
+                // layout still opening sets the keys with its shape (#113).
+                if w.focus != new && self.opening.is_none() {
                     self.set_focus(w, new);
                 }
             }
@@ -6183,6 +6191,21 @@ fn save_history(list: Vec<String>) {
     });
 }
 
+/// A tab's splits as `--keys` writes them, the sessions' numbers in it:
+/// `right 0.35 (1, down 0.35 (2, 3))`.
+fn shape(n: &Node<SessionId>) -> String {
+    match n {
+        Node::Leaf(id) => id.to_string(),
+        Node::Split { dir, ratio, first, second } => {
+            let dir = match dir {
+                Dir::Right => "right",
+                Dir::Down => "down",
+            };
+            format!("{dir} {ratio:.2} ({}, {})", shape(first), shape(second))
+        }
+    }
+}
+
 fn escape_line(s: &str) -> String {
     s.replace('\\', "\\\\").replace('\n', "\\n").replace('\r', "")
 }
@@ -6431,6 +6454,7 @@ impl App {
         let mut s = format!("focus: {focus}\noverlay: {overlay}\nscale: {}%\n", (ctx.zoom_factor() * 100.0).round());
         s += &format!("tabs: {}\n", workspaces.len());
         s += &format!("panes: {}\n", shown.map_or(0, |w| w.layout.leaves().len()));
+        s += &format!("shape: {}\n", shown.map_or_else(String::new, |w| shape(&w.layout)));
         s += &format!("zoom: {}\n", if self.zoom { "on" } else { "off" });
         s += &format!("title: {}\n", keyscript::one_line(&self.title));
         if let Some(e) = &self.failed {
@@ -7826,7 +7850,16 @@ fn web_dir() -> Option<std::path::PathBuf> {
 
 #[cfg(test)]
 mod tests {
-    use super::{escape_line, json_string, keep_tab_for_pane, unescape_line, View};
+    use super::{escape_line, json_string, keep_tab_for_pane, shape, unescape_line, View};
+
+    #[test]
+    fn the_keys_state_writes_a_tabs_splits() {
+        use ito_layout::{Dir, Node};
+        let split = |dir, ratio, first, second| Node::Split { dir, ratio, first: Box::new(first), second: Box::new(second) };
+        let tree = split(Dir::Right, 0.35, Node::Leaf(1), split(Dir::Down, 0.35, Node::Leaf(2), Node::Leaf(3)));
+        assert_eq!(shape(&tree), "right 0.35 (1, down 0.35 (2, 3))");
+        assert_eq!(shape(&Node::Leaf(7)), "7");
+    }
 
     #[test]
     fn moving_the_keys_keeps_the_comments_above_them() {
