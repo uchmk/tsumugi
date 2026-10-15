@@ -328,6 +328,38 @@ fn a_prompt_is_pasted_and_sent() {
     pane.kill();
 }
 
+/// The keys' selection keeps the whole cell at both ends, back from where
+/// it began as well as ahead (#57): copy mode's mark on N, then two cells
+/// back, copies LMN, not LM.
+#[test]
+fn the_keys_selection_keeps_both_end_cells() {
+    let at = address();
+    let _srv = serve(&at).expect("the server starts");
+    let c = Client::connect(&at, || {}).expect("a client connects");
+    let pane = c.spawn(std::env::temp_dir(), None, Size::new(80, 24), (8, 16)).expect("a shell starts");
+    until(&pane, "a prompt", |t| !t.trim().is_empty());
+    pane.send(b"echo KLMNOPQRST\r".to_vec());
+    until(&pane, "the echo", |t| t.lines().any(|l| l == "KLMNOPQRST"));
+    let y = text(&pane).lines().position(|l| l == "KLMNOPQRST").expect("the line");
+    let copied = |from: usize, to: usize| {
+        pane.select_cells((from, y), true);
+        pane.select_cells((to, y), false);
+        assert_eq!(Pane::selection(&pane), None, "the answer comes as clipboard text");
+        let deadline = Instant::now() + Duration::from_secs(10);
+        loop {
+            if let Some(got) = c.take_clipboard().pop() {
+                return got;
+            }
+            assert!(Instant::now() < deadline, "no clipboard text for {from}..{to}");
+            std::thread::sleep(Duration::from_millis(20));
+        }
+    };
+    assert_eq!(copied(3, 1), "LMN", "back from the mark");
+    assert_eq!(copied(3, 5), "NOP", "ahead of the mark");
+    assert_eq!(copied(3, 3), "N", "the mark alone");
+    pane.kill();
+}
+
 /// The settings' `[shell.env]` reaches every session's shell.
 #[test]
 fn the_settings_variables_reach_the_shell() {
