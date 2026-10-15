@@ -5,6 +5,14 @@
 
 ## [未リリース]
 
+## [0.111.5] - 2026-10-16
+
+### 修正
+
+- 状態の欄のための git の読み取り（`git status`・`git diff`）が、`.git/index.lock` を取ったり index を書き直したりしていた。
+  同じ worktree で Claude が commit すると、ちょうど重なったときに `index.lock` があるという失敗になることがあった。
+  読み取りは `GIT_OPTIONAL_LOCKS=0` と `diff.autoRefreshIndex=false` で回し、index には触らない（#142）。
+
 ## [0.111.4] - 2026-10-16
 
 ### 修正
