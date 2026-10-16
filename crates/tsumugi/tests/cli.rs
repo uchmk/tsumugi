@@ -580,6 +580,25 @@ fn keys_refuses_a_bad_script() {
     assert!(s.ok(&["--help"]).contains("--keys"), "the help names --keys");
 }
 
+/// A run started detached that only waits for `TSUMUGI_KEYS_DONE` learns of
+/// a refusal there too, and a key no keyboard can type is one.
+#[test]
+fn keys_writes_a_refusal_to_the_done_file() {
+    let s = Server::new("keys-done");
+    let done = s.dir.join("done.txt");
+    for (args, says) in
+        [(&["--keys", "<Wait:soon>"][..], "milliseconds"), (&["--keys"], "usage"), (&["--keys", "j<C-\u{3042}>"], "cannot be typed")]
+    {
+        let _ = std::fs::remove_file(&done);
+        let out = s.command(args).env("TSUMUGI_KEYS_DONE", &done).output().unwrap();
+        let err = String::from_utf8_lossy(&out.stderr);
+        assert_eq!(out.status.code(), Some(2), "tsumugi {args:?}: {err}");
+        assert!(err.contains(says), "tsumugi {args:?} said: {err}");
+        let report = std::fs::read_to_string(&done).unwrap_or_default();
+        assert!(report.starts_with("keys: refused\nwhy: ") && report.contains(says), "tsumugi {args:?} wrote: {report:?}");
+    }
+}
+
 /// `tsumugi serial` refuses words it cannot read with exit 2 and why, and
 /// a port that is not there with exit 1.
 #[test]

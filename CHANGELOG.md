@@ -5,6 +5,26 @@
 
 ## [未リリース]
 
+## [0.113.1] - 2026-10-16
+
+### 修正
+
+- `tsumugi --keys` の `TSUMUGI_KEYS_DONE` が、どう終わったかを必ず書く（#39。ito 0.40.0 の ito-keyscript の `Runner` を使う）。
+  - `<Quit>` で終わった台本は、今まで done のファイルを書かずに窓を閉じていた。状態と `quit: yes`・`keys: done` を書いてから閉じる
+    （押していない語が残っていれば `keys: quit` と `left: N not pressed`）。
+  - 台本の途中で窓が外から閉じられたら（タイトルバーの ×、Alt+F4）`keys: closed` と `left: N not pressed` を書く。
+    走っているセッションの問いで閉じるのを止めたときは書かない。
+  - 待ちの分を除いて 30 秒何も押せなければ `keys: stalled`（どこまで押したかと残り）を書き、stderr にも出す。窓が裏にあっても台本は進む。
+  - パニックは `keys: panicked`（どこで、なぜ）を書く。拒んだ台本（読めない語・引数なし・どのキーボードにも無いキー）は
+    `keys: refused` と `why:` を書く。どのキーボードにも無いキー（`<C-あ>` など）は窓を開く前に拒む。
+  - `<Paste>` が空の文字を貼っていた。クリップボードの文字を貼る。
+- 実機の確認は TESTING.md の 18.11（`<Quit>` の終わり方が変わった）と 18.15（外から閉じる・問いで止める・`<Paste>`）、
+  拒むときの done のファイルは `keys_writes_a_refusal_to_the_done_file`。
+
+### 変更
+
+- ito を 0.40.0 に上げた（`scripts/lanes.sh sync` で `merge-lanes.py` も 0.38.2 の形に）。
+
 ## [0.113.0] - 2026-10-16
 
 ### 追加

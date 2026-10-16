@@ -133,18 +133,18 @@ fn main() -> std::process::ExitCode {
             }
         },
         Some("--keys") => match (args.get(1).map(|s| keyscript::parse(s)), args.len()) {
-            (Some(Ok(steps)), 2) => {
-                let _ = KEYS.set(steps);
-                window()
-            }
-            (Some(Err(e)), 2) => {
-                eprintln!("tsumugi --keys: {e}");
-                std::process::ExitCode::from(2)
-            }
-            _ => {
-                eprintln!("usage: tsumugi --keys SCRIPT (one argument: keys as `<C-S-t>`, `<Wait:500>`, `<Shot:name>`, `<State:name>`, `<Click:x,y>`, `<Drag:x,y-x,y>`, `<Quit>`)");
-                std::process::ExitCode::from(2)
-            }
+            (Some(Ok(steps)), 2) => match steps.iter().find(|s| keyscript::press(s).is_none()) {
+                Some(s) => refuse_keys(&format!("`{}` cannot be typed", keyscript::label(s))),
+                None => {
+                    if let Some(done) = keys_done() {
+                        keyscript::install_panic_report(done);
+                    }
+                    let _ = KEYS.set(steps);
+                    window()
+                }
+            },
+            (Some(Err(e)), 2) => refuse_keys(&e),
+            _ => refuse_keys(KEYS_USAGE),
         },
         Some("--version" | "-V") => {
             out(&format!("tsumugi {}\n", env!("CARGO_PKG_VERSION")));
@@ -284,6 +284,28 @@ fn layout_cli(args: &[String]) -> std::process::ExitCode {
 
 /// The script `tsumugi --keys` gave the window to play.
 static KEYS: std::sync::OnceLock<Vec<keyscript::Step>> = std::sync::OnceLock::new();
+
+/// What `tsumugi --keys` with no script, or more than one, says.
+const KEYS_USAGE: &str = "usage: tsumugi --keys SCRIPT (one argument: keys as `j`, `<C-S-t>`, `<Space>`, `<Wait:500>`, \
+     `<Shot:name>`, `<State:name>`, `<Click:x,y>`, `<Drag:x,y-x,y>`, `<Paste>`, `<Quit>`; all the words are in ito's docs/common-spec.md)";
+
+/// `TSUMUGI_KEYS_DONE`: the file `--keys` writes its state and its end to.
+fn keys_done() -> Option<std::path::PathBuf> {
+    std::env::var_os("TSUMUGI_KEYS_DONE").filter(|p| !p.is_empty()).map(std::path::PathBuf::from)
+}
+
+/// A script refused before any window opens: why, on the command line and,
+/// for a run started detached that only waits for the file, in
+/// `TSUMUGI_KEYS_DONE` as well.
+fn refuse_keys(why: &str) -> std::process::ExitCode {
+    if let Some(done) = keys_done() {
+        let _ = std::fs::write(done, keyscript::refused_report(why));
+    }
+    // Not `eprintln!`: a detached run's stderr can be a closed pipe.
+    use std::io::Write;
+    let _ = writeln!(std::io::stderr(), "tsumugi --keys: {why}");
+    std::process::ExitCode::from(2)
+}
 
 /// The session `tsumugi attach` asked the window to show.
 static SHOW_SESSION: std::sync::OnceLock<SessionId> = std::sync::OnceLock::new();
@@ -1785,10 +1807,12 @@ impl App {
             build_told: false,
             close_ok: false,
             script: KEYS.get().map(|steps| {
-                keyscript::runner(
-                    steps.clone(),
-                    std::env::var_os("TSUMUGI_KEYS_DONE").filter(|p| !p.is_empty()).map(std::path::PathBuf::from),
-                )
+                let mut script = keyscript::runner(steps.clone(), keys_done());
+                script.clipboard = clip::text;
+                // A window behind others may get no frames, and a stuck
+                // script would leave the file never written.
+                script.watch(cc.egui_ctx.clone());
+                script
             }),
             script_todo: Vec::new(),
             worktree_removing: None,
@@ -6412,23 +6436,40 @@ impl App {
             self.say(e, true);
         }
         for d in std::mem::take(&mut self.script_todo) {
-            let Some(script) = &self.script else { return };
+            let Some(script) = &mut self.script else { return };
             let (path, tail) = match d {
-                keyscript::Do::State(name) => (Some(script.dir.join(format!("{name}.txt"))), ""),
-                keyscript::Do::Done => (script.done.clone(), "keys: done\n"),
+                keyscript::Do::State(name) => (Some(script.dir.join(format!("{name}.txt"))), String::new()),
+                keyscript::Do::Done => (script.done.clone(), "keys: done\n".to_owned()),
                 // tsumugi defines no readings of its own.
-                keyscript::Do::Read { .. } => (None, ""),
+                keyscript::Do::Read { .. } => (None, String::new()),
                 keyscript::Do::Quit => {
                     // Asked for by the script: no question about the
-                    // sessions still running.
+                    // sessions still running. No later frame writes the
+                    // done file, so this one says how it ended (the runner
+                    // has finished; no stall report comes after).
+                    let tail = keyscript::quit_report(script.left());
                     self.close_ok = true;
                     ctx.send_viewport_cmd(egui::ViewportCommand::Close);
-                    (None, "")
+                    (script.done.clone(), tail)
                 }
             };
             if let Some(path) = path {
                 if let Err(e) = std::fs::write(&path, format!("{}{tail}", self.script_state(ctx))) {
                     eprintln!("tsumugi --keys: {}: {e}", path.display());
+                }
+            }
+        }
+        // Closed from outside while the script ran (the title bar's x,
+        // Alt+F4): no later frame comes to write the file. A close the
+        // question about running sessions held back is not one; that is the
+        // only close cancelled (`close_window`), so a new `CancelClose`
+        // elsewhere has to set `closing` too.
+        if ctx.input(|i| i.viewport().close_requested()) && self.closing.is_none() {
+            if let Some(script) = self.script.as_mut().filter(|s| s.running()) {
+                let tail = keyscript::closed_report(script.left());
+                script.finish();
+                if let Some(done) = script.done.clone() {
+                    let _ = std::fs::write(done, self.script_state(ctx) + &tail);
                 }
             }
         }
