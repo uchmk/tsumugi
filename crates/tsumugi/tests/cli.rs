@@ -128,6 +128,8 @@ fn new_starts_a_server_and_ls_lists_the_session() {
     let cols = s.line_of(&ls, &id).unwrap_or_else(|| panic!("session {id} not in:\n{ls}"));
     assert_eq!(cols.len(), 7, "{ls}");
     assert!(same_folder(cols[3], &s.dir), "folder {:?} is not {}", cols[3], s.dir.display());
+    // pwsh and cmd make their exe's path the title: the column names the program.
+    assert!(!cols[4].to_ascii_lowercase().ends_with(".exe"), "title {:?}", cols[4]);
     assert_eq!(cols[6], "a,b,c");
 }
 
@@ -292,6 +294,60 @@ fn ls_json_is_one_array_of_sessions() {
     }
     assert!(json.contains(&format!("\"id\": {id}")) || json.contains(&format!("\"id\":{id}")), "{json}");
     assert!(json.contains("\"x\""), "{json}");
+}
+
+/// The webhook half of 4.28: a session that fails goes to the webhook at
+/// once, what it said over the program's name -- not the exe's path cmd and
+/// pwsh make their title (a local listener stands in for ntfy; `curl` sends,
+/// as on a real machine).
+#[test]
+fn a_failure_goes_to_the_webhook_named_by_its_program() {
+    use std::io::Read;
+    if std::process::Command::new("curl").arg("--version").output().is_err() {
+        eprintln!("no curl here; skipped");
+        return;
+    }
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let s = Server::new("webhook");
+    let settings = s.dir.join("config.toml");
+    let mut text = std::fs::read_to_string(&settings).unwrap();
+    text.push_str(&format!("[notify]\nwebhook = \"http://127.0.0.1:{port}/topic\"\nwebhook_states = [\"error\"]\n"));
+    std::fs::write(&settings, text).unwrap();
+    let id = s.new_session(&[]);
+    if cfg!(windows) {
+        // cmd's title, its exe's path, comes with its first prompt.
+        let deadline = Instant::now() + PATIENCE;
+        while !s.ok(&["ls", "--json"]).to_ascii_lowercase().contains("cmd.exe") {
+            assert!(Instant::now() < deadline, "cmd never set its title:\n{}", s.ok(&["ls", "--json"]));
+            std::thread::sleep(Duration::from_millis(200));
+        }
+    }
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let Some(Ok(mut conn)) = listener.incoming().next() else { return };
+        conn.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+        // The headers, then as many bytes as they say.
+        let mut got = Vec::new();
+        let mut buf = [0u8; 4096];
+        while let Ok(n @ 1..) = conn.read(&mut buf) {
+            got.extend_from_slice(&buf[..n]);
+            let text = String::from_utf8_lossy(&got);
+            if let Some((head, body)) = text.split_once("\r\n\r\n") {
+                let length = head.lines().find_map(|l| l.to_ascii_lowercase().strip_prefix("content-length:").map(|n| n.trim().to_owned()));
+                if length.and_then(|n| n.parse::<usize>().ok()).is_none_or(|n| body.len() >= n) {
+                    break;
+                }
+            }
+        }
+        let _ = std::io::Write::write_all(&mut conn, b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n");
+        let _ = tx.send(String::from_utf8_lossy(&got).into_owned());
+    });
+    s.ok(&["notify", "--state", "error", "--session", &id, "boom"]);
+    let got = rx.recv_timeout(PATIENCE).expect("the webhook was called");
+    let (head, body) = got.split_once("\r\n\r\n").unwrap_or((&got, ""));
+    assert!(head.starts_with("POST /topic") && head.contains("failed"), "{got}");
+    assert_eq!(body, if cfg!(windows) { "boom\ncmd" } else { "boom\nsh" }, "{got}");
 }
 
 /// 18.2 and 18.3: `send` types a line and runs it, `read --all` gives the

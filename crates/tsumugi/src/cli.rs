@@ -286,6 +286,24 @@ mod tests {
     }
 
     #[test]
+    fn ls_titles_a_session_by_its_name_not_its_programs_path() {
+        let pwsh = r"C:\Program Files\WindowsApps\Microsoft.PowerShell_7.6.6.0_x64__8wekyb3d8bbwe\pwsh.exe";
+        let mut i = info(3, "C:/dev", pwsh, &[]);
+        i.title = pwsh.into();
+        assert_eq!(ls_title(&i), "pwsh");
+        i.title = "✳ Fix the zoom badge".into();
+        assert_eq!(ls_title(&i), "Fix the zoom badge");
+        // No title stays empty: the command column names the program.
+        i.title = String::new();
+        assert_eq!(ls_title(&i), "");
+        i.title = "✳".into();
+        assert_eq!(ls_title(&i), "");
+        // `--json` keeps the title the program set.
+        i.title = pwsh.into();
+        assert!(ls_json(&[i]).contains("pwsh.exe"));
+    }
+
+    #[test]
     fn new_reads_a_folder_tags_and_a_command() {
         let a = |s: &str| s.split(' ').map(String::from).collect::<Vec<_>>();
         let n = parse_new(&a("~/dev/filer --tag review -- claude --continue")).unwrap();
@@ -532,6 +550,17 @@ pub fn parse_wait(args: &[String]) -> Result<Wait, String> {
         return Err("which session? (tsumugi ls lists them)".into());
     }
     Ok(out)
+}
+
+/// The title column of `tsumugi ls`: what the window calls the session
+/// (pwsh's exe path as `pwsh`, less a spinner), empty when the program set
+/// none -- the command column names it. `--json` keeps the title as it is.
+pub fn ls_title(i: &Info) -> String {
+    if sort::without_spinner(&i.title).is_empty() {
+        String::new()
+    } else {
+        sort::display_title(&i.title, &i.command)
+    }
 }
 
 /// The sessions as one JSON array, every field `tsumugi ls` knows.

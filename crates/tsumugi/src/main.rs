@@ -490,7 +490,7 @@ fn ls(args: &[String]) -> std::process::ExitCode {
                     i.state.word(),
                     i.command,
                     i.cwd.display(),
-                    i.title,
+                    cli::ls_title(&i),
                     i.note,
                     i.tags.join(",")
                 ));

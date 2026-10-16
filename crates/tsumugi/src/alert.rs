@@ -184,8 +184,10 @@ impl Alerts {
 /// (`filer is waiting for you`), the work's name and what it said below.
 /// Without a folder, the work's name is the title.
 fn wording(n: &Notice, place: Option<&str>) -> (String, String) {
-    let work = crate::sort::without_spinner(&n.title);
-    let who = place.filter(|p| !p.is_empty()).unwrap_or(work);
+    // The server names the work (v0.114.12); one from before sends the
+    // title as it was, pwsh's exe path and all.
+    let work = crate::sort::display_title(&n.title, "");
+    let who = place.filter(|p| !p.is_empty()).unwrap_or(&work);
     let title = match n.state {
         _ if n.trigger => format!("{who}: a trigger matched"),
         State::Waiting | State::MaybeWaiting => format!("{who} is waiting for you"),
@@ -195,7 +197,7 @@ fn wording(n: &Notice, place: Option<&str>) -> (String, String) {
     };
     let named = place.is_some_and(|p| !p.is_empty()) && !work.is_empty();
     let body = match (named, n.note.is_empty()) {
-        (true, true) => work.to_owned(),
+        (true, true) => work.clone(),
         (true, false) => format!("{work} · {}", n.note),
         (false, _) => n.note.clone(),
     };
@@ -558,6 +560,9 @@ mod tests {
         n.note.clear();
         assert_eq!(wording(&n, Some("filer")), ("filer failed".into(), "Fix the split".into()));
         assert_eq!(wording(&n, None), ("Fix the split failed".into(), String::new()), "no folder: the work's name");
+        // A server from before v0.114.12 sends pwsh's title as it is.
+        n.title = r"C:\Program Files\WindowsApps\Microsoft.PowerShell_7.6.6.0_x64__8wekyb3d8bbwe\pwsh.exe".into();
+        assert_eq!(wording(&n, Some("minato")), ("minato failed".into(), "pwsh".into()));
     }
 
     fn notice(id: u64, state: State, read: bool) -> Notice {
