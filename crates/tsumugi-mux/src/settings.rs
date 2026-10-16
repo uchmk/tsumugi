@@ -75,14 +75,21 @@
 //! taskbar = ["waiting", "error"]
 //! flash = []
 //! sound = []
-//! # A session waiting two minutes while no one is at the window, sent here.
-//! webhook = "https://ntfy.sh/my-topic"
-//! webhook_format = "ntfy"
+//! # A session waiting two minutes while no one is at the window goes to
+//! # the webhooks below.
 //! webhook_after = 120
-//! webhook_states = ["waiting", "error", "done"]
 //! # Say so once when the day's estimated cost passes $20, or a 5-hour block's $10.
 //! spend_day = 20
 //! spend_block = 10
+//!
+//! # Where a session goes while no one is at the window, as many as wanted:
+//! # the address, its format (ntfy, slack, discord or json) and the states
+//! # sent there. (The one address of before, `[notify] webhook`,
+//! # `webhook_format` and `webhook_states`, still works, as the first.)
+//! [[notify.webhooks]]
+//! url = "https://ntfy.sh/my-topic"
+//! format = "ntfy"
+//! states = ["waiting", "error", "done"]
 //!
 //! # Other AI programs: what a restored session types to take one up again.
 //! [agents.gemini]
@@ -192,6 +199,7 @@
 
 use std::path::{Component, Path, PathBuf};
 
+use ito_notify::webhook::Place;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, PartialEq, Deserialize)]
@@ -846,7 +854,8 @@ pub struct Notify {
     pub stay: bool,
     /// Where to send a session waiting while no one is at the window: an
     /// ntfy topic's address, a Slack or Discord incoming webhook, or any
-    /// address that takes JSON. Empty: nowhere.
+    /// address that takes JSON. Empty: nowhere. The one address of before
+    /// `webhooks`, still read as the first of them ([`Notify::places`]).
     pub webhook: String,
     /// What the address takes: `ntfy`, `slack`, `discord` or `json`.
     pub webhook_format: String,
@@ -855,6 +864,9 @@ pub struct Notify {
     /// Which states go to the webhook, by their words: `waiting` (after
     /// `webhook_after`), `error` and `done` (a long run; at once).
     pub webhook_states: Vec<String>,
+    /// The `[[notify.webhooks]]`: more places a session goes, each with
+    /// its own address, format and states.
+    pub webhooks: Vec<Webhook>,
     /// Say so once when the day's estimated cost (US dollars) passes this;
     /// 0: never.
     pub spend_day: u64,
@@ -882,9 +894,42 @@ impl Default for Notify {
             webhook_format: "ntfy".into(),
             webhook_after: 120,
             webhook_states: vec!["waiting".into()],
+            webhooks: Vec::new(),
             spend_day: 0,
             spend_block: 0,
         }
+    }
+}
+
+impl Notify {
+    /// Every place a session goes: `webhook` first when it has an address,
+    /// then the `webhooks` in order.
+    pub fn places(&self) -> Vec<Place> {
+        let place = |url: &str, format: &str, states: &[String]| Place {
+            url: url.trim().to_owned(),
+            format: format.to_owned(),
+            states: states.to_vec(),
+        };
+        let old = place(&self.webhook, &self.webhook_format, &self.webhook_states);
+        ito_notify::webhook::places(old, self.webhooks.iter().map(|w| place(&w.url, &w.format, &w.states)).collect())
+    }
+}
+
+/// One `[[notify.webhooks]]`: the address, what it takes (`ntfy`, `slack`,
+/// `discord` or `json`) and which states go there (`waiting`, `error`,
+/// `done`, as `webhook_states`).
+#[derive(Clone, Debug, PartialEq, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct Webhook {
+    pub url: String,
+    pub format: String,
+    pub states: Vec<String>,
+}
+
+impl Default for Webhook {
+    /// An ntfy topic told of a session waiting, as `webhook` is.
+    fn default() -> Self {
+        Self { url: String::new(), format: "ntfy".into(), states: vec!["waiting".into()] }
     }
 }
 
@@ -956,6 +1001,12 @@ pub fn parse(text: &str) -> Result<Settings, String> {
     let webhook = s.notify.webhook.trim();
     if !webhook.is_empty() && !ito_notify::is_http(webhook) {
         return Err(format!("notify.webhook: `{webhook}` is not an http(s) address"));
+    }
+    for (k, w) in s.notify.webhooks.iter().enumerate() {
+        let place = Place { url: w.url.clone(), format: w.format.clone(), states: w.states.clone() };
+        if let Some(e) = place.problems(&["waiting", "error", "done"]).first() {
+            return Err(format!("notify.webhooks {}: {e}", k + 1));
+        }
     }
     if let Some((model, _)) = s.prices.iter().find(|(_, p)| p.input < 0.0 || p.output < 0.0 || p.cache_read.is_some_and(|r| r < 0.0)) {
         return Err(format!("prices.{model}: a price below zero"));
@@ -1294,8 +1345,11 @@ mod tests {
             s.notify,
             Notify {
                 flash: vec![],
-                webhook: "https://ntfy.sh/my-topic".into(),
-                webhook_states: vec!["waiting".into(), "error".into(), "done".into()],
+                webhooks: vec![Webhook {
+                    url: "https://ntfy.sh/my-topic".into(),
+                    states: vec!["waiting".into(), "error".into(), "done".into()],
+                    ..Webhook::default()
+                }],
                 spend_day: 20,
                 spend_block: 10,
                 ..Notify::default()
@@ -1307,6 +1361,28 @@ mod tests {
         assert_eq!(parse("[notify]\nwebhook_format = \"discord\"\n").unwrap().notify.webhook_format, "discord");
         assert_eq!(parse("[notify]\nwebhook_states = [\"error\", \"done\"]\n").unwrap().notify.webhook_states, ["error", "done"]);
         assert!(parse("[notify]\nwebhook_states = [\"sleeping\"]\n").is_err());
+        assert_eq!(s.notify.places().len(), 1, "the example's one webhook");
+        let two = parse(
+            "[notify]\nwebhook = \" https://a \"\nwebhook_states = [\"done\"]\n\
+             [[notify.webhooks]]\nurl = \"https://b\"\nformat = \"slack\"\n\
+             [[notify.webhooks]]\nurl = \"https://c\"\nstates = []\n",
+        )
+        .unwrap();
+        let places = two.notify.places();
+        let urls: Vec<&str> = places.iter().map(|p| p.url.as_str()).collect();
+        assert_eq!(urls, ["https://a", "https://b", "https://c"], "the old address first, trimmed");
+        assert_eq!(
+            (places[0].states.clone(), places[1].format.as_str(), places[1].states.clone()),
+            (vec!["done".into()], "slack", vec!["waiting".into()])
+        );
+        assert!(!places[2].takes("waiting") && places[1].takes("waiting") && !places[1].takes("done"), "an empty list takes nothing");
+        for bad in ["url = \"file:///etc\"", "format = \"xml\"", "states = [\"late\"]", "sound = []"] {
+            let e = parse(&format!("[[notify.webhooks]]\n{bad}\n")).map(|_| ()).unwrap_err();
+            assert!(e.contains("notify.webhooks") || e.contains("unknown field `sound`"), "{bad}: {e}");
+        }
+        assert!(parse("[[notify.webhooks]]\nurl = \"https://a\"\n[[notify.webhooks]]\nurl = \"ftp://b\"\n")
+            .unwrap_err()
+            .contains("notify.webhooks 2"));
         assert_eq!(s.general.default_folder, "~/dev");
         assert_eq!(s.sessions.quiet, Some(10));
         assert_eq!(s.shell.command(), Some(("pwsh".to_string(), vec!["-NoLogo".to_string()])));

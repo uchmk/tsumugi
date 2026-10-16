@@ -2455,6 +2455,23 @@ impl App {
                     body: "A test notification: this is how a session tells you".into(),
                     state: Some(State::Waiting),
                 }),
+                prefs::Change::Webhooks(places) => {
+                    edit_settings(self.settings_tx.clone(), move |t| ito_prefs::write_webhooks(t, &places, true))
+                }
+                prefs::Change::TestWebhook(p) => {
+                    let url = p.url.trim().to_owned();
+                    if ito_notify::is_http(&url) {
+                        let what = "A test notification: this is how a session tells you".to_owned();
+                        ito_notify::webhook::send(
+                            url,
+                            p.format,
+                            ito_notify::webhook::Level::Waiting,
+                            "tsumugi".into(),
+                            what,
+                            String::new(),
+                        );
+                    }
+                }
                 prefs::Change::DeleteProfile(name) => {
                     self.profiles.retain(|p| p.name != name);
                     self.save_profiles();

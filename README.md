@@ -151,16 +151,34 @@ AppleScript. Which
 states tell in which way is `[notify]` in the settings (below); by default
 the taskbar does not flash.
 
-Away from the machine, `[notify] webhook` (Settings, Notifications, WHILE YOU
-ARE AWAY) sends a session that has waited `webhook_after` seconds (2 minutes
-by default) while no tsumugi window is looked at -- an ntfy topic's address
+Away from the machine, each `[[notify.webhooks]]` (Settings, Notifications,
+WHILE YOU ARE AWAY: **Add an address**, and a row each in the table) sends a
+session that has waited `webhook_after` seconds (2 minutes by default) while
+no tsumugi window is looked at. Its `url` is an ntfy topic's address
 (`https://ntfy.sh/my-topic`, the phone's notification), a Slack incoming
-webhook (`webhook_format = "slack"`), a Discord one (`"discord"`: the title in
-bold, and no `@everyone` pings anyone) or any address taking JSON (`"json"`:
-`title`, `message`, `folder`, `state`). `webhook_states` (default
-`["waiting"]`) picks what is sent: add `"error"` and `"done"` (a run past
-`long_run`) and a failure or a finish goes at once. The server sends it, once
-a wait, through the system's `curl` (tried again after 30 seconds if it did not
+webhook (`format = "slack"`), a Discord one (`"discord"`: the title in bold,
+and no `@everyone` pings anyone) or any address taking JSON (`"json"`:
+`title`, `message`, `folder`, `state`); `format` is `"ntfy"` by default.
+Its `states` (default `["waiting"]`) picks what is sent there: add `"error"`
+and `"done"` (a run past `long_run`) and a failure or a finish goes at once.
+So a phone can get every wait while a team's channel gets only failures:
+
+```toml
+[[notify.webhooks]]
+url = "https://ntfy.sh/my-topic"
+states = ["waiting", "error", "done"]
+
+[[notify.webhooks]]
+url = "https://discord.com/api/webhooks/..."
+format = "discord"
+states = ["error"]
+```
+
+The one address of before (`[notify] webhook`, `webhook_format`,
+`webhook_states`) still works, as the first of them; the settings page writes
+it as a `[[notify.webhooks]]` the first time the list is changed. **Send a
+test here** sends to that one address only. The server sends them, once a
+wait, through the system's `curl` (tried again after 30 seconds if it did not
 get through, or the address refused it with an HTTP error), so it works with
 the window closed; muted sessions and quiet tags are not sent.
 
@@ -564,8 +582,9 @@ what the window shows first, the default folder, starting the server at sign-in,
 closing the window does, checking for updates, the clock), Appearance (the
 font, the cursor, the title bar, the material, motion), Keys (click one,
 press the new one; a clash with another key or with Claude Code is named),
-Notifications (the table of which states tell in which way, how long a run
-counts as finished, the sounds, Windows' focus mode, quiet tags), Sessions
+Notifications (the table of which states tell in which way, the webhooks
+and their addresses, how long a run counts as finished, the sounds,
+Windows' focus mode, quiet tags), Sessions
 & profiles (what a new session runs, the `claude` command, resuming,
 "probably waiting", profiles to edit and add, the tab menu's items and
 order), Tags (rules by folder or branch, a tag's name, colour and quiet),

@@ -8,8 +8,9 @@
 
 use eframe::egui::{self, Color32, FontId, RichText};
 use ito_common::{Clock, CommonChange};
+use ito_notify::webhook::Place;
 use ito_pane::Palette;
-use ito_prefs::{button, field, row, section, select, sep, status, switch, Drafts, KeyWords, Look, Words};
+use ito_prefs::{button, field, row, section, select, sep, status, switch, Drafts, Hook, KeyWords, Look, Words};
 use tsumugi_mux::settings::{self as cfg, MenuItem, Profile, Settings, TagRule};
 
 use crate::facts::Facts;
@@ -116,10 +117,7 @@ const INDEX: &[(Page, &str)] = &[
     (Page::Notifications, "prefs.notify.long_run"),
     (Page::Notifications, "prefs.notify.answers"),
     (Page::Notifications, "prefs.notify.stay"),
-    (Page::Notifications, "prefs.notify.webhook"),
-    (Page::Notifications, "prefs.notify.webhook_format"),
     (Page::Notifications, "prefs.notify.webhook_after"),
-    (Page::Notifications, "prefs.notify.webhook_states"),
     (Page::Notifications, "prefs.notify.sound_waiting"),
     (Page::Notifications, "prefs.notify.sound_error"),
     (Page::Notifications, "prefs.notify.focus"),
@@ -182,6 +180,8 @@ pub fn index() -> Vec<(Page, &'static str)> {
             (Page::General, w.weekday),
             (Page::Theme, w.mode),
             (Page::Theme, w.preview),
+            (Page::Notifications, w.notify_webhook),
+            (Page::Notifications, w.webhook_add),
         ]
     };
     out.extend(shared(w));
@@ -315,6 +315,11 @@ pub enum Change {
     MuteTag(String, bool),
     RenameTag(String, String),
     TestNotification,
+    /// Every `[[notify.webhooks]]`, in place of those there and of the one
+    /// address of before (`[notify] webhook`).
+    Webhooks(Vec<Place>),
+    /// "Send a test here": that webhook only.
+    TestWebhook(Place),
     PlaySound(String),
     /// A profile, in place of the one with the name it had (`None`: new).
     SaveProfile(Option<String>, Profile),
@@ -780,9 +785,16 @@ fn sound_names() -> [(&'static str, &'static str); 4] {
     ]
 }
 
+/// The states a webhook may be told of, in the table's order.
+const STATES: [&str; 3] = ["waiting", "error", "done"];
+
 fn notifications(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut Vec<Change>) {
     let c = l.c;
     let n = &seen.settings.notify;
+    // The webhooks, the one address of before first: a row each in the
+    // table, and their addresses and formats under "Away".
+    let mut hooks: Vec<Hook> = n.places().iter().map(|p| Hook::of(p, &STATES, true)).collect();
+    let was = hooks.clone();
     ui.horizontal(|ui| {
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             reading_order(ui, egui::Id::new("notify-buttons"), |ui| {
@@ -829,13 +841,9 @@ fn notifications(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: 
             ui.painter().circle_filled(egui::pos2(left + 4.0, r.center().y), 4.0, *color);
             ui.painter().galley(egui::pos2(left + 14.0, r.center().y - text.size().y / 2.0), text, *color);
         }
-        for (key, label, note, list) in [
-            ("system", tr("prefs.notify.system"), tr("prefs.notify.system_note"), &n.system),
-            ("taskbar", tr("prefs.notify.taskbar"), tr("prefs.notify.taskbar_note"), &n.taskbar),
-            ("flash", tr("prefs.notify.flash"), tr("prefs.notify.flash_note"), &n.flash),
-            ("sound", tr("prefs.notify.sound"), tr("prefs.notify.sound_note"), &n.sound),
-            ("webhook_states", tr("prefs.notify.webhook_states"), tr("prefs.notify.webhook_states_note"), &n.webhook_states),
-        ] {
+        // A way's row: its words, then a switch per state; the state whose
+        // switch was flipped.
+        let line = |ui: &mut egui::Ui, label: &str, note: &str, on: [bool; 3]| -> Option<usize> {
             sep(ui, l);
             // A line's height of room round the two lines of words, so the
             // note does not touch the rule under it (seen on Windows,
@@ -849,17 +857,38 @@ fn notifications(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: 
             inner.spacing_mut().item_spacing.y = 2.0;
             inner.label(RichText::new(label).size(13.0).color(c.strong()));
             inner.add(egui::Label::new(RichText::new(note).size(12.0).color(c.dim)).truncate());
-            for ((word, _, _), r) in states.iter().zip(&cols[1..]) {
-                let on = list.iter().any(|w| w == word);
+            let mut flipped = None;
+            for (k, r) in cols[1..].iter().enumerate() {
                 let at = egui::Rect::from_center_size(r.center(), egui::vec2(40.0, 22.0));
-                let flipped = switch(&mut ui.new_child(egui::UiBuilder::new().max_rect(at)), l, on);
-                if flipped {
-                    let mut next: Vec<String> = list.iter().filter(|w| w != word).cloned().collect();
-                    if !on {
-                        next.push(word.to_string());
-                    }
-                    out.push(Change::Set(Some("notify"), key, cfg::quote_list(&next)));
+                if switch(&mut ui.new_child(egui::UiBuilder::new().max_rect(at)), l, on[k]) {
+                    flipped = Some(k);
                 }
+            }
+            flipped
+        };
+        for (key, label, note, list) in [
+            ("system", tr("prefs.notify.system"), tr("prefs.notify.system_note"), &n.system),
+            ("taskbar", tr("prefs.notify.taskbar"), tr("prefs.notify.taskbar_note"), &n.taskbar),
+            ("flash", tr("prefs.notify.flash"), tr("prefs.notify.flash_note"), &n.flash),
+            ("sound", tr("prefs.notify.sound"), tr("prefs.notify.sound_note"), &n.sound),
+        ] {
+            let on = STATES.map(|word| list.iter().any(|w| w == word));
+            if let Some(k) = line(ui, label, note, on) {
+                let mut next: Vec<String> = list.iter().filter(|w| *w != STATES[k]).cloned().collect();
+                if !on[k] {
+                    next.push(STATES[k].to_string());
+                }
+                out.push(Change::Set(Some("notify"), key, cfg::quote_list(&next)));
+            }
+        }
+        // A row per webhook, by its address.
+        let count = hooks.len();
+        for (k, h) in hooks.iter_mut().enumerate() {
+            let note = if h.url.is_empty() { words().webhook_empty } else { h.url.as_str() };
+            let on = [0, 1, 2].map(|s| h.on.get(s).copied().unwrap_or(false));
+            if let Some(s) = line(ui, &ito_prefs::hook_label(words(), count, k), note, on) {
+                h.on = on.to_vec();
+                h.on[s] = !on[s];
             }
         }
     });
@@ -908,17 +937,9 @@ fn notifications(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: 
         }
     });
     section(ui, l, tr("prefs.head.away"), |ui| {
-        if let Some(t) = row(ui, l, tr("prefs.notify.webhook"), tr("prefs.notify.webhook_note"), |ui| {
-            field(ui, &mut edit.drafts, "webhook", &n.webhook, "https://ntfy.sh/my-topic", 260.0)
-        }) {
-            out.push(Change::Set(Some("notify"), "webhook", cfg::quote(t.trim())));
-        }
-        sep(ui, l);
-        let formats = [("ntfy", "ntfy"), ("slack", "Slack"), ("discord", "Discord"), ("json", "JSON")];
-        if let Some(v) = row(ui, l, tr("prefs.notify.webhook_format"), tr("prefs.notify.webhook_format_note"), |ui| {
-            select(ui, "webhook-format", n.webhook_format.as_str(), &formats)
-        }) {
-            out.push(Change::Set(Some("notify"), "webhook_format", cfg::quote(v)));
+        let test = ito_prefs::webhook_rows(ui, l, words(), &mut hooks, STATES.len(), &mut edit.drafts);
+        if let Some(h) = test.and_then(|k| hooks.get(k)) {
+            out.push(Change::TestWebhook(h.place(&STATES)));
         }
         sep(ui, l);
         let mut afters: Vec<(u64, String)> = [30, 60, 120, 300, 900].map(|v| (v, span(v, false))).into_iter().collect();
@@ -932,6 +953,9 @@ fn notifications(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: 
             out.push(Change::Set(Some("notify"), "webhook_after", v.to_string()));
         }
     });
+    if hooks != was {
+        out.push(Change::Webhooks(hooks.iter().map(|h| h.place(&STATES)).collect()));
+    }
     section(ui, l, tr("prefs.head.costs"), |ui| {
         // Once a day, once a 5-hour block, at the estimate (API prices).
         let pick = |now: u64, lines: &[u64]| -> Vec<(u64, String)> {
@@ -2393,6 +2417,26 @@ mod tests {
             vec![Change::Set(Some("notify"), "system", "[\"error\", \"done\"]".into())],
             "the first switch: system, waiting"
         );
+    }
+
+    /// The one address of before is the first webhook: its row says where,
+    /// "Add an address" writes it with a new one, and "Send a test here"
+    /// sends to it only.
+    #[test]
+    fn the_webhooks_add_and_test_one_by_one() {
+        let mut run = Run::new();
+        run.settings.notify.webhook = "https://ntfy.sh/a".into();
+        run.settings.notify.webhook_states = vec!["done".into()];
+        let mut screen = at_page(Page::Notifications);
+        run.frame(&mut screen, Vec::new());
+        let (_, texts) = run.frame(&mut screen, Vec::new());
+        assert!(find(&texts, "https://ntfy.sh/a").is_some(), "its address");
+        let old = Place { url: "https://ntfy.sh/a".into(), format: "ntfy".into(), states: vec!["done".into()] };
+        let add = *find(&texts, "Add an address").expect("Add an address");
+        let new = Place { url: String::new(), format: "ntfy".into(), states: STATES.map(String::from).to_vec() };
+        assert_eq!(run.click(&mut screen, add.center()), vec![Change::Webhooks(vec![old.clone(), new])]);
+        let test = *find(&texts, "Send a test here").expect("Send a test here");
+        assert_eq!(run.click(&mut screen, test.center()), vec![Change::TestWebhook(old)]);
     }
 
     /// A profile's theme and font size go through the editor and back; a

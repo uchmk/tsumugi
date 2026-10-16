@@ -938,11 +938,10 @@ struct Rules {
     shell: crate::settings::Shell,
     scrollback: usize,
     pane_log: bool,
-    /// `[notify] webhook`, `webhook_format` and `webhook_after` (ms).
-    webhook: String,
-    webhook_format: String,
+    /// Where a session goes while no one is at a window (`[notify] webhook`
+    /// and the `[[notify.webhooks]]`), and `webhook_after` (ms).
+    webhooks: Vec<ito_notify::webhook::Place>,
     webhook_after: u64,
-    webhook_states: Vec<String>,
     /// The AI programs told apart from a shell, and the settings' `[agents]`
     /// (the rest left default) to take one up again after a restart.
     agent_names: Vec<String>,
@@ -971,10 +970,8 @@ impl Rules {
             shell: s.shell,
             scrollback: s.advanced.scrollback,
             pane_log: s.advanced.pane_log,
-            webhook: s.notify.webhook.trim().to_owned(),
-            webhook_format: s.notify.webhook_format.clone(),
+            webhooks: s.notify.places(),
             webhook_after: s.notify.webhook_after.saturating_mul(1000),
-            webhook_states: s.notify.webhook_states.clone(),
             agent_names,
             settings: agents,
             triggers,
@@ -1645,9 +1642,9 @@ fn record_notice(shared: &Shared, s: &Session, (was, since): (State, u64)) {
     broadcast_notices(shared, &notices.1);
 }
 
-/// A session that failed or finished a long run goes to the webhook at once
-/// when `[notify] webhook_states` lists it, no one is at a window and it is
-/// not muted. (A wait goes by `send_webhooks`, after its delay.)
+/// A session that failed or finished a long run goes at once to the webhooks
+/// whose states list it, when no one is at a window and it is not muted. (A
+/// wait goes by `send_webhooks`, after its delay.)
 fn send_finished(shared: &Shared, s: &Session) {
     let i = &s.info;
     let (word, what) = match i.state {
@@ -1656,10 +1653,10 @@ fn send_finished(shared: &Shared, s: &Session) {
         _ => return,
     };
     let rules = lock(&shared.rules);
-    if rules.webhook.is_empty() || !rules.webhook_states.iter().any(|w| w == word) {
+    if !rules.webhooks.iter().any(|p| p.takes(word)) {
         return;
     }
-    let (url, format) = (rules.webhook.clone(), rules.webhook_format.clone());
+    let places = rules.webhooks.clone();
     drop(rules);
     if !lock(&shared.attention).focused.is_empty() {
         return;
@@ -1671,7 +1668,8 @@ fn send_finished(shared: &Shared, s: &Session) {
     let folder = i.project.file_name().map(|f| f.to_string_lossy().into_owned()).unwrap_or_default();
     let name = if i.title.trim().is_empty() { i.command.clone() } else { i.title.clone() };
     let said = if i.note.is_empty() { name } else { format!("{}\n{name}", i.note) };
-    ito_notify::webhook::send(url, format, level_of(i.state), format!("{folder} {what}"), said, i.cwd.display().to_string());
+    let cwd = i.cwd.display().to_string();
+    ito_notify::webhook::send_all(&places, word, level_of(i.state), &format!("{folder} {what}"), &said, &cwd);
 }
 
 /// How often one trigger tells of a session's lines at most.
@@ -1795,13 +1793,14 @@ fn repo(dir: &std::path::Path) -> Option<(Option<String>, PathBuf)> {
 /// Turn "session N changed" into messages, at most one screen per session
 /// every few milliseconds however fast its shell writes.
 /// A session that has waited `[notify] webhook_after` while no one is at a
-/// window goes to the webhook, once a wait; muted ones (or their tags) not.
+/// window goes to the webhooks that take a wait, once a wait; muted ones (or
+/// their tags) not.
 fn send_webhooks(shared: &Shared, sessions: &mut BTreeMap<SessionId, Session>) {
     let rules = lock(&shared.rules);
-    if rules.webhook.is_empty() || !rules.webhook_states.iter().any(|w| w == "waiting") {
+    if !rules.webhooks.iter().any(|p| p.takes("waiting")) {
         return;
     }
-    let (url, format, after) = (rules.webhook.clone(), rules.webhook_format.clone(), rules.webhook_after);
+    let (places, after) = (rules.webhooks.clone(), rules.webhook_after);
     drop(rules);
     if !lock(&shared.attention).focused.is_empty() {
         return;
@@ -1819,13 +1818,13 @@ fn send_webhooks(shared: &Shared, sessions: &mut BTreeMap<SessionId, Session>) {
         let said = if i.note.is_empty() { "Waiting for you".to_owned() } else { i.note.clone() };
         let name = if i.title.trim().is_empty() { i.command.clone() } else { i.title.clone() };
         let message = format!("{said}\n{name} · waiting {} s", now.saturating_sub(i.since_ms) / 1000);
-        ito_notify::webhook::send(
-            url.clone(),
-            format.clone(),
+        ito_notify::webhook::send_all(
+            &places,
+            "waiting",
             ito_notify::webhook::Level::Waiting,
-            format!("{folder} is waiting for you"),
-            message,
-            i.cwd.display().to_string(),
+            &format!("{folder} is waiting for you"),
+            &message,
+            &i.cwd.display().to_string(),
         );
     }
 }

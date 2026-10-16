@@ -5,6 +5,28 @@
 
 ## [未リリース]
 
+## [0.115.0] - 2026-10-16
+
+### 追加
+
+- 通知の webhook を何か所にも送れる（#164）。`[[notify.webhooks]]` の表が 1 つで 1 か所、`url`・`format`（`ntfy`・`slack`・
+  `discord`・`json`、既定は `ntfy`）・`states`（`waiting`・`error`・`done`、既定は `["waiting"]`）を持つ。たとえばスマホには
+  待ちも失敗も、チームの Discord には失敗だけ。
+  - 設定の画面の「通知」: WHILE YOU ARE AWAY に webhook ごとの Address と Format、**Add an address**・**Remove**・
+    **Send a test here**（その 1 か所だけに試しを送る）。表には webhook ごとに 1 行（**Webhook 1**…、下に送り先）があり、
+    状態ごとのスイッチで `states` を選ぶ。
+  - 項目を間違えた表（http(s) でない `url`、無い `format`・状態、知らないキー）は、どの表かを言って読まない
+    （`notify.webhooks 2: …`）。
+
+### 変更
+
+- 前からの 1 か所（`[notify] webhook`・`webhook_format`・`webhook_states`）はそのまま読み、`[[notify.webhooks]]` の先頭として扱う。
+  設定の画面で webhook の一覧を変えると、それを `[[notify.webhooks]]` の 1 つ目として書き、`[notify]` の 3 つのキーを消す。
+  手で書いた設定は、画面で変えるまでそのまま。
+- 設定の画面の「Send to the webhook」の行は、webhook ごとの **Webhook** の行になった。
+- ito を 0.47.0 にした（`ito_notify::webhook::Place`・`send_all` と、`ito-prefs` の `webhook_rows`・`write_webhooks`）。
+  TESTING.md に 4.34 を足し、4.28 を書き直して `[ ]` に戻した。
+
 ## [0.114.11] - 2026-10-16
 
 ### 修正
