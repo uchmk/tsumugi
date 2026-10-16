@@ -81,6 +81,7 @@ they are not ticked by hand any more. A change that breaks one turns CI red.
 | --- | --- | --- |
 | 1.2 | `tsumugi ls`: one line per session, its seven columns; the title a program's name (`cmd`), not the exe's path it set (v0.114.12) | `new_starts_a_server_and_ls_lists_the_session` |
 | 1.4 (half) | `tsumugi new . -- echo hi` with no server: starts one, prints a number, `hi` runs | `new_starts_a_server_and_ls_lists_the_session` |
+| 1.4 (numbers) | `tsumugi new` three times, with `ls` between: the sessions are 1, 2, 3, not 2, 5, 8 (v0.115.1) | `new_starts_a_server_and_ls_lists_the_session` |
 | 1.10 | `tsumugi new . --tag a --tag b --tag c`: all three tags | `new_starts_a_server_and_ls_lists_the_session` |
 | 1.4 (words) | `tsumugi new . -- "<a folder with a space>\run.cmd" "a  b" "it's"` in pwsh (sh elsewhere): the program runs and gets each word as it was | `new_gives_the_words_to_the_program_as_they_are` |
 | 2.70 (`-2`) | `tsumugi log N logs/work.txt`, `--stop`, the same again: the second file is `work-2.txt`, the first is whole; a second log while one runs and `--stop` with none are refused | `log_starts_and_finishes_a_work_log_and_never_writes_over_one` |

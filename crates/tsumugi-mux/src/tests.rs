@@ -656,6 +656,40 @@ fn a_pane_becomes_a_tab_of_its_own() {
     }
 }
 
+/// Sessions and tabs each count on their own, so three new sessions are 1, 2
+/// and 3 in tabs 1, 2 and 3, however many windows have connected between.
+#[test]
+fn sessions_and_tabs_count_on_their_own() {
+    use crate::{Dir, Place};
+    let at = address();
+    let _srv = serve(&at).expect("the server starts");
+    let size = Size::new(80, 24);
+    let mut clients = Vec::new();
+    let mut panes = Vec::new();
+    for _ in 0..3 {
+        let c = Client::connect(&at, || {}).expect("a client connects");
+        panes.push(c.spawn(std::env::temp_dir(), None, size, (8, 16)).expect("a session starts"));
+        clients.push(c);
+    }
+    let c = &clients[2];
+    assert_eq!(panes.iter().map(|p| p.id()).collect::<Vec<_>>(), vec![1, 2, 3]);
+    c.list().unwrap();
+    assert_eq!(c.workspaces().iter().map(|w| w.id).collect::<Vec<_>>(), vec![1, 2, 3]);
+    let split = c.spawn_at(std::env::temp_dir(), None, size, (8, 16), Place::Split { beside: 1, dir: Dir::Right }).expect("a split");
+    assert_eq!(split.id(), 4);
+    c.own_tab(4);
+    c.list().unwrap();
+    let ws = c.workspaces();
+    assert_eq!(
+        ws.iter().map(|w| (w.id, w.layout.leaves())).collect::<Vec<_>>(),
+        vec![(1, vec![1]), (4, vec![4]), (2, vec![2]), (3, vec![3])]
+    );
+    split.kill();
+    for p in panes {
+        p.kill();
+    }
+}
+
 /// A whole tab folded into another's split, beside a pane: its panes keep
 /// their shape, its tab is gone, and the keys stay in the tab that took it.
 #[test]

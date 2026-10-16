@@ -88,7 +88,11 @@ struct Shared {
     order: Mutex<Vec<WorkspaceId>>,
     /// Tags muted (`ToServer::MuteTag`), kept across a restart.
     muted_tags: Mutex<BTreeSet<String>>,
-    next: AtomicU64,
+    /// The next client's, session's and tab's numbers. Each counts on its
+    /// own from 1, so `tsumugi new` hands out 1, 2, 3, not 2, 5, 8.
+    client_next: AtomicU64,
+    session_next: AtomicU64,
+    tab_next: AtomicU64,
     /// The windows (`ToServer::Judge`), which are asked before an MCP client
     /// types into a session. Locked after `sessions`.
     judges: Mutex<BTreeSet<ClientId>>,
@@ -248,7 +252,9 @@ pub fn start_with(at: &Address, options: Options) -> io::Result<ServerHandle> {
         attention: Mutex::new(Attention::default()),
         order: Mutex::new(Vec::new()),
         muted_tags: Mutex::new(BTreeSet::new()),
-        next: AtomicU64::new(1),
+        client_next: AtomicU64::new(1),
+        session_next: AtomicU64::new(1),
+        tab_next: AtomicU64::new(1),
         judges: Mutex::new(BTreeSet::new()),
         asks: Mutex::new(BTreeMap::new()),
         ask_next: AtomicU64::new(1),
@@ -280,7 +286,7 @@ pub fn start_with(at: &Address, options: Options) -> io::Result<ServerHandle> {
     let accept = shared.clone();
     std::thread::Builder::new().name("mux-accept".into()).spawn(move || {
         while let Ok(conn) = listener.accept() {
-            let id = accept.next.fetch_add(1, Ordering::Relaxed);
+            let id = accept.client_next.fetch_add(1, Ordering::Relaxed);
             let shared = accept.clone();
             let _ = std::thread::Builder::new().name(format!("mux-client-{id}")).spawn(move || serve(shared, id, conn));
         }
@@ -641,7 +647,7 @@ fn handle(shared: &Arc<Shared>, client: ClientId, tx: &Sender<ToClient>, msg: To
                     let focus = if w.focus == id { layout.leaves()[0] } else { w.focus };
                     workspaces.insert(wid, Workspace { layout, focus, ..w });
                 }
-                let ws = shared.next.fetch_add(1, Ordering::Relaxed);
+                let ws = shared.tab_next.fetch_add(1, Ordering::Relaxed);
                 workspaces.insert(ws, Workspace::new(ws, ito_layout::Node::Leaf(id), id));
                 // Right after the tab it came from.
                 let mut now: Vec<WorkspaceId> = ordered(shared, &workspaces).iter().map(|w| w.id).filter(|w| *w != ws).collect();
@@ -1145,7 +1151,7 @@ fn spawn_session(
     if shared.stopping.load(Ordering::Relaxed) {
         return Err(io::Error::other("the server is stopping"));
     }
-    let id = shared.next.fetch_add(1, Ordering::Relaxed);
+    let id = shared.session_next.fetch_add(1, Ordering::Relaxed);
     let cwd = here(cwd, crate::settings::home());
     // No shell asked for: the settings' `[shell]`, else the system's.
     let shell = shell.or_else(|| lock(&shared.rules).shell.command());
@@ -1409,7 +1415,7 @@ fn restore(shared: &Arc<Shared>, sessions: &mut BTreeMap<SessionId, Session>, on
         let Some(layout) = w.layout.retain(&|old| ids.contains_key(old)) else { continue };
         let layout = layout.map(&mut |old| ids[&old]);
         let focus = ids.get(&w.focus).copied().unwrap_or_else(|| layout.leaves()[0]);
-        let ws = shared.next.fetch_add(1, Ordering::Relaxed);
+        let ws = shared.tab_next.fetch_add(1, Ordering::Relaxed);
         workspaces
             .insert(ws, Workspace { name: w.name.clone(), pinned: w.pinned, note: w.note.clone(), ..Workspace::new(ws, layout, focus) });
     }
@@ -1429,7 +1435,7 @@ fn place_session(shared: &Shared, workspaces: &mut BTreeMap<WorkspaceId, Workspa
             return;
         }
     }
-    let ws = shared.next.fetch_add(1, Ordering::Relaxed);
+    let ws = shared.tab_next.fetch_add(1, Ordering::Relaxed);
     workspaces.insert(ws, Workspace::new(ws, ito_layout::Node::Leaf(id), id));
 }
 
