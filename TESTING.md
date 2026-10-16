@@ -89,6 +89,7 @@ they are not ticked by hand any more. A change that breaks one turns CI red.
 | 18.3 | `tsumugi read N --lines 5` and `--all`, Japanese whole | `send_runs_a_line_and_read_gives_it_back` |
 | 18.5 | `tsumugi wait`: exit 0 on the state, 1 on the timeout, 3 for a session gone (`notify` standing in for Claude Code) | `wait_and_close` |
 | 18.6 (half) | `tsumugi close N`: the session ends | `wait_and_close` |
+| 18.6 (#179) | `tsumugi close N` on the last session, then `tsumugi new .` at once: 7 s later `ls` still lists the new session (the server stays for it) | `a_session_started_as_the_last_one_ends_stays` |
 | 18.11 (half) | `tsumugi --keys`: no script, a plain space, a name that leaves the folder and a bad wait are refused with exit 2 and the reason, before a window opens; `--help` names it | `keys_refuses_a_bad_script` |
 | 18.11 (refusal) | `tsumugi --keys` with `TSUMUGI_KEYS_DONE` set: a bad wait, no script and a key no keyboard has (`<C-あ>`) are refused with exit 2, the reason on stderr, and the file says `keys: refused` and `why:` | `keys_writes_a_refusal_to_the_done_file` |
 | 2.78 (send) | A read-only session: `tsumugi send N` exits 1 saying it is read-only and nothing runs; `ls --json` has `read_only`; let go, `send` runs again | `send_to_a_read_only_session_is_refused` |

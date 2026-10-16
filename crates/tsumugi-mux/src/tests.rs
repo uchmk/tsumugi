@@ -471,6 +471,55 @@ fn a_server_stops_when_asked_and_keeps_its_tabs() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+/// A client that comes while the server waits to write its tabs after the
+/// last session ended keeps it, and so does a session that client starts;
+/// once the server has decided to go, it takes no client and starts no
+/// session, so none goes away with it (#179).
+#[test]
+fn a_client_after_the_last_session_keeps_the_server() {
+    let dir = std::env::temp_dir().join(format!("tsumugi-after-end-test-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let at = address();
+    let srv = server::start_with(&at, server::Options { state: Some(dir.join("state")), settings: None }).expect("the server starts");
+    let old = Client::connect(&at, || {}).expect("a client connects");
+    let first = old.spawn(dir.clone(), None, Size::new(80, 24), (8, 16)).expect("a shell starts");
+    until(&first, "a prompt", |t| !t.trim().is_empty());
+    // Not a scoped thread: a failed check below must not wait for a server
+    // that a client still keeps.
+    let gone = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let told = gone.clone();
+    std::thread::spawn(move || {
+        srv.wait(Duration::from_secs(60));
+        told.store(true, Ordering::SeqCst);
+    });
+    first.kill();
+    let ended = Instant::now();
+    eventually("the first session gone", || old.list().unwrap().is_empty());
+    // `tsumugi new` a moment later: it connects, and stays a while before it
+    // asks for its session.
+    let late = Client::connect(&at, || {}).expect("a client connects after the end");
+    std::thread::sleep((ended + Duration::from_millis(5500)).saturating_duration_since(Instant::now()));
+    assert!(!gone.load(Ordering::SeqCst), "the server went with a client that came after the end");
+    let second = late.spawn(dir.clone(), None, Size::new(80, 24), (8, 16)).expect("a session after the end starts");
+    until(&second, "a prompt", |t| !t.trim().is_empty());
+    assert_eq!(late.list().unwrap().iter().map(|i| i.id).collect::<Vec<_>>(), vec![second.id()]);
+    second.kill();
+    drop(late);
+    let deadline = Instant::now() + Duration::from_secs(20);
+    while !gone.load(Ordering::SeqCst) {
+        assert!(Instant::now() < deadline, "the server did not stop after the second session");
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    // Decided: no one new, and no session for the client still there.
+    assert!(Client::connect(&at, || {}).is_err(), "a stopping server took a client");
+    match old.spawn(dir.clone(), None, Size::new(80, 24), (8, 16)) {
+        Ok(pane) => panic!("a stopping server started session {}", pane.id()),
+        Err(e) => assert!(e.to_string().contains("stopping"), "{e}"),
+    }
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 /// A window of another version is told so, apart from other failures.
 #[test]
 fn another_version_is_told_apart() {
