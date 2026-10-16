@@ -790,9 +790,21 @@ fn window() -> std::process::ExitCode {
         .with_inner_size([1280.0, 800.0])
         .with_min_inner_size([420.0, 260.0])
         .with_icon(icon);
-    // A tab dropped outside another window opens there.
-    if let Some(at) = menu::window_at() {
-        viewport = viewport.with_position(at);
+    // A tab dropped outside another window opens there: made at the corner,
+    // and on Windows moved to its pixels by `put` as the first window is
+    // (below), so it lands where it was let go even on a screen at another
+    // scale than the one it is made on (#181).
+    let torn = menu::window_at().map(|at| ito_common::window::Window {
+        x: at.pos[0],
+        y: at.pos[1],
+        w: 1280.0,
+        h: 800.0,
+        maximized: false,
+        scale: at.scale,
+        zoom: 1.0,
+    });
+    if let Some(w) = torn {
+        viewport = viewport.with_position(w.opening().pos);
     }
     // The first window opens where it was left: made at the place without
     // the zoom, and on Windows moved to the pixels it was closed at by `put`
@@ -823,6 +835,9 @@ fn window() -> std::process::ExitCode {
         options,
         Box::new(move |cc| {
             saved.put(cc);
+            if let Some(w) = torn {
+                w.put(cc);
+            }
             let mut app = App::new(cc);
             app.place = saved.tracker();
             Ok(Box::new(app))
@@ -1639,18 +1654,19 @@ enum SideOp {
     CreatePr(std::path::PathBuf),
 }
 
-/// Where in the server's order a tab dropped at `gap` among the rows shown
-/// goes (the server takes it out, then puts it in); `None` when it stays.
 /// Where on the screen a window torn off at `p` (in this window's points)
 /// opens: its top left a little up and left of the pointer, so the pointer
-/// is over its band. None where the system does not say where windows are
-/// (Wayland).
-fn torn_at(ctx: &egui::Context, p: egui::Pos2) -> Option<[f32; 2]> {
+/// is over its band, at this window's screen's scale. None where the system
+/// does not say where windows are (Wayland).
+fn torn_at(ctx: &egui::Context, p: egui::Pos2) -> Option<menu::At> {
     let inner = ctx.input(|i| i.viewport().inner_rect)?;
-    let at = (inner.min + p.to_vec2() - egui::vec2(60.0, 16.0)) * ctx.zoom_factor();
-    Some([at.x, at.y])
+    let zoom = ctx.zoom_factor();
+    let at = (inner.min + p.to_vec2() - egui::vec2(60.0, 16.0)) * zoom;
+    Some(menu::At { pos: [at.x, at.y], scale: ctx.pixels_per_point() / zoom })
 }
 
+/// Where in the server's order a tab dropped at `gap` among the rows shown
+/// goes (the server takes it out, then puts it in); `None` when it stays.
 fn drop_index(workspaces: &[Workspace], rows: &[(WorkspaceId, egui::Rect)], dragged: WorkspaceId, gap: usize) -> Option<usize> {
     let at = |id: WorkspaceId| workspaces.iter().position(|w| w.id == id);
     let from = at(dragged)?;
