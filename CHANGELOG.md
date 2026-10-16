@@ -5,6 +5,21 @@
 
 ## [未リリース]
 
+## [0.114.12] - 2026-10-16
+
+### 修正
+
+- pwsh や cmd のように自分の題を持たないセッションが、webhook・トースト・鈴の一覧・`tsumugi ls` の題の列で
+  exe のパス（`C:\Program Files\WindowsApps\…\pwsh.exe`、`C:\WINDOWS\system32\cmd.exe`）の名前で出ていた。
+  ConPTY が窓の題をその exe のパスにするため。タブとカードと同じく、プログラムの名前（`pwsh`、`cmd`）で出す。
+  名前の付け方（`display_title`）は tsumugi-mux の `title` に移し、サーバが通知と webhook に使う。
+  webhook に効くのはサーバを立ち上げ直してから（窓の側のトーストと鈴の一覧は、古いサーバの通知でも直す）。
+  `tsumugi ls --json` の `title` は今までどおり生の題。
+- 題の末尾が `.exe` のとき、パスでない題（`Run setup.exe`）までプログラムの名前に縮めていた。ドライブか共有のパス
+  （`Administrator: C:\…\pwsh.exe` も）か、空白の無い 1 語だけを縮める。
+- TESTING.md: 「Covered by tests」の 1.2 に題の列を足し、4.28 の webhook の名前を `cli.rs` のテストに回した。
+  実機の行 4.34（トーストと鈴の一覧に exe のパスが出ない）を足した。
+
 ## [0.114.11] - 2026-10-16
 
 ### 修正

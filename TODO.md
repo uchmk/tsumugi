@@ -187,3 +187,10 @@ tsumugi には描いた文字の選択が無く、端末のペインの語と Ct
 - [x] 端末のペインでトリプルクリックすると、その行（折り返した続きも）を選んでコピーする。（v0.109.18）直すのは ito-pane: `view.rs` の `double_clicked` の前で `triple_clicked` を見て、
   alacritty の `SelectionType::Lines` で選ぶ。`Pane` に `select_line` を足し、tsumugi-mux は `ToServer::SelectLine` を足す（取り決めの版が上がる）。
   ito を上げるときは全部のクレートを同じ `rev` に。kura も同じペインなので一緒に効く。TESTING.md に行を足す【実機】。
+
+## CLI の気づき（2026-10-16、「次を進めて」で CLI を触って）
+
+- [x] （v0.114.12）webhook・トースト・鈴の一覧・`tsumugi ls` に、pwsh と cmd の exe のパスが題として出ていた。プログラムの名前にした。
+- [ ] `tsumugi new` のセッションの番号が 1 つずつでなく飛ぶ（3、6、9）。サーバの `next`（`server.rs` の `AtomicU64`）を、
+  接続・セッション・タブの番号が分け合っているため。見た目だけで動きは変わらない。セッションだけの数を持たせるなら、
+  #164 の作業（server.rs）が main に入ってから。
