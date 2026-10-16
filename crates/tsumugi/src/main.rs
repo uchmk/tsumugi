@@ -777,16 +777,15 @@ fn window() -> std::process::ExitCode {
     if let Some(at) = menu::window_at() {
         viewport = viewport.with_position(at);
     }
-    // The first window opens where it was left.
-    let mut placed = None;
-    if winplace::wanted(&first.window.quake) {
-        if let Some(p) = winplace::path().and_then(|path| winplace::load(&path)) {
-            viewport = viewport.with_position(p.pos).with_inner_size(p.size);
-            if p.maximized {
-                viewport = viewport.with_maximized(true);
-            }
-            placed = Some(p);
-        }
+    // The first window opens where it was left: made at the place without
+    // the zoom, and on Windows moved to the pixels it was closed at by `put`
+    // (in the creator, while the window is hidden), so a second screen at
+    // another scale gets it back (#176).
+    let place_dir = winplace::dir().filter(|_| winplace::wanted(&first.window.quake));
+    let placed = place_dir.as_deref().and_then(winplace::load);
+    if let Some(w) = placed {
+        let o = w.opening();
+        viewport = viewport.with_position(o.pos).with_inner_size(o.size).with_maximized(o.maximized);
     }
     if first.window.own_titlebar() {
         // macOS keeps its traffic lights, over the band; elsewhere the band
@@ -810,10 +809,11 @@ fn window() -> std::process::ExitCode {
         "tsumugi",
         options,
         Box::new(move |cc| {
-            let mut app = App::new(cc);
-            if let Some(p) = placed {
-                app.place.loaded(p);
+            if let Some(w) = placed {
+                w.put(cc);
             }
+            let mut app = App::new(cc);
+            app.place = place_dir.map(|dir| ito_common::window::Tracker::new(dir, placed));
             Ok(Box::new(app))
         }),
     ) {
@@ -1292,8 +1292,9 @@ struct App {
     backdrop: backdrop::Backdrop,
     /// `[window] quake`, the key held from any program.
     quake: quake::Quake,
-    /// Where the window is, to open there next time (`winplace`).
-    place: winplace::Tracker,
+    /// Where the window is, to open there next time (`winplace`); none for
+    /// a window that does not keep its place.
+    place: Option<ito_common::window::Tracker>,
     /// macOS's Secure Keyboard Entry, held while asked and in front.
     secure: secure::Secure,
     /// Each session's folder as last seen, and the folders of those that
@@ -1745,7 +1746,7 @@ impl App {
             transparent: first_window.opacity < 100,
             backdrop: backdrop::Backdrop::default(),
             quake: quake::Quake::default(),
-            place: winplace::Tracker::default(),
+            place: None,
             secure: secure::Secure::default(),
             known_cwds: HashMap::new(),
             closed: closed_file()
@@ -4054,8 +4055,9 @@ impl App {
         if !winplace::wanted(&self.settings_now.window.quake) {
             return;
         }
-        let (Some(place), Some(path)) = (self.place.observe(ctx), winplace::path()) else { return };
-        let _ = std::thread::Builder::new().name("window-place".into()).spawn(move || winplace::save(&path, &place));
+        if let Some(left) = self.place.as_mut().and_then(|p| p.see(ito_common::window::Seen::of(ctx))) {
+            ctx.request_repaint_after(left);
+        }
     }
 
     /// Quake mode's key: down from the top of the screen and given the keys,
@@ -6376,6 +6378,17 @@ fn window_handle(cc: &eframe::CreationContext<'_>) -> Option<isize> {
 }
 
 impl eframe::App for App {
+    /// The window's place now, held still or not, so a move just before
+    /// closing is kept.
+    fn on_exit(&mut self) {
+        if !winplace::wanted(&self.settings_now.window.quake) {
+            return;
+        }
+        if let Some(place) = &mut self.place {
+            place.close(ito_common::window::Seen::of(&self.ctx));
+        }
+    }
+
     fn raw_input_hook(&mut self, ctx: &egui::Context, raw: &mut egui::RawInput) {
         // A script's keys first, to take the road a real key takes.
         if let Some(d) = self.script.as_mut().and_then(|s| s.input(ctx, raw)) {
