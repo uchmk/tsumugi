@@ -811,7 +811,12 @@ fn no_server_no_connection() {
 fn an_ai_program_is_told_by_its_process() {
     use ito_pane::Proc;
     let names: Vec<String> = crate::settings::AGENTS.iter().map(|s| s.to_string()).collect();
-    let p = |name: &str, args: &[&str]| Proc { pid: 1, ppid: 0, name: name.into(), args: args.iter().map(|a| a.to_string()).collect() };
+    let p = |name: &str, args: &[&str]| Proc {
+        pid: 1,
+        name: name.into(),
+        args: args.iter().map(|a| a.to_string()).collect(),
+        ..Proc::default()
+    };
     let codex = p("codex-x86_64-unknown-linux-musl", &[]);
     let gemini = p("node", &["node", "/usr/local/bin/gemini"]);
     let vim = p("vim", &["vim", "codex.md"]);
