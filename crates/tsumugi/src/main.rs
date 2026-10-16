@@ -128,7 +128,7 @@ fn main() -> std::process::ExitCode {
                 std::process::ExitCode::SUCCESS
             }
             Err(e) => {
-                eprintln!("tsumugi shell-hook: {e}");
+                err(&format!("tsumugi shell-hook: {e}\n"));
                 std::process::ExitCode::from(2)
             }
         },
@@ -151,17 +151,19 @@ fn main() -> std::process::ExitCode {
             std::process::ExitCode::SUCCESS
         }
         Some(other) => {
-            eprintln!("tsumugi: unknown command `{other}` (server, proxy, ls, new, attach, focus, send, read, split, close, wait, notify, tag, serial, tmux, shell-hook, env, mcp, help, --keys, --version)");
+            err(&format!("tsumugi: unknown command `{other}` (server, proxy, ls, new, attach, focus, send, read, split, close, wait, notify, tag, serial, tmux, shell-hook, env, mcp, help, --keys, --version)\n"));
             std::process::ExitCode::from(2)
         }
     }
 }
 
 /// A release build on Windows is a GUI program and has no console, so `ls`
-/// printed nothing. Borrow the console of whoever started it. PowerShell does
-/// not wait for a GUI program, so the lines could land after its next prompt;
-/// `tsumugi.com` (src/bin/tsumugi-com.rs, the console front shipped beside
-/// this) is what the shell waits for, with these same handles.
+/// printed nothing. Borrow the console of whoever started it: [`out`] and
+/// [`err`] would join it themselves, but `serial` and `tmux-pane` read its
+/// keys. PowerShell does not wait for a GUI program, so the lines could land
+/// after its next prompt; `tsumugi.com` (src/bin/tsumugi-com.rs, the console
+/// front shipped beside this) is what the shell waits for, with these same
+/// handles.
 fn attach_console() {
     #[cfg(windows)]
     unsafe {
@@ -170,14 +172,21 @@ fn attach_console() {
     }
 }
 
-/// Writes an answer to standard output, and lets it go when it cannot.
+/// Writes an answer to standard output, and lets it go when it cannot
+/// (ito's `ito_console::out`, shared with the other uchmk apps).
 /// PowerShell hands a windowed program a pipe for `$v = & tsumugi.exe
 /// --version` and closes it without waiting, and `println!` panicked there
-/// (os error 232).
+/// (os error 232). Every answer a command prints goes through here, so
+/// `tsumugi.exe` run without `tsumugi.com` cannot panic on it either.
+/// To a console it is written as UTF-16, whatever the code page.
 fn out(text: &str) {
-    use std::io::Write;
-    let mut o = std::io::stdout().lock();
-    let _ = o.write_all(text.as_bytes()).and_then(|()| o.flush());
+    ito_console::out(text);
+}
+
+/// [`out`] on standard error, for why a command failed: `$v = & tsumugi.exe
+/// new x 2>&1` closes that pipe without waiting too.
+fn err(text: &str) {
+    ito_console::err(text);
 }
 
 fn server() -> std::process::ExitCode {
@@ -200,7 +209,7 @@ fn server() -> std::process::ExitCode {
             std::process::ExitCode::SUCCESS
         }
         Err(e) => {
-            eprintln!("tsumugi server: {e}");
+            err(&format!("tsumugi server: {e}\n"));
             std::process::ExitCode::FAILURE
         }
     }
@@ -213,17 +222,17 @@ fn new_cli(args: &[String]) -> std::process::ExitCode {
     let n = match cli::parse_new(args) {
         Ok(n) => n,
         Err(e) => {
-            eprintln!("tsumugi new: {e}\nusage: {}", cli::NEW_USAGE);
+            err(&format!("tsumugi new: {e}\nusage: {}\n", cli::NEW_USAGE));
             return std::process::ExitCode::from(2);
         }
     };
     match connect(|| {}).and_then(|c| cli::new(&c, n)) {
         Ok(id) => {
-            println!("{id}");
+            out(&format!("{id}\n"));
             std::process::ExitCode::SUCCESS
         }
         Err(e) => {
-            eprintln!("tsumugi new: {e}");
+            err(&format!("tsumugi new: {e}\n"));
             std::process::ExitCode::FAILURE
         }
     }
@@ -236,7 +245,7 @@ fn layout_cli(args: &[String]) -> std::process::ExitCode {
     let cmd = match cli::parse_layout(args) {
         Ok(c) => c,
         Err(e) => {
-            eprintln!("tsumugi layout: {e}\nusage:\n{}", cli::LAYOUT_USAGE);
+            err(&format!("tsumugi layout: {e}\nusage:\n{}\n", cli::LAYOUT_USAGE));
             return ExitCode::from(2);
         }
     };
@@ -244,7 +253,7 @@ fn layout_cli(args: &[String]) -> std::process::ExitCode {
     let (name, folder) = match cmd {
         cli::LayoutCmd::List => {
             for l in &list {
-                println!("{}\t{}", l.name, layouts::words(&l.tree));
+                out(&format!("{}\t{}\n", l.name, layouts::words(&l.tree)));
             }
             return ExitCode::SUCCESS;
         }
@@ -271,12 +280,12 @@ fn layout_cli(args: &[String]) -> std::process::ExitCode {
     match run() {
         Ok(ids) => {
             for id in ids {
-                println!("{id}");
+                out(&format!("{id}\n"));
             }
             ExitCode::SUCCESS
         }
         Err(e) => {
-            eprintln!("tsumugi layout: {e}");
+            err(&format!("tsumugi layout: {e}\n"));
             ExitCode::FAILURE
         }
     }
@@ -302,8 +311,7 @@ fn refuse_keys(why: &str) -> std::process::ExitCode {
         let _ = std::fs::write(done, keyscript::refused_report(why));
     }
     // Not `eprintln!`: a detached run's stderr can be a closed pipe.
-    use std::io::Write;
-    let _ = writeln!(std::io::stderr(), "tsumugi --keys: {why}");
+    err(&format!("tsumugi --keys: {why}\n"));
     std::process::ExitCode::from(2)
 }
 
@@ -315,7 +323,7 @@ static SHOW_SESSION: std::sync::OnceLock<SessionId> = std::sync::OnceLock::new()
 /// is open or not, so attaching is opening a window there.
 fn attach(args: &[String]) -> std::process::ExitCode {
     let [name] = args else {
-        eprintln!("usage: tsumugi attach NUMBER|NAME (tsumugi ls lists them)");
+        err("usage: tsumugi attach NUMBER|NAME (tsumugi ls lists them)\n");
         return std::process::ExitCode::from(2);
     };
     let found = Client::connect(&tsumugi_mux::address(), || {})
@@ -328,7 +336,7 @@ fn attach(args: &[String]) -> std::process::ExitCode {
             window()
         }
         Err(e) => {
-            eprintln!("tsumugi attach: {e}");
+            err(&format!("tsumugi attach: {e}\n"));
             std::process::ExitCode::FAILURE
         }
     }
@@ -339,20 +347,20 @@ fn attach(args: &[String]) -> std::process::ExitCode {
 /// window open, one is opened on it (`attach`, left running).
 fn focus(args: &[String]) -> std::process::ExitCode {
     let [name] = args else {
-        eprintln!("usage: tsumugi focus NUMBER|NAME (tsumugi ls lists them)");
+        err("usage: tsumugi focus NUMBER|NAME (tsumugi ls lists them)\n");
         return std::process::ExitCode::from(2);
     };
     let client = match Client::connect(&tsumugi_mux::address(), || {}) {
         Ok(c) => c,
         Err(e) => {
-            eprintln!("tsumugi focus: no server ({e})");
+            err(&format!("tsumugi focus: no server ({e})\n"));
             return std::process::ExitCode::FAILURE;
         }
     };
     let id = match client.list().map_err(|e| e.to_string()).and_then(|list| cli::find(&list, name)) {
         Ok(id) => id,
         Err(e) => {
-            eprintln!("tsumugi focus: {e}");
+            err(&format!("tsumugi focus: {e}\n"));
             return std::process::ExitCode::FAILURE;
         }
     };
@@ -389,13 +397,13 @@ fn focus(args: &[String]) -> std::process::ExitCode {
             match opened {
                 Ok(_) => std::process::ExitCode::SUCCESS,
                 Err(e) => {
-                    eprintln!("tsumugi focus: no window, and none opened ({e})");
+                    err(&format!("tsumugi focus: no window, and none opened ({e})\n"));
                     std::process::ExitCode::FAILURE
                 }
             }
         }
         Err(e) => {
-            eprintln!("tsumugi focus: {e}");
+            err(&format!("tsumugi focus: {e}\n"));
             std::process::ExitCode::FAILURE
         }
     }
@@ -435,7 +443,7 @@ fn proxy() -> std::process::ExitCode {
     let (mut from, mut to) = match conn.and_then(|c| c.split()) {
         Ok(rw) => rw,
         Err(e) => {
-            eprintln!("tsumugi proxy: no server ({e})");
+            err(&format!("tsumugi proxy: no server ({e})\n"));
             return std::process::ExitCode::FAILURE;
         }
     };
@@ -464,24 +472,33 @@ fn ls(args: &[String]) -> std::process::ExitCode {
     let (host, args) = match cli::take_host(args, false) {
         Ok(h) => h,
         Err(e) => {
-            eprintln!("tsumugi ls: {e}");
+            err(&format!("tsumugi ls: {e}\n"));
             return std::process::ExitCode::from(2);
         }
     };
     let listed = client_at(host.as_deref()).and_then(|c| c.list());
     match listed {
         Ok(list) if args.iter().any(|a| a == "--json") => {
-            print!("{}", cli::ls_json(&list));
+            out(&cli::ls_json(&list));
             std::process::ExitCode::SUCCESS
         }
         Ok(list) => {
             for i in list {
-                println!("{}\t{}\t{}\t{}\t{}\t{}\t{}", i.id, i.state.word(), i.command, i.cwd.display(), i.title, i.note, i.tags.join(","));
+                out(&format!(
+                    "{}\t{}\t{}\t{}\t{}\t{}\t{}\n",
+                    i.id,
+                    i.state.word(),
+                    i.command,
+                    i.cwd.display(),
+                    i.title,
+                    i.note,
+                    i.tags.join(",")
+                ));
             }
             std::process::ExitCode::SUCCESS
         }
         Err(e) => {
-            eprintln!("tsumugi ls: no server ({e})");
+            err(&format!("tsumugi ls: no server ({e})\n"));
             std::process::ExitCode::FAILURE
         }
     }
@@ -492,19 +509,19 @@ fn ls(args: &[String]) -> std::process::ExitCode {
 fn remote(what: &str, args: &[String]) -> std::process::ExitCode {
     use std::process::ExitCode;
     let fail = |e: String| {
-        eprintln!("tsumugi {what}: {e}");
+        err(&format!("tsumugi {what}: {e}\n"));
         ExitCode::FAILURE
     };
     let (host, args) = match cli::take_host(args, what == "send") {
         Ok(h) => h,
         Err(e) => {
-            eprintln!("tsumugi {what}: {e}");
+            err(&format!("tsumugi {what}: {e}\n"));
             return ExitCode::from(2);
         }
     };
     let args = &args[..];
     let Some(who) = args.iter().find(|a| !a.starts_with('-')).cloned() else {
-        eprintln!("usage:\n{}", cli::REMOTE_USAGE);
+        err(&format!("usage:\n{}\n", cli::REMOTE_USAGE));
         return ExitCode::from(2);
     };
     let client = match client_at(host.as_deref()) {
@@ -519,7 +536,7 @@ fn remote(what: &str, args: &[String]) -> std::process::ExitCode {
         Ok(id) => id,
         // Waiting on a session that has already ended: its own exit code.
         Err(_) if what == "wait" && who.parse::<SessionId>().is_ok() => {
-            eprintln!("tsumugi wait: session {who} ended");
+            err(&format!("tsumugi wait: session {who} ended\n"));
             return ExitCode::from(3);
         }
         Err(e) => return fail(e),
@@ -554,7 +571,7 @@ fn remote(what: &str, args: &[String]) -> std::process::ExitCode {
             let deadline = std::time::Instant::now() + Duration::from_secs(5);
             loop {
                 if let Some((_, text)) = client.take_texts().into_iter().find(|(i, _)| *i == id) {
-                    print!("{}", if r.all { text } else { cli::last_lines(&text, r.lines) });
+                    out(&if r.all { text } else { cli::last_lines(&text, r.lines) });
                     return ExitCode::SUCCESS;
                 }
                 if std::time::Instant::now() > deadline {
@@ -566,7 +583,7 @@ fn remote(what: &str, args: &[String]) -> std::process::ExitCode {
         "split" => match cli::parse_split(args).and_then(|s| cli::split(&client, &list, id, &s)) {
             Ok(new) => {
                 for n in new {
-                    println!("{n}");
+                    out(&format!("{n}\n"));
                 }
                 ExitCode::SUCCESS
             }
@@ -574,7 +591,7 @@ fn remote(what: &str, args: &[String]) -> std::process::ExitCode {
         },
         "log" => match cli::parse_log(args).and_then(|l| cli::log(&client, &list, id, l, host.is_some())) {
             Ok(path) => {
-                println!("{path}");
+                out(&format!("{path}\n"));
                 ExitCode::SUCCESS
             }
             Err(e) => fail(e),
@@ -595,15 +612,15 @@ fn remote(what: &str, args: &[String]) -> std::process::ExitCode {
             loop {
                 let Ok(list) = client.list() else { return fail("the server went away".into()) };
                 let Some(info) = list.iter().find(|i| i.id == id) else {
-                    eprintln!("tsumugi wait: session {id} ended");
+                    err(&format!("tsumugi wait: session {id} ended\n"));
                     return ExitCode::from(3);
                 };
                 if w.states.contains(&info.state) {
-                    println!("{}", info.state.word());
+                    out(&format!("{}\n", info.state.word()));
                     return ExitCode::SUCCESS;
                 }
                 if w.timeout.is_some_and(|t| start.elapsed() >= t) {
-                    eprintln!("tsumugi wait: still {} after {:?}", info.state.word(), w.timeout.unwrap_or_default());
+                    err(&format!("tsumugi wait: still {} after {:?}\n", info.state.word(), w.timeout.unwrap_or_default()));
                     return ExitCode::FAILURE;
                 }
                 std::thread::sleep(Duration::from_millis(250));
@@ -631,7 +648,7 @@ fn notify(args: &[String]) -> std::process::ExitCode {
             "--state" => match it.next().and_then(|s| tsumugi_mux::State::from_word(s)) {
                 Some(s) => state = s,
                 None => {
-                    eprintln!("tsumugi notify: --state takes waiting, done, error or running");
+                    err("tsumugi notify: --state takes waiting, done, error or running\n");
                     return std::process::ExitCode::from(2);
                 }
             },
@@ -665,13 +682,13 @@ fn notify(args: &[String]) -> std::process::ExitCode {
         if !std::io::IsTerminal::is_terminal(&std::io::stdin()) {
             return std::process::ExitCode::SUCCESS;
         }
-        eprintln!("tsumugi notify: not inside a tsumugi session (no TSUMUGI_SESSION); give --session N");
+        err("tsumugi notify: not inside a tsumugi session (no TSUMUGI_SESSION); give --session N\n");
         return std::process::ExitCode::from(2);
     };
     match Client::connect(&tsumugi_mux::address(), || {}).and_then(|c| c.notify(id, state, words.join(" "), claude)) {
         Ok(()) => std::process::ExitCode::SUCCESS,
         Err(e) => {
-            eprintln!("tsumugi notify: {e}");
+            err(&format!("tsumugi notify: {e}\n"));
             std::process::ExitCode::FAILURE
         }
     }
@@ -704,7 +721,7 @@ fn tag(args: &[String]) -> std::process::ExitCode {
         }
     }
     let Some(id) = session else {
-        eprintln!("tsumugi tag: not inside a tsumugi session (no TSUMUGI_SESSION); give --session N");
+        err("tsumugi tag: not inside a tsumugi session (no TSUMUGI_SESSION); give --session N\n");
         return std::process::ExitCode::from(2);
     };
     let done = Client::connect(&tsumugi_mux::address(), || {}).and_then(|c| {
@@ -719,18 +736,18 @@ fn tag(args: &[String]) -> std::process::ExitCode {
             Some(i) => {
                 if tags.is_empty() {
                     for t in i.tags {
-                        println!("{t}");
+                        out(&format!("{t}\n"));
                     }
                 }
                 std::process::ExitCode::SUCCESS
             }
             None => {
-                eprintln!("tsumugi tag: no session {id}");
+                err(&format!("tsumugi tag: no session {id}\n"));
                 std::process::ExitCode::FAILURE
             }
         },
         Err(e) => {
-            eprintln!("tsumugi tag: {e}");
+            err(&format!("tsumugi tag: {e}\n"));
             std::process::ExitCode::FAILURE
         }
     }

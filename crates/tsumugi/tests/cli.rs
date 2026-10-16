@@ -830,3 +830,26 @@ fn env_reports_the_places_and_the_server() {
     let hidden = String::from_utf8(hidden.stdout).unwrap();
     assert!(hidden.contains("TSUMUGI_API_TOKEN=(hidden)") && !hidden.contains("hunter2"), "{hidden}");
 }
+
+/// What a command prints is let go when nobody reads it any more: PowerShell
+/// hands `tsumugi.exe` (a windowed program, run without `tsumugi.com`) a pipe
+/// for `$id = & tsumugi.exe new` and closes it without waiting, and
+/// `println!` panicked there (os error 232; EPIPE on Linux and macOS).
+#[test]
+fn answers_into_a_closed_pipe_are_let_go() {
+    let s = Server::new("closed");
+    std::fs::write(
+        s.dir.join("layouts.toml"),
+        "[[layout]]\nname = \"Dev\"\ntree = { right = 0.3, first = { run = \"echo from-a\" }, second = { run = \"echo from-b\" } }\n",
+    )
+    .unwrap();
+    assert!(s.ok(&["layout", "--list"]).starts_with("Dev\t"), "a layout to list");
+    s.new_session(&[]);
+    for args in [&["--version"][..], &["--help"], &["env"], &["ls"], &["ls", "--json"], &["layout", "--list"], &["new", "."]] {
+        let (reader, writer) = std::io::pipe().unwrap();
+        drop(reader);
+        let out = s.command(args).stdout(writer).stderr(Stdio::piped()).output().unwrap();
+        let err = String::from_utf8_lossy(&out.stderr);
+        assert!(out.status.success() && !err.contains("panicked"), "tsumugi {args:?} into a closed pipe: {:?}\n{err}", out.status);
+    }
+}

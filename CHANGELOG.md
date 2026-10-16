@@ -5,6 +5,21 @@
 
 ## [未リリース]
 
+## [0.114.0] - 2026-10-16
+
+### 変更
+
+- `tsumugi.com` の中身を ito 0.42.0 の `ito_console::front` に移した（kura・yagura・minato・michi と同じもの）。
+  tsumugi に残るのは、どのコマンドラインが窓を開くか（`OPENS_WINDOW`）だけ。
+  - パイプから窓を開いたとき（`.\tsumugi | Out-Null`、`$v = & tsumugi`）、窓の出力は一時フォルダの自分のファイル
+    （`tsumugi-com-<番号>-<番号>.out` と `.err`）に書かれ、窓が上がった時点の中身を `tsumugi.com` がパイプへ写してから戻る。
+    ファイルは窓が閉じると消える。前はこのコンソール（CONOUT$）に書いていた。コンソールやファイルから開いたときは今までどおり。
+- `tsumugi.exe` の答え（`--version`・`--help`・`env`・`ls`・`new` の番号・`layout --list` など）と、コマンドが失敗した理由の行は
+  ito の `ito_console::out`・`err` で書く。読む人のいないパイプ（`tsumugi.com` を通さない `$v = & tsumugi.exe new . 2>&1`）でも
+  panic せずに捨て、コンソールには UTF-16 で書く（コードページに依らない）。
+- ito を 0.42.0 に上げた（ito-console を足した）。
+- 実機の確認は TESTING.md の 20.8（足した）。閉じたパイプへの答えはテスト `answers_into_a_closed_pipe_are_let_go` が見る。
+
 ## [0.113.2] - 2026-10-16
 
 ### 修正

@@ -967,7 +967,10 @@ exit code -- the long-running commands too (`server`, `mcp`, `wait`, `serial`,
 `tmux`), which run in the foreground as on Linux. With no argument, `attach`
 or `--keys` it opens the window and returns once the window is up, so a
 command line the window refuses (`attach` with no such session, a bad key
-script) still prints its line there. **Keep the two in one folder.**
+script) still prints its line there. Opened from a pipe, the window writes
+into a file of its own in the temporary folder, copied to the pipe once the
+window is up and gone when it closes. It is ito's console front, shared with
+kura, yagura, minato and michi. **Keep the two in one folder.**
 
 ### From a test: `--keys`
 

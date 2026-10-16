@@ -109,6 +109,7 @@ b
 | 2.58 (Windows, #76) | A program in a session stops on the console's Ctrl+C: a script runs `ping`, sends Ctrl+C to its console and `ping` goes | `ctrl_c_stops_a_program_in_a_session` |
 | 19.10 (Start in parallel, #42) | `Tab` and `Shift+Tab` walk Start in parallel's controls and never reach a field of the window behind it | `tab_stays_in_the_dialog` |
 | 20 (text) | `tsumugi.com --version`, `--help` and `env` in PowerShell: the lines come back to the caller; `--bogus` and `--keys` with no script exit 2 through it; `tsumugi.exe --version` into a pipe already closed exits 0 | The Build workflow's *Check tsumugi.com* step (x64, the release build) |
+| 20 (closed pipe) | `tsumugi.exe` itself, its answer into a pipe nobody reads any more (`--version`, `--help`, `env`, `ls`, `ls --json`, `layout --list`, `new`): exit 0 and no `panicked` | `answers_into_a_closed_pipe_are_let_go` |
 | 19.10 (asks, #110) | An ask with two buttons over a field: the first button has the keys when it opens, and `Tab` and `Shift+Tab` take them round one button at a time, never to the field | `hold_tab_goes_round_one_at_a_time` |
 
 A row that only needs text belongs here, not in a section below: add a test
@@ -617,3 +618,4 @@ ones that need a console of your own and the window.
 | 20.5 | `$env:TSUMUGI_KEYLOG = 1; .\tsumugi`, then press `Tab` in the window a few times; close it | The `focus …` lines print in this console while the window runs, and nothing panics once it is closed |
 | 20.6 | `$v = .\tsumugi.exe --version` (the windowed program itself), wait a few seconds, then `.\tsumugi.exe --version` | `$v` is empty and no `panicked` message appears later; the second prints the version in the console |
 | 20.7 | `.\tsumugi ls \| Tee-Object ls.txt`, then `.\tsumugi \| Out-Null` | The first prints the list and `ls.txt` has it; the second comes back once the window is up, with the window still open |
+| 20.8 | `$v = .\tsumugi` (v0.114.0); while the window is open, `Get-ChildItem $env:TEMP -Filter tsumugi-com-*`; close the window and list them again. Then copy the folder to one whose path has Japanese in it and, in `cmd` there, run `tsumugi.exe env` | The prompt comes back once the window is up; two files `tsumugi-com-<number>-<number>.out` and `.err` are listed while it is open, and none once it is closed. In `cmd`, the Japanese folder in the report reads right, with no `?` or garbled letters |

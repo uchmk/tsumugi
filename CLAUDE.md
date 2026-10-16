@@ -129,9 +129,11 @@ kura と同じ。`Cargo.toml` の `version` が正、版の繰り上げと CHANG
 - **修飾キーの抽象化**: macOS では Cmd、Windows / Linux では Ctrl に差し替えられる形にする。
 - **描画とロジックを分ける**: PTY・キー変換・OSC の解釈・セッションの状態は egui に依らない層に置く。
 - **ディスクやプロセスに触る処理は UI スレッドで実行しない**（ワーカースレッドとチャネル、古い依頼は捨てる）。
-- **`tsumugi.com`（`crates/tsumugi/src/bin/tsumugi-com.rs`、v0.113.0 から。kura・yagura・minato・michi の `.com` と同じ）は Windows のコンソールの前段。**
+- **`tsumugi.com`（`crates/tsumugi/src/bin/tsumugi-com.rs`、v0.113.0 から）は Windows のコンソールの前段。**中身は ito の `ito_console::front`
+  （v0.114.0 から。kura・yagura・minato・michi と共有）で、tsumugi が持つのはどのコマンドラインが窓を開くか（`OPENS_WINDOW`）だけ。
   窓を開くコマンド（引数なし・`attach`・`--keys`）は窓が上がるまで待って戻り、ほかは `tsumugi.exe` を同じ引数で走らせて待つ。
-  `main.rs` の振り分けで窓を開くコマンドを足したら `OPENS_WINDOW` も揃える。窓の側は `tsumugi.com` のパイプを持たない（CONOUT$ か無し）。
-  `--version`・`--help`・`env`・`shell-hook` の文字は `main.rs` の `out`（閉じたパイプでも panic しない）。Build の `Check tsumugi.com` が x64 で確かめる。
+  `main.rs` の振り分けで窓を開くコマンドを足したら `OPENS_WINDOW` も揃える。窓の側は `tsumugi.com` のパイプを持たない（パイプなら一時フォルダの自分のファイル）。
+  コマンドの答えは `main.rs` の `out`、失敗の理由は `err`（`ito_console::out`・`err`。閉じたパイプでも panic しない）。`println!`・`eprintln!` を使わない。
+  Build の `Check tsumugi.com` が x64 で確かめる。
 - **ターミナルペイン（`ito-pane`）と画面の分割（`ito-layout`）は kura と共有**。直しは ito に入れ、両方に効かせる。
   分割は先に tsumugi で作って実機で揉んでから kura に持ち帰る。
