@@ -6,31 +6,64 @@
 
 use std::path::{Path, PathBuf};
 
+use crate::answer;
 use crate::json::Json;
 
 /// The rule that allows the command a session asks about, from the lines
-/// above its menu (`answer::asking`): "Bash command", the command, perhaps
-/// its description, the question. `None` for any other question, or a
-/// command of several lines.
+/// above its menu (`answer::asking`). Claude Code 2.1.301 shows "Bash
+/// command", perhaps a tip and the description, the command between two
+/// dashed lines, then the question; older ones "Bash command", the
+/// command, perhaps its description, the question. `None` for any other
+/// question, a command of several lines, or one with more said about it
+/// between the command and the question: a reason Claude Code asks (its
+/// own rule that asks wins over one that allows) or a warning.
 pub fn rule(asking: &[String]) -> Option<String> {
-    let at = asking.iter().position(|l| l.trim() == "Bash command")?;
-    let rest: Vec<&String> = asking[at + 1..].iter().filter(|l| !l.trim().is_empty()).collect();
-    // The command, maybe its description, then the question.
-    let (question, before) = rest.split_last()?;
-    if !question.trim().ends_with('?') || before.is_empty() || before.len() > 2 {
-        return None;
-    }
-    // A second line is the description only when it reads as one (it
-    // starts with a capital); otherwise the command may have wrapped on
-    // screen, and half of it would be allowed (the source review,
-    // 2026-10-07).
-    if before.len() == 2 && !before[1].trim().starts_with(|c: char| c.is_uppercase()) {
-        return None;
-    }
-    let command = before[0].trim();
+    let at = asking.iter().position(|l| is_title(l))?;
+    let rest: Vec<&str> = asking[at + 1..].iter().map(|l| l.trim()).filter(|l| !l.is_empty()).collect();
+    let command = match rest.iter().position(|l| *l == answer::FRAME) {
+        // One line between the dashed lines, and only the question after.
+        Some(open) => match rest[open + 1..] {
+            [command, close, question] if close == answer::FRAME && question.ends_with('?') => command,
+            _ => return None,
+        },
+        None => {
+            // The command, maybe its description, then the question.
+            let (question, before) = rest.split_last()?;
+            if !question.ends_with('?') || before.is_empty() || before.len() > 2 {
+                return None;
+            }
+            // A second line is the description only when it reads as one
+            // (it starts with a capital); otherwise the command may have
+            // wrapped on screen, and half of it would be allowed (the
+            // source review, 2026-10-07).
+            if before.len() == 2 && !before[1].starts_with(|c: char| c.is_uppercase()) {
+                return None;
+            }
+            before[0]
+        }
+    };
     // `*` (and `:*`) make a rule a pattern that allows more than this one
     // command: those are for a person to write.
     (!command.is_empty() && !command.contains(['(', ')', '*'])).then(|| format!("Bash({command})"))
+}
+
+/// Claude Code's title over a Bash command it asks to run, perhaps with who
+/// asks beside it (" · from the Explore agent") and its place among the
+/// questions waiting ("1 of 2"). Not one run elsewhere: "(unsandboxed)",
+/// "(runs on …)", "from a remote cloud agent".
+fn is_title(line: &str) -> bool {
+    let Some(rest) = line.trim().strip_prefix("Bash command") else { return false };
+    let words: Vec<&str> = rest.split_whitespace().collect();
+    let place = |w: &[&str]| matches!(w, [a, "of", b] if a.parse::<u32>().is_ok() && b.parse::<u32>().is_ok());
+    let rest = match words.len().checked_sub(3) {
+        Some(n) if place(&words[n..]) => &words[..n],
+        _ => &words[..],
+    };
+    match rest {
+        [] => true,
+        ["·", "from", by @ ..] => !by.is_empty() && by.join(" ") != "a remote cloud agent",
+        _ => false,
+    }
 }
 
 /// Where the project's own settings for this machine are.
@@ -106,6 +139,44 @@ mod tests {
             None,
             "a command wrapped on screen"
         );
+    }
+
+    #[test]
+    fn claude_code_2_1_301s_layout_becomes_a_rule() {
+        // What `answer::asking` reads of it (#167).
+        let tip = "Tip: auto mode handles these prompts for you — choose \"switch to auto mode\" below";
+        let f = answer::FRAME;
+        let asked = |head: &[&str], tail: &[&str]| {
+            let mut v = lines(head);
+            v.extend(lines(tail));
+            rule(&v)
+        };
+        let ask = |title: &str| asked(&[title, tip, "Create an empty file", f, "touch tsumugi-a.txt", f], &["Do you want to proceed?"]);
+        assert_eq!(ask("Bash command").as_deref(), Some("Bash(touch tsumugi-a.txt)"));
+        assert_eq!(ask("Bash command                     1 of 2").as_deref(), Some("Bash(touch tsumugi-a.txt)"), "a place in the queue");
+        assert_eq!(ask("Bash command · from the Explore agent").as_deref(), Some("Bash(touch tsumugi-a.txt)"));
+        assert_eq!(ask("Bash command · from the Explore agent  2 of 3").as_deref(), Some("Bash(touch tsumugi-a.txt)"));
+        assert_eq!(ask("Bash command (unsandboxed)"), None, "run outside the sandbox");
+        assert_eq!(ask("Bash command (runs on build-box)"), None);
+        assert_eq!(ask("Bash command · from a remote cloud agent"), None);
+        assert_eq!(ask("Bash commands"), None);
+        assert_eq!(
+            asked(&["Bash command", f, "cargo build", f], &["Do you want to proceed?"]).as_deref(),
+            Some("Bash(cargo build)"),
+            "no tip, no description"
+        );
+        assert_eq!(asked(&["Bash command", f, "cargo test --workspace --all-features --", "-q", f], &["Do you want to proceed?"]), None);
+        assert_eq!(
+            asked(
+                &["Bash command", f, "rm -rf target", f],
+                &["Permission rule Bash(rm:*) requires confirmation for this command.", "Do you want to proceed?"]
+            ),
+            None,
+            "an ask rule wins over an allow rule"
+        );
+        assert_eq!(asked(&["Bash command", f, "rm -rf build/*", f], &["Do you want to proceed?"]), None, "a * is a pattern");
+        assert_eq!(asked(&["Bash command", f, "ls", f], &[]), None, "no question");
+        assert_eq!(asked(&["Edit file", f, "fn main() {}", f], &["Do you want to make this edit?"]), None, "only Bash");
     }
 
     #[test]
