@@ -798,12 +798,8 @@ fn window() -> std::process::ExitCode {
     // the zoom, and on Windows moved to the pixels it was closed at by `put`
     // (in the creator, while the window is hidden), so a second screen at
     // another scale gets it back (#176).
-    let place_dir = winplace::dir().filter(|_| winplace::wanted(&first.window.quake));
-    let placed = place_dir.as_deref().and_then(winplace::load);
-    if let Some(w) = placed {
-        let o = w.opening();
-        viewport = viewport.with_position(o.pos).with_inner_size(o.size).with_maximized(o.maximized);
-    }
+    let saved = ito_common::window::Saved::load(winplace::dir().filter(|_| winplace::wanted(&first.window.quake)));
+    viewport = saved.viewport(viewport);
     if first.window.own_titlebar() {
         // macOS keeps its traffic lights, over the band; elsewhere the band
         // draws its own buttons (chrome::top_band).
@@ -826,11 +822,9 @@ fn window() -> std::process::ExitCode {
         "tsumugi",
         options,
         Box::new(move |cc| {
-            if let Some(w) = placed {
-                w.put(cc);
-            }
+            saved.put(cc);
             let mut app = App::new(cc);
-            app.place = place_dir.map(|dir| ito_common::window::Tracker::new(dir, placed));
+            app.place = saved.tracker();
             Ok(Box::new(app))
         }),
     ) {
@@ -4072,8 +4066,8 @@ impl App {
         if !winplace::wanted(&self.settings_now.window.quake) {
             return;
         }
-        if let Some(left) = self.place.as_mut().and_then(|p| p.see(ito_common::window::Seen::of(ctx))) {
-            ctx.request_repaint_after(left);
+        if let Some(place) = self.place.as_mut() {
+            place.follow(ctx);
         }
     }
 
