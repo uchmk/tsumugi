@@ -67,6 +67,47 @@ fn read(source: &str) -> Vec<Section> {
     out
 }
 
+/// What would drop a row from the list, or put it there wrong, without a word:
+/// an id a section has twice, a control character (a printf's `\n` or `\a` a
+/// shell wrote out as the real thing), a row whose cells are not its table's
+/// (a `|` in a cell), a line carrying on the row above (a line break in a cell).
+fn faults(source: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut seen: HashMap<&str, usize> = HashMap::new();
+    let mut inside = false;
+    // The cells of the head of the table being read.
+    let mut table: Option<usize> = None;
+    for (n, line) in source.lines().enumerate().map(|(i, l)| (i + 1, l)) {
+        if let Some(c) = line.chars().find(|c| c.is_control() && *c != '\t') {
+            out.push(format!("{SOURCE}:{n}: a control character U+{:04X}", c as u32));
+        }
+        if let Some(title) = line.strip_prefix("## ") {
+            inside = title.chars().next().is_some_and(|c| c.is_ascii_digit());
+        }
+        if !line.starts_with('|') {
+            if table.is_some() && !line.trim().is_empty() {
+                out.push(format!("{SOURCE}:{n}: carries on the row above (a line break in a cell?)"));
+            }
+            table = None;
+            continue;
+        }
+        let cells: Vec<&str> = line.trim().trim_matches('|').split(" | ").map(str::trim).collect();
+        match table {
+            None => table = Some(cells.len()),
+            Some(head) if head != cells.len() => {
+                out.push(format!("{SOURCE}:{n}: {} cells, its table has {head} (a `|` or a line break in a cell?)", cells.len()))
+            }
+            Some(_) => {}
+        }
+        if inside && is_id(cells[0]) {
+            if let Some(first) = seen.insert(cells[0], n) {
+                out.push(format!("{SOURCE}:{n}: {} again, first at line {first}", cells[0]));
+            }
+        }
+    }
+    out
+}
+
 /// The marks in the list as it is: id to `x` or `~`.
 fn marks(old: &str) -> HashMap<String, char> {
     old.lines()
@@ -101,6 +142,13 @@ fn main() -> ExitCode {
     // A checkout with CRLF (core.autocrlf on Windows) is not out of date: compared
     // with its CRs, every --check failed and the rewrite left a dirty worktree.
     let old = std::fs::read_to_string(root.join(OUT)).unwrap_or_default().replace("\r\n", "\n");
+    let faults = faults(&source);
+    if !faults.is_empty() {
+        for f in &faults {
+            eprintln!("{f}");
+        }
+        return ExitCode::FAILURE;
+    }
     let sections = read(&source);
     let kept = marks(&old);
     let new = write(&sections, &kept);
@@ -148,5 +196,28 @@ mod tests {
         assert!(first.contains("- [ ] **1.1** Press `a` → It works"));
         let ticked = first.replace("- [ ] **1.2a**", "- [~] **1.2a**").replace("- [ ] **1.1**", "- [x] **1.1**");
         assert_eq!(write(&s, &marks(&ticked)), ticked, "ticks survive");
+    }
+
+    #[test]
+    fn broken_rows_are_faults() {
+        let head = "## 2. Two\n\n| # | Do | Expect |\n| --- | --- | --- |\n";
+        assert!(faults(&format!("{head}| 2.1 | `printf '\\a'` | Rings |\n| 2.1a | a | b |\n")).is_empty());
+        let twice = faults(&format!("{head}| 2.1 | a | b |\n| 2.1 | c | d |\n"));
+        assert_eq!(twice, ["TESTING.md:6: 2.1 again, first at line 5"]);
+        let bell = faults(&format!("{head}| 2.1 | `printf '\x07'` | Rings |\n"));
+        assert_eq!(bell, ["TESTING.md:5: a control character U+0007"]);
+        let split = faults(&format!("{head}| 2.1 | `printf 'a\n'` | b |\n"));
+        assert_eq!(
+            split,
+            [
+                "TESTING.md:5: 2 cells, its table has 3 (a `|` or a line break in a cell?)",
+                "TESTING.md:6: carries on the row above (a line break in a cell?)"
+            ]
+        );
+        let pipe = faults(&format!("{head}| 2.1 | `a | b` | c |\n"));
+        assert_eq!(pipe, ["TESTING.md:5: 4 cells, its table has 3 (a `|` or a line break in a cell?)"]);
+        // The table of rows CI runs is outside the sections: an old id there is no repeat.
+        assert!(faults(&format!("## Covered\n\n| Was | What | Test |\n| --- | --- | --- |\n| 2.1 | a | `t` |\n\n{head}| 2.1 | a | b |\n"))
+            .is_empty());
     }
 }

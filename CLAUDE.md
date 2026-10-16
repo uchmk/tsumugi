@@ -56,6 +56,8 @@ Claude Code などの AI CLI のセッションを何本も並べて動かすた
   TESTING-CHECKS.md（印を付ける表）を、`make-keycheck` が keys.rs から TESTING-KEYS.md を作る。印（`[x]`・`[~]`）は作り直しても残る。
 - **動きを変えた行は、印を外して（`[ ]` に戻して）から作り直す。**前の動きを確かめた印なので、残すと嘘になる。
 - `scripts/verify.sh` と CI（`checklists.yml`）が `--check` で、表が TESTING.md と keys.rs に追いついているかを見る。
+  TESTING.md の崩れた行（節の中の番号の重なり・制御文字・列の数の合わない行・セルの中の改行）でも落ちる（v0.114.2 から）。
+  `printf '\n'` の `\n` のような文字は、シェルや sed を通さず Edit で書く（本物の改行や BEL になって行が割れる）。
 - `[x]` は実機で確かめた印で、付けてよいのは実機のセッション（Agent）か持ち主だけ。見た目の行は `[~]`（画面の画像で判断した）まで。
 - **文字で確かめられる行（CLI・サーバの出力）は CI に回す。**`crates/tsumugi/tests/cli.rs` にテストを書き、行は TESTING.md の
   「Covered by tests」の表（元の番号・内容・テスト名）に移す。実機の Claude に残すのは窓・キー・トーストなど画面の要る行だけ。
