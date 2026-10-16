@@ -1335,6 +1335,9 @@ struct App {
     pane_at: HashMap<SessionId, std::time::Instant>,
     /// When the window last said a pane is read-only to someone typing in.
     read_only_said: Option<std::time::Instant>,
+    /// The cursor of the pane with the keys as this frame drew it, for
+    /// `--keys` to read; none when no such pane drew one.
+    cursor_seen: Option<ito_pane::CursorShown>,
     /// The session whose card the pointer is on: watched for its preview.
     peek: Option<SessionId>,
     /// Claude Code's hooks: being looked for (and pointed here when theirs
@@ -1785,6 +1788,7 @@ impl App {
             tab_at: None,
             pane_at: HashMap::new(),
             read_only_said: None,
+            cursor_seen: None,
             peek: None,
             watching: Vec::new(),
             queue: Vec::new(),
@@ -5650,6 +5654,9 @@ impl App {
                         ito_pane::show_faces(ui, Some(pane), view, rect, faces, row_h, own_pal.as_ref().unwrap_or(&pal), opts)
                     })
                     .inner;
+                if focused {
+                    self.cursor_seen = shown.cursor;
+                }
                 // The program rang the bell: the pane flashes a moment.
                 if let Some(at) = pane.rang().filter(|_| self.settings_now.appearance.visual_bell) {
                     let t = at.elapsed().as_secs_f32() / BELL_FLASH.as_secs_f32();
@@ -6269,6 +6276,33 @@ fn save_history(list: Vec<String>) {
     });
 }
 
+/// The cursor of the pane with the keys as `--keys` writes it, column and
+/// line: `cursor: 12,3`, and how it last glided there: `glide: 4,3 -> 12,3,
+/// 5 frames on the way, landed`. A picture cannot catch the slide itself
+/// (#86), so the frames drawn between the two cells say it slid (none: it
+/// jumped). `glide: off` without glide, `glide: none` before its first move.
+fn cursor_lines(glide: bool, seen: Option<ito_pane::CursorShown>) -> String {
+    let cell = |(x, y): (usize, usize)| format!("{x},{y}");
+    let at = |v: f32| match v.fract() == 0.0 {
+        true => format!("{v}"),
+        false => format!("{v:.1}"),
+    };
+    let cursor = seen.map_or_else(|| "none".to_owned(), |c| cell(c.cell));
+    let slid = match (glide, seen.and_then(|c| c.slide)) {
+        (false, _) => "off".to_owned(),
+        (true, None) => "none".to_owned(),
+        (true, Some(s)) => format!(
+            "{},{} -> {}, {} frames on the way, {}",
+            at(s.from.0),
+            at(s.from.1),
+            cell(s.to),
+            s.between,
+            if s.moving { "moving" } else { "landed" }
+        ),
+    };
+    format!("cursor: {cursor}\nglide: {slid}\n")
+}
+
 /// A tab's splits as `--keys` writes them, the sessions' numbers in it:
 /// `right 0.35 (1, down 0.35 (2, 3))`.
 fn shape(n: &Node<SessionId>) -> String {
@@ -6479,6 +6513,7 @@ impl eframe::App for App {
     fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
         self.animated = false;
         self.peek = None;
+        self.cursor_seen = None;
         self.watching.clear();
         self.frame(ui, frame);
         self.script(ui.ctx());
@@ -6595,6 +6630,7 @@ impl App {
         s += &format!("panes: {}\n", shown.map_or(0, |w| w.layout.leaves().len()));
         s += &format!("shape: {}\n", shown.map_or_else(String::new, |w| shape(&w.layout)));
         s += &format!("zoom: {}\n", if self.zoom { "on" } else { "off" });
+        s += &cursor_lines(self.cursor_style().glide, self.cursor_seen);
         s += &format!("title: {}\n", keyscript::one_line(&self.title));
         if let Some(e) = &self.failed {
             s += &format!("failed: {}\n", keyscript::one_line(e));
@@ -8004,7 +8040,7 @@ fn layout_pane(i: Option<&Info>) -> layouts::Pane {
 
 #[cfg(test)]
 mod tests {
-    use super::{escape_line, json_string, keep_tab_for_pane, layout_pane, shape, unescape_line, View};
+    use super::{cursor_lines, escape_line, json_string, keep_tab_for_pane, layout_pane, shape, unescape_line, View};
 
     #[test]
     fn a_claude_pane_is_saved_as_claude_before_its_hooks_run() {
@@ -8048,6 +8084,30 @@ mod tests {
         let tree = split(Dir::Right, 0.35, Node::Leaf(1), split(Dir::Down, 0.35, Node::Leaf(2), Node::Leaf(3)));
         assert_eq!(shape(&tree), "right 0.35 (1, down 0.35 (2, 3))");
         assert_eq!(shape(&Node::Leaf(7)), "7");
+    }
+
+    #[test]
+    fn the_keys_state_says_how_the_cursor_glided() {
+        use ito_pane::{CursorShown, Slide};
+        let slide = |from, between, moving| Slide { from, to: (12, 3), between, moving };
+        let seen = |slide| Some(CursorShown { cell: (12, 3), slide });
+        assert_eq!(cursor_lines(true, None), "cursor: none\nglide: none\n");
+        assert_eq!(cursor_lines(false, seen(None)), "cursor: 12,3\nglide: off\n");
+        assert_eq!(cursor_lines(true, seen(None)), "cursor: 12,3\nglide: none\n");
+        assert_eq!(
+            cursor_lines(true, seen(Some(slide((4.0, 3.0), 5, false)))),
+            "cursor: 12,3\nglide: 4,3 -> 12,3, 5 frames on the way, landed\n"
+        );
+        assert_eq!(
+            cursor_lines(true, seen(Some(slide((7.3, 3.0), 0, true)))),
+            "cursor: 12,3\nglide: 7.3,3 -> 12,3, 0 frames on the way, moving\n",
+            "turned on the way: a point between two cells"
+        );
+        assert_eq!(
+            cursor_lines(true, seen(Some(slide((7.96, 3.0), 2, true)))),
+            "cursor: 12,3\nglide: 8.0,3 -> 12,3, 2 frames on the way, moving\n",
+            "near a cell, not on it"
+        );
     }
 
     #[test]

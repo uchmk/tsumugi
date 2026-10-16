@@ -993,7 +993,12 @@ script ends, `TSUMUGI_KEYS_DONE` gets the state and a last line
 `keys: done`. The state is `key: value` lines: `focus` (`pane`, the open
 dialog or `none`), `overlay`, `scale`, then `tabs`, `panes` (in the tab
 shown), `shape` (its splits, the sessions' numbers in them:
-`right 0.35 (1, down 0.35 (2, 3))`), `zoom` and `title`.
+`right 0.35 (1, down 0.35 (2, 3))`), `zoom`, `cursor` (the cell the focused
+pane drew its cursor in, `column,row`, or `none`), `glide` (`off` when Cursor
+glide or Animations is off, `none` before the cursor first moves, else its last
+slide: `4,3 -> 12,3, 5 frames on the way, landed` or `… moving`) and `title`.
+`cursor` and `glide` are the pane drawn with the keys, also under the
+palette or the input box, and `none` while no pane is drawn (Settings).
 
 ### From Claude Code (MCP)
 
