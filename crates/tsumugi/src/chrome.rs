@@ -1399,7 +1399,7 @@ pub fn bell_list(ctx: &egui::Context, pal: &Palette, at: egui::Pos2, notices: &[
                             let ago = line(format!("{} ago", elapsed(now.saturating_sub(n.at_ms))), 11.0, pal.fg_dim, rect.width());
                             let room = rect.width() - 22.0 - 6.0 - ago.size().x - 10.0;
                             let word = line(format!(" · {word}"), 13.0, text_color, room / 2.0);
-                            let title = line(crate::sort::without_spinner(&n.title).to_string(), 13.0, text_color, room - word.size().x);
+                            let title = line(crate::sort::display_title(&n.title, ""), 13.0, text_color, room - word.size().x);
                             let head = rect.left_top() + egui::vec2(22.0, 6.0);
                             let after = head + egui::vec2(title.size().x, 0.0);
                             p.galley(egui::pos2(rect.right() - 6.0 - ago.size().x, rect.top() + 6.0), ago, pal.fg_dim);

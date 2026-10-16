@@ -18,6 +18,7 @@ use ito_pane::{Pane, Terminal};
 
 use crate::frame;
 use crate::proto::{Dir, Info, Node, Notice, Place, ScrollBy, SessionId, State, ToClient, ToServer, Workspace, WorkspaceId, VERSION};
+use crate::title::display_title;
 use crate::transport::{Address, Conn, Listener};
 
 type ClientId = u64;
@@ -1625,7 +1626,7 @@ fn record_notice(shared: &Shared, s: &Session, (was, since): (State, u64)) {
     let mut notices = lock(&shared.notices);
     let id = notices.0;
     notices.0 += 1;
-    let title = if s.info.title.is_empty() { s.info.command.clone() } else { s.info.title.clone() };
+    let title = display_title(&s.info.title, &s.info.command);
     notices.1.push_back(Notice {
         id,
         session: s.info.id,
@@ -1666,7 +1667,7 @@ fn send_finished(shared: &Shared, s: &Session) {
         return;
     }
     let folder = i.project.file_name().map(|f| f.to_string_lossy().into_owned()).unwrap_or_default();
-    let name = if i.title.trim().is_empty() { i.command.clone() } else { i.title.clone() };
+    let name = display_title(&i.title, &i.command);
     let said = if i.note.is_empty() { name } else { format!("{}\n{name}", i.note) };
     let cwd = i.cwd.display().to_string();
     ito_notify::webhook::send_all(&places, word, level_of(i.state), &format!("{folder} {what}"), &said, &cwd);
@@ -1700,7 +1701,7 @@ fn record_triggered(shared: &Shared, s: &mut Session) {
         }
         let id = notices.0;
         notices.0 += 1;
-        let title = if s.info.title.is_empty() { s.info.command.clone() } else { s.info.title.clone() };
+        let title = display_title(&s.info.title, &s.info.command);
         let note: String = hit.line.chars().take(200).collect();
         notices.1.push_back(Notice {
             id,
@@ -1816,7 +1817,7 @@ fn send_webhooks(shared: &Shared, sessions: &mut BTreeMap<SessionId, Session>) {
         s.webhooked = Some(i.since_ms);
         let folder = i.project.file_name().map(|f| f.to_string_lossy().into_owned()).unwrap_or_default();
         let said = if i.note.is_empty() { "Waiting for you".to_owned() } else { i.note.clone() };
-        let name = if i.title.trim().is_empty() { i.command.clone() } else { i.title.clone() };
+        let name = display_title(&i.title, &i.command);
         let message = format!("{said}\n{name} · waiting {} s", now.saturating_sub(i.since_ms) / 1000);
         ito_notify::webhook::send_all(
             &places,

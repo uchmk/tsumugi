@@ -15,6 +15,7 @@ pub mod quote;
 pub mod server;
 pub mod settings;
 pub mod state;
+pub mod title;
 pub mod transport;
 
 #[cfg(test)]

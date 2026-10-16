@@ -160,7 +160,9 @@ pub struct Notice {
     pub id: u64,
     pub session: SessionId,
     pub state: State,
-    /// The session's title then, and what it said.
+    /// What the session was called then (`title::display_title`: pwsh's
+    /// exe path as `pwsh`; the raw title from servers before v0.114.12),
+    /// and what it said.
     pub title: String,
     pub note: String,
     pub at_ms: u64,
