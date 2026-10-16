@@ -106,7 +106,7 @@ fn main() -> std::process::ExitCode {
         Some("mcp") => mcp::run(),
         Some("send" | "read" | "split" | "close" | "log" | "wait") => remote(&args[0], &args[1..]),
         Some("help" | "--help" | "-h") => {
-            println!("tsumugi: the window, or one of\n{}\n{}\n{}\ntsumugi attach N|NAME\ntsumugi proxy                            (what --host runs on the other machine)\ntsumugi notify [--state S] [--session N] [MESSAGE]\ntsumugi tag [--session N] [--remove] TAG...\n{}\n{}\ntsumugi shell-hook bash|zsh|pwsh\ntsumugi env                              version, OS, where the settings and the state are, whether a server answers: to paste into a bug report\ntsumugi mcp                              an MCP server on stdin/stdout, for Claude Code (see the README)\ntsumugi --keys SCRIPT                    the window, pressing the script's keys (`<C-S-t><Wait:500><Shot:tab><Quit>`); TSUMUGI_KEYS_DONE names the file for its state\n\nTSUMUGI_CONFIG_HOME and TSUMUGI_STATE_HOME name other folders for the settings (config.toml) and the state.", cli::NEW_USAGE, cli::LAYOUT_USAGE, cli::REMOTE_USAGE, serial::USAGE, tmux::USAGE);
+            out(&format!("tsumugi: the window, or one of\n{}\n{}\n{}\ntsumugi attach N|NAME\ntsumugi proxy                            (what --host runs on the other machine)\ntsumugi notify [--state S] [--session N] [MESSAGE]\ntsumugi tag [--session N] [--remove] TAG...\n{}\n{}\ntsumugi shell-hook bash|zsh|pwsh\ntsumugi env                              version, OS, where the settings and the state are, whether a server answers: to paste into a bug report\ntsumugi mcp                              an MCP server on stdin/stdout, for Claude Code (see the README)\ntsumugi --keys SCRIPT                    the window, pressing the script's keys (`<C-S-t><Wait:500><Shot:tab><Quit>`); TSUMUGI_KEYS_DONE names the file for its state\n\nTSUMUGI_CONFIG_HOME and TSUMUGI_STATE_HOME name other folders for the settings (config.toml) and the state.\n", cli::NEW_USAGE, cli::LAYOUT_USAGE, cli::REMOTE_USAGE, serial::USAGE, tmux::USAGE));
             std::process::ExitCode::SUCCESS
         }
         Some("notify") => notify(&args[1..]),
@@ -119,12 +119,12 @@ fn main() -> std::process::ExitCode {
         Some("tmux") => tmux::run(&args[1..]),
         Some("tmux-pane") => tmux::bridge(&args[1..]),
         Some("env") => {
-            print!("{}", envreport::report());
+            out(&envreport::report());
             std::process::ExitCode::SUCCESS
         }
         Some("shell-hook") => match shellhook::text(args.get(1).map(String::as_str)) {
             Ok(text) => {
-                print!("{text}");
+                out(&text);
                 std::process::ExitCode::SUCCESS
             }
             Err(e) => {
@@ -147,7 +147,7 @@ fn main() -> std::process::ExitCode {
             }
         },
         Some("--version" | "-V") => {
-            println!("tsumugi {}", env!("CARGO_PKG_VERSION"));
+            out(&format!("tsumugi {}\n", env!("CARGO_PKG_VERSION")));
             std::process::ExitCode::SUCCESS
         }
         Some(other) => {
@@ -159,15 +159,25 @@ fn main() -> std::process::ExitCode {
 
 /// A release build on Windows is a GUI program and has no console, so `ls`
 /// printed nothing. Borrow the console of whoever started it. PowerShell does
-/// not wait for a GUI program, so the lines can land after its next prompt;
-/// filer solved that with a console front (`filer.com`), which can come here
-/// too once the CLI grows.
+/// not wait for a GUI program, so the lines could land after its next prompt;
+/// `tsumugi.com` (src/bin/tsumugi-com.rs, the console front shipped beside
+/// this) is what the shell waits for, with these same handles.
 fn attach_console() {
     #[cfg(windows)]
     unsafe {
         use windows::Win32::System::Console::{AttachConsole, ATTACH_PARENT_PROCESS};
         let _ = AttachConsole(ATTACH_PARENT_PROCESS);
     }
+}
+
+/// Writes an answer to standard output, and lets it go when it cannot.
+/// PowerShell hands a windowed program a pipe for `$v = & tsumugi.exe
+/// --version` and closes it without waiting, and `println!` panicked there
+/// (os error 232).
+fn out(text: &str) {
+    use std::io::Write;
+    let mut o = std::io::stdout().lock();
+    let _ = o.write_all(text.as_bytes()).and_then(|()| o.flush());
 }
 
 fn server() -> std::process::ExitCode {

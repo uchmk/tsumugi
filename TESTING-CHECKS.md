@@ -444,3 +444,13 @@
 - [x] **19.13** Settings → Notifications: `Tab` from the search to the two buttons at the top; Sessions & profiles → Open with: `Tab` through a command row → The focus goes left to right: *Restore defaults* before *Send a test*; the command field before its ×
 - [x] **19.14** Settings → General, `Tab` past the 11th control → The page scrolls so the focused control is on screen
 - [x] **19.15** Start in parallel (the palette) with the language set to Japanese; Settings → Sessions & profiles → The *REPOSITORY* and *WORK* headings and the *+ Another* button are Japanese; the profile hints name「プロファイルとして保存」and「セッション」as the dialogs do
+
+## 20. The command line and `tsumugi.com` (Windows)
+
+- [ ] **20.1** `$v = .\tsumugi --version; "[$v]"`, then `.\tsumugi ls` and `.\tsumugi --help`; the same in `cmd` (`tsumugi ls`) → `[tsumugi 0.113.0]` (the version) printed by the second statement; the list and the usage print before the prompt comes back, in both shells
+- [ ] **20.2** With no server running (`tsumugi ls` says so): `$id = .\tsumugi new . -- cmd; "[$id]"`, then `.\tsumugi close $id` → The prompt comes back within a few seconds with the session's number in `[…]` -- it does not wait for the server the command started; `close` ends that session
+- [ ] **20.3** `.\tsumugi --bogus; $LASTEXITCODE`, `.\tsumugi --keys; $LASTEXITCODE`, `.\tsumugi attach nosuch; $LASTEXITCODE` → `unknown command` and `2`; the `--keys` usage and `2`; a line saying there is no such session and `1`; no window opens for any of them
+- [ ] **20.4** `.\tsumugi` with no argument; then `.\tsumugi attach N` for a running session; close each window later → Each window opens and the prompt comes back as soon as it is up, with the window still open; closing a window later prints nothing in the console
+- [ ] **20.5** `$env:TSUMUGI_KEYLOG = 1; .\tsumugi`, then press `Tab` in the window a few times; close it → The `focus …` lines print in this console while the window runs, and nothing panics once it is closed
+- [ ] **20.6** `$v = .\tsumugi.exe --version` (the windowed program itself), wait a few seconds, then `.\tsumugi.exe --version` → `$v` is empty and no `panicked` message appears later; the second prints the version in the console
+- [ ] **20.7** `.\tsumugi ls \| Tee-Object ls.txt`, then `.\tsumugi \| Out-Null` → The first prints the list and `ls.txt` has it; the second comes back once the window is up, with the window still open

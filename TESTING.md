@@ -107,6 +107,7 @@ b
 | 1.16 (half) | `tsumugi focus N` and `focus <tag>`: the window that had the keys last is asked to show it; a number with no session exits 1 saying so; no name is a usage error | `focus_asks_a_window_to_show_the_session` |
 | 2.58 (Windows, #76) | A program in a session stops on the console's Ctrl+C: a script runs `ping`, sends Ctrl+C to its console and `ping` goes | `ctrl_c_stops_a_program_in_a_session` |
 | 19.10 (Start in parallel, #42) | `Tab` and `Shift+Tab` walk Start in parallel's controls and never reach a field of the window behind it | `tab_stays_in_the_dialog` |
+| 20 (text) | `tsumugi.com --version`, `--help` and `env` in PowerShell: the lines come back to the caller; `--bogus` and `--keys` with no script exit 2 through it; `tsumugi.exe --version` into a pipe already closed exits 0 | The Build workflow's *Check tsumugi.com* step (x64, the release build) |
 | 19.10 (asks, #110) | An ask with two buttons over a field: the first button has the keys when it opens, and `Tab` and `Shift+Tab` take them round one button at a time, never to the field | `hold_tab_goes_round_one_at_a_time` |
 
 A row that only needs text belongs here, not in a section below: add a test
@@ -596,3 +597,20 @@ cyan ring on the one the log names and on no other (a screenshot, `[~]`).
 | 19.14 | Settings → General, `Tab` past the 11th control | The page scrolls so the focused control is on screen |
 | 19.15 | Start in parallel (the palette) with the language set to Japanese; Settings → Sessions & profiles | The *REPOSITORY* and *WORK* headings and the *+ Another* button are Japanese; the profile hints name「プロファイルとして保存」and「セッション」as the dialogs do |
 
+## 20. The command line and `tsumugi.com` (Windows)
+
+`tsumugi.exe` and `tsumugi.com` from the release zip or the Build artifact
+(or `cargo build --release`, with `tsumugi-com.exe` copied to `tsumugi.com`),
+in one folder; the commands run in PowerShell in that folder. The Build
+workflow already checks the bare answers (the table above); these are the
+ones that need a console of your own and the window.
+
+| # | Do | Expect |
+| --- | --- | --- |
+| 20.1 | `$v = .\tsumugi --version; "[$v]"`, then `.\tsumugi ls` and `.\tsumugi --help`; the same in `cmd` (`tsumugi ls`) | `[tsumugi 0.113.0]` (the version) printed by the second statement; the list and the usage print before the prompt comes back, in both shells |
+| 20.2 | With no server running (`tsumugi ls` says so): `$id = .\tsumugi new . -- cmd; "[$id]"`, then `.\tsumugi close $id` | The prompt comes back within a few seconds with the session's number in `[…]` -- it does not wait for the server the command started; `close` ends that session |
+| 20.3 | `.\tsumugi --bogus; $LASTEXITCODE`, `.\tsumugi --keys; $LASTEXITCODE`, `.\tsumugi attach nosuch; $LASTEXITCODE` | `unknown command` and `2`; the `--keys` usage and `2`; a line saying there is no such session and `1`; no window opens for any of them |
+| 20.4 | `.\tsumugi` with no argument; then `.\tsumugi attach N` for a running session; close each window later | Each window opens and the prompt comes back as soon as it is up, with the window still open; closing a window later prints nothing in the console |
+| 20.5 | `$env:TSUMUGI_KEYLOG = 1; .\tsumugi`, then press `Tab` in the window a few times; close it | The `focus …` lines print in this console while the window runs, and nothing panics once it is closed |
+| 20.6 | `$v = .\tsumugi.exe --version` (the windowed program itself), wait a few seconds, then `.\tsumugi.exe --version` | `$v` is empty and no `panicked` message appears later; the second prints the version in the console |
+| 20.7 | `.\tsumugi ls \| Tee-Object ls.txt`, then `.\tsumugi \| Out-Null` | The first prints the list and `ls.txt` has it; the second comes back once the window is up, with the window still open |

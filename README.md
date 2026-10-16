@@ -31,11 +31,11 @@ Claude Code sessions side by side say which one is still working:
 cargo run -p tsumugi
 ```
 
-On Windows, a build with the newer ConPTY beside it is on the Actions tab
-(the **Build** workflow, artifact `tsumugi-windows-x64-…` or `-arm64-…`). A
-local build gets it with `pwsh -File scripts/fetch-conpty.ps1 -Dest target\debug`;
-without it the pane runs on the older ConPTY built into Windows, which breaks
-`Esc` in lazygit and the like.
+On Windows, a build with the newer ConPTY and `tsumugi.com` beside it is on
+the Actions tab (the **Build** workflow, artifact `tsumugi-windows-x64-…` or
+`-arm64-…`). A local build gets the ConPTY with `pwsh -File
+scripts/fetch-conpty.ps1 -Dest target\debug`; without it the pane runs on the
+older ConPTY built into Windows, which breaks `Esc` in lazygit and the like.
 
 Sessions live in a background server (`tsumugi server`, which the window
 starts by itself), so closing the window leaves them running; `tsumugi ls`
@@ -952,6 +952,22 @@ hosts = ["box", "pi"]   # kept by the window
 When the two ends speak different versions of the protocol, it says to
 install the same version there and then use **Restart its server**: the old
 server stops (its sessions end, its tabs come back) and the new one starts.
+
+### `tsumugi.com` on Windows
+
+`tsumugi.exe` is a windowed program, so PowerShell does not wait for it:
+`$id = & tsumugi new` and `$v = & tsumugi --version` came back empty, and
+`tsumugi ls` printed after the next prompt. `cargo build --release` also makes
+`tsumugi-com.exe`, a small console program, the same as kura's `kura.com` and
+yagura's `yagura.com`: copy it to `tsumugi.com` beside `tsumugi.exe` (the
+Build artifacts and the release zips hold it under that name). `PATHEXT`
+lists `.COM` before `.EXE`, so typing `tsumugi` finds it first. It runs
+`tsumugi.exe` with the same arguments and handles, waits, and passes on the
+exit code -- the long-running commands too (`server`, `mcp`, `wait`, `serial`,
+`tmux`), which run in the foreground as on Linux. With no argument, `attach`
+or `--keys` it opens the window and returns once the window is up, so a
+command line the window refuses (`attach` with no such session, a bad key
+script) still prints its line there. **Keep the two in one folder.**
 
 ### From a test: `--keys`
 

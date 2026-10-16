@@ -5,6 +5,22 @@
 
 ## [未リリース]
 
+## [0.113.0] - 2026-10-16
+
+### 追加
+
+- Windows のコンソールの前段 `tsumugi.com`（kura の `kura.com`・yagura の `yagura.com` と同じ）。`tsumugi.exe` は窓のプログラムなので、PowerShell は待たず、
+  `$id = & tsumugi new` と `$v = & tsumugi --version` は空で、`tsumugi ls` は次のプロンプトの後に出ていた。`cargo build --release` が `tsumugi-com.exe` を作り、
+  Build の成果物とリリースの zip には `tsumugi.com` の名で入る。`PATHEXT` で `.COM` が `.EXE` より先なので、`tsumugi` と打てばこちらが動く。
+  `tsumugi.exe` を同じ引数で走らせて待ち、終了コードを返す（`server`・`mcp`・`wait` のような長いコマンドも、Linux と同じく前で動く）。
+  引数なし・`attach`・`--keys` は窓を開き、上がったら戻る（窓の前に断られれば、その文字と終了コードを返す）。**2 つは同じフォルダに置く。**
+  実機の確認は TESTING.md の 20 節、Build の `Check tsumugi.com` が x64 で文字の答えを確かめる。
+
+### 修正
+
+- `--version`・`--help`・`env`・`shell-hook` の文字を書けなくても panic しない。PowerShell の `$v = & tsumugi.exe --version` は、閉じたパイプへの
+  書き込みで後から「failed printing to stdout」（os error 232）の panic を出していた。
+
 ## [0.112.6] - 2026-10-16
 
 ### 変更

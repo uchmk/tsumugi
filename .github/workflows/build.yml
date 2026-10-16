@@ -2,7 +2,8 @@ name: Build
 
 # A build to download from the Actions tab, so trying tsumugi does not need a
 # Rust toolchain, for the six targets release.yml packs. Windows: tsumugi.exe
-# with the newer ConPTY beside it (scripts/fetch-conpty.ps1), x64 and ARM64
+# with tsumugi.com (the console front) and the newer ConPTY beside it
+# (scripts/fetch-conpty.ps1), x64 and ARM64
 # both from the one x64 runner. macOS and Linux: the binary alone, built where
 # it runs (macOS x64 cross-built on the ARM runner), as release.yml's `unix`
 # job. ci.yml and arm64.yml never link macOS; this is where that is found out
@@ -45,11 +46,63 @@ jobs:
           save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: Build
         run: cargo build --release --locked -p tsumugi --target ${{ matrix.target }}
+      # tsumugi.com (v0.113.0) is the console front kept beside tsumugi.exe,
+      # as kura.com and yagura.com. Being a console program, PowerShell
+      # waits for it and takes its output, so the bare forms that come back
+      # empty from tsumugi.exe have to work here, and a command line that
+      # tsumugi.exe refuses comes back through it with tsumugi.exe's exit
+      # code, the window's (`--keys` with no script) as well as the others.
+      # x64 only: the runner cannot run ARM64.
+      #
+      # tsumugi.exe itself is a GUI-subsystem program: PowerShell hands it a
+      # pipe for `$v = & tsumugi.exe --version` and closes it without
+      # waiting. The write is let go there, where println! panicked (os
+      # error 232): here the pipe is closed before tsumugi.exe has started
+      # writing.
+      - name: Check tsumugi.com
+        if: matrix.target == 'x86_64-pc-windows-msvc'
+        shell: pwsh
+        run: |
+          $exe = (Resolve-Path "target/${{ matrix.target }}/release/tsumugi.exe").Path
+          $com = "target/${{ matrix.target }}/release/tsumugi.com"
+          Copy-Item "target/${{ matrix.target }}/release/tsumugi-com.exe" $com
+          $ver = & $com --version
+          if (-not ($ver -match '^tsumugi \d')) { throw "& tsumugi.com --version gave: '$ver'" }
+          $help = & $com --help
+          if ($help.Count -lt 10) { throw "& tsumugi.com --help gave $($help.Count) line(s)" }
+          $lines = & $com env
+          if ($lines.Count -lt 5) { throw "& tsumugi.com env gave $($lines.Count) line(s)" }
+          $p = [System.Diagnostics.Process]::new()
+          $p.StartInfo.FileName = $exe
+          $p.StartInfo.Arguments = '--version'
+          $p.StartInfo.UseShellExecute = $false
+          $p.StartInfo.RedirectStandardOutput = $true
+          [void]$p.Start()
+          $p.StandardOutput.Close()
+          $p.WaitForExit()
+          if ($p.ExitCode -ne 0) { throw "tsumugi.exe --version into a closed pipe exited $($p.ExitCode)" }
+          & $com --bogus 2> refused.txt
+          $refused = $LASTEXITCODE
+          $said = (Get-Content -Raw refused.txt).Trim()
+          if (-not ($said -match 'unknown command')) { throw "tsumugi.com --bogus said: '$said'" }
+          # The window's refusal is written to the console, not the pipe
+          # PowerShell reads `2>` from: only its exit code is looked at.
+          & $com --keys
+          $nokeys = $LASTEXITCODE
+          # The step ends with `exit $LASTEXITCODE`, and this 2 is the pass.
+          $global:LASTEXITCODE = 0
+          if ($refused -ne 2) { throw "tsumugi.com --bogus exited $refused, not tsumugi.exe's 2" }
+          if ($nokeys -ne 2) { throw "tsumugi.com --keys exited $nokeys, not tsumugi.exe's 2" }
+          "tsumugi.com: $ver, $($help.Count) lines of help, $($lines.Count) of env, refusals exit $refused and $nokeys"
+
       - name: Gather the files
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force dist | Out-Null
           Copy-Item target/${{ matrix.target }}/release/tsumugi.exe dist/
+          # And the console front beside it, under the name that makes
+          # `tsumugi` find it first (v0.113.0, src/bin/tsumugi-com.rs).
+          Copy-Item target/${{ matrix.target }}/release/tsumugi-com.exe dist/tsumugi.com
           pwsh -File scripts/fetch-conpty.ps1 -Arch ${{ matrix.arch }} -Dest dist
       - name: Upload
         uses: actions/upload-artifact@v7
