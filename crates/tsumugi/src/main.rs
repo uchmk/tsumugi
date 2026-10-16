@@ -4246,19 +4246,28 @@ impl App {
     /// The window is closing: ask first when sessions are still running and
     /// `[general] ask_before_close` is on, and stop them all when
     /// `keep_sessions` is off (else the server keeps them for next time).
-    fn close_window(&mut self, ctx: &egui::Context, client: &Client, sessions: &[Info]) {
-        let general = self.settings_now.general.clone();
-        if ctx.input(|i| i.viewport().close_requested()) {
-            let running = sessions.iter().filter(|s| s.state == tsumugi_mux::proto::State::Running).count();
-            if general.ask_before_close && running > 0 && !self.close_ok {
-                ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
-                self.closing = Some(running);
-            } else if !general.keep_sessions {
-                for s in sessions {
-                    client.attach(s.id).kill();
-                }
+    /// Each frame, and from `logic` while the window is minimized (closed
+    /// from the taskbar), where no frame is drawn.
+    fn close_asked(&mut self, ctx: &egui::Context, client: &Client, sessions: &[Info]) {
+        if !ctx.input(|i| i.viewport().close_requested()) {
+            return;
+        }
+        let general = &self.settings_now.general;
+        let running = sessions.iter().filter(|s| s.state == tsumugi_mux::proto::State::Running).count();
+        if general.ask_before_close && running > 0 && !self.close_ok {
+            hold_close(ctx);
+            self.closing = Some(running);
+        } else if !general.keep_sessions {
+            for s in sessions {
+                client.attach(s.id).kill();
             }
         }
+    }
+
+    /// The question `close_asked` held the close back for.
+    fn close_window(&mut self, ctx: &egui::Context, client: &Client, sessions: &[Info]) {
+        let general = self.settings_now.general.clone();
+        self.close_asked(ctx, client, sessions);
         let Some(running) = self.closing else { return };
         let mut answer = None;
         let mut first = None;
@@ -6373,6 +6382,16 @@ fn looked_at(ctx: &egui::Context) -> bool {
     ctx.input(|i| i.raw.focused && i.viewport().focused.unwrap_or(true) && i.viewport().visible() != Some(false))
 }
 
+/// Hold a close back for the question about the running sessions. Closed
+/// while minimized (from the taskbar), the window comes back to show it.
+fn hold_close(ctx: &egui::Context) {
+    ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
+    if ctx.input(|i| i.viewport().visible() == Some(false)) {
+        ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(false));
+        ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
+    }
+}
+
 fn quiet(i: &Info, muted_tags: &[String]) -> bool {
     i.muted || i.tags.iter().any(|t| muted_tags.contains(t))
 }
@@ -6428,8 +6447,9 @@ impl eframe::App for App {
     }
 
     /// Minimized, eframe draws no frame and calls only this: the server
-    /// still hears that the window is away (its webhooks), and the notices
-    /// are still told (toasts, sound, `tsumugi focus`).
+    /// still hears that the window is away (its webhooks), the notices
+    /// are still told (toasts, sound, `tsumugi focus`), and a close from the
+    /// taskbar still asks about the running sessions or stops them.
     fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         if ctx.input(|i| i.viewport().visible() != Some(false)) {
             return; // `ui` follows
@@ -6437,6 +6457,7 @@ impl eframe::App for App {
         let Some(client) = self.client.clone() else { return };
         let (workspaces, sessions) = (client.workspaces(), client.sessions());
         self.attend(ctx, &client, &workspaces, &sessions);
+        self.close_asked(ctx, &client, &sessions);
     }
 
     fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
@@ -6507,7 +6528,7 @@ impl App {
         // Closed from outside while the script ran (the title bar's x,
         // Alt+F4): no later frame comes to write the file. A close the
         // question about running sessions held back is not one; that is the
-        // only close cancelled (`close_window`), so a new `CancelClose`
+        // only close cancelled (`close_asked`), so a new `CancelClose`
         // elsewhere has to set `closing` too.
         if ctx.input(|i| i.viewport().close_requested()) && self.closing.is_none() {
             if let Some(script) = self.script.as_mut().filter(|s| s.running()) {
@@ -8147,5 +8168,29 @@ mod tests {
         assert!(super::looked_at(&ctx));
         draw(&ctx, window(false, false));
         assert!(!super::looked_at(&ctx), "behind another window");
+    }
+
+    #[test]
+    fn a_close_while_minimized_is_held_for_the_question() {
+        use egui::ViewportCommand as C;
+        let ctx = egui::Context::default();
+        draw(&ctx, window(true, false));
+        // Closed from the taskbar while minimized: eframe calls only
+        // `logic`, and closes unless that answers `CancelClose`.
+        let mut closed = window(false, true);
+        closed.viewports.get_mut(&egui::ViewportId::ROOT).expect("root").events.push(egui::ViewportEvent::Close);
+        let out = ctx.run_logic(&closed, |ctx| {
+            assert!(ctx.input(|i| i.viewport().close_requested()), "logic hears the close");
+            super::hold_close(ctx);
+        });
+        let commands = &out.viewport_commands[&egui::ViewportId::ROOT];
+        assert!(commands.contains(&C::CancelClose), "the window would close without the question");
+        assert!(commands.contains(&C::Minimized(false)) && commands.contains(&C::Focus), "the question would stay out of sight");
+        // In front, only held back.
+        let mut closed = window(true, false);
+        closed.viewports.get_mut(&egui::ViewportId::ROOT).expect("root").events.push(egui::ViewportEvent::Close);
+        let mut out = ctx.run_ui(closed, |ui| super::hold_close(ui.ctx()));
+        out.textures_delta.clear();
+        assert_eq!(out.viewport_output[&egui::ViewportId::ROOT].commands, [C::CancelClose]);
     }
 }
