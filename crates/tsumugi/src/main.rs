@@ -6364,6 +6364,15 @@ fn last_lines(rows: &[Vec<ito_pane::CellView>], n: usize) -> Vec<String> {
     lines.split_off(from)
 }
 
+/// Whether the window is looked at. Away when either says so: winit's
+/// event (`focused`, from the window losing the keys) and the window's own
+/// answer, read each frame. With the second alone, nvim heard no `\e[O` on
+/// Alt+Tab (the real machine). Away too while minimized, whatever they say.
+/// `raw`, as a pass with no ui (minimized) brings only that up to date.
+fn looked_at(ctx: &egui::Context) -> bool {
+    ctx.input(|i| i.raw.focused && i.viewport().focused.unwrap_or(true) && i.viewport().visible() != Some(false))
+}
+
 fn quiet(i: &Info, muted_tags: &[String]) -> bool {
     i.muted || i.tags.iter().any(|t| muted_tags.contains(t))
 }
@@ -6416,6 +6425,18 @@ impl eframe::App for App {
         } else {
             visuals.panel_fill.to_normalized_gamma_f32()
         }
+    }
+
+    /// Minimized, eframe draws no frame and calls only this: the server
+    /// still hears that the window is away (its webhooks), and the notices
+    /// are still told (toasts, sound, `tsumugi focus`).
+    fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        if ctx.input(|i| i.viewport().visible() != Some(false)) {
+            return; // `ui` follows
+        }
+        let Some(client) = self.client.clone() else { return };
+        let (workspaces, sessions) = (client.workspaces(), client.sessions());
+        self.attend(ctx, &client, &workspaces, &sessions);
     }
 
     fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
@@ -6599,6 +6620,135 @@ impl App {
     /// An MCP client's ask to type into a session is on the screen.
     fn send_asking(&self) -> bool {
         self.client.as_ref().is_some_and(|c| !c.asks().is_empty())
+    }
+
+    /// Whether the window is looked at, told to the server (a webhook
+    /// waits while someone looks), and what the new notices ask for:
+    /// toasts, the taskbar's number, sound. Each frame, and from `logic`
+    /// while the window is minimized and no frame is drawn.
+    fn attend(&mut self, ctx: &egui::Context, client: &Client, workspaces: &[Workspace], sessions: &[Info]) -> bool {
+        let here = looked_at(ctx);
+        if self.focus_sent != Some(here) {
+            client.focus(here);
+            self.focus_sent = Some(here);
+        }
+        let (anyone, teller) = client.attention();
+        let muted_tags = client.muted_tags();
+        let muted: std::collections::HashSet<SessionId> = sessions.iter().filter(|i| quiet(i, &muted_tags)).map(|i| i.id).collect();
+        let places: std::collections::HashMap<SessionId, String> =
+            sessions.iter().map(|i| (i.id, i.project.file_name().map(|f| f.to_string_lossy().into_owned()).unwrap_or_default())).collect();
+        // What each run has used so far, from the conversation's totals.
+        let used = self.usage.get();
+        let mut spent: std::collections::HashMap<SessionId, String> = std::collections::HashMap::new();
+        for i in sessions.iter().filter(|i| i.claude && !i.conversation.is_empty()) {
+            let now = (
+                used.conversations.get(&i.conversation).map_or(0, usage::Tokens::total),
+                used.costs.get(&i.conversation).copied().unwrap_or(0.0),
+            );
+            if i.state == State::Running {
+                self.run_base.entry(i.id).or_insert(now);
+            }
+            if let Some(&(tokens, cost)) = self.run_base.get(&i.id) {
+                let tokens = now.0.saturating_sub(tokens);
+                let cost = (now.1 - cost).max(0.0);
+                if tokens > 0 {
+                    spent.insert(
+                        i.id,
+                        if cost > 0.0 {
+                            format!("{} tokens · ${cost:.2}", usage::short(tokens))
+                        } else {
+                            format!("{} tokens", usage::short(tokens))
+                        },
+                    );
+                }
+            }
+        }
+        let seen = alert::Seen { looking: here || anyone, teller, muted: &muted, places: &places, spent: &spent };
+        for (id, reply) in self.teller.clicked() {
+            match reply {
+                alert::Reply::Open => {
+                    // A notification clicked: its pane, in front.
+                    self.go_to(client, workspaces, id);
+                    ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(false));
+                    ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
+                }
+                // An answer from the toast, only to a session still waiting:
+                // the prompt it was about may be gone by now.
+                alert::Reply::Allow | alert::Reply::Deny => {
+                    let waiting =
+                        sessions.iter().find(|i| i.id == id).is_some_and(|i| matches!(i.state, State::Waiting | State::MaybeWaiting));
+                    if waiting {
+                        client.input(id, if reply == alert::Reply::Allow { vec![13] } else { vec![0x1b] });
+                    }
+                }
+            }
+        }
+        alert::set_answer_buttons(self.settings_now.notify.answer_buttons);
+        alert::set_stay(self.settings_now.notify.stay);
+        let notices = client.notices();
+        if self.key_log {
+            // `TSUMUGI_KEYLOG=1` also says why a notice was or was not
+            // told, once for each new one (a toast that never came).
+            static LOGGED: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+            let unread = notices.iter().filter(|n| !n.read).count();
+            if LOGGED.swap(unread, std::sync::atomic::Ordering::Relaxed) != unread {
+                let (here_now, teller_now) = (here, seen.teller);
+                let ids: Vec<(u64, bool)> = notices.iter().map(|n| (n.id, n.read)).collect();
+                eprintln!("alert: notices (id, read) {ids:?}, next {:?}", self.alerts.mark_next());
+                eprintln!(
+                    "alert: {unread} unread; looking {} (here {here_now}, anyone {anyone}), teller {teller_now}, muted {:?}, notify rules waiting {} error {} done {}, focus_mode {} quiet_time {}",
+                    seen.looking,
+                    seen.muted,
+                    self.alerts.rules.notify.waiting,
+                    self.alerts.rules.notify.error,
+                    self.alerts.rules.notify.done,
+                    self.settings_now.notify.focus_mode,
+                    sound::quiet_time()
+                );
+            }
+        }
+        let outs = self.alerts.decide(&notices, seen);
+        if self.key_log && !outs.is_empty() {
+            eprintln!("alert: asked for {outs:?}");
+        }
+        self.run_base.retain(|id, _| sessions.iter().any(|i| i.id == *id && i.state == State::Running));
+        // Focus mode on: the number on the taskbar only (`[notify] focus_mode`).
+        let hush = !outs.is_empty() && self.settings_now.notify.focus_mode && sound::quiet_time();
+        for out in outs {
+            match out {
+                alert::Out::Badge(..) => self.teller.send(out),
+                _ if hush => {}
+                alert::Out::Flash => {
+                    ctx.send_viewport_cmd(egui::ViewportCommand::RequestUserAttention(egui::UserAttentionType::Informational))
+                }
+                alert::Out::Sound(error) => {
+                    let n = &self.settings_now.notify;
+                    sound::play(if error { &n.sound_error } else { &n.sound_waiting });
+                }
+                out => self.teller.send(out),
+            }
+        }
+        // The estimated cost past its line: a toast here, and the system's
+        // notification for a window not looked at.
+        let n = &self.settings_now.notify;
+        let (day, block) = (n.spend_day, n.spend_block);
+        if day > 0 || block > 0 {
+            for words in self.spend.check(&self.usage.get(), day, block) {
+                if !here {
+                    self.teller.send(alert::Out::Notify { session: 0, title: "tsumugi".into(), body: words.clone(), state: None });
+                }
+                self.say(words, false);
+            }
+        }
+        // `tsumugi focus`: to the front, with that session's tab shown and
+        // its pane given the keys.
+        for id in client.take_shows() {
+            self.showing = Some((id, std::time::Instant::now()));
+            ctx.send_viewport_cmd(egui::ViewportCommand::Visible(true));
+            ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(false));
+            ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
+        }
+        here
     }
 
     fn frame(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
@@ -6797,131 +6947,7 @@ impl App {
                     });
             });
         }
-        // Away when either says so: winit's event (`i.focused`, from the
-        // window losing the keys) and the window's own answer, read each
-        // frame. With the second alone, nvim heard no `\e[O` on Alt+Tab (the
-        // real machine).
-        let here = ctx.input(|i| i.focused && i.viewport().focused.unwrap_or(true));
-        if self.focus_sent != Some(here) {
-            client.focus(here);
-            self.focus_sent = Some(here);
-        }
-        let (anyone, teller) = client.attention();
-        let muted_tags = client.muted_tags();
-        let muted: std::collections::HashSet<SessionId> = sessions.iter().filter(|i| quiet(i, &muted_tags)).map(|i| i.id).collect();
-        let places: std::collections::HashMap<SessionId, String> =
-            sessions.iter().map(|i| (i.id, i.project.file_name().map(|f| f.to_string_lossy().into_owned()).unwrap_or_default())).collect();
-        // What each run has used so far, from the conversation's totals.
-        let used = self.usage.get();
-        let mut spent: std::collections::HashMap<SessionId, String> = std::collections::HashMap::new();
-        for i in sessions.iter().filter(|i| i.claude && !i.conversation.is_empty()) {
-            let now = (
-                used.conversations.get(&i.conversation).map_or(0, usage::Tokens::total),
-                used.costs.get(&i.conversation).copied().unwrap_or(0.0),
-            );
-            if i.state == State::Running {
-                self.run_base.entry(i.id).or_insert(now);
-            }
-            if let Some(&(tokens, cost)) = self.run_base.get(&i.id) {
-                let tokens = now.0.saturating_sub(tokens);
-                let cost = (now.1 - cost).max(0.0);
-                if tokens > 0 {
-                    spent.insert(
-                        i.id,
-                        if cost > 0.0 {
-                            format!("{} tokens · ${cost:.2}", usage::short(tokens))
-                        } else {
-                            format!("{} tokens", usage::short(tokens))
-                        },
-                    );
-                }
-            }
-        }
-        let seen = alert::Seen { looking: here || anyone, teller, muted: &muted, places: &places, spent: &spent };
-        for (id, reply) in self.teller.clicked() {
-            match reply {
-                alert::Reply::Open => {
-                    // A notification clicked: its pane, in front.
-                    self.go_to(&client, &workspaces, id);
-                    ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(false));
-                    ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
-                }
-                // An answer from the toast, only to a session still waiting:
-                // the prompt it was about may be gone by now.
-                alert::Reply::Allow | alert::Reply::Deny => {
-                    let waiting =
-                        sessions.iter().find(|i| i.id == id).is_some_and(|i| matches!(i.state, State::Waiting | State::MaybeWaiting));
-                    if waiting {
-                        client.input(id, if reply == alert::Reply::Allow { vec![13] } else { vec![0x1b] });
-                    }
-                }
-            }
-        }
-        alert::set_answer_buttons(self.settings_now.notify.answer_buttons);
-        alert::set_stay(self.settings_now.notify.stay);
-        let notices = client.notices();
-        if self.key_log {
-            // `TSUMUGI_KEYLOG=1` also says why a notice was or was not
-            // told, once for each new one (a toast that never came).
-            static LOGGED: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
-            let unread = notices.iter().filter(|n| !n.read).count();
-            if LOGGED.swap(unread, std::sync::atomic::Ordering::Relaxed) != unread {
-                let (here_now, teller_now) = (here, seen.teller);
-                let ids: Vec<(u64, bool)> = notices.iter().map(|n| (n.id, n.read)).collect();
-                eprintln!("alert: notices (id, read) {ids:?}, next {:?}", self.alerts.mark_next());
-                eprintln!(
-                    "alert: {unread} unread; looking {} (here {here_now}, anyone {anyone}), teller {teller_now}, muted {:?}, notify rules waiting {} error {} done {}, focus_mode {} quiet_time {}",
-                    seen.looking,
-                    seen.muted,
-                    self.alerts.rules.notify.waiting,
-                    self.alerts.rules.notify.error,
-                    self.alerts.rules.notify.done,
-                    self.settings_now.notify.focus_mode,
-                    sound::quiet_time()
-                );
-            }
-        }
-        let outs = self.alerts.decide(&notices, seen);
-        if self.key_log && !outs.is_empty() {
-            eprintln!("alert: asked for {outs:?}");
-        }
-        self.run_base.retain(|id, _| sessions.iter().any(|i| i.id == *id && i.state == State::Running));
-        // Focus mode on: the number on the taskbar only (`[notify] focus_mode`).
-        let hush = !outs.is_empty() && self.settings_now.notify.focus_mode && sound::quiet_time();
-        for out in outs {
-            match out {
-                alert::Out::Badge(..) => self.teller.send(out),
-                _ if hush => {}
-                alert::Out::Flash => {
-                    ctx.send_viewport_cmd(egui::ViewportCommand::RequestUserAttention(egui::UserAttentionType::Informational))
-                }
-                alert::Out::Sound(error) => {
-                    let n = &self.settings_now.notify;
-                    sound::play(if error { &n.sound_error } else { &n.sound_waiting });
-                }
-                out => self.teller.send(out),
-            }
-        }
-        // The estimated cost past its line: a toast here, and the system's
-        // notification for a window not looked at.
-        let n = &self.settings_now.notify;
-        let (day, block) = (n.spend_day, n.spend_block);
-        if day > 0 || block > 0 {
-            for words in self.spend.check(&self.usage.get(), day, block) {
-                if !here {
-                    self.teller.send(alert::Out::Notify { session: 0, title: "tsumugi".into(), body: words.clone(), state: None });
-                }
-                self.say(words, false);
-            }
-        }
-        // `tsumugi focus`: to the front, with that session's tab shown and
-        // its pane given the keys.
-        for id in client.take_shows() {
-            self.showing = Some((id, std::time::Instant::now()));
-            ctx.send_viewport_cmd(egui::ViewportCommand::Visible(true));
-            ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(false));
-            ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
-        }
+        let here = self.attend(&ctx, &client, &workspaces, &sessions);
         let current = self.current(&workspaces);
         // A program that asked (vim, nvim, tmux) hears when its pane gains
         // and loses the keys: another pane focused, another tab, or the
@@ -8093,5 +8119,33 @@ mod tests {
         let event = r#"{"session_id":"x","hook_event_name":"Notification","message":"Claude needs your \"OK\"\u3002"}"#;
         assert_eq!(json_string(event, "message").as_deref(), Some("Claude needs your \"OK\"\u{3002}"));
         assert_eq!(json_string(event, "missing"), None);
+    }
+
+    /// The window as eframe hands it over.
+    fn window(focused: bool, minimized: bool) -> egui::RawInput {
+        let info = egui::ViewportInfo { focused: Some(focused), minimized: Some(minimized), occluded: Some(false), ..Default::default() };
+        egui::RawInput { focused, viewports: std::iter::once((egui::ViewportId::ROOT, info)).collect(), ..Default::default() }
+    }
+
+    fn draw(ctx: &egui::Context, input: egui::RawInput) {
+        ctx.run_ui(input, |_| {}).textures_delta.clear();
+    }
+
+    #[test]
+    fn a_minimized_window_is_not_looked_at() {
+        let ctx = egui::Context::default();
+        draw(&ctx, window(true, false));
+        assert!(super::looked_at(&ctx));
+        // Minimized, eframe calls only `logic`, and the input past the
+        // window's state is the last frame's: `focused` still says looked at.
+        let _ = ctx.run_logic(&window(false, true), |ctx| {
+            assert!(ctx.input(|i| i.focused));
+            assert!(!super::looked_at(ctx), "the server would keep the webhooks back (#169)");
+        });
+        let _ = ctx.run_logic(&window(true, true), |ctx| assert!(!super::looked_at(ctx), "minimized with the keys"));
+        draw(&ctx, window(true, false));
+        assert!(super::looked_at(&ctx));
+        draw(&ctx, window(false, false));
+        assert!(!super::looked_at(&ctx), "behind another window");
     }
 }
