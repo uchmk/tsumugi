@@ -42,6 +42,9 @@ struct Session {
     /// A line to type once the shell is ready: `claude --resume` in a
     /// restored session.
     pending: Option<Vec<u8>>,
+    /// A line with a newline or another control character in it (a prompt
+    /// given to `claude` by `tsumugi new`), pasted rather than typed, then Enter.
+    pending_paste: Option<String>,
     /// When the wait last sent to the webhook began (`Info::since_ms`).
     webhooked: Option<u64>,
     /// The screen's text, hashed, and since when it has read so: a program
@@ -767,7 +770,11 @@ fn handle(shared: &Arc<Shared>, client: ClientId, tx: &Sender<ToClient>, msg: To
                 Ok(id) => {
                     if let Some(s) = sessions.get_mut(&id) {
                         if let Some(line) = crate::quote::typed_line(&s.info.command, &typed) {
-                            s.pending = Some(format!("{line}\r").into_bytes());
+                            if line.chars().any(|c| c != '\t' && c.is_control()) {
+                                s.pending_paste = Some(line);
+                            } else {
+                                s.pending = Some(format!("{line}\r").into_bytes());
+                            }
                         }
                     }
                     let mut workspaces = lock(&shared.workspaces);
@@ -1196,6 +1203,7 @@ fn spawn_session(
             shell,
             claude: None,
             pending: None,
+            pending_paste: None,
             webhooked: None,
             screen: None,
             slow: BTreeMap::new(),
@@ -2000,6 +2008,10 @@ fn run_pump(shared: Arc<Shared>, dirty: Receiver<SessionId>) {
                 if ready {
                     if let Some(line) = s.pending.take() {
                         s.term.send(line);
+                    }
+                    if let Some(text) = s.pending_paste.take() {
+                        s.term.paste(&text);
+                        s.term.send(b"\r".to_vec());
                     }
                 }
             }

@@ -53,7 +53,13 @@ fn quote(kind: Kind, word: &str) -> String {
         return word.to_owned();
     }
     match kind {
-        Kind::PowerShell => format!("'{}'", word.replace('\'', "''")),
+        // PowerShell reads the curly single quotes (U+2018..U+201B) as
+        // quotes too, so each is doubled like `'`.
+        Kind::PowerShell => {
+            let curly = "'\u{2018}\u{2019}\u{201a}\u{201b}";
+            let doubled: String = word.chars().flat_map(|c| std::iter::repeat_n(c, if curly.contains(c) { 2 } else { 1 })).collect();
+            format!("'{doubled}'")
+        }
         Kind::Cmd => format!("\"{}\"", word.replace('"', "\\\"")),
         Kind::Posix => format!("'{}'", word.replace('\'', "'\\''")),
     }
@@ -94,6 +100,11 @@ mod tests {
     fn what_a_shell_would_read_is_kept_from_it() {
         let w = words(&["echo", "it's $HOME", "a;b", ""]);
         assert_eq!(typed_line("pwsh", &w).as_deref(), Some("echo 'it''s $HOME' 'a;b' ''"));
+        // Curly quotes end a PowerShell string too: doubled, and kept as they are.
+        assert_eq!(
+            typed_line("pwsh", &words(&["echo", "it\u{2019}s \u{2018}x\u{2019}"])).as_deref(),
+            Some("echo 'it\u{2019}\u{2019}s \u{2018}\u{2018}x\u{2019}\u{2019}'")
+        );
         assert_eq!(typed_line("bash", &w).as_deref(), Some("echo 'it'\\''s $HOME' 'a;b' ''"));
         assert_eq!(typed_line("cmd", &words(&["echo", "say \"hi\""])).as_deref(), Some("echo \"say \\\"hi\\\"\""));
         // `,` alone starts an array in PowerShell.

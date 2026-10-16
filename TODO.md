@@ -178,6 +178,14 @@ michi は worktree の表に Claude の状態を出すため、`tsumugi ls --jso
 - [x] （v0.110.0。実機は TESTING 1.16）`tsumugi focus N|NAME` を足す。窓を前に出し、そのセッションのタブ（とペイン）を選ぶ。michi の worktree の表で Claude の状態を押したときに使う。
   窓が前に出るか・タブが選ばれるかは TESTING.md に行を足す（Windows は前面に出せる条件が厳しい `SetForegroundWindow` の制限も見る）【実機】。
 
+### michi からの突き合わせ（2026-10-17、michi v0.36.0 のセッションの依頼）
+
+michi が頼る `ls --json`・`send N 文`・`new … -- claude`・`focus N`・`close N` を、michi の `handoff.rs`・`claude.rs`・`newwork.rs` と読み比べた。引数と出力の形は合っている（存在しない N は `tsumugi <cmd>: no session N` の 1 行目で終了コード 1）。
+
+- [x] （v0.115.3）`new … -- claude "1 行目⏎2 行目"` のように複数行の文を渡すと、改行のまま端末に打たれてシェルが行ごとに実行していた。制御文字を含む文は貼り付け（ブラケット付き）にして `` を送る。
+- [x] （v0.115.3）PowerShell は `‘ ’ ‚ ‛` も引用符として読むので、日本語の文に出る `’` で文字列が終わっていた。2 つ重ねて渡す。
+- [ ] 【実機】TESTING 6.27 を確かめる。Claude Code が貼り付け直後の Enter を取りこぼすかは #35 で追っている。
+
 ## トリプルクリックで行を選ぶ（2026-10-15、yagura のセッションから）
 
 ito 0.35.2（rev `5d413895d2f9eb2dd2a490c54615ebf3f96c5681`）の ito-select に、ダブルクリックで語・トリプルクリックで行・Ctrl（Cmd）+クリックで URL が入った。
