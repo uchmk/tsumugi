@@ -31,11 +31,11 @@ Claude Code sessions side by side say which one is still working:
 cargo run -p tsumugi
 ```
 
-On Windows, a build with the newer ConPTY beside it is on the Actions tab
-(the **Build** workflow, artifact `tsumugi-windows-x64-…` or `-arm64-…`). A
-local build gets it with `pwsh -File scripts/fetch-conpty.ps1 -Dest target\debug`;
-without it the pane runs on the older ConPTY built into Windows, which breaks
-`Esc` in lazygit and the like.
+On Windows, a build with the newer ConPTY and `tsumugi.com` beside it is on
+the Actions tab (the **Build** workflow, artifact `tsumugi-windows-x64-…` or
+`-arm64-…`). A local build gets the ConPTY with `pwsh -File
+scripts/fetch-conpty.ps1 -Dest target\debug`; without it the pane runs on the
+older ConPTY built into Windows, which breaks `Esc` in lazygit and the like.
 
 Sessions live in a background server (`tsumugi server`, which the window
 starts by itself), so closing the window leaves them running; `tsumugi ls`
@@ -155,13 +155,14 @@ Away from the machine, `[notify] webhook` (Settings, Notifications, WHILE YOU
 ARE AWAY) sends a session that has waited `webhook_after` seconds (2 minutes
 by default) while no tsumugi window is looked at -- an ntfy topic's address
 (`https://ntfy.sh/my-topic`, the phone's notification), a Slack incoming
-webhook (`webhook_format = "slack"`) or any address taking JSON (`"json"`:
+webhook (`webhook_format = "slack"`), a Discord one (`"discord"`: the title in
+bold, and no `@everyone` pings anyone) or any address taking JSON (`"json"`:
 `title`, `message`, `folder`, `state`). `webhook_states` (default
 `["waiting"]`) picks what is sent: add `"error"` and `"done"` (a run past
 `long_run`) and a failure or a finish goes at once. The server sends it, once
 a wait, through the system's `curl` (tried again after 30 seconds if it did not
-get through), so it works with the window closed; muted sessions and quiet
-tags are not sent.
+get through, or the address refused it with an HTTP error), so it works with
+the window closed; muted sessions and quiet tags are not sent.
 
 `[notify] spend_day` and `spend_block` (Settings, Notifications, WHAT IT
 COSTS) say once when the day's estimated cost, or a 5-hour block's, passes
@@ -771,7 +772,7 @@ run = "none"
 # split_down, zoom, search, rail, settings, input, rename, duplicate,
 # waiting_list, type_into_all, notifications, font_bigger, font_smaller,
 # font_reset, overview, copy_mode, find, prev_prompt, next_prompt, help,
-# swap_pane, equalize, pane_to_tab, record, work_log, save_layout,
+# swap_pane, equalize, pane_to_tab, join_tab, record, work_log, save_layout,
 # copy_output, quick_select, closed_sessions, changes, browser, read_only,
 # save_output, restart_server (these last six have no key until you give
 # one).
@@ -890,6 +891,13 @@ tsumugi split N|NAME [--down] [-p PERCENT | -n COUNT] [-- CMD]
 tsumugi layout NAME [FOLDER]             open a saved layout as a new tab; prints each pane's number
 tsumugi layout --list                    the saved layouts
 tsumugi new . --name NAME [--at N]       name the new tab, put it at place N
+tsumugi new . --worktree BRANCH [--from REF] [-- claude]
+                                         a git worktree beside the repository (`<repo>-<branch>`),
+                                         the branch made from REF (or the current commit) if new;
+                                         the session starts in it, and the window offers to remove
+                                         it when the last session there ends
+tsumugi focus N|NAME                     the window to the front, that session's tab shown and its
+                                         pane given the keys (a window is opened if none is)
 tsumugi close N|NAME                     end the session
 tsumugi wait N|NAME [--state S] [--timeout SECS]
                                          until it is waiting, done or failed
@@ -945,6 +953,25 @@ When the two ends speak different versions of the protocol, it says to
 install the same version there and then use **Restart its server**: the old
 server stops (its sessions end, its tabs come back) and the new one starts.
 
+### `tsumugi.com` on Windows
+
+`tsumugi.exe` is a windowed program, so PowerShell does not wait for it:
+`$id = & tsumugi new` and `$v = & tsumugi --version` came back empty, and
+`tsumugi ls` printed after the next prompt. `cargo build --release` also makes
+`tsumugi-com.exe`, a small console program, the same as kura's `kura.com` and
+yagura's `yagura.com`: copy it to `tsumugi.com` beside `tsumugi.exe` (the
+Build artifacts and the release zips hold it under that name). `PATHEXT`
+lists `.COM` before `.EXE`, so typing `tsumugi` finds it first. It runs
+`tsumugi.exe` with the same arguments and handles, waits, and passes on the
+exit code -- the long-running commands too (`server`, `mcp`, `wait`, `serial`,
+`tmux`), which run in the foreground as on Linux. With no argument, `attach`
+or `--keys` it opens the window and returns once the window is up, so a
+command line the window refuses (`attach` with no such session, a bad key
+script) still prints its line there. Opened from a pipe, the window writes
+into a file of its own in the temporary folder, copied to the pipe once the
+window is up and gone when it closes. It is ito's console front, shared with
+kura, yagura, minato and michi. **Keep the two in one folder.**
+
 ### From a test: `--keys`
 
 `tsumugi --keys SCRIPT` opens the window and presses the script's keys
@@ -965,7 +992,8 @@ macOS), `<…>*3` presses one three times, and a plain space is `<Space>`.
 script ends, `TSUMUGI_KEYS_DONE` gets the state and a last line
 `keys: done`. The state is `key: value` lines: `focus` (`pane`, the open
 dialog or `none`), `overlay`, `scale`, then `tabs`, `panes` (in the tab
-shown), `zoom` and `title`.
+shown), `shape` (its splits, the sessions' numbers in them:
+`right 0.35 (1, down 0.35 (2, 3))`), `zoom` and `title`.
 
 ### From Claude Code (MCP)
 

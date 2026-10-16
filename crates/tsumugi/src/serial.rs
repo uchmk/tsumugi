@@ -181,14 +181,14 @@ pub fn run(args: &[String]) -> ExitCode {
     let spec = match spec {
         Ok(s) => s,
         Err(e) => {
-            eprintln!("tsumugi serial: {e}");
+            crate::err(&format!("tsumugi serial: {e}\n"));
             return ExitCode::from(2);
         }
     };
     let (mut con_in, mut con_out, guard) = match crate::console::raw() {
         Ok(c) => c,
         Err(e) => {
-            eprintln!("tsumugi serial: the console: {e}");
+            crate::err(&format!("tsumugi serial: the console: {e}\n"));
             return ExitCode::FAILURE;
         }
     };

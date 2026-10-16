@@ -77,10 +77,15 @@ pub fn short(text: &str) -> String {
     }
 }
 
+/// What `asking` keeps of a dashed line: Claude Code (2.1.301) draws one
+/// above and one below the command it asks to run.
+pub const FRAME: &str = "╌╌╌";
+
 /// What the question is about: the lines above the last menu, up to the
-/// top of its box (or a rule, or 10 lines), the box's sides and blank lines
-/// left out -- Claude Code's "Bash command", the command and what it is
-/// for, then "Do you want to proceed?". Empty when there is no menu.
+/// top of its box (or a solid rule, or 16 lines), the box's sides and blank
+/// lines left out -- Claude Code's "Bash command", the command and what it
+/// is for, then "Do you want to proceed?". A dashed line is kept as
+/// `FRAME`. Empty when there is no menu.
 pub fn asking(lines: &[String]) -> Vec<String> {
     let found = choices(lines);
     if found.is_empty() {
@@ -91,10 +96,14 @@ pub fn asking(lines: &[String]) -> Vec<String> {
         return Vec::new();
     };
     let mut out = Vec::new();
-    for line in lines[..first].iter().rev().take(10) {
+    for line in lines[..first].iter().rev().take(16) {
         let t = line.trim();
-        if t.starts_with(['╭', '┌']) || (!t.is_empty() && t.chars().all(|c| matches!(c, '─' | '━' | '-' | '╌' | '┄'))) {
+        if t.starts_with(['╭', '┌']) || made_of(t, &['─', '━', '-']) {
             break;
+        }
+        if made_of(t, &['╌', '┄']) {
+            out.push(FRAME.to_owned());
+            continue;
         }
         let s = strip_box(line);
         if !s.is_empty() {
@@ -103,6 +112,10 @@ pub fn asking(lines: &[String]) -> Vec<String> {
     }
     out.reverse();
     out
+}
+
+fn made_of(line: &str, marks: &[char]) -> bool {
+    !line.is_empty() && line.chars().all(|c| marks.contains(&c))
 }
 
 /// The choice that says yes once (the menu's first, when it starts with
@@ -168,6 +181,45 @@ mod tests {
         let ruled = lines("old\n────────────\n Edit file\n src/main.rs\n Do you want to make this edit?\n ❯ 1. Yes\n   2. No");
         assert_eq!(asking(&ruled), ["Edit file", "src/main.rs", "Do you want to make this edit?"]);
         assert!(asking(&lines("just output")).is_empty());
+    }
+
+    #[test]
+    fn claude_code_2_1_301s_command_between_dashed_lines_is_read() {
+        // Its frame is a solid line on top only; the command sits between
+        // two dashed lines, under the tip and the description (#167).
+        let screen = lines(
+            "some earlier output\n\
+             \n\
+             ────────────────────────────────────────\n\
+             \x20Bash command\n\
+             \x20Tip: auto mode handles these prompts for you — choose \"switch to auto mode\" below\n\
+             \n\
+             \x20Create an empty file\n\
+             ╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌\n\
+             \x20 touch tsumugi-a.txt\n\
+             ╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌\n\
+             \n\
+             \x20Do you want to proceed?\n\
+             \x20❯ 1. Yes\n\
+             \x20  2. Yes, and always allow access to tsumugi-test\\ from this project\n\
+             \x20  3. Yes, and switch to auto mode\n\
+             \x20  4. No\n\
+             \n\
+             \x20Esc to cancel · Tab to amend",
+        );
+        assert_eq!(choices(&screen).len(), 4);
+        assert_eq!(
+            asking(&screen),
+            [
+                "Bash command",
+                "Tip: auto mode handles these prompts for you — choose \"switch to auto mode\" below",
+                "Create an empty file",
+                FRAME,
+                "touch tsumugi-a.txt",
+                FRAME,
+                "Do you want to proceed?",
+            ]
+        );
     }
 
     #[test]

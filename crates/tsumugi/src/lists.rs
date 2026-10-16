@@ -388,7 +388,12 @@ fn waiting(ui: &mut egui::Ui, view: &mut View, rows: &[Row], c: &Colors, max: f3
                             egui::Frame::NONE.fill(c.bg).corner_radius(6.0).inner_margin(egui::Margin::symmetric(8, 5)).show(ui, |ui| {
                                 ui.set_width(ui.available_width());
                                 for l in &r.asking {
-                                    ui.label(RichText::new(l).monospace().size(11.5).color(c.fg));
+                                    // The dashed lines round the command.
+                                    if l == answer::FRAME {
+                                        ui.separator();
+                                    } else {
+                                        ui.label(RichText::new(l).monospace().size(11.5).color(c.fg));
+                                    }
                                 }
                             });
                         }

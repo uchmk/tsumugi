@@ -47,21 +47,36 @@ fn git(dir: &Path, args: &[&str]) -> Result<String, String> {
 /// Make a worktree of the repository `folder` is in, on `branch` (made from
 /// the current commit when it does not exist yet); its folder.
 pub fn add(folder: &Path, branch: &str) -> Result<PathBuf, String> {
-    let path = make(folder, branch)?;
+    add_from(folder, branch, None)
+}
+
+/// [`add`], the new branch made from `from` (a commit, branch or tag) when
+/// given; a branch there already is refused then, as it has a commit of its own.
+pub fn add_from(folder: &Path, branch: &str, from: Option<&str>) -> Result<PathBuf, String> {
+    let path = make(folder, branch, from)?;
     remember(&path, true);
     Ok(path)
 }
 
-/// [`add`] without the list.
-fn make(folder: &Path, branch: &str) -> Result<PathBuf, String> {
+/// [`add_from`] without the list.
+fn make(folder: &Path, branch: &str, from: Option<&str>) -> Result<PathBuf, String> {
     let root = PathBuf::from(
         git(folder, &["rev-parse", "--show-toplevel"]).map_err(|_| format!("{} is not in a git repository", folder.display()))?,
     );
+    let exists = git(&root, &["rev-parse", "--verify", "--quiet", &format!("refs/heads/{branch}")]).is_ok();
+    if let Some(from) = from {
+        if exists {
+            return Err(format!("the branch {branch} is there already; leave out --from to check it out"));
+        }
+        git(&root, &["rev-parse", "--verify", "--quiet", &format!("{from}^{{commit}}")]).map_err(|_| format!("{from}: no such commit"))?;
+    }
     let path = place(&root, branch, Path::exists);
     let target = path.to_string_lossy().into_owned();
-    let exists = git(&root, &["rev-parse", "--verify", "--quiet", &format!("refs/heads/{branch}")]).is_ok();
-    let made =
-        if exists { git(&root, &["worktree", "add", &target, branch]) } else { git(&root, &["worktree", "add", "-b", branch, &target]) };
+    let made = match (exists, from) {
+        (true, _) => git(&root, &["worktree", "add", &target, branch]),
+        (false, None) => git(&root, &["worktree", "add", "-b", branch, &target]),
+        (false, Some(from)) => git(&root, &["worktree", "add", "-b", branch, &target, from]),
+    };
     made.map_err(|e| format!("git worktree add: {e}"))?;
     Ok(path)
 }
@@ -137,12 +152,21 @@ mod tests {
             return; // no git here
         }
         ok(&repo, &["-c", "user.email=a@b", "-c", "user.name=t", "commit", "-q", "--allow-empty", "-m", "first"]);
-        let path = make(&repo, "side").expect("made");
+        let path = make(&repo, "side", None).expect("made");
         assert!(path.join(".git").exists());
         assert_eq!(git(&path, &["rev-parse", "--abbrev-ref", "HEAD"]).unwrap(), "side");
-        assert!(make(&repo, "side").is_err(), "a branch checked out already is not checked out twice");
+        assert!(make(&repo, "side", None).is_err(), "a branch checked out already is not checked out twice");
         unmake(&path).expect("removed");
         assert!(!path.exists());
+        // From a commit given: the first one, not the second.
+        let first = git(&repo, &["rev-parse", "HEAD"]).unwrap();
+        ok(&repo, &["-c", "user.email=a@b", "-c", "user.name=t", "commit", "-q", "--allow-empty", "-m", "second"]);
+        let path = make(&repo, "old", Some(&first)).expect("made from the first commit");
+        assert_eq!(git(&path, &["rev-parse", "HEAD"]).unwrap(), first);
+        unmake(&path).expect("removed");
+        assert!(make(&repo, "old", Some("HEAD")).is_err(), "a branch there already is not made again from elsewhere");
+        assert!(make(&repo, "new", Some("no-such-thing")).is_err(), "a commit that is not there");
+        assert!(!repo.parent().unwrap().join("repo-new").exists(), "nothing made for it");
         let _ = std::fs::remove_dir_all(&base);
     }
 }

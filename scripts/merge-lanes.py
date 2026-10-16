@@ -4,9 +4,8 @@
 """Merge the real-machine lanes' pull requests that keep to the rules.
 
 Run by .github/workflows/merge-lanes.yml. It merges a pull request from a lane
-branch (test/win-*, in tsumugi test/arm-*, in kura test/linux-*) with a merge commit
-pinned to its head, and only when all of these hold (yagura has no lanes: there
-it only keeps the labels and counts the votes):
+branch (test/win-*, in tsumugi and yagura test/arm-*, in kura test/linux-*) with
+a merge commit pinned to its head, and only when all of these hold:
 
   1. it touches only the files a lane may write: the checklists and one new
      report under qa-reports/ (kura), or the checklists and new files under
@@ -157,15 +156,17 @@ RULES = {
         "lanes": {"test/win-": YAGURA_WINDOWS_MARKS, "test/arm-": YAGURA_WINDOWS_MARKS},
         "reports": (0, 99),
         "evidence_in_report": True,
-        # the pull request of a lane touches only markdown, which ci.yml ignores
-        "required_checks": [],
+        # the pull request of a lane touches only markdown, which ci.yml
+        # ignores; checklists.yml checks TESTING.md's rows (yagura v0.65.1)
+        "required_checks": ["checklists"],
         "hold_heading": None,
         "share": {
             "role": None,
             "todo_heading": None,
             "todo_mark": "",
             "issues": True,
-            "dispatch": [],
+            # a push with the workflow's token starts no workflows, except these
+            "dispatch": ["ci.yml", "checklists.yml"],
         },
         "labels": True,
         "votes": True,
@@ -456,6 +457,21 @@ def section_items(text, name):
         else:
             items[-1] += " " + line.strip()
     return items
+
+
+# A leftover that only says there is none: `None.`, `(none)`, `None beyond the
+# issues above.`, `None new.`, `None filed this run.`, `None from this run.`,
+# `No open `vote` issues.`, `Nothing in the queue needs to change.`
+NOTHING = re.compile(r"\(?none\)?(?: (?:open|yet|so far|new|filed|beyond .*|to (?:sort|add|propose|vote on)))?(?: (?:from )?this run)?"
+                     r"|(?:there (?:was|were|is|are) )?no (?:open )?(?:vote|question)s?(?: issues?)?(?: (?:open|to vote on))?"
+                     r"|nothing(?: (?:new|else|in the queue))?(?: (?:needs? to change|to (?:sort|add|propose|change|vote on)))?"
+                     r"(?: (?:from )?this run)?")
+
+
+def says_nothing(item):
+    """Whether a report's bullet only says there is nothing to sort."""
+    text = re.sub(r"\s+", " ", re.sub(r"[`*_]", "", item)).strip().rstrip(".").strip().lower()
+    return NOTHING.fullmatch(text) is not None
 
 
 def changelog_line(number, machine, done, dropped):
@@ -916,7 +932,7 @@ def share_once(rules, share, base, since):
                 [("PR 本文", pr.get("body") or "")]:
             for kind, name in [("", "Proposals"), ("・キュー", "Queue"), ("・票", "Votes")]:
                 for item in section_items(text, name):
-                    if item not in seen:
+                    if item not in seen and not says_nothing(item):
                         seen.add(item)
                         items.append((name, where, item))
                         todo_lines.append(f"- [ ] （実機 #{n}{kind}）{item}（{where}）{mark}")
@@ -1314,6 +1330,15 @@ def self_test():
     assert section_items(report, "Queue") == ["2.67 stays `[ ]`."]
     assert section_items("## Queue\n\nNothing in the queue needs to change.\n", "Queue") == \
         ["Nothing in the queue needs to change."]
+    for nothing in ["None.", "(none)", "None beyond the issues above.", "None open.", "No open `vote` issues.",
+                    "No open `vote` issue.", "There was no open `vote` issue.", "Nothing in the queue needs to change.",
+                    "None this run.", "None new.", "None filed this run.", "None new this run.", "Nothing new this run.",
+                    "None from this run.", "Nothing from this run."]:
+        assert says_nothing(nothing), nothing
+    for something in ["None of the toasts show.", "No toast after `Ctrl+Shift+N`.", "Nothing happens on `F2`.",
+                      "#98: TESTING 19.9 should say `Ctrl+,`.", "None this run passed 2.4.", "None new: 3.1 still fails.",
+                      "None from this run passed 2.4."]:
+        assert not says_nothing(something), something
 
     done = [("TESTING-CHECKS.md", "x", "2.61"), ("TESTING-CHECKS.md", "~", "2.62"),
             ("TESTING-KEYS.md", "x", "F1")]

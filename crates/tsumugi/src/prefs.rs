@@ -396,16 +396,6 @@ fn key_words() -> &'static KeyWords {
 
 pub fn show(ui: &mut egui::Ui, pal: &Palette, screen: &mut Screen, seen: &Seen) -> Vec<Change> {
     let mut out = Vec::new();
-    // Tab off the last control would land on nothing for a frame before
-    // coming round to the search, which Shift+Tab never does: go straight
-    // to the search (#61).
-    let ring = egui::Id::new("prefs-had-focus");
-    let had = ui.ctx().data(|d| d.get_temp::<bool>(ring)).unwrap_or(false);
-    let has = ui.ctx().memory(|m| m.focused()).is_some();
-    if had && !has && ui.input(|i| i.key_pressed(egui::Key::Tab) && !i.modifiers.shift) {
-        ui.ctx().memory_mut(|m| m.request_focus(egui::Id::new("prefs-search")));
-    }
-    ui.ctx().data_mut(|d| d.insert_temp(ring, has));
     let pages: Vec<(&str, &str)> = Page::ALL.iter().map(|p| (p.title(), p.lead())).collect();
     let index: Vec<(usize, &str)> =
         index().into_iter().map(|(p, words)| (Page::ALL.iter().position(|q| *q == p).unwrap_or(0), words)).collect();
@@ -924,7 +914,7 @@ fn notifications(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: 
             out.push(Change::Set(Some("notify"), "webhook", cfg::quote(t.trim())));
         }
         sep(ui, l);
-        let formats = [("ntfy", "ntfy"), ("slack", "Slack"), ("json", "JSON")];
+        let formats = [("ntfy", "ntfy"), ("slack", "Slack"), ("discord", "Discord"), ("json", "JSON")];
         if let Some(v) = row(ui, l, tr("prefs.notify.webhook_format"), tr("prefs.notify.webhook_format_note"), |ui| {
             select(ui, "webhook-format", n.webhook_format.as_str(), &formats)
         }) {

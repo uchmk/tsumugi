@@ -22,6 +22,28 @@ static TABLES: OnceLock<Vec<Table>> = OnceLock::new();
 /// Which of [`TABLES`] is in force.
 static CHOSEN: AtomicUsize = AtomicUsize::new(0);
 
+#[cfg(test)]
+thread_local! {
+    /// One test's own language, so the tests beside it keep English.
+    static THIS_TEST: std::cell::Cell<Option<usize>> = const { std::cell::Cell::new(None) };
+}
+
+/// Use `code`'s table on this thread only, until it ends.
+#[cfg(test)]
+pub fn set_language_here(code: &str) {
+    let i = AVAILABLE.iter().position(|(l, _)| *l == code).unwrap_or(0);
+    THIS_TEST.with(|t| t.set(Some(i)));
+}
+
+/// Which of [`TABLES`] is in force here.
+fn chosen() -> usize {
+    #[cfg(test)]
+    if let Some(i) = THIS_TEST.with(|t| t.get()) {
+        return i;
+    }
+    CHOSEN.load(Ordering::Relaxed)
+}
+
 /// Use the language common.toml's `language` comes to (`auto` or unset:
 /// the OS's) from the next lookup on.
 pub fn follow(common: &str) {
@@ -37,7 +59,7 @@ pub fn set_language(code: &str) {
 
 /// The code of the language in force (`en`, `ja`).
 pub fn current_language() -> &'static str {
-    AVAILABLE[CHOSEN.load(Ordering::Relaxed).min(AVAILABLE.len() - 1)].0
+    AVAILABLE[chosen().min(AVAILABLE.len() - 1)].0
 }
 
 fn tables() -> &'static Vec<Table> {
@@ -57,7 +79,7 @@ fn tables() -> &'static Vec<Table> {
 
 fn get() -> &'static Table {
     let all = tables();
-    &all[CHOSEN.load(Ordering::Relaxed).min(all.len() - 1)]
+    &all[chosen().min(all.len() - 1)]
 }
 
 /// The English text for `key` whatever the language in force: the

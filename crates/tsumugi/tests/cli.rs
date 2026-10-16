@@ -131,6 +131,77 @@ fn new_starts_a_server_and_ls_lists_the_session() {
     assert_eq!(cols[6], "a,b,c");
 }
 
+/// 1.15 (text): `new --worktree BRANCH` makes a worktree beside the repository, on
+/// a new branch (from `--from` when given), starts the session in it and
+/// puts it on the list the window asks about when its last session ends;
+/// `--from` with a branch there already, or a ref that is not there, makes nothing.
+#[test]
+fn new_worktree_starts_the_session_in_a_worktree_of_its_own() {
+    let s = Server::new("worktree");
+    let repo = s.dir.join("repo");
+    std::fs::create_dir_all(&repo).unwrap();
+    let git = |args: &[&str]| {
+        let out = Command::new("git").arg("-C").arg(&repo).args(args).stdin(Stdio::null()).output().expect("git runs");
+        assert!(out.status.success(), "git {args:?}: {}", String::from_utf8_lossy(&out.stderr));
+        String::from_utf8_lossy(&out.stdout).trim().to_owned()
+    };
+    git(&["init", "-q", "-b", "main"]);
+    git(&["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "first"]);
+    let first = git(&["rev-parse", "HEAD"]);
+    git(&["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "second"]);
+
+    let id = s.ok(&["new", "repo", "--worktree", "side", "--from", &first]).trim().to_owned();
+    let tree = s.dir.join("repo-side");
+    assert!(tree.is_dir(), "no worktree at {}", tree.display());
+    let ls = s.ok(&["ls"]);
+    let cols = s.line_of(&ls, &id).unwrap_or_else(|| {
+        panic!(
+            "session {id} not in:
+{ls}"
+        )
+    });
+    assert!(same_folder(cols[3], &tree), "folder {:?} is not {}", cols[3], tree.display());
+    assert_eq!(git(&["rev-parse", "side"]), first, "the branch was not made from --from");
+    let list = std::fs::read_to_string(s.dir.join("worktrees")).expect("the worktree list");
+    assert!(
+        list.lines().any(|l| same_folder(l, &tree)),
+        "not on the list:
+{list}"
+    );
+
+    let refused = s.run(&["new", "repo", "--worktree", "side", "--from", "main"]);
+    assert!(!refused.status.success() && String::from_utf8_lossy(&refused.stderr).contains("there already"));
+    let bad = s.run(&["new", "repo", "--worktree", "other", "--from", "no-such-ref"]);
+    assert!(!bad.status.success() && String::from_utf8_lossy(&bad.stderr).contains("no such commit"));
+    assert!(!s.dir.join("repo-other").exists(), "a worktree for a bad ref");
+}
+
+/// 1.16 (half), the half that needs no window on the screen: `focus` asks the
+/// window that had the keys last to show the session, by number or name,
+/// and says so when there is no such session.
+#[test]
+fn focus_asks_a_window_to_show_the_session() {
+    let s = Server::new("focus");
+    let id = s.new_session(&["--tag", "here"]);
+    let n: u64 = id.parse().unwrap();
+    let window = Client::connect(&Address(s.address.clone()), || {}).expect("a window connects");
+    window.judge();
+    window.list().expect("the server answers the window");
+    s.ok(&["focus", &id]);
+    s.ok(&["focus", "here"]);
+    let deadline = Instant::now() + PATIENCE;
+    let mut shown = Vec::new();
+    while shown.len() < 2 {
+        shown.extend(window.take_shows());
+        assert!(Instant::now() < deadline, "the window was asked {shown:?}");
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    assert_eq!(shown, [n, n]);
+    let none = s.run(&["focus", "999"]);
+    assert!(!none.status.success() && String::from_utf8_lossy(&none.stderr).contains("no session 999"));
+    assert_eq!(s.run(&["focus"]).status.code(), Some(2), "no name is a usage error");
+}
+
 /// `new … -- PROGRAM ARGS` gives each word to the program as it was, quoted
 /// for the shell it is typed into: a program in a folder with a space in its
 /// name made pwsh read the line as an expression (`ParserError`, the ARM64
@@ -157,6 +228,38 @@ fn new_gives_the_words_to_the_program_as_they_are() {
     }
     let lines: Vec<String> = std::fs::read_to_string(&ran).unwrap().lines().map(|l| l.trim_end().to_owned()).collect();
     assert_eq!(lines, ["a  b", "it's"]);
+}
+
+/// #76: a program in a pane stops on Ctrl+C. The server is started in a
+/// process group of its own, which turned Ctrl+C off for every shell it
+/// started, so `ping` ran on. The script sends the console Ctrl+C itself
+/// (ignoring it) and says whether `ping` went.
+#[cfg(windows)]
+#[test]
+fn ctrl_c_stops_a_program_in_a_session() {
+    let s = Server::new("ctrlc");
+    std::fs::write(
+        s.dir.join("cc.ps1"),
+        "Add-Type -Namespace CC -Name N -MemberDefinition '[DllImport(\"kernel32.dll\")] public static extern bool \
+         GenerateConsoleCtrlEvent(uint e, uint g); [DllImport(\"kernel32.dll\")] public static extern bool \
+         SetConsoleCtrlHandler(System.IntPtr h, bool add);'\r\n\
+         $p = Start-Process ping -ArgumentList '-n', '30', '127.0.0.1' -NoNewWindow -PassThru\r\n\
+         Start-Sleep 2\r\n\
+         [void][CC.N]::SetConsoleCtrlHandler([IntPtr]::Zero, $true)\r\n\
+         [void][CC.N]::GenerateConsoleCtrlEvent(0, 0)\r\n\
+         $r = if ($p.WaitForExit(5000)) { 'STOPPED' } else { 'RUNNING' }\r\n\
+         Set-Content -Path cc.txt -Value $r\r\n\
+         if (-not $p.HasExited) { $p.Kill() }\r\n",
+    )
+    .unwrap();
+    let id = s.new_session(&["--", "powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "cc.ps1"]);
+    let out = s.dir.join("cc.txt");
+    let deadline = Instant::now() + PATIENCE;
+    while !std::fs::read_to_string(&out).is_ok_and(|t| !t.trim().is_empty()) {
+        assert!(Instant::now() < deadline, "no cc.txt; the session shows:\n{}", s.ok(&["read", &id, "--all"]));
+        std::thread::sleep(Duration::from_millis(200));
+    }
+    assert_eq!(std::fs::read_to_string(&out).unwrap().trim(), "STOPPED", "Ctrl+C did not stop ping");
 }
 
 /// 18.1: one array, a session an object with the keys a script reads.
@@ -390,6 +493,28 @@ fn a_stopped_server_answers_nobody_once_a_line_to_it_ends() {
     assert!(s.line_of(&s.ok(&["ls"]), &id).is_some(), "a new server started");
 }
 
+/// `tsumugi new` at once after the last session was closed: the server was
+/// still there, waiting to write its tabs before it went, and took the new
+/// session away with it (#179). It stays now, once that wait is long over.
+#[test]
+fn a_session_started_as_the_last_one_ends_stays() {
+    let s = Server::new("after-end");
+    let first = s.new_session(&[]);
+    s.ok(&["close", &first]);
+    // `close` does not wait for the end; this does, so the next session
+    // comes after it.
+    let deadline = Instant::now() + PATIENCE;
+    while s.line_of(&s.ok(&["ls"]), &first).is_some() {
+        assert!(Instant::now() < deadline, "session {first} still listed after close");
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    let id = s.new_session(&[]);
+    // Past the server's wait after an end (3 s, and 2 s more at most).
+    std::thread::sleep(Duration::from_secs(7));
+    let ls = s.ok(&["ls"]);
+    assert!(s.line_of(&ls, &id).is_some(), "session {id} not in:\n{ls}");
+}
+
 /// `tsumugi mcp` the way Claude Code runs it: JSON-RPC lines on stdin, one
 /// answer per request on stdout. With no server it says tsumugi is not
 /// running; with one, `tsumugi_sessions` lists the session and
@@ -475,6 +600,25 @@ fn keys_refuses_a_bad_script() {
         assert!(err.contains(says), "tsumugi {args:?} said: {err}");
     }
     assert!(s.ok(&["--help"]).contains("--keys"), "the help names --keys");
+}
+
+/// A run started detached that only waits for `TSUMUGI_KEYS_DONE` learns of
+/// a refusal there too, and a key no keyboard can type is one.
+#[test]
+fn keys_writes_a_refusal_to_the_done_file() {
+    let s = Server::new("keys-done");
+    let done = s.dir.join("done.txt");
+    for (args, says) in
+        [(&["--keys", "<Wait:soon>"][..], "milliseconds"), (&["--keys"], "usage"), (&["--keys", "j<C-\u{3042}>"], "cannot be typed")]
+    {
+        let _ = std::fs::remove_file(&done);
+        let out = s.command(args).env("TSUMUGI_KEYS_DONE", &done).output().unwrap();
+        let err = String::from_utf8_lossy(&out.stderr);
+        assert_eq!(out.status.code(), Some(2), "tsumugi {args:?}: {err}");
+        assert!(err.contains(says), "tsumugi {args:?} said: {err}");
+        let report = std::fs::read_to_string(&done).unwrap_or_default();
+        assert!(report.starts_with("keys: refused\nwhy: ") && report.contains(says), "tsumugi {args:?} wrote: {report:?}");
+    }
 }
 
 /// `tsumugi serial` refuses words it cannot read with exit 2 and why, and
@@ -707,4 +851,27 @@ fn env_reports_the_places_and_the_server() {
     let hidden = s.command(&["env"]).env("TSUMUGI_API_TOKEN", "hunter2").output().unwrap();
     let hidden = String::from_utf8(hidden.stdout).unwrap();
     assert!(hidden.contains("TSUMUGI_API_TOKEN=(hidden)") && !hidden.contains("hunter2"), "{hidden}");
+}
+
+/// What a command prints is let go when nobody reads it any more: PowerShell
+/// hands `tsumugi.exe` (a windowed program, run without `tsumugi.com`) a pipe
+/// for `$id = & tsumugi.exe new` and closes it without waiting, and
+/// `println!` panicked there (os error 232; EPIPE on Linux and macOS).
+#[test]
+fn answers_into_a_closed_pipe_are_let_go() {
+    let s = Server::new("closed");
+    std::fs::write(
+        s.dir.join("layouts.toml"),
+        "[[layout]]\nname = \"Dev\"\ntree = { right = 0.3, first = { run = \"echo from-a\" }, second = { run = \"echo from-b\" } }\n",
+    )
+    .unwrap();
+    assert!(s.ok(&["layout", "--list"]).starts_with("Dev\t"), "a layout to list");
+    s.new_session(&[]);
+    for args in [&["--version"][..], &["--help"], &["env"], &["ls"], &["ls", "--json"], &["layout", "--list"], &["new", "."]] {
+        let (reader, writer) = std::io::pipe().unwrap();
+        drop(reader);
+        let out = s.command(args).stdout(writer).stderr(Stdio::piped()).output().unwrap();
+        let err = String::from_utf8_lossy(&out.stderr);
+        assert!(out.status.success() && !err.contains("panicked"), "tsumugi {args:?} into a closed pipe: {:?}\n{err}", out.status);
+    }
 }

@@ -106,7 +106,7 @@ fn main() -> std::process::ExitCode {
         Some("mcp") => mcp::run(),
         Some("send" | "read" | "split" | "close" | "log" | "wait") => remote(&args[0], &args[1..]),
         Some("help" | "--help" | "-h") => {
-            println!("tsumugi: the window, or one of\n{}\n{}\n{}\ntsumugi attach N|NAME\ntsumugi proxy                            (what --host runs on the other machine)\ntsumugi notify [--state S] [--session N] [MESSAGE]\ntsumugi tag [--session N] [--remove] TAG...\n{}\n{}\ntsumugi shell-hook bash|zsh|pwsh\ntsumugi env                              version, OS, where the settings and the state are, whether a server answers: to paste into a bug report\ntsumugi mcp                              an MCP server on stdin/stdout, for Claude Code (see the README)\ntsumugi --keys SCRIPT                    the window, pressing the script's keys (`<C-S-t><Wait:500><Shot:tab><Quit>`); TSUMUGI_KEYS_DONE names the file for its state\n\nTSUMUGI_CONFIG_HOME and TSUMUGI_STATE_HOME name other folders for the settings (config.toml) and the state.", cli::NEW_USAGE, cli::LAYOUT_USAGE, cli::REMOTE_USAGE, serial::USAGE, tmux::USAGE);
+            out(&format!("tsumugi: the window, or one of\n{}\n{}\n{}\ntsumugi attach N|NAME\ntsumugi proxy                            (what --host runs on the other machine)\ntsumugi notify [--state S] [--session N] [MESSAGE]\ntsumugi tag [--session N] [--remove] TAG...\n{}\n{}\ntsumugi shell-hook bash|zsh|pwsh\ntsumugi env                              version, OS, where the settings and the state are, whether a server answers: to paste into a bug report\ntsumugi mcp                              an MCP server on stdin/stdout, for Claude Code (see the README)\ntsumugi --keys SCRIPT                    the window, pressing the script's keys (`<C-S-t><Wait:500><Shot:tab><Quit>`); TSUMUGI_KEYS_DONE names the file for its state\n\nTSUMUGI_CONFIG_HOME and TSUMUGI_STATE_HOME name other folders for the settings (config.toml) and the state.\n", cli::NEW_USAGE, cli::LAYOUT_USAGE, cli::REMOTE_USAGE, serial::USAGE, tmux::USAGE));
             std::process::ExitCode::SUCCESS
         }
         Some("notify") => notify(&args[1..]),
@@ -114,53 +114,56 @@ fn main() -> std::process::ExitCode {
         Some("new") => new_cli(&args[1..]),
         Some("layout") => layout_cli(&args[1..]),
         Some("attach") => attach(&args[1..]),
+        Some("focus") => focus(&args[1..]),
         Some("serial") => serial::run(&args[1..]),
         Some("tmux") => tmux::run(&args[1..]),
         Some("tmux-pane") => tmux::bridge(&args[1..]),
         Some("env") => {
-            print!("{}", envreport::report());
+            out(&envreport::report());
             std::process::ExitCode::SUCCESS
         }
         Some("shell-hook") => match shellhook::text(args.get(1).map(String::as_str)) {
             Ok(text) => {
-                print!("{text}");
+                out(&text);
                 std::process::ExitCode::SUCCESS
             }
             Err(e) => {
-                eprintln!("tsumugi shell-hook: {e}");
+                err(&format!("tsumugi shell-hook: {e}\n"));
                 std::process::ExitCode::from(2)
             }
         },
         Some("--keys") => match (args.get(1).map(|s| keyscript::parse(s)), args.len()) {
-            (Some(Ok(steps)), 2) => {
-                let _ = KEYS.set(steps);
-                window()
-            }
-            (Some(Err(e)), 2) => {
-                eprintln!("tsumugi --keys: {e}");
-                std::process::ExitCode::from(2)
-            }
-            _ => {
-                eprintln!("usage: tsumugi --keys SCRIPT (one argument: keys as `<C-S-t>`, `<Wait:500>`, `<Shot:name>`, `<State:name>`, `<Click:x,y>`, `<Drag:x,y-x,y>`, `<Quit>`)");
-                std::process::ExitCode::from(2)
-            }
+            (Some(Ok(steps)), 2) => match steps.iter().find(|s| keyscript::press(s).is_none()) {
+                Some(s) => refuse_keys(&format!("`{}` cannot be typed", keyscript::label(s))),
+                None => {
+                    if let Some(done) = keys_done() {
+                        keyscript::install_panic_report(done);
+                    }
+                    let _ = KEYS.set(steps);
+                    window()
+                }
+            },
+            (Some(Err(e)), 2) => refuse_keys(&e),
+            _ => refuse_keys(KEYS_USAGE),
         },
         Some("--version" | "-V") => {
-            println!("tsumugi {}", env!("CARGO_PKG_VERSION"));
+            out(&format!("tsumugi {}\n", env!("CARGO_PKG_VERSION")));
             std::process::ExitCode::SUCCESS
         }
         Some(other) => {
-            eprintln!("tsumugi: unknown command `{other}` (server, proxy, ls, new, attach, send, read, split, close, wait, notify, tag, serial, tmux, shell-hook, env, mcp, help, --keys, --version)");
+            err(&format!("tsumugi: unknown command `{other}` (server, proxy, ls, new, attach, focus, send, read, split, close, wait, notify, tag, serial, tmux, shell-hook, env, mcp, help, --keys, --version)\n"));
             std::process::ExitCode::from(2)
         }
     }
 }
 
 /// A release build on Windows is a GUI program and has no console, so `ls`
-/// printed nothing. Borrow the console of whoever started it. PowerShell does
-/// not wait for a GUI program, so the lines can land after its next prompt;
-/// filer solved that with a console front (`filer.com`), which can come here
-/// too once the CLI grows.
+/// printed nothing. Borrow the console of whoever started it: [`out`] and
+/// [`err`] would join it themselves, but `serial` and `tmux-pane` read its
+/// keys. PowerShell does not wait for a GUI program, so the lines could land
+/// after its next prompt; `tsumugi.com` (src/bin/tsumugi-com.rs, the console
+/// front shipped beside this) is what the shell waits for, with these same
+/// handles.
 fn attach_console() {
     #[cfg(windows)]
     unsafe {
@@ -169,7 +172,32 @@ fn attach_console() {
     }
 }
 
+/// Writes an answer to standard output, and lets it go when it cannot
+/// (ito's `ito_console::out`, shared with the other uchmk apps).
+/// PowerShell hands a windowed program a pipe for `$v = & tsumugi.exe
+/// --version` and closes it without waiting, and `println!` panicked there
+/// (os error 232). Every answer a command prints goes through here, so
+/// `tsumugi.exe` run without `tsumugi.com` cannot panic on it either.
+/// To a console it is written as UTF-16, whatever the code page.
+fn out(text: &str) {
+    ito_console::out(text);
+}
+
+/// [`out`] on standard error, for why a command failed: `$v = & tsumugi.exe
+/// new x 2>&1` closes that pipe without waiting too.
+fn err(text: &str) {
+    ito_console::err(text);
+}
+
 fn server() -> std::process::ExitCode {
+    // Started in a process group of its own, which turns Ctrl+C off for the
+    // server and every shell it starts: Ctrl+C in a pane did not stop ping.
+    // Turn it back on; with no console the server itself still gets none.
+    #[cfg(windows)]
+    unsafe {
+        use windows::Win32::System::Console::SetConsoleCtrlHandler;
+        let _ = SetConsoleCtrlHandler(None, false);
+    }
     match tsumugi_mux::server::start(&tsumugi_mux::address()) {
         // A server no window ever started a session on goes after a minute.
         Ok(srv) => {
@@ -181,29 +209,30 @@ fn server() -> std::process::ExitCode {
             std::process::ExitCode::SUCCESS
         }
         Err(e) => {
-            eprintln!("tsumugi server: {e}");
+            err(&format!("tsumugi server: {e}\n"));
             std::process::ExitCode::FAILURE
         }
     }
 }
 
-/// `tsumugi new [FOLDER] [--tag TAG]... [-- COMMAND...]`: a session in a tab
-/// of its own, the server started if need be; prints its number.
+/// `tsumugi new [FOLDER] [--tag TAG]... [--worktree BRANCH [--from REF]]
+/// [-- COMMAND...]`: a session in a tab of its own, the server started if
+/// need be; prints its number.
 fn new_cli(args: &[String]) -> std::process::ExitCode {
     let n = match cli::parse_new(args) {
         Ok(n) => n,
         Err(e) => {
-            eprintln!("tsumugi new: {e}\nusage: {}", cli::NEW_USAGE);
+            err(&format!("tsumugi new: {e}\nusage: {}\n", cli::NEW_USAGE));
             return std::process::ExitCode::from(2);
         }
     };
     match connect(|| {}).and_then(|c| cli::new(&c, n)) {
         Ok(id) => {
-            println!("{id}");
+            out(&format!("{id}\n"));
             std::process::ExitCode::SUCCESS
         }
         Err(e) => {
-            eprintln!("tsumugi new: {e}");
+            err(&format!("tsumugi new: {e}\n"));
             std::process::ExitCode::FAILURE
         }
     }
@@ -216,7 +245,7 @@ fn layout_cli(args: &[String]) -> std::process::ExitCode {
     let cmd = match cli::parse_layout(args) {
         Ok(c) => c,
         Err(e) => {
-            eprintln!("tsumugi layout: {e}\nusage:\n{}", cli::LAYOUT_USAGE);
+            err(&format!("tsumugi layout: {e}\nusage:\n{}\n", cli::LAYOUT_USAGE));
             return ExitCode::from(2);
         }
     };
@@ -224,7 +253,7 @@ fn layout_cli(args: &[String]) -> std::process::ExitCode {
     let (name, folder) = match cmd {
         cli::LayoutCmd::List => {
             for l in &list {
-                println!("{}\t{}", l.name, layouts::words(&l.tree));
+                out(&format!("{}\t{}\n", l.name, layouts::words(&l.tree)));
             }
             return ExitCode::SUCCESS;
         }
@@ -251,12 +280,12 @@ fn layout_cli(args: &[String]) -> std::process::ExitCode {
     match run() {
         Ok(ids) => {
             for id in ids {
-                println!("{id}");
+                out(&format!("{id}\n"));
             }
             ExitCode::SUCCESS
         }
         Err(e) => {
-            eprintln!("tsumugi layout: {e}");
+            err(&format!("tsumugi layout: {e}\n"));
             ExitCode::FAILURE
         }
     }
@@ -264,6 +293,27 @@ fn layout_cli(args: &[String]) -> std::process::ExitCode {
 
 /// The script `tsumugi --keys` gave the window to play.
 static KEYS: std::sync::OnceLock<Vec<keyscript::Step>> = std::sync::OnceLock::new();
+
+/// What `tsumugi --keys` with no script, or more than one, says.
+const KEYS_USAGE: &str = "usage: tsumugi --keys SCRIPT (one argument: keys as `j`, `<C-S-t>`, `<Space>`, `<Wait:500>`, \
+     `<Shot:name>`, `<State:name>`, `<Click:x,y>`, `<Drag:x,y-x,y>`, `<Paste>`, `<Quit>`; all the words are in ito's docs/common-spec.md)";
+
+/// `TSUMUGI_KEYS_DONE`: the file `--keys` writes its state and its end to.
+fn keys_done() -> Option<std::path::PathBuf> {
+    std::env::var_os("TSUMUGI_KEYS_DONE").filter(|p| !p.is_empty()).map(std::path::PathBuf::from)
+}
+
+/// A script refused before any window opens: why, on the command line and,
+/// for a run started detached that only waits for the file, in
+/// `TSUMUGI_KEYS_DONE` as well.
+fn refuse_keys(why: &str) -> std::process::ExitCode {
+    if let Some(done) = keys_done() {
+        let _ = std::fs::write(done, keyscript::refused_report(why));
+    }
+    // Not `eprintln!`: a detached run's stderr can be a closed pipe.
+    err(&format!("tsumugi --keys: {why}\n"));
+    std::process::ExitCode::from(2)
+}
 
 /// The session `tsumugi attach` asked the window to show.
 static SHOW_SESSION: std::sync::OnceLock<SessionId> = std::sync::OnceLock::new();
@@ -273,7 +323,7 @@ static SHOW_SESSION: std::sync::OnceLock<SessionId> = std::sync::OnceLock::new()
 /// is open or not, so attaching is opening a window there.
 fn attach(args: &[String]) -> std::process::ExitCode {
     let [name] = args else {
-        eprintln!("usage: tsumugi attach NUMBER|NAME (tsumugi ls lists them)");
+        err("usage: tsumugi attach NUMBER|NAME (tsumugi ls lists them)\n");
         return std::process::ExitCode::from(2);
     };
     let found = Client::connect(&tsumugi_mux::address(), || {})
@@ -286,7 +336,74 @@ fn attach(args: &[String]) -> std::process::ExitCode {
             window()
         }
         Err(e) => {
-            eprintln!("tsumugi attach: {e}");
+            err(&format!("tsumugi attach: {e}\n"));
+            std::process::ExitCode::FAILURE
+        }
+    }
+}
+
+/// `tsumugi focus NAME`: the window that had the keys last comes to the
+/// front with that session's tab shown and its pane given the keys; with no
+/// window open, one is opened on it (`attach`, left running).
+fn focus(args: &[String]) -> std::process::ExitCode {
+    let [name] = args else {
+        err("usage: tsumugi focus NUMBER|NAME (tsumugi ls lists them)\n");
+        return std::process::ExitCode::from(2);
+    };
+    let client = match Client::connect(&tsumugi_mux::address(), || {}) {
+        Ok(c) => c,
+        Err(e) => {
+            err(&format!("tsumugi focus: no server ({e})\n"));
+            return std::process::ExitCode::FAILURE;
+        }
+    };
+    let id = match client.list().map_err(|e| e.to_string()).and_then(|list| cli::find(&list, name)) {
+        Ok(id) => id,
+        Err(e) => {
+            err(&format!("tsumugi focus: {e}\n"));
+            return std::process::ExitCode::FAILURE;
+        }
+    };
+    // Windows lets only the program in front bring another to the front;
+    // this one was started from it, so it hands that on to the window.
+    #[cfg(windows)]
+    unsafe {
+        use windows::Win32::UI::WindowsAndMessaging::{AllowSetForegroundWindow, ASFW_ANY};
+        let _ = AllowSetForegroundWindow(ASFW_ANY);
+    }
+    match client.show(id, Duration::from_secs(5)) {
+        Ok(()) => std::process::ExitCode::SUCCESS,
+        Err(e) if e.contains("no tsumugi window") => {
+            // The window outlives this command; if it inherited the caller's
+            // pipes, whoever reads this command's output would wait on it.
+            #[cfg(windows)]
+            unsafe {
+                use windows::Win32::Foundation::{SetHandleInformation, HANDLE_FLAGS, HANDLE_FLAG_INHERIT};
+                use windows::Win32::System::Console::{GetStdHandle, STD_ERROR_HANDLE, STD_INPUT_HANDLE, STD_OUTPUT_HANDLE};
+                for which in [STD_INPUT_HANDLE, STD_OUTPUT_HANDLE, STD_ERROR_HANDLE] {
+                    if let Ok(h) = GetStdHandle(which) {
+                        let _ = SetHandleInformation(h, HANDLE_FLAG_INHERIT.0, HANDLE_FLAGS(0));
+                    }
+                }
+            }
+            let opened = std::env::current_exe().and_then(|exe| {
+                std::process::Command::new(exe)
+                    .args(["attach", &id.to_string()])
+                    .stdin(std::process::Stdio::null())
+                    .stdout(std::process::Stdio::null())
+                    .stderr(std::process::Stdio::null())
+                    .spawn()
+            });
+            match opened {
+                Ok(_) => std::process::ExitCode::SUCCESS,
+                Err(e) => {
+                    err(&format!("tsumugi focus: no window, and none opened ({e})\n"));
+                    std::process::ExitCode::FAILURE
+                }
+            }
+        }
+        Err(e) => {
+            err(&format!("tsumugi focus: {e}\n"));
             std::process::ExitCode::FAILURE
         }
     }
@@ -326,7 +443,7 @@ fn proxy() -> std::process::ExitCode {
     let (mut from, mut to) = match conn.and_then(|c| c.split()) {
         Ok(rw) => rw,
         Err(e) => {
-            eprintln!("tsumugi proxy: no server ({e})");
+            err(&format!("tsumugi proxy: no server ({e})\n"));
             return std::process::ExitCode::FAILURE;
         }
     };
@@ -355,24 +472,33 @@ fn ls(args: &[String]) -> std::process::ExitCode {
     let (host, args) = match cli::take_host(args, false) {
         Ok(h) => h,
         Err(e) => {
-            eprintln!("tsumugi ls: {e}");
+            err(&format!("tsumugi ls: {e}\n"));
             return std::process::ExitCode::from(2);
         }
     };
     let listed = client_at(host.as_deref()).and_then(|c| c.list());
     match listed {
         Ok(list) if args.iter().any(|a| a == "--json") => {
-            print!("{}", cli::ls_json(&list));
+            out(&cli::ls_json(&list));
             std::process::ExitCode::SUCCESS
         }
         Ok(list) => {
             for i in list {
-                println!("{}\t{}\t{}\t{}\t{}\t{}\t{}", i.id, i.state.word(), i.command, i.cwd.display(), i.title, i.note, i.tags.join(","));
+                out(&format!(
+                    "{}\t{}\t{}\t{}\t{}\t{}\t{}\n",
+                    i.id,
+                    i.state.word(),
+                    i.command,
+                    i.cwd.display(),
+                    i.title,
+                    i.note,
+                    i.tags.join(",")
+                ));
             }
             std::process::ExitCode::SUCCESS
         }
         Err(e) => {
-            eprintln!("tsumugi ls: no server ({e})");
+            err(&format!("tsumugi ls: no server ({e})\n"));
             std::process::ExitCode::FAILURE
         }
     }
@@ -383,19 +509,19 @@ fn ls(args: &[String]) -> std::process::ExitCode {
 fn remote(what: &str, args: &[String]) -> std::process::ExitCode {
     use std::process::ExitCode;
     let fail = |e: String| {
-        eprintln!("tsumugi {what}: {e}");
+        err(&format!("tsumugi {what}: {e}\n"));
         ExitCode::FAILURE
     };
     let (host, args) = match cli::take_host(args, what == "send") {
         Ok(h) => h,
         Err(e) => {
-            eprintln!("tsumugi {what}: {e}");
+            err(&format!("tsumugi {what}: {e}\n"));
             return ExitCode::from(2);
         }
     };
     let args = &args[..];
     let Some(who) = args.iter().find(|a| !a.starts_with('-')).cloned() else {
-        eprintln!("usage:\n{}", cli::REMOTE_USAGE);
+        err(&format!("usage:\n{}\n", cli::REMOTE_USAGE));
         return ExitCode::from(2);
     };
     let client = match client_at(host.as_deref()) {
@@ -410,7 +536,7 @@ fn remote(what: &str, args: &[String]) -> std::process::ExitCode {
         Ok(id) => id,
         // Waiting on a session that has already ended: its own exit code.
         Err(_) if what == "wait" && who.parse::<SessionId>().is_ok() => {
-            eprintln!("tsumugi wait: session {who} ended");
+            err(&format!("tsumugi wait: session {who} ended\n"));
             return ExitCode::from(3);
         }
         Err(e) => return fail(e),
@@ -445,7 +571,7 @@ fn remote(what: &str, args: &[String]) -> std::process::ExitCode {
             let deadline = std::time::Instant::now() + Duration::from_secs(5);
             loop {
                 if let Some((_, text)) = client.take_texts().into_iter().find(|(i, _)| *i == id) {
-                    print!("{}", if r.all { text } else { cli::last_lines(&text, r.lines) });
+                    out(&if r.all { text } else { cli::last_lines(&text, r.lines) });
                     return ExitCode::SUCCESS;
                 }
                 if std::time::Instant::now() > deadline {
@@ -457,7 +583,7 @@ fn remote(what: &str, args: &[String]) -> std::process::ExitCode {
         "split" => match cli::parse_split(args).and_then(|s| cli::split(&client, &list, id, &s)) {
             Ok(new) => {
                 for n in new {
-                    println!("{n}");
+                    out(&format!("{n}\n"));
                 }
                 ExitCode::SUCCESS
             }
@@ -465,7 +591,7 @@ fn remote(what: &str, args: &[String]) -> std::process::ExitCode {
         },
         "log" => match cli::parse_log(args).and_then(|l| cli::log(&client, &list, id, l, host.is_some())) {
             Ok(path) => {
-                println!("{path}");
+                out(&format!("{path}\n"));
                 ExitCode::SUCCESS
             }
             Err(e) => fail(e),
@@ -486,15 +612,15 @@ fn remote(what: &str, args: &[String]) -> std::process::ExitCode {
             loop {
                 let Ok(list) = client.list() else { return fail("the server went away".into()) };
                 let Some(info) = list.iter().find(|i| i.id == id) else {
-                    eprintln!("tsumugi wait: session {id} ended");
+                    err(&format!("tsumugi wait: session {id} ended\n"));
                     return ExitCode::from(3);
                 };
                 if w.states.contains(&info.state) {
-                    println!("{}", info.state.word());
+                    out(&format!("{}\n", info.state.word()));
                     return ExitCode::SUCCESS;
                 }
                 if w.timeout.is_some_and(|t| start.elapsed() >= t) {
-                    eprintln!("tsumugi wait: still {} after {:?}", info.state.word(), w.timeout.unwrap_or_default());
+                    err(&format!("tsumugi wait: still {} after {:?}\n", info.state.word(), w.timeout.unwrap_or_default()));
                     return ExitCode::FAILURE;
                 }
                 std::thread::sleep(Duration::from_millis(250));
@@ -522,7 +648,7 @@ fn notify(args: &[String]) -> std::process::ExitCode {
             "--state" => match it.next().and_then(|s| tsumugi_mux::State::from_word(s)) {
                 Some(s) => state = s,
                 None => {
-                    eprintln!("tsumugi notify: --state takes waiting, done, error or running");
+                    err("tsumugi notify: --state takes waiting, done, error or running\n");
                     return std::process::ExitCode::from(2);
                 }
             },
@@ -556,13 +682,13 @@ fn notify(args: &[String]) -> std::process::ExitCode {
         if !std::io::IsTerminal::is_terminal(&std::io::stdin()) {
             return std::process::ExitCode::SUCCESS;
         }
-        eprintln!("tsumugi notify: not inside a tsumugi session (no TSUMUGI_SESSION); give --session N");
+        err("tsumugi notify: not inside a tsumugi session (no TSUMUGI_SESSION); give --session N\n");
         return std::process::ExitCode::from(2);
     };
     match Client::connect(&tsumugi_mux::address(), || {}).and_then(|c| c.notify(id, state, words.join(" "), claude)) {
         Ok(()) => std::process::ExitCode::SUCCESS,
         Err(e) => {
-            eprintln!("tsumugi notify: {e}");
+            err(&format!("tsumugi notify: {e}\n"));
             std::process::ExitCode::FAILURE
         }
     }
@@ -595,7 +721,7 @@ fn tag(args: &[String]) -> std::process::ExitCode {
         }
     }
     let Some(id) = session else {
-        eprintln!("tsumugi tag: not inside a tsumugi session (no TSUMUGI_SESSION); give --session N");
+        err("tsumugi tag: not inside a tsumugi session (no TSUMUGI_SESSION); give --session N\n");
         return std::process::ExitCode::from(2);
     };
     let done = Client::connect(&tsumugi_mux::address(), || {}).and_then(|c| {
@@ -610,18 +736,18 @@ fn tag(args: &[String]) -> std::process::ExitCode {
             Some(i) => {
                 if tags.is_empty() {
                     for t in i.tags {
-                        println!("{t}");
+                        out(&format!("{t}\n"));
                     }
                 }
                 std::process::ExitCode::SUCCESS
             }
             None => {
-                eprintln!("tsumugi tag: no session {id}");
+                err(&format!("tsumugi tag: no session {id}\n"));
                 std::process::ExitCode::FAILURE
             }
         },
         Err(e) => {
-            eprintln!("tsumugi tag: {e}");
+            err(&format!("tsumugi tag: {e}\n"));
             std::process::ExitCode::FAILURE
         }
     }
@@ -664,21 +790,28 @@ fn window() -> std::process::ExitCode {
         .with_inner_size([1280.0, 800.0])
         .with_min_inner_size([420.0, 260.0])
         .with_icon(icon);
-    // A tab dropped outside another window opens there.
-    if let Some(at) = menu::window_at() {
-        viewport = viewport.with_position(at);
+    // A tab dropped outside another window opens there: made at the corner,
+    // and on Windows moved to its pixels by `put` as the first window is
+    // (below), so it lands where it was let go even on a screen at another
+    // scale than the one it is made on (#181).
+    let torn = menu::window_at().map(|at| ito_common::window::Window {
+        x: at.pos[0],
+        y: at.pos[1],
+        w: 1280.0,
+        h: 800.0,
+        maximized: false,
+        scale: at.scale,
+        zoom: 1.0,
+    });
+    if let Some(w) = torn {
+        viewport = viewport.with_position(w.opening().pos);
     }
-    // The first window opens where it was left.
-    let mut placed = None;
-    if winplace::wanted(&first.window.quake) {
-        if let Some(p) = winplace::path().and_then(|path| winplace::load(&path)) {
-            viewport = viewport.with_position(p.pos).with_inner_size(p.size);
-            if p.maximized {
-                viewport = viewport.with_maximized(true);
-            }
-            placed = Some(p);
-        }
-    }
+    // The first window opens where it was left: made at the place without
+    // the zoom, and on Windows moved to the pixels it was closed at by `put`
+    // (in the creator, while the window is hidden), so a second screen at
+    // another scale gets it back (#176).
+    let saved = ito_common::window::Saved::load(winplace::dir().filter(|_| winplace::wanted(&first.window.quake)));
+    viewport = saved.viewport(viewport);
     if first.window.own_titlebar() {
         // macOS keeps its traffic lights, over the band; elsewhere the band
         // draws its own buttons (chrome::top_band).
@@ -701,10 +834,12 @@ fn window() -> std::process::ExitCode {
         "tsumugi",
         options,
         Box::new(move |cc| {
-            let mut app = App::new(cc);
-            if let Some(p) = placed {
-                app.place.loaded(p);
+            saved.put(cc);
+            if let Some(w) = torn {
+                w.put(cc);
             }
+            let mut app = App::new(cc);
+            app.place = saved.tracker();
             Ok(Box::new(app))
         }),
     ) {
@@ -1110,6 +1245,11 @@ struct App {
     /// A pane sent to a tab of its own with the keys, the tab it left and
     /// when: its new tab is shown once the server has made it.
     following: Option<(SessionId, WorkspaceId, std::time::Instant)>,
+    /// A session `tsumugi focus` asked for and when: its tab is shown once
+    /// it is in one, or never after a few seconds (a tab closed meanwhile).
+    showing: Option<(SessionId, std::time::Instant)>,
+    /// The window's own handle (Windows), for `raise_on_show`.
+    window: Option<isize>,
     /// The WSL distributions and SSH hosts the new-session dialog offers,
     /// looked for again each time it opens.
     places: std::sync::Arc<std::sync::Mutex<Vec<remote::Where>>>,
@@ -1178,8 +1318,9 @@ struct App {
     backdrop: backdrop::Backdrop,
     /// `[window] quake`, the key held from any program.
     quake: quake::Quake,
-    /// Where the window is, to open there next time (`winplace`).
-    place: winplace::Tracker,
+    /// Where the window is, to open there next time (`winplace`); none for
+    /// a window that does not keep its place.
+    place: Option<ito_common::window::Tracker>,
     /// macOS's Secure Keyboard Entry, held while asked and in front.
     secure: secure::Secure,
     /// Each session's folder as last seen, and the folders of those that
@@ -1216,6 +1357,10 @@ struct App {
     worktree_making: Option<(std::sync::mpsc::Receiver<Result<std::path::PathBuf, String>>, newsession::Create)>,
     worktree_lived: std::collections::HashSet<std::path::PathBuf>,
     worktree_ask: Option<std::path::PathBuf>,
+    /// The sessions there were when the list was last read again, and the
+    /// reading in flight: `tsumugi new --worktree` adds to it from outside.
+    worktree_seen: std::collections::HashSet<SessionId>,
+    worktree_reading: Option<std::sync::mpsc::Receiver<Vec<std::path::PathBuf>>>,
     /// The window was asked to close while sessions were running: how many,
     /// until the question is answered.
     closing: Option<usize>,
@@ -1320,6 +1465,9 @@ struct App {
     dragging_tab: Option<WorkspaceId>,
     /// Where the pointer was last seen during that drag, in the window.
     drag_seen: Option<egui::Pos2>,
+    /// The pane of this tab that tab being dragged is over, and the side of
+    /// it the tab would join on; let go there, the tab folds in.
+    join_target: Option<(SessionId, ito_layout::Toward)>,
     /// The search box, while it is open (the design's 1c).
     search: Option<palette::View>,
     /// What is being typed into a tab menu's "Add a tag".
@@ -1506,18 +1654,19 @@ enum SideOp {
     CreatePr(std::path::PathBuf),
 }
 
-/// Where in the server's order a tab dropped at `gap` among the rows shown
-/// goes (the server takes it out, then puts it in); `None` when it stays.
 /// Where on the screen a window torn off at `p` (in this window's points)
 /// opens: its top left a little up and left of the pointer, so the pointer
-/// is over its band. None where the system does not say where windows are
-/// (Wayland).
-fn torn_at(ctx: &egui::Context, p: egui::Pos2) -> Option<[f32; 2]> {
+/// is over its band, at this window's screen's scale. None where the system
+/// does not say where windows are (Wayland).
+fn torn_at(ctx: &egui::Context, p: egui::Pos2) -> Option<menu::At> {
     let inner = ctx.input(|i| i.viewport().inner_rect)?;
-    let at = (inner.min + p.to_vec2() - egui::vec2(60.0, 16.0)) * ctx.zoom_factor();
-    Some([at.x, at.y])
+    let zoom = ctx.zoom_factor();
+    let at = (inner.min + p.to_vec2() - egui::vec2(60.0, 16.0)) * zoom;
+    Some(menu::At { pos: [at.x, at.y], scale: ctx.pixels_per_point() / zoom })
 }
 
+/// Where in the server's order a tab dropped at `gap` among the rows shown
+/// goes (the server takes it out, then puts it in); `None` when it stays.
 fn drop_index(workspaces: &[Workspace], rows: &[(WorkspaceId, egui::Rect)], dragged: WorkspaceId, gap: usize) -> Option<usize> {
     let at = |id: WorkspaceId| workspaces.iter().position(|w| w.id == id);
     let from = at(dragged)?;
@@ -1576,6 +1725,10 @@ impl App {
             },
             Err(e) => (None, Some(e), None),
         };
+        let window = window_handle(cc);
+        if let Some(client) = &client {
+            raise_on_show(client, window);
+        }
         Self {
             client,
             failed,
@@ -1583,6 +1736,8 @@ impl App {
             active: std::env::var(menu::SHOW_TAB).ok().and_then(|v| v.parse().ok()),
             pending: SHOW_SESSION.get().copied(),
             following: None,
+            showing: None,
+            window,
             places: Default::default(),
             panes: HashMap::new(),
             views: HashMap::new(),
@@ -1618,7 +1773,7 @@ impl App {
             transparent: first_window.opacity < 100,
             backdrop: backdrop::Backdrop::default(),
             quake: quake::Quake::default(),
-            place: winplace::Tracker::default(),
+            place: None,
             secure: secure::Secure::default(),
             known_cwds: HashMap::new(),
             closed: closed_file()
@@ -1651,6 +1806,8 @@ impl App {
             worktree_making: None,
             worktree_lived: std::collections::HashSet::new(),
             worktree_ask: None,
+            worktree_seen: std::collections::HashSet::new(),
+            worktree_reading: None,
             closing: None,
             input_sent: None,
             input_h: 170.0,
@@ -1678,10 +1835,12 @@ impl App {
             build_told: false,
             close_ok: false,
             script: KEYS.get().map(|steps| {
-                keyscript::runner(
-                    steps.clone(),
-                    std::env::var_os("TSUMUGI_KEYS_DONE").filter(|p| !p.is_empty()).map(std::path::PathBuf::from),
-                )
+                let mut script = keyscript::runner(steps.clone(), keys_done());
+                script.clipboard = clip::text;
+                // A window behind others may get no frames, and a stuck
+                // script would leave the file never written.
+                script.watch(cc.egui_ctx.clone());
+                script
             }),
             script_todo: Vec::new(),
             worktree_removing: None,
@@ -1696,7 +1855,7 @@ impl App {
             bell_opening: false,
             alerts: alert::Alerts::default(),
             spend: spend::Watch::default(),
-            teller: alert::Teller::start(window_handle(cc), {
+            teller: alert::Teller::start(window, {
                 let ctx = cc.egui_ctx.clone();
                 move || ctx.request_repaint()
             }),
@@ -1708,6 +1867,7 @@ impl App {
             view: View::load(),
             dragging_tab: None,
             drag_seen: None,
+            join_target: None,
             search: None,
             tag_input: String::new(),
             settings: settings_rx,
@@ -1752,10 +1912,21 @@ impl App {
 
     /// The tab shown, following a new session to the tab it landed in.
     fn current(&mut self, workspaces: &[Workspace]) -> Option<Workspace> {
+        // The tab whose saved shape went out this frame: keys moved below go
+        // with that shape, not with the tab as the splits made it (#113).
+        let mut shaped = None;
         if let Some((tree, first, since)) = &self.opening {
             let ids = tree.leaves();
             if let (Some(client), Some(w)) = (&self.client, workspaces.iter().find(|w| ids.iter().all(|id| w.layout.contains(id)))) {
                 client.set_layout(w.id, tree.clone(), *first);
+                shaped = Some((w.id, tree.clone()));
+                // The shape carries the keys to the first pane. Setting them
+                // there below would send the tab as the splits made it, and
+                // that would land after the shape (#113).
+                if self.pending == Some(*first) {
+                    self.active = Some(w.id);
+                    self.pending = None;
+                }
                 self.opening = None;
             } else if since.elapsed() > std::time::Duration::from_secs(10) {
                 // A pane that never came: the tab stays as the splits made it.
@@ -1770,13 +1941,30 @@ impl App {
                 self.following = None;
             }
         }
+        let focus = |me: &Self, w: &Workspace, id: SessionId| match (&me.client, &shaped) {
+            (Some(client), Some((tab, tree))) if *tab == w.id => client.set_layout(w.id, tree.clone(), id),
+            _ => me.set_focus(w, id),
+        };
+        if let Some((id, since)) = self.showing {
+            if let Some(w) = workspaces.iter().find(|w| w.layout.contains(&id)) {
+                self.active = Some(w.id);
+                self.showing = None;
+                if w.focus != id {
+                    focus(self, w, id);
+                }
+            } else if since.elapsed() > std::time::Duration::from_secs(5) {
+                self.showing = None;
+            }
+        }
         if let Some(new) = self.pending {
             if let Some(w) = workspaces.iter().find(|w| w.layout.contains(&new)) {
                 self.active = Some(w.id);
                 self.pending = None;
-                // `tsumugi attach` names a pane, maybe not the tab's focus.
-                if w.focus != new {
-                    self.set_focus(w, new);
+                // `tsumugi attach` names a pane, maybe not the tab's focus. In
+                // a layout still opening, the shape puts the keys (#113).
+                let opening_here = self.opening.as_ref().is_some_and(|(_, first, _)| w.layout.contains(first));
+                if w.focus != new && !opening_here {
+                    focus(self, w, new);
                 }
             }
         }
@@ -1888,6 +2076,14 @@ impl App {
                 if w.layout.leaves().len() > 1 {
                     client.own_tab(w.focus);
                     self.following = Some((w.focus, w.id, std::time::Instant::now()));
+                }
+            }
+            keys::Action::JoinTab => {
+                // The next tab in the sidebar's order, to the right of the
+                // pane with the keys; the keys stay in this tab.
+                let n = workspaces.len();
+                if n > 1 {
+                    client.join_tab(workspaces[(at + 1) % n].id, w.focus, ito_layout::Toward::Right);
                 }
             }
             keys::Action::Zoom => self.zoom = !self.zoom,
@@ -2455,10 +2651,7 @@ impl App {
     /// shell) under the tab's name, replacing a layout of that name.
     fn save_layout(&mut self, client: &Client, w: &Workspace) {
         let sessions = client.sessions();
-        let tree = w.layout.clone().map(&mut |id| match sessions.iter().find(|i| i.id == id) {
-            Some(i) if i.claude => layouts::Pane::of(newsession::Start::Claude),
-            _ => layouts::Pane::of(newsession::Start::Shell),
-        });
+        let tree = w.layout.clone().map(&mut |id| layout_pane(sessions.iter().find(|i| i.id == id)));
         let name = if !w.name.trim().is_empty() {
             w.name.trim().to_owned()
         } else {
@@ -2573,6 +2766,7 @@ impl App {
                     palette::Command::Help => keys::Action::Help,
                     palette::Command::SwapPane => keys::Action::SwapPane,
                     palette::Command::Equalize => keys::Action::Equalize,
+                    palette::Command::JoinTab => keys::Action::JoinTab,
                     palette::Command::WorkLog => keys::Action::WorkLog,
                     palette::Command::Closed => keys::Action::ClosedList,
                     palette::Command::Changes => keys::Action::Changes,
@@ -3658,7 +3852,9 @@ impl App {
             }
             let screen = ui.ctx().content_rect();
             let out = self.drag_seen.is_some_and(|p| !screen.contains(p));
-            let gap = pointer.filter(|_| manual && !out).map(|p| rows.iter().take_while(|(_, r)| p.y > r.center().y).count());
+            let gap = pointer
+                .filter(|_| manual && !out && self.join_target.is_none())
+                .map(|p| rows.iter().take_while(|(_, r)| p.y > r.center().y).count());
             ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
             if let (Some(gap), Some((_, first))) = (gap, rows.first()) {
                 let y = match rows.get(gap) {
@@ -3669,14 +3865,18 @@ impl App {
                 ui.painter().line_segment([egui::pos2(x.min + 8.0, y), egui::pos2(x.max - 8.0, y)], egui::Stroke::new(2.0, chrome::cyan()));
             }
             if ui.input(|i| !i.pointer.any_down()) {
-                if out {
+                if let Some((into, toward)) = self.join_target.take().filter(|_| !out) {
+                    if let Some(client) = &self.client {
+                        client.join_tab(dragged, into, toward);
+                    }
+                } else if out {
                     menu::new_window(dragged, self.drag_seen.and_then(|p| torn_at(ui.ctx(), p)));
                 } else if let Some(gap) = gap {
                     if let Some(to) = drop_index(workspaces, &rows, dragged, gap) {
                         ops.push(SideOp::Move(dragged, to));
                     }
                 }
-                (self.dragging_tab, self.drag_seen) = (None, None);
+                (self.dragging_tab, self.drag_seen, self.join_target) = (None, None, None);
             }
         }
         let mut toasts = Vec::new();
@@ -3882,8 +4082,9 @@ impl App {
         if !winplace::wanted(&self.settings_now.window.quake) {
             return;
         }
-        let (Some(place), Some(path)) = (self.place.observe(ctx), winplace::path()) else { return };
-        let _ = std::thread::Builder::new().name("window-place".into()).spawn(move || winplace::save(&path, &place));
+        if let Some(place) = self.place.as_mut() {
+            place.follow(ctx);
+        }
     }
 
     /// Quake mode's key: down from the top of the screen and given the keys,
@@ -3935,13 +4136,43 @@ impl App {
                 match made {
                     Ok(path) => {
                         self.say(trf("toast.worktree_made", &[&home_short(&path)]), false);
-                        self.worktrees.push(path.clone());
+                        if !self.worktrees.contains(&path) {
+                            self.worktrees.push(path.clone());
+                        }
                         c.folder = path;
                         self.create(client, c, current);
                     }
                     Err(e) => self.say(e, true),
                 }
             }
+        }
+        // A session the window did not start may be in a worktree made from
+        // the command line: read the list again (off this thread) when one
+        // comes, and take the paths new to it.
+        if let Some(rx) = &self.worktree_reading {
+            match rx.try_recv() {
+                Ok(list) => {
+                    for p in list {
+                        if !self.worktrees.contains(&p) {
+                            self.worktrees.push(p);
+                        }
+                    }
+                    self.worktree_reading = None;
+                }
+                Err(std::sync::mpsc::TryRecvError::Disconnected) => self.worktree_reading = None,
+                Err(std::sync::mpsc::TryRecvError::Empty) => {}
+            }
+        }
+        if self.worktree_reading.is_none() && sessions.iter().any(|i| !self.worktree_seen.contains(&i.id)) {
+            self.worktree_seen = sessions.iter().map(|i| i.id).collect();
+            let (tx, rx) = std::sync::mpsc::channel();
+            let ctx = ctx.clone();
+            let _ = std::thread::Builder::new().name("worktrees".into()).spawn(move || {
+                // Those still there: one removed while this read is not taken back.
+                let _ = tx.send(worktree::ours().into_iter().filter(|p| p.is_dir()).collect());
+                ctx.request_repaint();
+            });
+            self.worktree_reading = Some(rx);
         }
         for w in &self.worktrees {
             let alive = sessions.iter().any(|i| i.cwd.starts_with(w));
@@ -3959,6 +4190,9 @@ impl App {
                     Ok(()) => {
                         self.say(trf("toast.worktree_removed", &[&home_short(&path)]), false);
                         self.worktrees.retain(|w| *w != path);
+                        // A read still out may have been made before the
+                        // removing and would bring the path back.
+                        self.worktree_reading = None;
                     }
                     Err(e) => self.say(e, true),
                 }
@@ -3966,7 +4200,9 @@ impl App {
         }
         let Some(path) = self.worktree_ask.clone() else { return };
         let mut answer = None;
-        chrome::modal(ctx, egui::LayerId::new(egui::Order::Foreground, egui::Id::new("worktree-ask")));
+        let mut first = None;
+        let layer = egui::LayerId::new(egui::Order::Foreground, egui::Id::new("worktree-ask"));
+        chrome::modal(ctx, layer);
         egui::Area::new(egui::Id::new("worktree-ask"))
             .order(egui::Order::Foreground)
             .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
@@ -3994,15 +4230,19 @@ impl App {
                             )
                             .fill(chrome::red());
                             let (remove, keep) = chrome::foot(ui, remove, true, tr("dialog.worktree_keep"));
+                            first = Some(keep.id);
                             if remove.clicked() {
                                 answer = Some(true);
                             }
-                            if keep.clicked() {
+                            if keep.clicked() || ui.input(|i| i.key_pressed(egui::Key::Escape)) {
                                 answer = Some(false);
                             }
                         });
                     });
             });
+        // The keys stay in the ask, on Keep first (#110): Tab past Remove
+        // comes back round, and Enter keeps.
+        chrome::hold_tab(ctx, layer, first);
         match answer {
             Some(true) => {
                 let (tx, rx) = std::sync::mpsc::channel();
@@ -4022,22 +4262,33 @@ impl App {
     /// The window is closing: ask first when sessions are still running and
     /// `[general] ask_before_close` is on, and stop them all when
     /// `keep_sessions` is off (else the server keeps them for next time).
-    fn close_window(&mut self, ctx: &egui::Context, client: &Client, sessions: &[Info]) {
-        let general = self.settings_now.general.clone();
-        if ctx.input(|i| i.viewport().close_requested()) {
-            let running = sessions.iter().filter(|s| s.state == tsumugi_mux::proto::State::Running).count();
-            if general.ask_before_close && running > 0 && !self.close_ok {
-                ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
-                self.closing = Some(running);
-            } else if !general.keep_sessions {
-                for s in sessions {
-                    client.attach(s.id).kill();
-                }
+    /// Each frame, and from `logic` while the window is minimized (closed
+    /// from the taskbar), where no frame is drawn.
+    fn close_asked(&mut self, ctx: &egui::Context, client: &Client, sessions: &[Info]) {
+        if !ctx.input(|i| i.viewport().close_requested()) {
+            return;
+        }
+        let general = &self.settings_now.general;
+        let running = sessions.iter().filter(|s| s.state == tsumugi_mux::proto::State::Running).count();
+        if general.ask_before_close && running > 0 && !self.close_ok {
+            hold_close(ctx);
+            self.closing = Some(running);
+        } else if !general.keep_sessions {
+            for s in sessions {
+                client.attach(s.id).kill();
             }
         }
+    }
+
+    /// The question `close_asked` held the close back for.
+    fn close_window(&mut self, ctx: &egui::Context, client: &Client, sessions: &[Info]) {
+        let general = self.settings_now.general.clone();
+        self.close_asked(ctx, client, sessions);
         let Some(running) = self.closing else { return };
         let mut answer = None;
-        chrome::modal(ctx, egui::LayerId::new(egui::Order::Foreground, egui::Id::new("close-ask")));
+        let mut first = None;
+        let layer = egui::LayerId::new(egui::Order::Foreground, egui::Id::new("close-ask"));
+        chrome::modal(ctx, layer);
         egui::Area::new(egui::Id::new("close-ask"))
             .order(egui::Order::Foreground)
             .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
@@ -4070,6 +4321,7 @@ impl App {
                             )
                             .fill(fill);
                             let (close, cancel) = chrome::foot(ui, close, true, tr("dialog.cancel"));
+                            first = Some(cancel.id);
                             if close.clicked() {
                                 answer = Some(true);
                             }
@@ -4079,6 +4331,8 @@ impl App {
                         });
                     });
             });
+        // The keys stay in the ask, on Cancel first (#110).
+        chrome::hold_tab(ctx, layer, first);
         match answer {
             Some(true) => {
                 self.closing = None;
@@ -4098,7 +4352,9 @@ impl App {
         let name =
             sessions.iter().find(|s| s.id == id).map_or_else(|| format!("#{id}"), |s| format!("#{id} {} · {}", s.command, s.cwd.display()));
         let mut answer = None;
-        chrome::modal(ctx, egui::LayerId::new(egui::Order::Foreground, egui::Id::new("send-ask")));
+        let mut first = None;
+        let layer = egui::LayerId::new(egui::Order::Foreground, egui::Id::new("send-ask"));
+        chrome::modal(ctx, layer);
         egui::Area::new(egui::Id::new("send-ask"))
             .order(egui::Order::Foreground)
             .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
@@ -4129,6 +4385,7 @@ impl App {
                             )
                             .fill(chrome::red());
                             let (allow, refuse) = chrome::foot(ui, allow, true, tr("dialog.send_refuse"));
+                            first = Some(refuse.id);
                             if allow.clicked() {
                                 answer = Some(true);
                             }
@@ -4138,6 +4395,8 @@ impl App {
                         });
                     });
             });
+        // The keys stay in the ask, on Refuse first (#110).
+        chrome::hold_tab(ctx, layer, first);
         if let Some(allow) = answer {
             client.decide(n, allow);
         }
@@ -5032,6 +5291,25 @@ impl App {
         resp.on_hover_text(chrome::state_words(info, chrome::now_ms()))
     }
 
+    /// Another tab dragged from the sidebar over a pane here: the side of the
+    /// pane it would join on, shown as the half it would take (`join_target`
+    /// keeps it for the release, which the sidebar sees).
+    fn join_preview(&mut self, ui: &egui::Ui, w: &Workspace, rects: &[(SessionId, Rect)]) {
+        self.join_target = None;
+        if !self.dragging_tab.is_some_and(|t| t != w.id) {
+            return;
+        }
+        let Some(p) = ui.ctx().pointer_latest_pos() else { return };
+        let Some((id, r)) = rects.iter().find(|(_, r)| from_rect(*r).contains(p)) else { return };
+        let (r, toward) = (from_rect(*r), drop::side(from_rect(*r), p));
+        let show = drop::preview(r, drop::Zone::Side(toward)).shrink(2.0);
+        let painter = ui.painter();
+        painter.rect_filled(show, 6.0, chrome::cyan().gamma_multiply(0.16));
+        painter.rect_stroke(show, 6.0, egui::Stroke::new(1.5, chrome::cyan()), egui::StrokeKind::Inside);
+        painter.text(show.center(), egui::Align2::CENTER_CENTER, tr("pane.join_here"), egui::FontId::proportional(13.0), chrome::cyan());
+        self.join_target = Some((*id, toward));
+    }
+
     /// A pane carried by its header: where it would land, shown on the pane
     /// under the pointer, and on release the tab's new shape (1f).
     fn carry(&mut self, ui: &egui::Ui, w: &Workspace, rects: &[(SessionId, Rect)]) {
@@ -5571,6 +5849,7 @@ impl App {
             self.set_focus(w, id);
         }
         self.carry(ui, w, &rects);
+        self.join_preview(ui, w, &rects);
 
         if self.zoom {
             // A pane hidden by the zoom that wants a person: a gold-ringed
@@ -5990,6 +6269,21 @@ fn save_history(list: Vec<String>) {
     });
 }
 
+/// A tab's splits as `--keys` writes them, the sessions' numbers in it:
+/// `right 0.35 (1, down 0.35 (2, 3))`.
+fn shape(n: &Node<SessionId>) -> String {
+    match n {
+        Node::Leaf(id) => id.to_string(),
+        Node::Split { dir, ratio, first, second } => {
+            let dir = match dir {
+                Dir::Right => "right",
+                Dir::Down => "down",
+            };
+            format!("{dir} {ratio:.2} ({}, {})", shape(first), shape(second))
+        }
+    }
+}
+
 fn escape_line(s: &str) -> String {
     s.replace('\\', "\\\\").replace('\n', "\\n").replace('\r', "")
 }
@@ -6095,8 +6389,38 @@ fn last_lines(rows: &[Vec<ito_pane::CellView>], n: usize) -> Vec<String> {
     lines.split_off(from)
 }
 
+/// Whether the window is looked at. Away when either says so: winit's
+/// event (`focused`, from the window losing the keys) and the window's own
+/// answer, read each frame. With the second alone, nvim heard no `\e[O` on
+/// Alt+Tab (the real machine). Away too while minimized, whatever they say.
+/// `raw`, as a pass with no ui (minimized) brings only that up to date.
+fn looked_at(ctx: &egui::Context) -> bool {
+    ctx.input(|i| i.raw.focused && i.viewport().focused.unwrap_or(true) && i.viewport().visible() != Some(false))
+}
+
+/// Hold a close back for the question about the running sessions. Closed
+/// while minimized (from the taskbar), the window comes back to show it.
+fn hold_close(ctx: &egui::Context) {
+    ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
+    if ctx.input(|i| i.viewport().visible() == Some(false)) {
+        ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(false));
+        ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
+    }
+}
+
 fn quiet(i: &Info, muted_tags: &[String]) -> bool {
     i.muted || i.tags.iter().any(|t| muted_tags.contains(t))
+}
+
+/// `tsumugi focus` to a minimized window, which draws no frame: the
+/// client's reader thread brings it back (Windows).
+fn raise_on_show(client: &Client, window: Option<isize>) {
+    #[cfg(windows)]
+    if let Some(h) = window {
+        client.on_show(move || alert::restore_window(h));
+    }
+    #[cfg(not(windows))]
+    let _ = (client, window);
 }
 
 /// The window's own handle, for the taskbar's number (Windows).
@@ -6109,6 +6433,17 @@ fn window_handle(cc: &eframe::CreationContext<'_>) -> Option<isize> {
 }
 
 impl eframe::App for App {
+    /// The window's place now, held still or not, so a move just before
+    /// closing is kept.
+    fn on_exit(&mut self) {
+        if !winplace::wanted(&self.settings_now.window.quake) {
+            return;
+        }
+        if let Some(place) = &mut self.place {
+            place.close(ito_common::window::Seen::of(&self.ctx));
+        }
+    }
+
     fn raw_input_hook(&mut self, ctx: &egui::Context, raw: &mut egui::RawInput) {
         // A script's keys first, to take the road a real key takes.
         if let Some(d) = self.script.as_mut().and_then(|s| s.input(ctx, raw)) {
@@ -6125,6 +6460,20 @@ impl eframe::App for App {
         } else {
             visuals.panel_fill.to_normalized_gamma_f32()
         }
+    }
+
+    /// Minimized, eframe draws no frame and calls only this: the server
+    /// still hears that the window is away (its webhooks), the notices
+    /// are still told (toasts, sound, `tsumugi focus`), and a close from the
+    /// taskbar still asks about the running sessions or stops them.
+    fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        if ctx.input(|i| i.viewport().visible() != Some(false)) {
+            return; // `ui` follows
+        }
+        let Some(client) = self.client.clone() else { return };
+        let (workspaces, sessions) = (client.workspaces(), client.sessions());
+        self.attend(ctx, &client, &workspaces, &sessions);
+        self.close_asked(ctx, &client, &sessions);
     }
 
     fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
@@ -6169,23 +6518,40 @@ impl App {
             self.say(e, true);
         }
         for d in std::mem::take(&mut self.script_todo) {
-            let Some(script) = &self.script else { return };
+            let Some(script) = &mut self.script else { return };
             let (path, tail) = match d {
-                keyscript::Do::State(name) => (Some(script.dir.join(format!("{name}.txt"))), ""),
-                keyscript::Do::Done => (script.done.clone(), "keys: done\n"),
+                keyscript::Do::State(name) => (Some(script.dir.join(format!("{name}.txt"))), String::new()),
+                keyscript::Do::Done => (script.done.clone(), "keys: done\n".to_owned()),
                 // tsumugi defines no readings of its own.
-                keyscript::Do::Read { .. } => (None, ""),
+                keyscript::Do::Read { .. } => (None, String::new()),
                 keyscript::Do::Quit => {
                     // Asked for by the script: no question about the
-                    // sessions still running.
+                    // sessions still running. No later frame writes the
+                    // done file, so this one says how it ended (the runner
+                    // has finished; no stall report comes after).
+                    let tail = keyscript::quit_report(script.left());
                     self.close_ok = true;
                     ctx.send_viewport_cmd(egui::ViewportCommand::Close);
-                    (None, "")
+                    (script.done.clone(), tail)
                 }
             };
             if let Some(path) = path {
                 if let Err(e) = std::fs::write(&path, format!("{}{tail}", self.script_state(ctx))) {
                     eprintln!("tsumugi --keys: {}: {e}", path.display());
+                }
+            }
+        }
+        // Closed from outside while the script ran (the title bar's x,
+        // Alt+F4): no later frame comes to write the file. A close the
+        // question about running sessions held back is not one; that is the
+        // only close cancelled (`close_asked`), so a new `CancelClose`
+        // elsewhere has to set `closing` too.
+        if ctx.input(|i| i.viewport().close_requested()) && self.closing.is_none() {
+            if let Some(script) = self.script.as_mut().filter(|s| s.running()) {
+                let tail = keyscript::closed_report(script.left());
+                script.finish();
+                if let Some(done) = script.done.clone() {
+                    let _ = std::fs::write(done, self.script_state(ctx) + &tail);
                 }
             }
         }
@@ -6200,8 +6566,10 @@ impl App {
         let find = self.find.as_ref().is_some_and(find::Bar::keyed);
         // In the order they are drawn over each other, the top first.
         let overlays = [
-            (self.closing.is_some(), "close"),
             (self.paste_ask.is_some(), "paste"),
+            (self.send_asking(), "send"),
+            (self.closing.is_some(), "close"),
+            (self.worktree_ask.is_some(), "worktree"),
             (self.prefs.is_some(), "settings"),
             (self.help.is_some(), "help"),
             (self.search.is_some(), "palette"),
@@ -6225,6 +6593,7 @@ impl App {
         let mut s = format!("focus: {focus}\noverlay: {overlay}\nscale: {}%\n", (ctx.zoom_factor() * 100.0).round());
         s += &format!("tabs: {}\n", workspaces.len());
         s += &format!("panes: {}\n", shown.map_or(0, |w| w.layout.leaves().len()));
+        s += &format!("shape: {}\n", shown.map_or_else(String::new, |w| shape(&w.layout)));
         s += &format!("zoom: {}\n", if self.zoom { "on" } else { "off" });
         s += &format!("title: {}\n", keyscript::one_line(&self.title));
         if let Some(e) = &self.failed {
@@ -6281,6 +6650,142 @@ impl App {
             || self.bell_open.is_some()
             || self.closing.is_some()
             || self.paste_ask.is_some()
+            || self.worktree_ask.is_some()
+            || self.send_asking()
+    }
+
+    /// An MCP client's ask to type into a session is on the screen.
+    fn send_asking(&self) -> bool {
+        self.client.as_ref().is_some_and(|c| !c.asks().is_empty())
+    }
+
+    /// Whether the window is looked at, told to the server (a webhook
+    /// waits while someone looks), and what the new notices ask for:
+    /// toasts, the taskbar's number, sound. Each frame, and from `logic`
+    /// while the window is minimized and no frame is drawn.
+    fn attend(&mut self, ctx: &egui::Context, client: &Client, workspaces: &[Workspace], sessions: &[Info]) -> bool {
+        let here = looked_at(ctx);
+        if self.focus_sent != Some(here) {
+            client.focus(here);
+            self.focus_sent = Some(here);
+        }
+        let (anyone, teller) = client.attention();
+        let muted_tags = client.muted_tags();
+        let muted: std::collections::HashSet<SessionId> = sessions.iter().filter(|i| quiet(i, &muted_tags)).map(|i| i.id).collect();
+        let places: std::collections::HashMap<SessionId, String> =
+            sessions.iter().map(|i| (i.id, i.project.file_name().map(|f| f.to_string_lossy().into_owned()).unwrap_or_default())).collect();
+        // What each run has used so far, from the conversation's totals.
+        let used = self.usage.get();
+        let mut spent: std::collections::HashMap<SessionId, String> = std::collections::HashMap::new();
+        for i in sessions.iter().filter(|i| i.claude && !i.conversation.is_empty()) {
+            let now = (
+                used.conversations.get(&i.conversation).map_or(0, usage::Tokens::total),
+                used.costs.get(&i.conversation).copied().unwrap_or(0.0),
+            );
+            if i.state == State::Running {
+                self.run_base.entry(i.id).or_insert(now);
+            }
+            if let Some(&(tokens, cost)) = self.run_base.get(&i.id) {
+                let tokens = now.0.saturating_sub(tokens);
+                let cost = (now.1 - cost).max(0.0);
+                if tokens > 0 {
+                    spent.insert(
+                        i.id,
+                        if cost > 0.0 {
+                            format!("{} tokens · ${cost:.2}", usage::short(tokens))
+                        } else {
+                            format!("{} tokens", usage::short(tokens))
+                        },
+                    );
+                }
+            }
+        }
+        let seen = alert::Seen { looking: here || anyone, teller, muted: &muted, places: &places, spent: &spent };
+        for (id, reply) in self.teller.clicked() {
+            match reply {
+                alert::Reply::Open => {
+                    // A notification clicked: its pane, in front.
+                    self.go_to(client, workspaces, id);
+                    ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(false));
+                    ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
+                }
+                // An answer from the toast, only to a session still waiting:
+                // the prompt it was about may be gone by now.
+                alert::Reply::Allow | alert::Reply::Deny => {
+                    let waiting =
+                        sessions.iter().find(|i| i.id == id).is_some_and(|i| matches!(i.state, State::Waiting | State::MaybeWaiting));
+                    if waiting {
+                        client.input(id, if reply == alert::Reply::Allow { vec![13] } else { vec![0x1b] });
+                    }
+                }
+            }
+        }
+        alert::set_answer_buttons(self.settings_now.notify.answer_buttons);
+        alert::set_stay(self.settings_now.notify.stay);
+        let notices = client.notices();
+        if self.key_log {
+            // `TSUMUGI_KEYLOG=1` also says why a notice was or was not
+            // told, once for each new one (a toast that never came).
+            static LOGGED: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+            let unread = notices.iter().filter(|n| !n.read).count();
+            if LOGGED.swap(unread, std::sync::atomic::Ordering::Relaxed) != unread {
+                let (here_now, teller_now) = (here, seen.teller);
+                let ids: Vec<(u64, bool)> = notices.iter().map(|n| (n.id, n.read)).collect();
+                eprintln!("alert: notices (id, read) {ids:?}, next {:?}", self.alerts.mark_next());
+                eprintln!(
+                    "alert: {unread} unread; looking {} (here {here_now}, anyone {anyone}), teller {teller_now}, muted {:?}, notify rules waiting {} error {} done {}, focus_mode {} quiet_time {}",
+                    seen.looking,
+                    seen.muted,
+                    self.alerts.rules.notify.waiting,
+                    self.alerts.rules.notify.error,
+                    self.alerts.rules.notify.done,
+                    self.settings_now.notify.focus_mode,
+                    sound::quiet_time()
+                );
+            }
+        }
+        let outs = self.alerts.decide(&notices, seen);
+        if self.key_log && !outs.is_empty() {
+            eprintln!("alert: asked for {outs:?}");
+        }
+        self.run_base.retain(|id, _| sessions.iter().any(|i| i.id == *id && i.state == State::Running));
+        // Focus mode on: the number on the taskbar only (`[notify] focus_mode`).
+        let hush = !outs.is_empty() && self.settings_now.notify.focus_mode && sound::quiet_time();
+        for out in outs {
+            match out {
+                alert::Out::Badge(..) => self.teller.send(out),
+                _ if hush => {}
+                alert::Out::Flash => {
+                    ctx.send_viewport_cmd(egui::ViewportCommand::RequestUserAttention(egui::UserAttentionType::Informational))
+                }
+                alert::Out::Sound(error) => {
+                    let n = &self.settings_now.notify;
+                    sound::play(if error { &n.sound_error } else { &n.sound_waiting });
+                }
+                out => self.teller.send(out),
+            }
+        }
+        // The estimated cost past its line: a toast here, and the system's
+        // notification for a window not looked at.
+        let n = &self.settings_now.notify;
+        let (day, block) = (n.spend_day, n.spend_block);
+        if day > 0 || block > 0 {
+            for words in self.spend.check(&self.usage.get(), day, block) {
+                if !here {
+                    self.teller.send(alert::Out::Notify { session: 0, title: "tsumugi".into(), body: words.clone(), state: None });
+                }
+                self.say(words, false);
+            }
+        }
+        // `tsumugi focus`: to the front, with that session's tab shown and
+        // its pane given the keys.
+        for id in client.take_shows() {
+            self.showing = Some((id, std::time::Instant::now()));
+            ctx.send_viewport_cmd(egui::ViewportCommand::Visible(true));
+            ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(false));
+            ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
+        }
+        here
     }
 
     fn frame(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
@@ -6300,7 +6805,10 @@ impl App {
             || self.renaming_card.is_some()
             || self.noting_card.is_some()
             || self.find.as_ref().is_some_and(find::Bar::keyed)
-            || self.paste_ask.is_some();
+            || self.paste_ask.is_some()
+            || self.closing.is_some()
+            || self.worktree_ask.is_some()
+            || self.send_asking();
         keep_tab_for_pane(&ctx, own);
         self.poll_machines();
         let Some(client) = self.client.clone() else {
@@ -6476,123 +6984,7 @@ impl App {
                     });
             });
         }
-        // Away when either says so: winit's event (`i.focused`, from the
-        // window losing the keys) and the window's own answer, read each
-        // frame. With the second alone, nvim heard no `\e[O` on Alt+Tab (the
-        // real machine).
-        let here = ctx.input(|i| i.focused && i.viewport().focused.unwrap_or(true));
-        if self.focus_sent != Some(here) {
-            client.focus(here);
-            self.focus_sent = Some(here);
-        }
-        let (anyone, teller) = client.attention();
-        let muted_tags = client.muted_tags();
-        let muted: std::collections::HashSet<SessionId> = sessions.iter().filter(|i| quiet(i, &muted_tags)).map(|i| i.id).collect();
-        let places: std::collections::HashMap<SessionId, String> =
-            sessions.iter().map(|i| (i.id, i.project.file_name().map(|f| f.to_string_lossy().into_owned()).unwrap_or_default())).collect();
-        // What each run has used so far, from the conversation's totals.
-        let used = self.usage.get();
-        let mut spent: std::collections::HashMap<SessionId, String> = std::collections::HashMap::new();
-        for i in sessions.iter().filter(|i| i.claude && !i.conversation.is_empty()) {
-            let now = (
-                used.conversations.get(&i.conversation).map_or(0, usage::Tokens::total),
-                used.costs.get(&i.conversation).copied().unwrap_or(0.0),
-            );
-            if i.state == State::Running {
-                self.run_base.entry(i.id).or_insert(now);
-            }
-            if let Some(&(tokens, cost)) = self.run_base.get(&i.id) {
-                let tokens = now.0.saturating_sub(tokens);
-                let cost = (now.1 - cost).max(0.0);
-                if tokens > 0 {
-                    spent.insert(
-                        i.id,
-                        if cost > 0.0 {
-                            format!("{} tokens · ${cost:.2}", usage::short(tokens))
-                        } else {
-                            format!("{} tokens", usage::short(tokens))
-                        },
-                    );
-                }
-            }
-        }
-        let seen = alert::Seen { looking: here || anyone, teller, muted: &muted, places: &places, spent: &spent };
-        for (id, reply) in self.teller.clicked() {
-            match reply {
-                alert::Reply::Open => {
-                    // A notification clicked: its pane, in front.
-                    self.go_to(&client, &workspaces, id);
-                    ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(false));
-                    ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
-                }
-                // An answer from the toast, only to a session still waiting:
-                // the prompt it was about may be gone by now.
-                alert::Reply::Allow | alert::Reply::Deny => {
-                    let waiting =
-                        sessions.iter().find(|i| i.id == id).is_some_and(|i| matches!(i.state, State::Waiting | State::MaybeWaiting));
-                    if waiting {
-                        client.input(id, if reply == alert::Reply::Allow { vec![13] } else { vec![0x1b] });
-                    }
-                }
-            }
-        }
-        alert::set_answer_buttons(self.settings_now.notify.answer_buttons);
-        alert::set_stay(self.settings_now.notify.stay);
-        let notices = client.notices();
-        if self.key_log {
-            // `TSUMUGI_KEYLOG=1` also says why a notice was or was not
-            // told, once for each new one (a toast that never came).
-            static LOGGED: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
-            let unread = notices.iter().filter(|n| !n.read).count();
-            if LOGGED.swap(unread, std::sync::atomic::Ordering::Relaxed) != unread {
-                let (here_now, teller_now) = (here, seen.teller);
-                let ids: Vec<(u64, bool)> = notices.iter().map(|n| (n.id, n.read)).collect();
-                eprintln!("alert: notices (id, read) {ids:?}, next {:?}", self.alerts.mark_next());
-                eprintln!(
-                    "alert: {unread} unread; looking {} (here {here_now}, anyone {anyone}), teller {teller_now}, muted {:?}, notify rules waiting {} error {} done {}, focus_mode {} quiet_time {}",
-                    seen.looking,
-                    seen.muted,
-                    self.alerts.rules.notify.waiting,
-                    self.alerts.rules.notify.error,
-                    self.alerts.rules.notify.done,
-                    self.settings_now.notify.focus_mode,
-                    sound::quiet_time()
-                );
-            }
-        }
-        let outs = self.alerts.decide(&notices, seen);
-        if self.key_log && !outs.is_empty() {
-            eprintln!("alert: asked for {outs:?}");
-        }
-        self.run_base.retain(|id, _| sessions.iter().any(|i| i.id == *id && i.state == State::Running));
-        // Focus mode on: the number on the taskbar only (`[notify] focus_mode`).
-        let hush = !outs.is_empty() && self.settings_now.notify.focus_mode && sound::quiet_time();
-        for out in outs {
-            match out {
-                alert::Out::Badge(..) => self.teller.send(out),
-                _ if hush => {}
-                alert::Out::Flash => {
-                    ctx.send_viewport_cmd(egui::ViewportCommand::RequestUserAttention(egui::UserAttentionType::Informational))
-                }
-                alert::Out::Sound(error) => {
-                    let n = &self.settings_now.notify;
-                    sound::play(if error { &n.sound_error } else { &n.sound_waiting });
-                }
-                out => self.teller.send(out),
-            }
-        }
-        // The estimated cost past its line: a toast here, and the system's
-        // notification for a window not looked at.
-        let n = &self.settings_now.notify;
-        let (day, block) = (n.spend_day, n.spend_block);
-        if day > 0 || block > 0 {
-            for words in self.spend.check(&self.usage.get(), day, block) {
-                if !here {
-                    self.teller.send(alert::Out::Notify { session: 0, title: "tsumugi".into(), body: words.clone(), state: None });
-                }
-                self.say(words, false);
-            }
-        }
+        let here = self.attend(&ctx, &client, &workspaces, &sessions);
         let current = self.current(&workspaces);
         // A program that asked (vim, nvim, tmux) hears when its pane gains
         // and loses the keys: another pane focused, another tab, or the
@@ -6658,7 +7050,10 @@ impl App {
                 || self.renaming_card.is_some()
                 || self.noting_card.is_some()
                 || self.find.as_ref().is_some_and(find::Bar::keyed)
-                || self.paste_ask.is_some();
+                || self.paste_ask.is_some()
+                || self.closing.is_some()
+                || self.worktree_ask.is_some()
+                || self.send_asking();
             if self.key_log {
                 // `TSUMUGI_KEYLOG=1`: every key press as the window gets it,
                 // to see on a real machine why a key does nothing.
@@ -6790,7 +7185,7 @@ impl App {
                             copymode::Step::PageDown => ito_pane::Pane::scroll(pane, Scroll::PageDown),
                             copymode::Step::Top => ito_pane::Pane::scroll(pane, Scroll::Top),
                             copymode::Step::Bottom => ito_pane::Pane::scroll(pane, Scroll::Bottom),
-                            copymode::Step::Select { cell, start, right } => ito_pane::Pane::select(pane, cell, right, start),
+                            copymode::Step::Select { cell, start } => ito_pane::Pane::select_cells(pane, cell, start),
                             copymode::Step::Unselect => ito_pane::Pane::clear_selection(pane),
                             // A server's pane answers through take_clipboard.
                             copymode::Step::Copy => {
@@ -7581,6 +7976,7 @@ impl App {
                 // server): every tab comes back at once, with no Welcome
                 // back to answer again.
                 self.restore = if restore.is_some() && client.restore().unwrap_or(0) > 0 { None } else { restore };
+                raise_on_show(&client, self.window);
                 self.client = Some(client);
                 self.failed = None;
             }
@@ -7596,9 +7992,63 @@ fn web_dir() -> Option<std::path::PathBuf> {
     Some(ito_common::env_dir("TSUMUGI_STATE_HOME").or_else(|| ito_common::state_dir("tsumugi"))?.join("webview"))
 }
 
+/// What a saved layout starts in the pane of session `i`: Claude Code when
+/// its hooks named a conversation or its process was seen, else a shell.
+/// The process counts because the hooks may not have run yet (#116).
+fn layout_pane(i: Option<&Info>) -> layouts::Pane {
+    match i {
+        Some(i) if i.claude || i.agent == "claude" => layouts::Pane::of(newsession::Start::Claude),
+        _ => layouts::Pane::of(newsession::Start::Shell),
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{escape_line, json_string, keep_tab_for_pane, unescape_line, View};
+    use super::{escape_line, json_string, keep_tab_for_pane, layout_pane, shape, unescape_line, View};
+
+    #[test]
+    fn a_claude_pane_is_saved_as_claude_before_its_hooks_run() {
+        use crate::newsession::Start;
+        let mut i = tsumugi_mux::Info {
+            id: 1,
+            cwd: "/p".into(),
+            title: "claude".into(),
+            command: "/bin/bash".into(),
+            state: tsumugi_mux::State::Running,
+            note: String::new(),
+            since_ms: 0,
+            branch: String::new(),
+            project: "/p".into(),
+            muted: false,
+            tags: vec![],
+            claude: false,
+            conversation: String::new(),
+            charset: String::new(),
+            agent: String::new(),
+            ports: Vec::new(),
+            recording: String::new(),
+            logging: String::new(),
+            read_only: false,
+            profile: String::new(),
+        };
+        assert_eq!(layout_pane(Some(&i)).start, Start::Shell, "a plain shell");
+        i.agent = "claude".into();
+        assert_eq!(layout_pane(Some(&i)).start, Start::Claude, "seen by its process, no hook yet");
+        i.agent = "codex".into();
+        assert_eq!(layout_pane(Some(&i)).start, Start::Shell, "another agent has no start word");
+        i.claude = true;
+        assert_eq!(layout_pane(Some(&i)).start, Start::Claude, "named by its hooks");
+        assert_eq!(layout_pane(None).start, Start::Shell, "a pane whose session is gone");
+    }
+
+    #[test]
+    fn the_keys_state_writes_a_tabs_splits() {
+        use ito_layout::{Dir, Node};
+        let split = |dir, ratio, first, second| Node::Split { dir, ratio, first: Box::new(first), second: Box::new(second) };
+        let tree = split(Dir::Right, 0.35, Node::Leaf(1), split(Dir::Down, 0.35, Node::Leaf(2), Node::Leaf(3)));
+        assert_eq!(shape(&tree), "right 0.35 (1, down 0.35 (2, 3))");
+        assert_eq!(shape(&Node::Leaf(7)), "7");
+    }
 
     #[test]
     fn moving_the_keys_keeps_the_comments_above_them() {
@@ -7706,5 +8156,57 @@ mod tests {
         let event = r#"{"session_id":"x","hook_event_name":"Notification","message":"Claude needs your \"OK\"\u3002"}"#;
         assert_eq!(json_string(event, "message").as_deref(), Some("Claude needs your \"OK\"\u{3002}"));
         assert_eq!(json_string(event, "missing"), None);
+    }
+
+    /// The window as eframe hands it over.
+    fn window(focused: bool, minimized: bool) -> egui::RawInput {
+        let info = egui::ViewportInfo { focused: Some(focused), minimized: Some(minimized), occluded: Some(false), ..Default::default() };
+        egui::RawInput { focused, viewports: std::iter::once((egui::ViewportId::ROOT, info)).collect(), ..Default::default() }
+    }
+
+    fn draw(ctx: &egui::Context, input: egui::RawInput) {
+        ctx.run_ui(input, |_| {}).textures_delta.clear();
+    }
+
+    #[test]
+    fn a_minimized_window_is_not_looked_at() {
+        let ctx = egui::Context::default();
+        draw(&ctx, window(true, false));
+        assert!(super::looked_at(&ctx));
+        // Minimized, eframe calls only `logic`, and the input past the
+        // window's state is the last frame's: `focused` still says looked at.
+        let _ = ctx.run_logic(&window(false, true), |ctx| {
+            assert!(ctx.input(|i| i.focused));
+            assert!(!super::looked_at(ctx), "the server would keep the webhooks back (#169)");
+        });
+        let _ = ctx.run_logic(&window(true, true), |ctx| assert!(!super::looked_at(ctx), "minimized with the keys"));
+        draw(&ctx, window(true, false));
+        assert!(super::looked_at(&ctx));
+        draw(&ctx, window(false, false));
+        assert!(!super::looked_at(&ctx), "behind another window");
+    }
+
+    #[test]
+    fn a_close_while_minimized_is_held_for_the_question() {
+        use egui::ViewportCommand as C;
+        let ctx = egui::Context::default();
+        draw(&ctx, window(true, false));
+        // Closed from the taskbar while minimized: eframe calls only
+        // `logic`, and closes unless that answers `CancelClose`.
+        let mut closed = window(false, true);
+        closed.viewports.get_mut(&egui::ViewportId::ROOT).expect("root").events.push(egui::ViewportEvent::Close);
+        let out = ctx.run_logic(&closed, |ctx| {
+            assert!(ctx.input(|i| i.viewport().close_requested()), "logic hears the close");
+            super::hold_close(ctx);
+        });
+        let commands = &out.viewport_commands[&egui::ViewportId::ROOT];
+        assert!(commands.contains(&C::CancelClose), "the window would close without the question");
+        assert!(commands.contains(&C::Minimized(false)) && commands.contains(&C::Focus), "the question would stay out of sight");
+        // In front, only held back.
+        let mut closed = window(true, false);
+        closed.viewports.get_mut(&egui::ViewportId::ROOT).expect("root").events.push(egui::ViewportEvent::Close);
+        let mut out = ctx.run_ui(closed, |ui| super::hold_close(ui.ctx()));
+        out.textures_delta.clear();
+        assert_eq!(out.viewport_output[&egui::ViewportId::ROOT].commands, [C::CancelClose]);
     }
 }

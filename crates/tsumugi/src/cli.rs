@@ -20,9 +20,15 @@ pub struct New {
     /// The command typed into the new shell (`claude`), from after `--`:
     /// its words, quoted there for the shell (one word is a line).
     pub command: Vec<String>,
+    /// Start it in a new git worktree on this branch (made beside the
+    /// repository, as the window's "in a worktree" does).
+    pub worktree: Option<String>,
+    /// What the worktree's new branch is made from (else the current commit).
+    pub from: Option<String>,
 }
 
-pub const NEW_USAGE: &str = "tsumugi new [FOLDER] [--tag TAG]... [--name NAME] [--at N] [-- COMMAND ARGS...]";
+pub const NEW_USAGE: &str =
+    "tsumugi new [FOLDER] [--tag TAG]... [--name NAME] [--at N] [--worktree BRANCH [--from REF]] [-- COMMAND ARGS...]";
 
 pub fn parse_new(args: &[String]) -> Result<New, String> {
     let mut out = New::default();
@@ -44,10 +50,21 @@ pub fn parse_new(args: &[String]) -> Result<New, String> {
                 Some(n) => out.at = Some(n),
                 None => return Err("--at takes a place, 1 for the first tab".into()),
             },
+            "--worktree" | "-w" => match it.next().filter(|b| !b.trim().is_empty() && !b.starts_with('-')) {
+                Some(b) => out.worktree = Some(b.trim().to_owned()),
+                None => return Err("--worktree takes a branch".into()),
+            },
+            "--from" => match it.next().filter(|r| !r.trim().is_empty() && !r.starts_with('-')) {
+                Some(r) => out.from = Some(r.trim().to_owned()),
+                None => return Err("--from takes a commit, branch or tag".into()),
+            },
             s if s.starts_with('-') => return Err(format!("unknown option `{s}`")),
             _ if out.folder.is_none() => out.folder = Some(PathBuf::from(a)),
             _ => return Err(format!("one folder only (`{a}` is a second); a command goes after --")),
         }
+    }
+    if out.from.is_some() && out.worktree.is_none() {
+        return Err("--from goes with --worktree".into());
     }
     Ok(out)
 }
@@ -65,10 +82,26 @@ pub fn new(client: &Client, n: New) -> Result<SessionId, String> {
     if !folder.is_dir() {
         return Err(format!("{}: not a folder", folder.display()));
     }
+    // The worktree first; the session starts in it, and the window's list
+    // has it, so the window asks whether to remove it when its last session ends.
+    let folder = match &n.worktree {
+        Some(branch) => crate::worktree::add_from(&folder, branch, n.from.as_deref())?,
+        None => folder,
+    };
     let shell = None;
-    let pane = client
-        .spawn_typing(folder, shell, Size::new(80, 24), (8, 16), Place::NewWorkspace, n.command)
-        .map_err(|e| format!("the session did not start: {e}"))?;
+    let pane = match client.spawn_typing(folder.clone(), shell, Size::new(80, 24), (8, 16), Place::NewWorkspace, n.command) {
+        Ok(pane) => pane,
+        Err(e) => {
+            // No session will ever end in the worktree just made, so no
+            // window would ask to remove it: take it back here.
+            if n.worktree.is_some() {
+                if let Err(w) = crate::worktree::remove(&folder) {
+                    return Err(format!("the session did not start: {e} (the worktree {} stays: {w})", folder.display()));
+                }
+            }
+            return Err(format!("the session did not start: {e}"));
+        }
+    };
     let id = pane.id();
     for t in n.tags.iter().filter_map(|t| tsumugi_mux::proto::tag_name(t)) {
         client.tag(vec![id], t, true);
@@ -267,6 +300,13 @@ mod tests {
         assert_eq!(parse_new(&[]).unwrap(), New::default());
         assert!(parse_new(&a("a b")).is_err(), "two folders");
         assert!(parse_new(&a("--tag")).is_err());
+        let n = parse_new(&a("~/dev/filer --worktree fix/login --from origin/main -- claude")).unwrap();
+        assert_eq!((n.worktree.as_deref(), n.from.as_deref()), (Some("fix/login"), Some("origin/main")));
+        assert_eq!(parse_new(&a("-w side")).unwrap().worktree.as_deref(), Some("side"));
+        assert!(parse_new(&a("--worktree")).is_err());
+        assert!(parse_new(&a("--worktree --from main")).is_err(), "an option is not a branch");
+        assert!(parse_new(&a("--from main")).is_err(), "--from alone");
+        assert!(parse_new(&a("--worktree side --from")).is_err());
     }
 
     #[test]

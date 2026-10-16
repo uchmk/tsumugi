@@ -1280,7 +1280,18 @@ pub fn modal(ctx: &egui::Context, layer: egui::LayerId) {
 /// nothing, or on a control behind it (the panel's last control and Tab came
 /// round to the window's first), they go to `first`.
 pub fn hold_tab(ctx: &egui::Context, layer: egui::LayerId, first: Option<egui::Id>) {
-    let inside = ctx.memory(|m| m.focused()).and_then(|id| ctx.read_response(id)).is_some_and(|r| r.layer_id == layer);
+    let focused = ctx.memory(|m| m.focused());
+    // Tab past the last control leaves the keys on nothing for one frame:
+    // egui gives them to the next control that wants them in the frame after
+    // (it draws one at once after a key), the first of a modal panel's.
+    // Taking them to `first` now made that next one the second. A panel
+    // that is not modal still takes them now: the next control would be one
+    // behind it, such as the pane.
+    let modal = ctx.memory(|m| m.top_modal_layer()) == Some(layer);
+    if modal && focused.is_none() && ctx.input(|i| i.key_pressed(egui::Key::Tab)) {
+        return;
+    }
+    let inside = focused.and_then(|id| ctx.read_response(id)).is_some_and(|r| r.layer_id == layer);
     if let (false, Some(id)) = (inside, first) {
         ctx.memory_mut(|m| m.request_focus(id));
     }
@@ -1741,5 +1752,49 @@ mod tests {
         assert_eq!(super::tags_that_fit(&w, 3, 30.0, more), (0, 20.0));
         assert_eq!(super::tags_that_fit(&w, 3, 10.0, more), (0, 0.0));
         assert_eq!(super::tags_that_fit(&[], 3, 10.0, more), (0, 0.0));
+    }
+
+    /// A modal ask's two buttons (Cancel and Close, Keep and Remove): the
+    /// first holds the keys when it opens, and Tab and Shift+Tab take them
+    /// round one button at a time, never to the field behind (#110).
+    #[test]
+    fn hold_tab_goes_round_one_at_a_time() {
+        let ctx = egui::Context::default();
+        let layer = egui::LayerId::new(egui::Order::Foreground, egui::Id::new("ask"));
+        let behind = egui::Id::new("behind");
+        let mut text = String::new();
+        let mut frame = |events: Vec<egui::Event>| {
+            let input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(800.0, 600.0))),
+                events,
+                ..Default::default()
+            };
+            let mut ids = (behind, behind);
+            let mut out = ctx.run_ui(input, |ui| {
+                ui.add(egui::TextEdit::singleline(&mut text).id(behind));
+                let ctx = ui.ctx().clone();
+                super::modal(&ctx, layer);
+                egui::Area::new(layer.id).order(egui::Order::Foreground).show(&ctx, |ui| {
+                    ids = (ui.button("Stay").id, ui.button("Go").id);
+                });
+                super::hold_tab(&ctx, layer, Some(ids.0));
+            });
+            out.textures_delta.clear();
+            ids
+        };
+        frame(Vec::new());
+        let (stay, go) = frame(Vec::new());
+        assert_eq!(ctx.memory(|m| m.focused()), Some(stay), "the first button holds the keys when the ask opens");
+        let tab = |modifiers| {
+            let key = |pressed| egui::Event::Key { key: egui::Key::Tab, physical_key: None, pressed, repeat: false, modifiers };
+            vec![key(true), key(false)]
+        };
+        for (shift, want) in [(false, go), (false, stay), (false, go), (true, stay), (true, go), (true, stay)] {
+            let modifiers = if shift { egui::Modifiers::SHIFT } else { egui::Modifiers::NONE };
+            frame(tab(modifiers));
+            // egui draws once more after a key.
+            frame(Vec::new());
+            assert_eq!(ctx.memory(|m| m.focused()), Some(want), "Tab (shift {shift})");
+        }
     }
 }

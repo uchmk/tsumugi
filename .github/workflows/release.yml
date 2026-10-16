@@ -76,9 +76,9 @@ jobs:
       - name: Build ARM64
         run: cargo build --release --locked -p tsumugi --target aarch64-pc-windows-msvc
 
-      # A zip of one folder: tsumugi.exe with the newer ConPTY beside it
-      # (scripts/fetch-conpty.ps1 says why the one in Windows breaks lazygit
-      # and others) and its licence notice.
+      # A zip of one folder: tsumugi.exe with tsumugi.com (the console front)
+      # and the newer ConPTY beside it (scripts/fetch-conpty.ps1 says why the
+      # one in Windows breaks lazygit and others) and its licence notice.
       - name: Package the binaries
         shell: pwsh
         run: |
@@ -90,6 +90,9 @@ jobs:
             $stage = "stage/$name"
             New-Item -ItemType Directory -Force $stage | Out-Null
             Copy-Item "target/$target/release/tsumugi.exe" $stage
+            # The console front (v0.113.0): `$id = tsumugi new` and `tsumugi ls`
+            # typed in PowerShell find tsumugi.com first and are waited for.
+            Copy-Item "target/$target/release/tsumugi-com.exe" "$stage/tsumugi.com"
             pwsh -File scripts/fetch-conpty.ps1 -Arch $arch -Dest $stage
             if ($LASTEXITCODE -ne 0) { throw "fetching ConPTY for $arch failed" }
             Compress-Archive -Path $stage -DestinationPath "dist/$name.zip" -Force
@@ -149,9 +152,11 @@ jobs:
 
           The Windows downloads are `.zip`: `tsumugi.exe` comes with `conpty.dll` and
           `OpenConsole.exe`, a newer ConPTY from Microsoft's own package (MIT, notice
-          included). **Keep them together**: without them tsumugi runs on the older ConPTY
-          built into Windows, and programs such as lazygit misread keys. The macOS and
-          Linux downloads are `.tar.gz`, which keeps the executable bit.
+          included), and with `tsumugi.com`, the console front that PowerShell waits for
+          when you type `tsumugi ls` or `$id = tsumugi new`. **Keep them together**:
+          without the ConPTY tsumugi runs on the older one built into Windows, and
+          programs such as lazygit misread keys. The macOS and Linux downloads are
+          `.tar.gz`, which keeps the executable bit.
           NOTE
 
           printf '\n---\n\n%s\n' \

@@ -23,10 +23,16 @@ pub fn zone(r: egui::Rect, at: egui::Pos2) -> Zone {
     if (edge..=1.0 - edge).contains(&x) && (edge..=1.0 - edge).contains(&y) {
         return Zone::Swap;
     }
-    // The nearest edge.
+    Zone::Side(side(r, at))
+}
+
+/// The edge of the pane in `r` nearest `at`, the middle too (a whole tab
+/// dropped on a pane has no swap to make).
+pub fn side(r: egui::Rect, at: egui::Pos2) -> Toward {
+    let x = ((at.x - r.left()) / r.width().max(1.0)).clamp(0.0, 1.0);
+    let y = ((at.y - r.top()) / r.height().max(1.0)).clamp(0.0, 1.0);
     let sides = [(x, Toward::Left), (1.0 - x, Toward::Right), (y, Toward::Up), (1.0 - y, Toward::Down)];
-    let (_, toward) = sides.into_iter().min_by(|a, b| a.0.total_cmp(&b.0)).expect("four sides");
-    Zone::Side(toward)
+    sides.into_iter().min_by(|a, b| a.0.total_cmp(&b.0)).expect("four sides").1
 }
 
 /// The part of `r` the pane would take: all of it for a swap, else the half
@@ -54,6 +60,7 @@ mod tests {
         assert_eq!(zone(r, egui::pos2(490.0, 210.0)), Zone::Side(Toward::Right));
         assert_eq!(zone(r, egui::pos2(300.0, 105.0)), Zone::Side(Toward::Up));
         assert_eq!(zone(r, egui::pos2(300.0, 295.0)), Zone::Side(Toward::Down));
+        assert_eq!(side(r, r.center() + egui::vec2(60.0, 0.0)), Toward::Right, "the middle has a nearest edge too");
         assert_eq!(preview(r, Zone::Side(Toward::Down)), egui::Rect::from_min_size(egui::pos2(100.0, 200.0), egui::vec2(400.0, 100.0)));
     }
 }

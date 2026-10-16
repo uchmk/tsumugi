@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 
 /// Bumped whenever a message changes shape: a client and a server that
 /// disagree say so at `Hello` instead of misreading each other.
-pub const VERSION: u32 = 41;
+pub const VERSION: u32 = 44;
 
 /// A `Hello` with this version asks the server to stop, writing down its
 /// tabs first so the next window can bring them back. `Hello` stays the
@@ -236,6 +236,13 @@ pub enum ToServer {
         start: bool,
         block: bool,
     },
+    /// The keys' selection (copy mode): the whole cell at both ends,
+    /// whichever way it runs (`Pane::select_cells`).
+    SelectCells {
+        id: SessionId,
+        cell: (usize, usize),
+        start: bool,
+    },
     SelectWord {
         id: SessionId,
         cell: (usize, usize),
@@ -315,6 +322,16 @@ pub enum ToServer {
     /// one it was in (a pane dropped on the sidebar).
     OwnTab {
         id: SessionId,
+    },
+    /// Fold the whole tab `from` into the tab holding the pane `into`
+    /// (tmux's `join-pane`): the tab's panes keep their shape, set beside
+    /// that pane (in `dir`, after it or, not `after`, before it), the tab is
+    /// gone, and the keys stay where they were.
+    JoinTab {
+        from: WorkspaceId,
+        into: SessionId,
+        dir: Dir,
+        after: bool,
     },
     /// Record a session into an asciinema `.cast` file at `path` (its
     /// folder made if need be); `None` stops.
@@ -425,6 +442,11 @@ pub enum ToServer {
     Decide {
         n: u64,
         allow: bool,
+    },
+    /// Bring a window to the front with this session's tab shown and its
+    /// pane given the keys (`tsumugi focus`); answered with `Shown`.
+    Show {
+        id: SessionId,
     },
 }
 
@@ -539,4 +561,11 @@ pub enum ToClient {
     },
     /// To the asker: whether the text was typed.
     AskDone(Result<(), String>),
+    /// To the window that had the keys last: come to the front and show
+    /// this session (`ToServer::Show`).
+    Show {
+        id: SessionId,
+    },
+    /// To the one that sent `ToServer::Show`: whether a window was told.
+    Shown(Result<(), String>),
 }

@@ -9,7 +9,7 @@ Claude Code などの AI CLI のセッションを何本も並べて動かすた
 - **uchmk のアプリの共通仕様**（common.toml・設定の画面・テーマ・時計、共有のクレート `ito-common`・`ito-theme`・`ito-prefs`）は
   ito の [docs/common-spec.md](https://github.com/uchmk/ito/blob/main/docs/common-spec.md)。kura（旧 filer）と yagura（旧 mimamori）もこれに従う。仕様を変えたら ito の文書も直す。
 - Cargo の workspace。クレートは `crates/` の下に置く。版はルートの `Cargo.toml` の `[workspace.package]` で 1 つ。
-- **push の前に `scripts/verify.sh` を 1 回回す。**最後の行が `ALL OK: …` なら push してよい（test、clippy を Linux と `x86_64-pc-windows-msvc` の両方で `-D warnings`）。
+- **push の前に `scripts/verify.sh` を 1 回回す。**最後の行が `ALL OK: …` なら push してよい（test、clippy を Linux・`x86_64-pc-windows-msvc`・`aarch64-apple-darwin` の 3 つで `-D warnings`。どの機械からでも 3 つとも回る。Mac の外の macOS は objc2 が C を要るので cargo-zigbuild で（無ければ PyPI から入れる））。
 
 ## 作業ルール
 
@@ -31,6 +31,9 @@ Claude Code などの AI CLI のセッションを何本も並べて動かすた
   持ち主のコメント `回答: …` がいつも優先し、`answered` になる。回答を反映したら issue を閉じる。
 - **`cargo fmt --all` で整形する。**設定は `rustfmt.toml`（`max_width = 140`、`use_small_heuristics = "Max"`。ito・yagura と同じ）。CI と `scripts/verify.sh` が `cargo fmt --all --check` で確かめる。整形だけのコミットは `.git-blame-ignore-revs` に書く。
 - clippy は `--all-targets -- -D warnings` で警告ゼロを保つ。検証は CI と同じ stable で回す。
+  CI の `clippy` も Linux の機械から Linux・`x86_64-pc-windows-msvc`・`aarch64-apple-darwin` の 3 つを見る（macOS は 2026-10-16 から、verify.sh と同じく cargo-zigbuild で）。
+  macOS で C が要るのは objc2-exception-helper（wry が objc2 の `exception` を入れ、`setURLSchemeHandler` の呼び出しを包む）だけ。
+  Rust の代わりは無い（stable の Rust は Objective-C の例外を捕まえられない）ので、Mac の外では zig を C のコンパイラーにする。
 
 ## 共有のクレート（ito）
 
@@ -53,6 +56,8 @@ Claude Code などの AI CLI のセッションを何本も並べて動かすた
   TESTING-CHECKS.md（印を付ける表）を、`make-keycheck` が keys.rs から TESTING-KEYS.md を作る。印（`[x]`・`[~]`）は作り直しても残る。
 - **動きを変えた行は、印を外して（`[ ]` に戻して）から作り直す。**前の動きを確かめた印なので、残すと嘘になる。
 - `scripts/verify.sh` と CI（`checklists.yml`）が `--check` で、表が TESTING.md と keys.rs に追いついているかを見る。
+  TESTING.md の崩れた行（節の中の番号の重なり・制御文字・列の数の合わない行・セルの中の改行）でも落ちる（v0.114.2 から）。
+  `printf '\n'` の `\n` のような文字は、シェルや sed を通さず Edit で書く（本物の改行や BEL になって行が割れる）。
 - `[x]` は実機で確かめた印で、付けてよいのは実機のセッション（Agent）か持ち主だけ。見た目の行は `[~]`（画面の画像で判断した）まで。
 - **文字で確かめられる行（CLI・サーバの出力）は CI に回す。**`crates/tsumugi/tests/cli.rs` にテストを書き、行は TESTING.md の
   「Covered by tests」の表（元の番号・内容・テスト名）に移す。実機の Claude に残すのは窓・キー・トーストなど画面の要る行だけ。
@@ -65,7 +70,7 @@ kura と同じ。`Cargo.toml` の `version` が正、版の繰り上げと CHANG
 ## リリース
 
 - `.github/workflows/release.yml` を Actions タブから `workflow_dispatch` で回し、`tag` に `vX.Y.Z` を渡す（タグが無ければ作られる。
-  クラウドのセッションからタグは push できない）。`Cargo.toml` の版と違えば落ちる。成果物は 6 つ（Windows は ConPTY を同梱した `.zip`、
+  クラウドのセッションからタグは push できない）。`Cargo.toml` の版と違えば落ちる。成果物は 6 つ（Windows は ConPTY と `tsumugi.com` を同梱した `.zip`、
   macOS と Linux は `.tar.gz`）、最後に `release-sums.yml` が SHA-256 の表をノートに足す。
 - ノートは前のタグからの `vX.Y.Z:` のコミットの最初の段落から作る。英語で、それだけで意味が通るように書く。前のリリースのタグができてから次を投げる。
 
@@ -126,5 +131,11 @@ kura と同じ。`Cargo.toml` の `version` が正、版の繰り上げと CHANG
 - **修飾キーの抽象化**: macOS では Cmd、Windows / Linux では Ctrl に差し替えられる形にする。
 - **描画とロジックを分ける**: PTY・キー変換・OSC の解釈・セッションの状態は egui に依らない層に置く。
 - **ディスクやプロセスに触る処理は UI スレッドで実行しない**（ワーカースレッドとチャネル、古い依頼は捨てる）。
+- **`tsumugi.com`（`crates/tsumugi/src/bin/tsumugi-com.rs`、v0.113.0 から）は Windows のコンソールの前段。**中身は ito の `ito_console::front`
+  （v0.114.0 から。kura・yagura・minato・michi と共有）で、tsumugi が持つのはどのコマンドラインが窓を開くか（`OPENS_WINDOW`）だけ。
+  窓を開くコマンド（引数なし・`attach`・`--keys`）は窓が上がるまで待って戻り、ほかは `tsumugi.exe` を同じ引数で走らせて待つ。
+  `main.rs` の振り分けで窓を開くコマンドを足したら `OPENS_WINDOW` も揃える。窓の側は `tsumugi.com` のパイプを持たない（パイプなら一時フォルダの自分のファイル）。
+  コマンドの答えは `main.rs` の `out`、失敗の理由は `err`（`ito_console::out`・`err`。閉じたパイプでも panic しない）。`println!`・`eprintln!` を使わない。
+  Build の `Check tsumugi.com` が x64 で確かめる。
 - **ターミナルペイン（`ito-pane`）と画面の分割（`ito-layout`）は kura と共有**。直しは ito に入れ、両方に効かせる。
   分割は先に tsumugi で作って実機で揉んでから kura に持ち帰る。

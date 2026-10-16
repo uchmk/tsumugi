@@ -9,6 +9,12 @@ pub fn folder() -> Option<PathBuf> {
     tsumugi_mux::settings::default_path().and_then(|p| p.parent().map(|d| d.join("attachments")))
 }
 
+/// The clipboard's text, or nothing: what `--keys` pastes for `<Paste>`
+/// and `<C-v>`, as Ctrl+V pastes it.
+pub fn text() -> String {
+    arboard::Clipboard::new().and_then(|mut board| board.get_text()).unwrap_or_default()
+}
+
 /// The clipboard's image written as a PNG in `dir`: its path and size.
 /// `Ok(None)` when the clipboard holds no image.
 pub fn paste_image(dir: &Path) -> Result<Option<(PathBuf, u64)>, String> {

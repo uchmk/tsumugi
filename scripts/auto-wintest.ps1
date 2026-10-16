@@ -24,6 +24,9 @@
 #      TSUMUGI_STATE_HOME and TSUMUGI_CONFIG_HOME, TSUMUGI_PTY_LOG and TSUMUGI_KEYLOG are set for the
 #      whole run, so even a bare `tsumugi ls` reaches the run's server, never
 #      the owner's; scripts/wintest-kit.ps1 has the tools the run uses.
+#      UCHMK_CONFIG_DIR is a copy of the owner's common.toml and themes, so
+#      a shared setting the run switches is written there, not in the
+#      owner's file (#59).
 #   6. The older build: for a chunk with a row that names WINTEST_OLD_EXE,
 #      the newest release below the version built (gh release download, kept
 #      in %LOCALAPPDATA%\tsumugi-wintest\old), copied into the run's kit.
@@ -87,7 +90,9 @@
 # Scratch: R:\Temp when there is an R: drive, else %TEMP%\tsumugi-scratch; each
 # run gets run-<time> under it, TEMP and TMP point there, the newest three are
 # kept. Build output: the worktree's `target` is a junction to
-# R:\cargo-target\<worktree> when R: has 8 GB free. The screen saver is held
+# R:\cargo-target\<worktree> when R: has 8 GB free (short of that, the PC's
+# %LOCALAPPDATA%\uchmk-build\cargo-ramdisk.ps1 -IfLow, when there is one, is
+# run first to empty the targets unused the longest). The screen saver is held
 # off for the run and put back in `finally` (or by the next firing). The log
 # is %LOCALAPPDATA%\tsumugi-wintest\auto-wintest.log; the state files stay
 # there whatever -LogDir says. The run gets --model $Model (Sonnet by default,
@@ -159,6 +164,15 @@ function Set-BuildTarget {
     $dir = if ($TargetDir) { $TargetDir } elseif (Test-Path 'R:\') { Join-Path 'R:\cargo-target' (Split-Path -Leaf $Work) } else { $null }
     if (-not $dir) { return $link }
     $drive = Get-PSDrive -Name ($dir.Substring(0, 1)) -ErrorAction SilentlyContinue
+    # Short of room: first the PC's cleanup (outside the repos), which empties the targets on R:
+    # unused the longest; the SSD below only if that was not enough.
+    $tidy = Join-Path $env:LOCALAPPDATA 'uchmk-build\cargo-ramdisk.ps1'
+    if ($drive -and $drive.Free -lt 8GB -and (Test-Path -LiteralPath $tidy)) {
+        $was = $drive.Free / 1GB
+        & (Get-Process -Id $PID).Path -NoProfile -File $tidy -IfLow *> $null
+        $drive = Get-PSDrive -Name $drive.Name -ErrorAction SilentlyContinue
+        Say ("Only {0:N1} GB free on {1}: {2} made it {3:N1} GB." -f $was, $drive.Root, $tidy, ($drive.Free / 1GB)) | Out-Host
+    }
     $item = Get-Item -LiteralPath $link -Force -ErrorAction SilentlyContinue
     $isLink = $item -and ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)
     if (-not $isLink -and $drive -and $drive.Free -lt 8GB) {
@@ -346,6 +360,22 @@ function Invoke-BuildStep([string]$Name, [scriptblock]$Do) {
     $false
 }
 
+# The uchmk folder for the run (UCHMK_CONFIG_DIR): the owner's common.toml
+# and themes copied into $To, so the shared settings (language, scale, clock,
+# theme) read as the owner's and a switch writes the copy (#59). The same as
+# Copy-UchmkFolder in wintest-kit.ps1. Returns $To.
+function Copy-UchmkFolder([string]$To) {
+    if (-not (Test-Path -LiteralPath $To)) {
+        New-Item -ItemType Directory -Force -Path $To | Out-Null
+        $from = Join-Path $env:APPDATA 'uchmk'
+        foreach ($name in 'common.toml', 'themes') {
+            $p = Join-Path $from $name
+            if (Test-Path -LiteralPath $p) { Copy-Item -Recurse -LiteralPath $p -Destination $To }
+        }
+    }
+    $To
+}
+
 # The build of an older release, for the rows about a server older than the
 # window (1.7, 1.11, 1.12): the newest release below the version built here,
 # downloaded once into $state\old and copied into the kit, so Stop-RunTsumugi
@@ -373,10 +403,10 @@ function Get-OldBuild([string]$Arch) {
         }
         $dest = Join-Path $kit 'old'
         Copy-Item -Recurse -LiteralPath (Join-Path $cache $name) -Destination $dest
-        Say "Older build: $tag ($Arch), in $dest."
+        Say "Older build: $tag ($Arch), in $dest." | Out-Host
         Join-Path $dest 'tsumugi.exe'
     } catch {
-        Say "No older build for this run: $_"
+        Say "No older build for this run: $_" | Out-Host
         $null
     }
 }
@@ -697,7 +727,7 @@ $chunkText
 - チェックアウトは $Work です（役割定義の C:\dev\tsumugi は、すべてここに読み替えてください）。
 - ビルド（--release）、``cargo test``、ConPTY の取得は、このスクリプトが済ませました。exe は $exe で、テストは緑です。cargo build / cargo test はしないでください。表の確かめは ``cargo run --release -q -p tsumugi --example make-testcheck -- --check``（make-keycheck も同じ）で、ビルド済みのものを使います。
 - 道具は scripts\wintest-kit.ps1 にあります。PowerShell を呼ぶたびに、先頭で ``. .\scripts\wintest-kit.ps1`` を読み込んでください（関数の一覧はファイルの先頭）。SendInput・PrintWindow・バックアップを自分で書き直さないでください。
-- 環境変数は分離済みです（TSUMUGI_ADDRESS・TSUMUGI_STATE_HOME・TSUMUGI_CONFIG_HOME・TSUMUGI_PTY_LOG・TSUMUGI_KEYLOG・WINTEST_KIT=$kit）。素の ``tsumugi ls`` もこの実行のサーバに届き、持ち主のサーバには届きません。終わる前に ``Stop-Mine`` を呼びます。
+- 環境変数は分離済みです（TSUMUGI_ADDRESS・TSUMUGI_STATE_HOME・TSUMUGI_CONFIG_HOME・UCHMK_CONFIG_DIR（持ち主の common.toml と themes の写し）・TSUMUGI_PTY_LOG・TSUMUGI_KEYLOG・WINTEST_KIT=$kit）。素の ``tsumugi ls`` もこの実行のサーバに届き、持ち主のサーバには届きません。終わる前に ``Stop-Mine`` を呼びます。
 - 作業用の一時ディレクトリは $Scratch で、TEMP / TMP も既にそこを指しています（役割定義に出てくる R:\Temp は、すべてここに読み替えてください）。
 - 所見（不具合・提案）は ``gh issue create --repo $repo -l finding,lane:$Lane --title "<1 行>" --body-file <ファイル>`` で issue にし（欄は .github/ISSUE_TEMPLATE/finding.yml、不具合なら ``bug`` も付ける）、PR 本文に ``Findings: #N, #M`` と書きます。gh で issue が作れなかったときだけ、報告の ``### Proposals`` に書きます（マージのときに issue になります）。
 
@@ -767,6 +797,7 @@ $chunkText
     $env:WINTEST_EXE = $exe
     $env:TSUMUGI_STATE_HOME = $kit
     $env:TSUMUGI_CONFIG_HOME = $kit
+    $env:UCHMK_CONFIG_DIR = Copy-UchmkFolder (Join-Path $kit 'uchmk')
     $env:TSUMUGI_PTY_LOG = Join-Path $kit 'pty.log'
     $env:TSUMUGI_KEYLOG = '1'
     Remove-Item Env:TSUMUGI_SESSION -ErrorAction SilentlyContinue

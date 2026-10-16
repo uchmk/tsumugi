@@ -33,10 +33,13 @@
 #   Stop-Mine                           every window and the server this kit started; never the owner's
 #
 # Isolation: auto-wintest.ps1 sets TSUMUGI_ADDRESS, TSUMUGI_STATE_HOME,
-# TSUMUGI_CONFIG_HOME, TSUMUGI_PTY_LOG and TSUMUGI_KEYLOG for the whole run, and
-# WINTEST_KIT (the kit's folder) and WINTEST_EXE, so even a bare `tsumugi ls`
-# reaches the run's own server: the owner's server, sessions and settings are
-# never touched. By hand, the kit sets them itself (a folder under TEMP).
+# TSUMUGI_CONFIG_HOME, UCHMK_CONFIG_DIR, TSUMUGI_PTY_LOG and TSUMUGI_KEYLOG for
+# the whole run, and WINTEST_KIT (the kit's folder) and WINTEST_EXE, so even a
+# bare `tsumugi ls` reaches the run's own server: the owner's server, sessions
+# and settings are never touched. UCHMK_CONFIG_DIR is a copy of the owner's
+# common.toml and themes (Copy-UchmkFolder), so the shared settings (language,
+# scale, clock, theme) read the same and a switch writes the copy (#59). By
+# hand, the kit sets them itself (a folder under TEMP).
 
 $ErrorActionPreference = 'Stop'
 
@@ -78,6 +81,7 @@ public static class Native {
     [DllImport("user32.dll", SetLastError = true)] public static extern IntPtr OpenInputDesktop(uint flags, bool inherit, uint access);
     [DllImport("user32.dll")] public static extern bool CloseDesktop(IntPtr d);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern bool GetUserObjectInformation(IntPtr obj, int index, StringBuilder info, int length, out int needed);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int GetWindowText(IntPtr h, StringBuilder text, int length);
 
     public static int InputSize() { return Marshal.SizeOf(typeof(INPUT)); }
 
@@ -205,12 +209,34 @@ public static class Native {
             return name.ToString();
         } finally { CloseDesktop(h); }
     }
+
+    // The title of a window ("" when it has none).
+    public static string WindowTitle(IntPtr h) {
+        StringBuilder text = new StringBuilder(512);
+        GetWindowText(h, text, text.Capacity);
+        return text.ToString();
+    }
 }
 }
 '@
     # Physical pixels everywhere (cursor, window rectangles, screenshots), as
     # per-monitor aware v2; fails harmlessly when already set.
     [void][TsumugiKit.Native]::SetProcessDpiAwarenessContext([IntPtr]::new(-4))
+}
+
+# The uchmk folder for a test (UCHMK_CONFIG_DIR): the owner's common.toml and
+# themes copied once into $To, which then stays as the test left it. Returns
+# $To.
+function Copy-UchmkFolder([string]$To) {
+    if (-not (Test-Path -LiteralPath $To)) {
+        New-Item -ItemType Directory -Force -Path $To | Out-Null
+        $from = Join-Path $env:APPDATA 'uchmk'
+        foreach ($name in 'common.toml', 'themes') {
+            $p = Join-Path $from $name
+            if (Test-Path -LiteralPath $p) { Copy-Item -Recurse -LiteralPath $p -Destination $To }
+        }
+    }
+    $To
 }
 
 # Sets the isolation when the run's script has not (by hand). Idempotent.
@@ -224,6 +250,7 @@ function Use-Isolation {
         $env:TSUMUGI_CONFIG_HOME = $script:KitDir
         $env:TSUMUGI_PTY_LOG = Join-Path $script:KitDir 'pty.log'
     }
+    if (-not $env:UCHMK_CONFIG_DIR) { $env:UCHMK_CONFIG_DIR = Copy-UchmkFolder (Join-Path $script:KitDir 'uchmk') }
     $env:TSUMUGI_KEYLOG = '1'
     Remove-Item Env:TSUMUGI_SESSION -ErrorAction SilentlyContinue
     if (-not $env:WINTEST_EXE) { $env:WINTEST_EXE = (Resolve-Path 'target\release\tsumugi.exe').Path }
@@ -301,14 +328,21 @@ function Get-KitHandle {
 
 # Keys and clicks reach our window: the input desktop is Default (not the
 # lock screen, not a screen saver) and the window in front is ours. Nothing
-# measured after this turned false counts.
+# measured after this turned false counts. When not, the line names the
+# window in front (process and title), so the report says which dialog held
+# the desk (a firewall prompt, #24).
 function Test-InputReady {
     $desk = [TsumugiKit.Native]::InputDesktop()
     $fg = [TsumugiKit.Native]::GetForegroundWindow()
     $pid_ = [uint32]0
     [void][TsumugiKit.Native]::GetWindowThreadProcessId($fg, [ref]$pid_)
     $ours = (Test-Path -LiteralPath (Join-Path $script:KitDir 'window.json')) -and $pid_ -eq (Get-KitWindow).Pid
-    if ($desk -ne 'Default' -or -not $ours) { "Input not ready: desktop '$desk', foreground pid $pid_" | Out-Host; return $false }
+    if ($desk -ne 'Default' -or -not $ours) {
+        $name = (Get-Process -Id $pid_ -ErrorAction SilentlyContinue).ProcessName
+        $title = [TsumugiKit.Native]::WindowTitle($fg)
+        "Input not ready: desktop '$desk', foreground pid $pid_ ($name) '$title'" | Out-Host
+        return $false
+    }
     $true
 }
 

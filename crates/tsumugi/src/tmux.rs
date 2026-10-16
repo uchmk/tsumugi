@@ -598,7 +598,7 @@ impl Gateway {
         match self.client.spawn_at(cwd, Some(shell), size, (8, 16), place) {
             Ok(p) => Some(p.id()),
             Err(e) => {
-                eprintln!("tsumugi tmux: a session for {id}: {e}");
+                crate::err(&format!("tsumugi tmux: a session for {id}: {e}\n"));
                 None
             }
         }
@@ -696,17 +696,17 @@ pub fn run(args: &[String]) -> ExitCode {
     let o = match parse(args) {
         Ok(o) => o,
         Err(e) => {
-            eprintln!("tsumugi tmux: {e}\nusage: {USAGE}");
+            crate::err(&format!("tsumugi tmux: {e}\nusage: {USAGE}\n"));
             return ExitCode::from(2);
         }
     };
     match gateway(&o) {
         Ok(why) => {
-            println!("tsumugi tmux: {why}");
+            crate::out(&format!("tsumugi tmux: {why}\n"));
             ExitCode::SUCCESS
         }
         Err(e) => {
-            eprintln!("tsumugi tmux: {e}");
+            crate::err(&format!("tsumugi tmux: {e}\n"));
             ExitCode::FAILURE
         }
     }
@@ -773,7 +773,9 @@ fn gateway(o: &Opts) -> Result<String, String> {
     };
     g.list();
     let at = o.ssh.as_deref().map(|h| format!(" on {h}")).unwrap_or_default();
-    println!("tsumugi tmux: tmux{at} in control mode; its panes open as tsumugi's. Ctrl+C here (or `tmux detach` in a pane) leaves them running in tmux.");
+    crate::out(&format!(
+        "tsumugi tmux: tmux{at} in control mode; its panes open as tsumugi's. Ctrl+C here (or `tmux detach` in a pane) leaves them running in tmux.\n"
+    ));
     let why = loop {
         let ev = match rx.recv_timeout(Duration::from_millis(500)) {
             Ok(ev) => ev,
@@ -868,13 +870,13 @@ fn bridge_reader(conn: u64, s: TcpStream, token: &str, tx: &mpsc::Sender<Ev>) {
 /// top), run in the session the gateway started for it.
 pub fn bridge(args: &[String]) -> ExitCode {
     let [addr, token, pane] = args else {
-        eprintln!("tsumugi tmux-pane: run by `tsumugi tmux`, not by hand");
+        crate::err("tsumugi tmux-pane: run by `tsumugi tmux`, not by hand\n");
         return ExitCode::from(2);
     };
     let (mut con_in, mut con_out, guard) = match crate::console::raw() {
         Ok(c) => c,
         Err(e) => {
-            eprintln!("tsumugi tmux-pane: the console: {e}");
+            crate::err(&format!("tsumugi tmux-pane: the console: {e}\n"));
             return ExitCode::FAILURE;
         }
     };

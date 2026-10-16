@@ -72,6 +72,12 @@ struct State {
     asks: Vec<(u64, SessionId, String)>,
     /// The answer to `ask_send`, taken by it.
     ask_done: Option<Result<(), String>>,
+    /// Sessions `tsumugi focus` asked this window to show, not taken yet.
+    shows: Vec<SessionId>,
+    /// The answer to `show`, taken by it.
+    shown: Option<Result<(), String>>,
+    /// Called on the reader thread as a `show` comes in (`on_show`).
+    on_show: Option<Arc<dyn Fn() + Send + Sync>>,
     /// The connection is gone (the server stopped, or never answered).
     lost: bool,
 }
@@ -364,6 +370,19 @@ impl Client {
         self.0.send(ToServer::OwnTab { id });
     }
 
+    /// Fold the tab `from` into the tab holding the pane `into`, on the side
+    /// `toward` of it.
+    pub fn join_tab(&self, from: WorkspaceId, into: SessionId, toward: ito_layout::Toward) {
+        use ito_layout::{Dir, Toward};
+        let (dir, after) = match toward {
+            Toward::Left => (Dir::Right, false),
+            Toward::Right => (Dir::Right, true),
+            Toward::Up => (Dir::Down, false),
+            Toward::Down => (Dir::Down, true),
+        };
+        self.0.send(ToServer::JoinTab { from, into, dir, after });
+    }
+
     /// Record a session into a `.cast` file at `path`; `None` stops. What
     /// went wrong comes back as an error.
     pub fn record(&self, id: SessionId, path: Option<PathBuf>) {
@@ -437,6 +456,41 @@ impl Client {
             }
             st = self.0.answered.wait_timeout(st, left).unwrap_or_else(|e| e.into_inner()).0;
         }
+    }
+
+    /// Ask the window that had the keys last to come to the front with
+    /// session `id` shown, and wait up to `wait` for the server's word that
+    /// a window was told. The error says why not (no such session, no window).
+    pub fn show(&self, id: SessionId, wait: Duration) -> Result<(), String> {
+        self.0.lock().shown = None;
+        self.0.send(ToServer::Show { id });
+        let deadline = std::time::Instant::now() + wait;
+        let mut st = self.0.lock();
+        loop {
+            if let Some(r) = st.shown.take() {
+                return r;
+            }
+            if st.lost {
+                return Err("the tsumugi server went away".into());
+            }
+            let left = deadline.saturating_duration_since(std::time::Instant::now());
+            if left.is_zero() {
+                return Err("the tsumugi server did not answer".into());
+            }
+            st = self.0.answered.wait_timeout(st, left).unwrap_or_else(|e| e.into_inner()).0;
+        }
+    }
+
+    /// The sessions a window was asked to show (`show`) since the last call.
+    pub fn take_shows(&self) -> Vec<SessionId> {
+        std::mem::take(&mut self.0.lock().shows)
+    }
+
+    /// `f` runs on the reader thread when a window is asked to show a
+    /// session, before the wake: a minimized window draws no frame, so the
+    /// wake alone would not bring it back.
+    pub fn on_show(&self, f: impl Fn() + Send + Sync + 'static) {
+        self.0.lock().on_show = Some(Arc::new(f));
     }
 
     /// Send raw bytes to a session as if typed (a notification's Allow is
@@ -633,6 +687,14 @@ fn receive(inner: &Inner, msg: ToClient) {
         ToClient::Asked { n, id, text } => st.asks.push((n, id, text)),
         ToClient::AskGone { n } => st.asks.retain(|a| a.0 != n),
         ToClient::AskDone(r) => st.ask_done = Some(r),
+        ToClient::Show { id } => {
+            st.shows.push(id);
+            if let Some(f) = st.on_show.clone() {
+                drop(st);
+                f();
+            }
+        }
+        ToClient::Shown(r) => st.shown = Some(r),
         // An error answers the request waiting on one (a spawn), if any.
         ToClient::Error(e) => st.spawned.push_back(Err(e)),
     }
@@ -742,6 +804,10 @@ impl Pane for RemotePane {
 
     fn select(&self, cell: (usize, usize), right_half: bool, start: bool) {
         self.inner.send(ToServer::Select { id: self.id, cell, right_half, start, block: false });
+    }
+
+    fn select_cells(&self, cell: (usize, usize), start: bool) {
+        self.inner.send(ToServer::SelectCells { id: self.id, cell, start });
     }
 
     fn select_block(&self, cell: (usize, usize), right_half: bool) {

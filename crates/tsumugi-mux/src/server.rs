@@ -17,7 +17,7 @@ use crossbeam_channel::{Receiver, Sender};
 use ito_pane::{Pane, Terminal};
 
 use crate::frame;
-use crate::proto::{Info, Notice, Place, ScrollBy, SessionId, State, ToClient, ToServer, Workspace, WorkspaceId, VERSION};
+use crate::proto::{Dir, Info, Node, Notice, Place, ScrollBy, SessionId, State, ToClient, ToServer, Workspace, WorkspaceId, VERSION};
 use crate::transport::{Address, Conn, Listener};
 
 type ClientId = u64;
@@ -97,11 +97,17 @@ struct Shared {
     ask_next: AtomicU64,
     /// A session to look at: its shell said something, or a client asked.
     dirty: Sender<SessionId>,
-    /// Told once, when the last session has ended.
-    done: Sender<()>,
+    /// Told each time the last session ends, with the clients there then,
+    /// and by `STOP` (`ServerHandle::wait`). Holds one: an end told while
+    /// the one before is still unread is dropped, and the older list only
+    /// keeps the server longer.
+    done: Sender<BTreeSet<ClientId>>,
     /// A session has been started at some point.
     ever: std::sync::atomic::AtomicBool,
-    /// Asked to stop (`STOP`): leave at once, the tabs already written.
+    /// Leaving: asked to (`STOP`, the tabs already written), or the last
+    /// session has ended and the tabs are written (`ServerHandle::wait`).
+    /// Set with `sessions` and `clients` held: from then on no client is
+    /// taken and no session started, so none goes away with the server.
     stopping: std::sync::atomic::AtomicBool,
     /// Where this server listens, told to its shells (`TSUMUGI_ADDRESS`) so
     /// that `tsumugi notify` inside them finds it.
@@ -129,7 +135,7 @@ struct Shared {
 
 /// A running server; [`ServerHandle::wait`] returns when it stops.
 pub struct ServerHandle {
-    done: Receiver<()>,
+    done: Receiver<BTreeSet<ClientId>>,
     shared: Arc<Shared>,
 }
 
@@ -139,27 +145,71 @@ impl ServerHandle {
     /// stops after `idle` with no client attached too, so one started by a
     /// window that then failed does not stay for ever (a window still on
     /// its first-run screen, or showing another machine, keeps it).
+    ///
+    /// A client that comes after the end keeps the server while it stays,
+    /// and a session it starts keeps it as before: `tsumugi new` just after
+    /// the last session closed started a session the server then took away
+    /// with it (#179).
     pub fn wait(&self, idle: Duration) {
-        loop {
-            match self.done.recv_timeout(idle) {
-                Err(crossbeam_channel::RecvTimeoutError::Timeout)
-                    if self.shared.ever.load(Ordering::Relaxed) || !lock(&self.shared.clients).is_empty() => {}
-                _ => break,
-            }
-        }
-        if self.shared.stopping.load(Ordering::Relaxed) {
-            return;
-        }
+        let shared = &self.shared;
         // The state is written a moment after the last session ends, not at
         // once: a machine shutting down ends every shell before it ends the
         // server, and writing then would forget the tabs it should restore.
-        let deadline = std::time::Instant::now() + SAVE_AFTER_END + Duration::from_secs(2);
-        while lock(&self.shared.save_due).is_some() && std::time::Instant::now() < deadline {
-            std::thread::sleep(Duration::from_millis(50));
+        let save_wait = SAVE_AFTER_END + Duration::from_secs(2);
+        // Gone once a write begun has ended: the process leaves soon after.
+        let leave = || drop(lock(&ONE_WRITE));
+        loop {
+            // The clients there at the end do not keep the server; those that
+            // come after do, as they would a server with no session yet.
+            let mut there = match self.done.recv_timeout(idle) {
+                Ok(there) => there,
+                Err(crossbeam_channel::RecvTimeoutError::Timeout)
+                    if shared.ever.load(Ordering::Relaxed) || !lock(&shared.clients).is_empty() =>
+                {
+                    continue
+                }
+                Err(_) => BTreeSet::new(),
+            };
+            let mut deadline = std::time::Instant::now() + save_wait;
+            loop {
+                // A session started and ended again in the meantime.
+                if let Ok(again) = self.done.try_recv() {
+                    there = again;
+                    deadline = std::time::Instant::now() + save_wait;
+                }
+                let sessions = lock(&shared.sessions);
+                // Both read with `sessions` held: an end asks for a write with
+                // it, a write takes the ask away with it, and `STOP` sets
+                // `stopping` with it.
+                if shared.stopping.load(Ordering::Relaxed) {
+                    // Asked to: `STOP` writes the tabs holding `ONE_WRITE`.
+                    drop(sessions);
+                    return leave();
+                }
+                // A session again (or `done` was an old one): wait for the
+                // next end.
+                if !sessions.is_empty() {
+                    break;
+                }
+                let written = lock(&shared.save_due).is_none() || std::time::Instant::now() >= deadline;
+                let clients = lock(&shared.clients);
+                if written && clients.keys().all(|c| there.contains(c)) {
+                    // Decided with both held: a session starts, or a client
+                    // comes, before this or not at all.
+                    shared.stopping.store(true, Ordering::Relaxed);
+                    drop(clients);
+                    drop(sessions);
+                    return leave();
+                }
+                drop(clients);
+                drop(sessions);
+                std::thread::sleep(Duration::from_millis(50));
+            }
         }
     }
 
-    /// Whether the server has stopped, without waiting.
+    /// Whether the server has been told to end (its last session ended, or
+    /// `STOP` came), without waiting; false again once `wait` has read it.
     pub fn stopped(&self) -> bool {
         !self.done.is_empty()
     }
@@ -247,11 +297,20 @@ fn serve(shared: Arc<Shared>, client: ClientId, conn: Conn) {
     match frame::read::<_, ToServer>(&mut r) {
         Ok(ToServer::Hello { version: VERSION }) => {}
         Ok(ToServer::Hello { version: crate::proto::STOP }) => {
-            // Asked to stop: the tabs on disk first, as they are now.
-            *lock(&shared.save_due) = Some(std::time::Instant::now());
-            save_if_due(&shared);
-            shared.stopping.store(true, Ordering::Relaxed);
-            let _ = shared.done.try_send(());
+            // Asked to stop: no session starts from here, and the tabs go on
+            // disk as they are now.
+            {
+                // The write's turn first: `wait` takes it last, so the
+                // process leaves only once the tabs are on disk.
+                let _turn = lock(&ONE_WRITE);
+                {
+                    let _sessions = lock(&shared.sessions);
+                    let _clients = lock(&shared.clients);
+                    shared.stopping.store(true, Ordering::Relaxed);
+                }
+                write_state(&shared);
+            }
+            let _ = shared.done.try_send(BTreeSet::new());
             // The line stays until the asker hangs up or this process is
             // gone: over ssh, its end tells the asker the old server went,
             // and the next to reach the machine starts a new one.
@@ -265,14 +324,24 @@ fn serve(shared: Arc<Shared>, client: ClientId, conn: Conn) {
         }
         _ => return,
     }
-    if frame::write(&mut w, &ToClient::Hello { version: VERSION }).is_err() {
-        return;
-    }
     let (tx, rx) = crossbeam_channel::unbounded::<ToClient>();
     let _ = tx.send(ToClient::Started { at_ms: shared.started_ms, build: env!("CARGO_PKG_VERSION").into() });
     let _ = tx.send(ToClient::Notices(lock(&shared.notices).1.iter().cloned().collect()));
     let _ = tx.send(ToClient::MutedTags(lock(&shared.muted_tags).iter().cloned().collect()));
-    lock(&shared.clients).insert(client, tx.clone());
+    {
+        // Known before the server decides to stop, so it waits for this
+        // client; or not taken at all, and the client starts a new server
+        // once this one is gone (#179).
+        let mut clients = lock(&shared.clients);
+        if shared.stopping.load(Ordering::Relaxed) {
+            return;
+        }
+        clients.insert(client, tx.clone());
+    }
+    if frame::write(&mut w, &ToClient::Hello { version: VERSION }).is_err() {
+        lock(&shared.clients).remove(&client);
+        return;
+    }
     // Last in the line to tell: a window that never had the keyboard tells
     // only when it is the only one.
     lock(&shared.attention).order.insert(0, client);
@@ -364,6 +433,24 @@ fn handle(shared: &Arc<Shared>, client: ClientId, tx: &Sender<ToClient>, msg: To
                     }
                 }
             }
+        }
+        ToServer::Show { id } => {
+            let answer = if sessions.contains_key(&id) {
+                // The window that had the keys last; else any window.
+                let judges = lock(&shared.judges).clone();
+                let last = lock(&shared.attention).order.iter().rev().find(|c| judges.contains(c)).copied();
+                let clients = lock(&shared.clients);
+                match last.or_else(|| judges.iter().next_back().copied()).and_then(|w| clients.get(&w)) {
+                    Some(w) => {
+                        let _ = w.send(ToClient::Show { id });
+                        Ok(())
+                    }
+                    None => Err("no tsumugi window is open".to_owned()),
+                }
+            } else {
+                Err("no such session".to_owned())
+            };
+            let _ = tx.send(ToClient::Shown(answer));
         }
         ToServer::AskCancel => {
             drop(sessions);
@@ -564,6 +651,20 @@ fn handle(shared: &Arc<Shared>, client: ClientId, tx: &Sender<ToClient>, msg: To
                 save_soon(shared, SAVE_AFTER_CHANGE);
             }
         }
+        ToServer::JoinTab { from, into, dir, after } => {
+            let mut workspaces = lock(&shared.workspaces);
+            let holder = workspaces.values().find(|w| w.id != from && w.layout.contains(&into)).map(|w| w.id);
+            if let (Some(dst), true) = (holder, workspaces.contains_key(&from)) {
+                let src = workspaces.remove(&from).expect("just found");
+                if let Some(w) = workspaces.get_mut(&dst) {
+                    w.layout = graft(w.layout.clone(), &into, dir, after, src.layout);
+                }
+                // The tab is gone from the sidebar's own order too.
+                lock(&shared.order).retain(|w| *w != from);
+                broadcast_workspaces(shared, &workspaces);
+                save_soon(shared, SAVE_AFTER_CHANGE);
+            }
+        }
         ToServer::MoveWorkspace { id, to } => {
             let workspaces = lock(&shared.workspaces);
             let mut now: Vec<WorkspaceId> = ordered(shared, &workspaces).iter().map(|w| w.id).collect();
@@ -746,6 +847,7 @@ fn handle(shared: &Arc<Shared>, client: ClientId, tx: &Sender<ToClient>, msg: To
                 ToServer::Scroll { by, .. } => term.scroll(scroll(by)),
                 ToServer::Select { cell, right_half, start: true, block: true, .. } => term.select_block(cell, right_half),
                 ToServer::Select { cell, right_half, start, .. } => term.select(cell, right_half, start),
+                ToServer::SelectCells { cell, start, .. } => term.select_cells(cell, start),
                 ToServer::SelectWord { cell, .. } => term.select_word(cell),
                 ToServer::SelectLine { cell, .. } => term.select_line(cell),
                 ToServer::ClearSelection { .. } => term.clear_selection(),
@@ -787,6 +889,7 @@ fn target(msg: &ToServer) -> Option<SessionId> {
         | ToServer::Resize { id, .. }
         | ToServer::Scroll { id, .. }
         | ToServer::Select { id, .. }
+        | ToServer::SelectCells { id, .. }
         | ToServer::SelectWord { id, .. }
         | ToServer::SelectLine { id, .. }
         | ToServer::ClearSelection { id }
@@ -961,16 +1064,25 @@ fn save_soon(shared: &Shared, after: Duration) {
     }
 }
 
+/// One write of the state at a time (the pump's and a STOP's), each of the
+/// latest; taken before `sessions`. `ServerHandle::wait` takes it last, so
+/// the process does not leave in the middle of one.
+static ONE_WRITE: Mutex<()> = Mutex::new(());
+
 /// Write the state now, if it is due.
 fn save_if_due(shared: &Shared) {
     let due = *lock(&shared.save_due);
-    let (Some(path), Some(at)) = (&shared.state, due) else { return };
+    let (Some(_), Some(at)) = (&shared.state, due) else { return };
     if std::time::Instant::now() < at {
         return;
     }
-    // One write at a time (the pump's and a STOP's), each of the latest.
-    static ONE_WRITE: Mutex<()> = Mutex::new(());
     let _turn = lock(&ONE_WRITE);
+    write_state(shared);
+}
+
+/// Write the state, `ONE_WRITE` held.
+fn write_state(shared: &Shared) {
+    let Some(path) = &shared.state else { return };
     let sessions = lock(&shared.sessions);
     let workspaces = lock(&shared.workspaces);
     // Not due any more from here: a change made while the file is being
@@ -1030,6 +1142,11 @@ fn spawn_session(
     size: ito_pane::Size,
     cell: (u16, u16),
 ) -> io::Result<SessionId> {
+    // Read with `sessions` held, as `wait` and `STOP` set it: a session
+    // started now would go away with the server.
+    if shared.stopping.load(Ordering::Relaxed) {
+        return Err(io::Error::other("the server is stopping"));
+    }
     let id = shared.next.fetch_add(1, Ordering::Relaxed);
     let cwd = here(cwd, crate::settings::home());
     // No shell asked for: the settings' `[shell]`, else the system's.
@@ -1320,6 +1437,27 @@ fn place_session(shared: &Shared, workspaces: &mut BTreeMap<WorkspaceId, Workspa
 
 /// Tell every client the workspaces as they are now.
 /// The tabs in the sidebar's order: as dragged, then the rest by id.
+/// `layout` with the tree `sub` set beside the pane `at` (after it or
+/// before it, in `dir`), the two sharing what was the pane's room. `layout`
+/// as it was when there is no such pane.
+fn graft(layout: Node<SessionId>, at: &SessionId, dir: Dir, after: bool, sub: Node<SessionId>) -> Node<SessionId> {
+    match layout {
+        Node::Leaf(x) if x == *at => {
+            let (old, new) = (Box::new(Node::Leaf(x)), Box::new(sub));
+            let (first, second) = if after { (old, new) } else { (new, old) };
+            Node::Split { dir, ratio: 0.5, first, second }
+        }
+        Node::Leaf(x) => Node::Leaf(x),
+        Node::Split { dir: d, ratio, first, second } => {
+            if first.contains(at) {
+                Node::Split { dir: d, ratio, first: Box::new(graft(*first, at, dir, after, sub)), second }
+            } else {
+                Node::Split { dir: d, ratio, first, second: Box::new(graft(*second, at, dir, after, sub)) }
+            }
+        }
+    }
+}
+
 fn ordered<'a>(shared: &Shared, workspaces: &'a BTreeMap<WorkspaceId, Workspace>) -> Vec<&'a Workspace> {
     let order = lock(&shared.order);
     let mut list: Vec<&Workspace> = order.iter().filter_map(|id| workspaces.get(id)).collect();
@@ -1365,6 +1503,9 @@ fn end(shared: &Shared, mut sessions: std::sync::MutexGuard<'_, BTreeMap<Session
     save_soon(shared, SAVE_AFTER_END);
     let list: Vec<Info> = sessions.values().map(|s| s.info.clone()).collect();
     let empty = sessions.is_empty();
+    // Taken with `sessions` held: a client that comes after this keeps the
+    // server (`ServerHandle::wait`), even while the shell below still ends.
+    let there: BTreeSet<ClientId> = if empty { lock(&shared.clients).keys().copied().collect() } else { BTreeSet::new() };
     drop(sessions);
     let last = last_lines(&s.term.screen_text(), ENDED_LINES);
     for (c, tx) in lock(&shared.clients).iter() {
@@ -1376,7 +1517,7 @@ fn end(shared: &Shared, mut sessions: std::sync::MutexGuard<'_, BTreeMap<Session
     }
     drop(s);
     if empty {
-        let _ = shared.done.try_send(());
+        let _ = shared.done.try_send(there);
     }
 }
 

@@ -75,10 +75,14 @@ pub fn show(ctx: &egui::Context, view: &mut View, c: &Colors) -> Option<Answer> 
     let mut answer = None;
     let screen = ctx.content_rect();
     let dim = egui::Area::new(egui::Id::new("parallel-dim")).order(egui::Order::Middle).fixed_pos(screen.min).show(ctx, |ui| {
-        let (r, resp) = ui.allocate_exact_size(screen.size(), egui::Sense::click());
+        // Mouse only: Tab never stops on the backdrop.
+        let (r, resp) = ui.allocate_exact_size(screen.size(), egui::Sense::CLICK);
         ui.painter().rect_filled(r, 0.0, egui::Color32::from_black_alpha(110));
         resp
     });
+    // Tab and Shift+Tab stay in the dialog (#42): it is drawn above the
+    // backdrop, the window's controls below it.
+    crate::chrome::modal(ctx, egui::LayerId::new(egui::Order::Middle, egui::Id::new("parallel-dim")));
     if (dim.inner.clicked() && !view.opening) || ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
         answer = Some(Answer::Close);
     }
@@ -162,5 +166,40 @@ mod tests {
         assert_eq!(v.start(), None, "nothing written");
         v.tasks[1] = "  b ".into();
         assert_eq!(v.start(), Some(Start { folder: "/r".into(), tasks: vec!["b".into()] }));
+    }
+
+    #[test]
+    fn tab_stays_in_the_dialog() {
+        let ctx = egui::Context::default();
+        let mut view = View::new(std::path::Path::new("/r"));
+        let behind = egui::Id::new("behind");
+        let mut text = String::new();
+        let mut frame = |events: Vec<egui::Event>| {
+            let input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(900.0, 800.0))),
+                events,
+                ..Default::default()
+            };
+            let mut out = ctx.run_ui(input, |ui| {
+                // The window's own field, behind the dialog.
+                ui.add(egui::TextEdit::singleline(&mut text).id(behind));
+                show(ui.ctx(), &mut view, &crate::theme::colors());
+            });
+            out.textures_delta.clear();
+        };
+        frame(Vec::new());
+        frame(Vec::new());
+        for shift in [false, true] {
+            let modifiers = if shift { egui::Modifiers::SHIFT } else { egui::Modifiers::NONE };
+            for n in 0..14 {
+                let key = |pressed| egui::Event::Key { key: egui::Key::Tab, physical_key: None, pressed, repeat: false, modifiers };
+                frame(vec![key(true), key(false)]);
+                frame(Vec::new());
+                let focused = ctx.memory(|m| m.focused());
+                let layer = focused.and_then(|id| ctx.read_response(id)).map(|r| r.layer_id.id);
+                assert_ne!(focused, Some(behind), "Tab {n} (shift {shift}) went behind the dialog");
+                assert_eq!(layer, Some(egui::Id::new("parallel")), "Tab {n} (shift {shift}): {focused:?}");
+            }
+        }
     }
 }

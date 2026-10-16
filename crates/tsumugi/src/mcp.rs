@@ -27,7 +27,7 @@ pub fn run() -> std::process::ExitCode {
     match server().serve(stdin.lock(), std::io::stdout()) {
         Ok(()) => std::process::ExitCode::SUCCESS,
         Err(e) => {
-            eprintln!("tsumugi mcp: {e}");
+            crate::err(&format!("tsumugi mcp: {e}\n"));
             std::process::ExitCode::FAILURE
         }
     }

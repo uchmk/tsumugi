@@ -6,8 +6,10 @@
 //! `ito-keyscript`, shared with kura and yagura (ito's docs/common-spec.md,
 //! "キーの台本"). What is tsumugi's own stays here: how long the window gets
 //! before the first key, and the one-line form of a state file's value.
-//! `TSUMUGI_KEYS_DONE` (a path) gets the state a check reads; `<Shot:name>`
-//! and `<State:name>` write beside it.
+//! `TSUMUGI_KEYS_DONE` (a path) gets the state a check reads and how the run
+//! ended (the `keys:` line: `done`, or `quit`, `closed`, `stalled`,
+//! `panicked`, `refused`, with the lines after it saying more);
+//! `<Shot:name>` and `<State:name>` write beside it.
 
 use std::path::PathBuf;
 use std::time::Duration;

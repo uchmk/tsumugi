@@ -845,10 +845,10 @@ pub struct Notify {
     /// system's banner time) and stays in the Action Center.
     pub stay: bool,
     /// Where to send a session waiting while no one is at the window: an
-    /// ntfy topic's address, a Slack incoming webhook, or any address that
-    /// takes JSON. Empty: nowhere.
+    /// ntfy topic's address, a Slack or Discord incoming webhook, or any
+    /// address that takes JSON. Empty: nowhere.
     pub webhook: String,
-    /// What the address takes: `ntfy`, `slack` or `json`.
+    /// What the address takes: `ntfy`, `slack`, `discord` or `json`.
     pub webhook_format: String,
     /// How many seconds a session waits before it is sent.
     pub webhook_after: u64,
@@ -948,7 +948,7 @@ pub fn parse(text: &str) -> Result<Settings, String> {
         return Err(format!("appearance.cursor: `{}` is not block, bar or underline (with -blink to blink)", s.appearance.cursor));
     }
     if !ito_notify::FORMATS.contains(&s.notify.webhook_format.as_str()) {
-        return Err(format!("notify.webhook_format: `{}` is not ntfy, slack or json", s.notify.webhook_format));
+        return Err(format!("notify.webhook_format: `{}` is not one of {}", s.notify.webhook_format, ito_notify::FORMATS.join(", ")));
     }
     if let Some(w) = s.notify.webhook_states.iter().find(|w| !["waiting", "error", "done"].contains(&w.as_str())) {
         return Err(format!("notify.webhook_states: `{w}` is not waiting, error or done"));
@@ -1304,6 +1304,7 @@ mod tests {
         assert_eq!(s.prices.get("claude-opus-5-5"), Some(&Price { input: 4.0, output: 20.0, cache_read: Some(0.2) }));
         assert!(parse("[notify]\nwebhook = \"file:///etc\"\n").is_err(), "an http(s) address only");
         assert!(parse("[notify]\nwebhook_format = \"xml\"\n").is_err());
+        assert_eq!(parse("[notify]\nwebhook_format = \"discord\"\n").unwrap().notify.webhook_format, "discord");
         assert_eq!(parse("[notify]\nwebhook_states = [\"error\", \"done\"]\n").unwrap().notify.webhook_states, ["error", "done"]);
         assert!(parse("[notify]\nwebhook_states = [\"sleeping\"]\n").is_err());
         assert_eq!(s.general.default_folder, "~/dev");

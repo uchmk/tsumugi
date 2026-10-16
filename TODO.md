@@ -47,8 +47,10 @@ tsumugi のやること。`【人】` は持ち主の作業、`【金】` は 20
 - [x] 古い `TSUMUGI_SETTINGS`（ファイル）と `TSUMUGI_STATE` を読むのをやめた（v0.104.0。設定されていたら起動のときに 1 回警告する。#20）。
 - [x] keymap.toml（`[keys]` を yagura・kura と同じ層の書き方に。#38 の 1）。v0.108.0 で ito-keymap の上に載せた。
 - [x] （v0.109.0）設定 → キーを ito の共有の画面（1 つの操作が 1 行、＋・×・↺、Enter で決める）に入れ替えた。
-- [ ] yagura と minato の設定にも同じキーの画面（ito-prefs の `keys_page`）を入れる。keymap.toml に `noop` に当たる動作が無ければ足す。
-- [ ] `tsumugi.com` の前段（出力をコンソールに確実に出す）、`--keys` の ito-keyscript への載せ替えとシェルのフックの ito-pane への移し替え（#38 の 2・6）。ito 側のクレート（uchmk/ito#3）を待つ。（要確認: #39）
+- [x] yagura と minato の設定にも同じキーの画面（ito-prefs の `keys_page`）を入れる。keymap.toml に `noop` に当たる動作が無ければ足す。（yagura v0.61.0、minato v0.44.0）
+- [x] `tsumugi.com` の前段（出力をコンソールに確実に出す。v0.113.0）、`--keys` の ito-keyscript への載せ替え（v0.105.10）とシェルのフックの共有（#38 の 2・6、#39）。
+      フックの行とプロフィールへの差し込みは ito-pane ではなく `ito_common::shellhook` に置いた（kura と共有）。v0.113.1 で `--keys` の終わりの報告を
+      揃えた（`<Quit>` で `quit: yes`、外から閉じたら `keys: closed`、止まり・パニック・拒否も done に書く。`<Paste>` はクリップボードを貼る。ito 0.40.0）。
 
 ## 実機のレーンから
 
@@ -151,10 +153,11 @@ v0.74.2 で 8 件のうち 7 件を、v0.74.3 で残りを直した（kitty の�
 
 ## 通知の先（2026-10-11、持ち主の依頼）
 
-- [x] （v0.103.19）スマホへの通知の転送: 失敗と完了も ntfy などへ（`webhook_states`）、届かなければ 1 度やり直す。残りは Discord などの専用の形式と、状態ごとに別の先。元の課題: 待ち・失敗・長い実行の完了・使用量の通知を、スマホに届ける。ntfy / Discord / Slack の webhook などから選ぶ。
+- [x] （v0.103.19）スマホへの通知の転送: 失敗と完了も ntfy などへ（`webhook_states`）、届かなければ 1 度やり直す。（v0.112.0）Discord の形式と、相手が HTTP のエラーで断ったときの送り直しも入れた。残りは状態ごとに別の先。元の課題: 待ち・失敗・長い実行の完了・使用量の通知を、スマホに届ける。ntfy / Discord / Slack の webhook などから選ぶ。
   `[notify]` には `webhook` と `webhook_after`（TESTING.md 4.20 前後）が既にあるので、それとの分け方（誰に・いつ・どの状態を）から決める。
 - [ ] 通知の届け方そのものを実装する。今は Windows のトースト・タスクバー・音と、macOS（osascript）・Linux（notify-send）の画面の通知だけ。
   スマホ向けの経路、通知ごとの先の切り替え（状態ごとに先を選ぶ）、届かなかったときの扱いが要る。
+  （v0.112.0）スマホ向けの経路（ntfy・Slack・Discord）と届かなかったときの送り直しは入った。残りは状態ごとに先を選ぶこと（要確認: #164）。
 - [x] （v0.104.12）トーストの Allow / Deny を実機で確かめたので、`main.rs` の `toast answer` の `eprintln!`（v0.104.1 の仮の診断）を外した。
 - [x] （v0.103.15）トーストの Allow / Deny を切る設定 `[notify] answer_buttons`（設定の Notifications にも）。
 - [x] （v0.103.20）Linux の通知にも Allow / Deny（`notify-send --action`）。macOS は osascript が押したことを取れないので、署名したアプリの通知まで待つ。
@@ -168,10 +171,10 @@ v0.74.2 で 8 件のうち 7 件を、v0.74.3 で残りを直した（kitty の�
 Git クライアント michi の設計メモ（https://claude.ai/artifact/BF7WRQQBmSqmPmq7YTGH5f）の 8 章「Claude を並べて動かす」で、tsumugi 側に足すことにした（推奨）2 つ。
 michi は worktree の表に Claude の状態を出すため、`tsumugi ls --json` を窓が前なら 2 秒、後ろなら 10 秒ごとに読む（後で ito-ipc に移す）。
 
-- [ ] `tsumugi new` に `--worktree BRANCH` と、元にする点の `--from REF`（無ければ今のコミット）を足す。worktree は `worktree.rs` と同じ置き方（リポジトリの横に `<repo>-<branch>`、あれば `-2`…）で作り、
+- [x] （v0.110.0）`tsumugi new` に `--worktree BRANCH` と、元にする点の `--from REF`（無ければ今のコミット）を足す。worktree は `worktree.rs` と同じ置き方（リポジトリの横に `<repo>-<branch>`、あれば `-2`…）で作り、
   tsumugi が作った worktree の一覧に覚える（最後のセッションが終わったときの「消しますか」が効くように）。michi の「新しい作業を 1 回で始める」がこれを呼ぶ。michi が自分で作った worktree は一覧に入らない。
   出力はほかの `new` と同じくセッションの番号で、`tests/cli.rs` で確かめる。
-- [ ] `tsumugi focus N|NAME` を足す。窓を前に出し、そのセッションのタブ（とペイン）を選ぶ。michi の worktree の表で Claude の状態を押したときに使う。
+- [x] （v0.110.0。実機は TESTING 1.16）`tsumugi focus N|NAME` を足す。窓を前に出し、そのセッションのタブ（とペイン）を選ぶ。michi の worktree の表で Claude の状態を押したときに使う。
   窓が前に出るか・タブが選ばれるかは TESTING.md に行を足す（Windows は前面に出せる条件が厳しい `SetForegroundWindow` の制限も見る）【実機】。
 
 ## トリプルクリックで行を選ぶ（2026-10-15、yagura のセッションから）

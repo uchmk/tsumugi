@@ -328,6 +328,38 @@ fn a_prompt_is_pasted_and_sent() {
     pane.kill();
 }
 
+/// The keys' selection keeps the whole cell at both ends, back from where
+/// it began as well as ahead (#57): copy mode's mark on N, then two cells
+/// back, copies LMN, not LM.
+#[test]
+fn the_keys_selection_keeps_both_end_cells() {
+    let at = address();
+    let _srv = serve(&at).expect("the server starts");
+    let c = Client::connect(&at, || {}).expect("a client connects");
+    let pane = c.spawn(std::env::temp_dir(), None, Size::new(80, 24), (8, 16)).expect("a shell starts");
+    until(&pane, "a prompt", |t| !t.trim().is_empty());
+    pane.send(b"echo KLMNOPQRST\r".to_vec());
+    until(&pane, "the echo", |t| t.lines().any(|l| l == "KLMNOPQRST"));
+    let y = text(&pane).lines().position(|l| l == "KLMNOPQRST").expect("the line");
+    let copied = |from: usize, to: usize| {
+        pane.select_cells((from, y), true);
+        pane.select_cells((to, y), false);
+        assert_eq!(Pane::selection(&pane), None, "the answer comes as clipboard text");
+        let deadline = Instant::now() + Duration::from_secs(10);
+        loop {
+            if let Some(got) = c.take_clipboard().pop() {
+                return got;
+            }
+            assert!(Instant::now() < deadline, "no clipboard text for {from}..{to}");
+            std::thread::sleep(Duration::from_millis(20));
+        }
+    };
+    assert_eq!(copied(3, 1), "LMN", "back from the mark");
+    assert_eq!(copied(3, 5), "NOP", "ahead of the mark");
+    assert_eq!(copied(3, 3), "N", "the mark alone");
+    pane.kill();
+}
+
 /// The settings' `[shell.env]` reaches every session's shell.
 #[test]
 fn the_settings_variables_reach_the_shell() {
@@ -436,6 +468,55 @@ fn a_server_stops_when_asked_and_keeps_its_tabs() {
     assert_eq!(saved.workspaces.len(), 1);
     assert_eq!(saved.workspaces[0].panes[0].profile, "work");
     pane.kill();
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// A client that comes while the server waits to write its tabs after the
+/// last session ended keeps it, and so does a session that client starts;
+/// once the server has decided to go, it takes no client and starts no
+/// session, so none goes away with it (#179).
+#[test]
+fn a_client_after_the_last_session_keeps_the_server() {
+    let dir = std::env::temp_dir().join(format!("tsumugi-after-end-test-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let at = address();
+    let srv = server::start_with(&at, server::Options { state: Some(dir.join("state")), settings: None }).expect("the server starts");
+    let old = Client::connect(&at, || {}).expect("a client connects");
+    let first = old.spawn(dir.clone(), None, Size::new(80, 24), (8, 16)).expect("a shell starts");
+    until(&first, "a prompt", |t| !t.trim().is_empty());
+    // Not a scoped thread: a failed check below must not wait for a server
+    // that a client still keeps.
+    let gone = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let told = gone.clone();
+    std::thread::spawn(move || {
+        srv.wait(Duration::from_secs(60));
+        told.store(true, Ordering::SeqCst);
+    });
+    first.kill();
+    let ended = Instant::now();
+    eventually("the first session gone", || old.list().unwrap().is_empty());
+    // `tsumugi new` a moment later: it connects, and stays a while before it
+    // asks for its session.
+    let late = Client::connect(&at, || {}).expect("a client connects after the end");
+    std::thread::sleep((ended + Duration::from_millis(5500)).saturating_duration_since(Instant::now()));
+    assert!(!gone.load(Ordering::SeqCst), "the server went with a client that came after the end");
+    let second = late.spawn(dir.clone(), None, Size::new(80, 24), (8, 16)).expect("a session after the end starts");
+    until(&second, "a prompt", |t| !t.trim().is_empty());
+    assert_eq!(late.list().unwrap().iter().map(|i| i.id).collect::<Vec<_>>(), vec![second.id()]);
+    second.kill();
+    drop(late);
+    let deadline = Instant::now() + Duration::from_secs(20);
+    while !gone.load(Ordering::SeqCst) {
+        assert!(Instant::now() < deadline, "the server did not stop after the second session");
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    // Decided: no one new, and no session for the client still there.
+    assert!(Client::connect(&at, || {}).is_err(), "a stopping server took a client");
+    match old.spawn(dir.clone(), None, Size::new(80, 24), (8, 16)) {
+        Ok(pane) => panic!("a stopping server started session {}", pane.id()),
+        Err(e) => assert!(e.to_string().contains("stopping"), "{e}"),
+    }
     let _ = std::fs::remove_dir_all(&dir);
 }
 
@@ -575,6 +656,43 @@ fn a_pane_becomes_a_tab_of_its_own() {
     }
 }
 
+/// A whole tab folded into another's split, beside a pane: its panes keep
+/// their shape, its tab is gone, and the keys stay in the tab that took it.
+#[test]
+fn a_tab_joins_another_tabs_split() {
+    use crate::{Dir, Node, Place};
+    use ito_layout::Toward;
+    let at = address();
+    let _srv = serve(&at).expect("the server starts");
+    let c = Client::connect(&at, || {}).expect("a client connects");
+    let size = Size::new(80, 24);
+    let a = c.spawn(std::env::temp_dir(), None, size, (8, 16)).expect("a starts");
+    let b = c.spawn(std::env::temp_dir(), None, size, (8, 16)).expect("b starts");
+    let d = c.spawn_at(std::env::temp_dir(), None, size, (8, 16), Place::Split { beside: b.id(), dir: Dir::Down }).expect("d starts");
+    let other = c.spawn(std::env::temp_dir(), None, size, (8, 16)).expect("a tab left alone");
+    c.list().unwrap();
+    let ws = c.workspaces();
+    assert_eq!(ws.len(), 3);
+    let (tab_a, tab_b) = (ws[0].id, ws[1].id);
+    c.join_tab(tab_b, a.id(), Toward::Right);
+    c.list().unwrap();
+    let ws = c.workspaces();
+    assert_eq!(ws.len(), 2, "b's tab is gone: {ws:?}");
+    assert_eq!(ws[0].id, tab_a);
+    assert_eq!(ws[0].layout.leaves(), vec![a.id(), b.id(), d.id()], "a, then b's split as it was");
+    assert!(matches!(&ws[0].layout, Node::Split { dir: Dir::Right, .. }));
+    assert_eq!(ws[0].focus, a.id(), "the keys stay");
+    assert_eq!(ws[1].layout, Node::Leaf(other.id()));
+    // A tab into itself, or into a pane that is not anywhere: nothing.
+    c.join_tab(tab_a, b.id(), Toward::Left);
+    c.join_tab(ws[1].id, u64::MAX, Toward::Left);
+    c.list().unwrap();
+    assert_eq!(c.workspaces().len(), 2);
+    for p in [a, b, d, other] {
+        p.kill();
+    }
+}
+
 /// After a restart: a new server with the old one's state file starts the
 /// same tab again, split the same way, each shell in its folder, and types
 /// `claude --resume` where Claude Code ran.
@@ -693,7 +811,12 @@ fn no_server_no_connection() {
 fn an_ai_program_is_told_by_its_process() {
     use ito_pane::Proc;
     let names: Vec<String> = crate::settings::AGENTS.iter().map(|s| s.to_string()).collect();
-    let p = |name: &str, args: &[&str]| Proc { pid: 1, ppid: 0, name: name.into(), args: args.iter().map(|a| a.to_string()).collect() };
+    let p = |name: &str, args: &[&str]| Proc {
+        pid: 1,
+        name: name.into(),
+        args: args.iter().map(|a| a.to_string()).collect(),
+        ..Proc::default()
+    };
     let codex = p("codex-x86_64-unknown-linux-musl", &[]);
     let gemini = p("node", &["node", "/usr/local/bin/gemini"]);
     let vim = p("vim", &["vim", "codex.md"]);

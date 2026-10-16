@@ -144,31 +144,52 @@ pub fn open_path(path: PathBuf, line: Option<u32>, column: Option<u32>, command:
 pub const SHOW_TAB: &str = "TSUMUGI_SHOW_TAB";
 
 /// The environment variable a new window reads to open at a place on the
-/// screen: `x,y`, its top left in logical pixels (a tab dropped outside the
-/// window it was dragged from).
+/// screen: `x,y,scale` (a tab dropped outside the window it was dragged
+/// from), as [`At`] says. `x,y` alone is read at scale 0.
 pub const WINDOW_AT: &str = "TSUMUGI_WINDOW_AT";
 
+/// Where a new window opens: its top left in logical pixels, and the points
+/// to pixels of the screen they were taken on, without the app's zoom. With
+/// the scale the window can be put on those pixels even when it is made on
+/// a screen of another scale (#181); at 0 it is made at the corner and not
+/// moved.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct At {
+    pub pos: [f32; 2],
+    pub scale: f32,
+}
+
 /// Where this window was asked to open, if anywhere.
-pub fn window_at() -> Option<[f32; 2]> {
+pub fn window_at() -> Option<At> {
     std::env::var(WINDOW_AT).ok().and_then(|v| parse_at(&v))
 }
 
-fn parse_at(v: &str) -> Option<[f32; 2]> {
-    let (x, y) = v.split_once(',')?;
-    let (x, y) = (x.trim().parse::<f32>().ok()?, y.trim().parse::<f32>().ok()?);
-    (x.is_finite() && y.is_finite()).then_some([x, y])
+fn parse_at(v: &str) -> Option<At> {
+    let mut parts = v.split(',').map(|p| p.trim().parse::<f32>().ok());
+    let (x, y) = (parts.next()??, parts.next()??);
+    let scale = match parts.next() {
+        Some(s) => s?,
+        None => 0.0,
+    };
+    let fine = [x, y, scale].iter().all(|v| v.is_finite()) && scale >= 0.0 && parts.next().is_none();
+    fine.then_some(At { pos: [x, y], scale })
+}
+
+/// [`At`] as [`WINDOW_AT`] says it.
+fn at_text(at: At) -> String {
+    format!("{},{},{}", at.pos[0].round(), at.pos[1].round(), at.scale)
 }
 
 /// Another window of this program, showing `tab`; at `at` on the screen, or
 /// where the system puts a new one.
-pub fn new_window(tab: WorkspaceId, at: Option<[f32; 2]>) {
+pub fn new_window(tab: WorkspaceId, at: Option<At>) {
     let _ = std::thread::Builder::new().name("new-window".into()).spawn(move || {
         let Ok(exe) = std::env::current_exe() else { return };
         let mut cmd = Command::new(exe);
         cmd.env(SHOW_TAB, tab.to_string()).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
         // Not where this window was asked to open, which it would inherit.
         match at {
-            Some([x, y]) => cmd.env(WINDOW_AT, format!("{},{}", x.round(), y.round())),
+            Some(at) => cmd.env(WINDOW_AT, at_text(at)),
             None => cmd.env_remove(WINDOW_AT),
         };
         if let Ok(mut child) = cmd.spawn() {
@@ -189,11 +210,21 @@ mod tests {
 
     #[test]
     fn a_window_reads_where_to_open() {
-        assert_eq!(super::parse_at("120,-40"), Some([120.0, -40.0]));
-        assert_eq!(super::parse_at(" 8 , 9 "), Some([8.0, 9.0]));
-        assert_eq!(super::parse_at("8"), None);
-        assert_eq!(super::parse_at("x,9"), None);
-        assert_eq!(super::parse_at("NaN,9"), None);
+        use super::{at_text, parse_at, At};
+        assert_eq!(parse_at("120,-40,1.5"), Some(At { pos: [120.0, -40.0], scale: 1.5 }));
+        assert_eq!(parse_at(" 8 , 9 , 1 "), Some(At { pos: [8.0, 9.0], scale: 1.0 }));
+        assert_eq!(parse_at("8,9"), Some(At { pos: [8.0, 9.0], scale: 0.0 }), "the old form: not moved");
+        assert_eq!(parse_at("8"), None);
+        assert_eq!(parse_at("x,9"), None);
+        assert_eq!(parse_at("NaN,9"), None);
+        assert_eq!(parse_at("8,9,-1"), None);
+        assert_eq!(parse_at("8,9,inf"), None);
+        assert_eq!(parse_at("8,9,"), None);
+        assert_eq!(parse_at("8,9,1.5,2"), None);
+        // What a window on a screen at 125 % sends, read back by the new one.
+        let sent = at_text(At { pos: [3000.4, -199.6], scale: 1.25 });
+        assert_eq!(sent, "3000,-200,1.25");
+        assert_eq!(parse_at(&sent), Some(At { pos: [3000.0, -200.0], scale: 1.25 }));
     }
 
     #[test]
