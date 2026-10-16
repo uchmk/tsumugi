@@ -493,6 +493,28 @@ fn a_stopped_server_answers_nobody_once_a_line_to_it_ends() {
     assert!(s.line_of(&s.ok(&["ls"]), &id).is_some(), "a new server started");
 }
 
+/// `tsumugi new` at once after the last session was closed: the server was
+/// still there, waiting to write its tabs before it went, and took the new
+/// session away with it (#179). It stays now, once that wait is long over.
+#[test]
+fn a_session_started_as_the_last_one_ends_stays() {
+    let s = Server::new("after-end");
+    let first = s.new_session(&[]);
+    s.ok(&["close", &first]);
+    // `close` does not wait for the end; this does, so the next session
+    // comes after it.
+    let deadline = Instant::now() + PATIENCE;
+    while s.line_of(&s.ok(&["ls"]), &first).is_some() {
+        assert!(Instant::now() < deadline, "session {first} still listed after close");
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    let id = s.new_session(&[]);
+    // Past the server's wait after an end (3 s, and 2 s more at most).
+    std::thread::sleep(Duration::from_secs(7));
+    let ls = s.ok(&["ls"]);
+    assert!(s.line_of(&ls, &id).is_some(), "session {id} not in:\n{ls}");
+}
+
 /// `tsumugi mcp` the way Claude Code runs it: JSON-RPC lines on stdin, one
 /// answer per request on stdout. With no server it says tsumugi is not
 /// running; with one, `tsumugi_sessions` lists the session and
