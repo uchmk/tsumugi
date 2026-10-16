@@ -117,7 +117,7 @@ fn same_folder(a: &str, b: &Path) -> bool {
 
 /// 1.2, 1.10, and the half of 1.4 that needs no window: `new` starts the
 /// server itself, types its command into the shell, and puts every tag on;
-/// `ls` lists the session in its seven columns.
+/// `ls` lists the session in its seven columns; the next two `new` are 2 and 3.
 #[test]
 fn new_starts_a_server_and_ls_lists_the_session() {
     let s = Server::new("ls");
@@ -131,6 +131,9 @@ fn new_starts_a_server_and_ls_lists_the_session() {
     // pwsh and cmd make their exe's path the title: the column names the program.
     assert!(!cols[4].to_ascii_lowercase().ends_with(".exe"), "title {:?}", cols[4]);
     assert_eq!(cols[6], "a,b,c");
+    // Sessions count on their own, not with the clients and tabs between.
+    let more = [s.new_session(&[]), s.new_session(&[])];
+    assert_eq!([id.as_str(), &more[0], &more[1]], ["1", "2", "3"]);
 }
 
 /// 1.15 (text): `new --worktree BRANCH` makes a worktree beside the repository, on
