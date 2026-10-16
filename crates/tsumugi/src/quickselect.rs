@@ -146,7 +146,7 @@ mod tests {
     fn screen(lines: &[&str]) -> Vec<Vec<CellView>> {
         let mut t = ito_pane::testing::term(60, lines.len());
         ito_pane::testing::feed(&mut t, &lines.join("\r\n"));
-        ito_pane::snapshot(&t)
+        ito_pane::cell_rows(&t)
     }
 
     #[test]

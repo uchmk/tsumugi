@@ -1848,7 +1848,7 @@ fn send_webhooks(shared: &Shared, sessions: &mut BTreeMap<SessionId, Session>) {
 /// program, or a script it runs, is one of `names`. Empty for none.
 pub fn agent_of(procs: &[&ito_pane::Proc], names: &[String]) -> String {
     let is = |word: &str| {
-        let s = ito_pane::stem(word);
+        let s = ito_pane::program_stem(word);
         names.iter().find(|n| s == **n || s.starts_with(&format!("{n}-"))).cloned()
     };
     procs.iter().find_map(|p| is(&p.name).or_else(|| p.args.iter().take(3).find_map(|a| is(a)))).unwrap_or_default()
