@@ -1,9 +1,12 @@
 name: Build
 
-# A Windows build to download from the Actions tab, so trying tsumugi does not
-# need a Rust toolchain: tsumugi.exe with the newer ConPTY beside it
-# (scripts/fetch-conpty.ps1). x64 and ARM64, both from the one x64 runner.
-# macOS and Linux come later; filer's build.yml has the six-target form.
+# A build to download from the Actions tab, so trying tsumugi does not need a
+# Rust toolchain, for the six targets release.yml packs. Windows: tsumugi.exe
+# with the newer ConPTY beside it (scripts/fetch-conpty.ps1), x64 and ARM64
+# both from the one x64 runner. macOS and Linux: the binary alone, built where
+# it runs (macOS x64 cross-built on the ARM runner), as release.yml's `unix`
+# job. ci.yml and arm64.yml never link macOS; this is where that is found out
+# before a release.
 
 on:
   push:
@@ -48,6 +51,46 @@ jobs:
           New-Item -ItemType Directory -Force dist | Out-Null
           Copy-Item target/${{ matrix.target }}/release/tsumugi.exe dist/
           pwsh -File scripts/fetch-conpty.ps1 -Arch ${{ matrix.arch }} -Dest dist
+      - name: Upload
+        uses: actions/upload-artifact@v7
+        with:
+          name: tsumugi-${{ matrix.name }}-${{ github.sha }}
+          path: dist/
+          if-no-files-found: error
+
+  unix:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macos-arm64
+            os: macos-14
+            target: aarch64-apple-darwin
+          - name: macos-x64
+            os: macos-14
+            target: x86_64-apple-darwin
+          - name: linux-x64
+            os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+          - name: linux-arm64
+            os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+    name: ${{ matrix.name }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Add the target
+        run: rustup target add ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: Build
+        run: cargo build --release --locked -p tsumugi --target ${{ matrix.target }}
+      - name: Gather the files
+        run: |
+          mkdir -p dist
+          cp target/${{ matrix.target }}/release/tsumugi dist/
       - name: Upload
         uses: actions/upload-artifact@v7
         with:
