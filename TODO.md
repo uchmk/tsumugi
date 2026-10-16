@@ -59,7 +59,8 @@ v0.94.0 から、実機の PR の所見と頼みは `finding` の issue に、�
 2.44 の折り返し（[#16](https://github.com/uchmk/tsumugi/issues/16)）、速く打った `Ctrl+Shift+X` / `Ctrl+Shift+L` の Shift（[#17](https://github.com/uchmk/tsumugi/issues/17)）。
 2.52・5.8・5.10・17.26 の再テストは実機の PR #14 が押した（マージで所見が issue になる）。
 
-- [ ] 動きの途中を撮る道具（キーの数ミリ秒後に `Save-Shot` する、または `--keys` の `<Shot>`）。17.41 が確かめられるようになる（#86）
+- [x] 動きの途中を撮る道具（キーの数ミリ秒後に `Save-Shot` する、または `--keys` の `<Shot>`）。17.41 が確かめられるようになる（#86）
+      → v0.114.10: 画像ではなく、`--keys` の状態の `cursor:`・`glide:` の行で、滑った間に描いたフレームの数を読む
 - [ ] 2.73 の絵の形を人が見て `[~]` を `[x]` にする【人】
 - [x] `examples/make-testcheck.rs`・`make-keycheck.rs` は ito の `ito-testcheck` に載せ替えない（#21 の票。ito-testcheck が tsumugi の形を読めるようになったら見直す）。今の ito-testcheck は kura の表の形
       （訳の toml・テスト名の走査・節の準備）で、tsumugi の表（`操作 → 期待` の 1 行）と違う。載せ替えると TESTING-CHECKS.md の中身が
