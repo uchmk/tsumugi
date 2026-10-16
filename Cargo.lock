@@ -4037,7 +4037,7 @@ dependencies = [
 
 [[package]]
 name = "tsumugi"
-version = "0.112.4"
+version = "0.112.5"
 dependencies = [
  "arboard",
  "chrono",
@@ -4069,7 +4069,7 @@ dependencies = [
 
 [[package]]
 name = "tsumugi-mux"
-version = "0.112.4"
+version = "0.112.5"
 dependencies = [
  "crossbeam-channel",
  "ito-common",
