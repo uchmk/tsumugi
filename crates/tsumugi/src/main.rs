@@ -2443,6 +2443,7 @@ impl App {
                     let p = shellhook::set_installed(&shell, on)?;
                     Ok(if on { trf("toast.shell_hook_in", &[&home_short(&p)]) } else { trf("toast.shell_hook_out", &[&home_short(&p)]) })
                 }),
+                prefs::Change::BugReport => self.report_bug(),
                 prefs::Change::RestartServer => self.restart_server(ui.ctx()),
                 prefs::Change::Export => self.job(|| {
                     let dir = tsumugi_mux::settings::default_path()

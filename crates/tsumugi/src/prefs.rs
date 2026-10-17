@@ -185,12 +185,14 @@ pub fn index() -> Vec<(Page, &'static str)> {
         ]
     };
     out.extend(shared(w));
+    out.extend(ito_prefs::bug_index(w).into_iter().map(|k| (Page::Advanced, k)));
     out.extend(keys.map(|a| (Page::Keys, tr_desc(crate::keys::title(a)))));
     out.extend(keys_index(key_words()).map(|k| (Page::Keys, k)));
     if crate::i18n::current_language() != "en" {
         out.extend(keys.map(|a| (Page::Keys, crate::keys::title(a))));
         out.extend(INDEX.iter().filter(|(_, k)| here(k)).map(|(p, k)| (*p, crate::i18n::tr_en(k))));
         out.extend(shared(&ito_prefs::EN));
+        out.extend(ito_prefs::bug_index(&ito_prefs::EN).into_iter().map(|k| (Page::Advanced, k)));
         out.extend(keys_index(&ito_prefs::KEYS_EN).map(|k| (Page::Keys, k)));
     }
     out
@@ -315,6 +317,8 @@ pub enum Change {
     MuteTag(String, bool),
     RenameTag(String, String),
     TestNotification,
+    /// The Feedback card's button: the bug report, as F12 opens it.
+    BugReport,
     /// Every `[[notify.webhooks]]`, in place of those there and of the one
     /// address of before (`[notify] webhook`).
     Webhooks(Vec<Place>),
@@ -1808,6 +1812,9 @@ fn advanced(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut 
         sep(ui, l);
         row(ui, l, tr("prefs.advanced.usage"), tr("prefs.advanced.usage_note"), |ui| status(ui, tr("prefs.common.none"), c.fg));
     });
+    if ito_prefs::bug_card(ui, l, words()) {
+        out.push(Change::BugReport);
+    }
 }
 
 fn theme(ui: &mut egui::Ui, l: Look, pal: &Palette, seen: &Seen, out: &mut Vec<Change>) {
