@@ -212,6 +212,7 @@ Covered by tests, not listed below: 1.15, 1.16
 - [~] **5.14** Two sessions waiting (a permission prompt and a free-text question); `Ctrl+Shift+O`, `Ctrl+Tab` to Waiting; `Down`, `Up`, then `Enter` → The picked session has a lighter band and scrolls into view; `Enter` closes the panel and goes to it; `Left` and `Right` still turn the page
 - [ ] **5.15** A tab with two panes split (`claude` and a shell); `Ctrl+Shift+G`; close the tab; `Ctrl+Shift+O`, `Ctrl+Tab` to Layouts; `Down`, `Enter`; again, then `Delete` → A toast says the layout was saved under the tab's name; the Layouts page counts and lists it with its panes; `Enter` or a click opens it as a new tab in the same shape; `Delete` takes it off the list; with none saved the page says how to save one; a pane running Claude Code is listed as `claude` even before its hooks name a conversation
 - [ ] **5.16** Start a new build's window while an older server runs → A gold "Server is old · restart" chip stays right of the bell until the server is restarted; hover tells both versions; a click restarts the server and the chip goes away
+- [ ] **5.17** `Ctrl+Shift+=` (bigger) a few times, then `F1`; `Ctrl+Shift+-` below the settings' size, `F1` again; `Ctrl+Shift+0` → The help's letters, rows and heading follow the panes' size (bigger, then smaller); what no longer fits at the smallest letters scrolls with the wheel instead of running off the window; back to the normal size at the reset
 
 ## 6. New sessions
 

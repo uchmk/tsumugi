@@ -130,7 +130,11 @@ fn translated(all: &[Group]) -> Vec<ito_help::Group> {
 }
 
 /// Draw it: false when it closes (Esc, its own key, × or a click outside).
-pub fn show(ctx: &egui::Context, view: &mut View, c: &Colors) -> bool {
+/// `zoom` is the panes' letter size over the settings' (the font keys): the
+/// help's letters and rows follow it, and what no longer fits scrolls.
+pub fn show(ctx: &egui::Context, view: &mut View, c: &Colors, zoom: f32) -> bool {
+    let zoom = if zoom.is_finite() { zoom.clamp(0.5, 4.0) } else { 1.0 };
+    let row_h = ROW_H * zoom;
     let mut keep = true;
     let screen = ctx.content_rect();
     let dim = egui::Area::new(egui::Id::new("help-dim")).order(egui::Order::Middle).fixed_pos(screen.min).show(ctx, |ui| {
@@ -158,8 +162,8 @@ pub fn show(ctx: &egui::Context, view: &mut View, c: &Colors) -> bool {
     let width = (screen.width() - 48.0).clamp(280.0, 1600.0);
     let room = (screen.height() - 110.0).max(160.0);
     let style = ito_help::Style {
-        font: FontId::proportional(12.0),
-        row_h: ROW_H,
+        font: FontId::proportional(12.0 * zoom),
+        row_h,
         head: c.dim,
         keys: c.wait_text(),
         desc: c.fg,
@@ -167,8 +171,8 @@ pub fn show(ctx: &egui::Context, view: &mut View, c: &Colors) -> bool {
         dim: c.dim,
         bar: c.dim,
     };
-    let plan = ito_help::plan(&all, room, ROW_H, ((width / 300.0) as usize).clamp(1, 4), SMALLEST);
-    let tall = plan.columns.iter().map(Vec::len).max().unwrap_or(0) as f32 * ROW_H * plan.scale;
+    let plan = ito_help::plan(&all, room, row_h, ((width / (300.0 * zoom)) as usize).clamp(1, 4), SMALLEST);
+    let tall = plan.columns.iter().map(Vec::len).max().unwrap_or(0) as f32 * row_h * plan.scale;
     egui::Area::new(egui::Id::new("help")).order(egui::Order::Foreground).anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO).show(
         ctx,
         |ui| {
@@ -180,8 +184,8 @@ pub fn show(ctx: &egui::Context, view: &mut View, c: &Colors) -> bool {
                 .show(ui, |ui| {
                     ui.set_width(width);
                     ui.horizontal(|ui| {
-                        ui.label(RichText::new(tr("help.title")).size(15.0).strong().color(c.strong()));
-                        ui.label(RichText::new(tr("help.lead")).size(12.0).color(c.dim));
+                        ui.label(RichText::new(tr("help.title")).size(15.0 * zoom).strong().color(c.strong()));
+                        ui.label(RichText::new(tr("help.lead")).size(12.0 * zoom).color(c.dim));
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             if ui.button("×").on_hover_text(tr("help.close")).clicked() {
                                 keep = false;
@@ -193,7 +197,7 @@ pub fn show(ctx: &egui::Context, view: &mut View, c: &Colors) -> bool {
                     if plan.scrolls && resp.hovered() {
                         let dy = ctx.input(|i| i.smooth_scroll_delta.y);
                         if dy != 0.0 {
-                            let lines = (dy.abs() / (ROW_H * plan.scale)).ceil() as usize;
+                            let lines = (dy.abs() / (row_h * plan.scale)).ceil() as usize;
                             view.scroll = if dy > 0.0 { view.scroll.saturating_sub(lines) } else { view.scroll + lines };
                         }
                     }
@@ -243,17 +247,17 @@ mod tests {
 
     /// Draws it on a `w` × `h` window until it settles: the texts and where.
     fn draw(w: f32, h: f32) -> (View, Vec<(String, egui::Rect)>) {
-        draw_in(egui::Context::default(), w, h)
+        draw_in(egui::Context::default(), w, h, 1.0)
     }
 
-    fn draw_in(ctx: egui::Context, w: f32, h: f32) -> (View, Vec<(String, egui::Rect)>) {
+    fn draw_in(ctx: egui::Context, w: f32, h: f32, zoom: f32) -> (View, Vec<(String, egui::Rect)>) {
         let mut view = View::new();
         let mut texts = Vec::new();
         for _ in 0..3 {
             let input =
                 egui::RawInput { screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(w, h))), ..Default::default() };
             let mut out = ctx.run_ui(input, |ui| {
-                assert!(show(ui.ctx(), &mut view, &crate::theme::colors()));
+                assert!(show(ui.ctx(), &mut view, &crate::theme::colors(), zoom));
             });
             out.textures_delta.clear();
             texts.clear();
@@ -304,6 +308,22 @@ mod tests {
         }
     }
 
+    /// With the letters made bigger (the font keys) the help's follow, and
+    /// what no longer fits scrolls instead of running off the window.
+    #[test]
+    fn it_follows_the_font_keys() {
+        let height = |zoom: f32| {
+            let (_, texts) = draw_in(egui::Context::default(), 1280.0, 800.0, zoom);
+            let t = texts.iter().find(|(t, _)| t.starts_with("SESSIONS")).expect("a title").1;
+            let bottom = texts.iter().map(|(_, r)| r.bottom()).fold(0.0_f32, f32::max);
+            assert!(bottom < 800.0, "zoom {zoom}: runs to {bottom}");
+            t.height()
+        };
+        // Bigger letters are shrunk back by the plan until `SMALLEST`, then it scrolls.
+        assert!(height(2.0) > height(1.0) * 1.2);
+        assert!(height(0.5) < height(1.0));
+    }
+
     /// In Japanese, with the fonts tsumugi draws it in, it fits too: the
     /// real machine found the last column running off the bottom at
     /// 1280 × 800 (5.10), its lines wrapping taller frames after it was
@@ -315,7 +335,7 @@ mod tests {
         for (w, h) in [(1280.0, 800.0), (1280.0, 600.0), (1000.0, 700.0), (1366.0, 640.0)] {
             let ctx = egui::Context::default();
             ctx.set_fonts(fonts.clone());
-            let (view, texts) = draw_in(ctx, w, h);
+            let (view, texts) = draw_in(ctx, w, h, 1.0);
             assert_eq!(view.scroll, 0, "{w}x{h}");
             let bottom = texts.iter().map(|(_, r)| r.bottom()).fold(0.0_f32, f32::max);
             assert!(bottom < h, "{w}x{h}: runs to {bottom}");

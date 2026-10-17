@@ -7629,7 +7629,7 @@ impl App {
 
         self.waiting_and_closed(&ctx, &client, &workspaces, &sessions);
         if let Some(mut view) = self.help.take() {
-            if help::show(&ctx, &mut view, &theme::colors()) {
+            if help::show(&ctx, &mut view, &theme::colors(), self.font.size / self.settings_now.font.size) {
                 self.help = Some(view);
             }
         }
