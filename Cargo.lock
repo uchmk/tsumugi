@@ -1927,6 +1927,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "ito-bugreport"
+version = "0.59.0"
+source = "git+https://github.com/uchmk/ito?rev=2c82056fc6da21003b77d27b562eb509d7adf309#2c82056fc6da21003b77d27b562eb509d7adf309"
+dependencies = [
+ "windows",
+]
+
+[[package]]
 name = "ito-common"
 version = "0.59.0"
 source = "git+https://github.com/uchmk/ito?rev=2c82056fc6da21003b77d27b562eb509d7adf309#2c82056fc6da21003b77d27b562eb509d7adf309"
@@ -4047,7 +4055,7 @@ dependencies = [
 
 [[package]]
 name = "tsumugi"
-version = "0.115.6"
+version = "0.115.7"
 dependencies = [
  "arboard",
  "chrono",
@@ -4056,6 +4064,7 @@ dependencies = [
  "global-hotkey",
  "image",
  "ito-browser",
+ "ito-bugreport",
  "ito-common",
  "ito-console",
  "ito-i18n",
@@ -4080,7 +4089,7 @@ dependencies = [
 
 [[package]]
 name = "tsumugi-mux"
-version = "0.115.6"
+version = "0.115.7"
 dependencies = [
  "crossbeam-channel",
  "ito-common",

@@ -36,6 +36,7 @@ Windows and Linux keys first; the macOS key is after `·`.
 - [x] `Ctrl+Shift+Down` · `Cmd+Shift+Down` — To the prompt below · `next_prompt`
 - [x] `Ctrl+Shift+F` · `Cmd+F` — Find in the pane · `find`
 - [x] `F1` · `F1` — Every key (this help) · `help`
+- [ ] `F12` · `F12` — Report a bug: the browser opens the form · `bug_report`
 - [x] `Ctrl+Shift+X` · `Cmd+Shift+X` — Swap the pane with the next one · `swap_pane`
 - [x] `Ctrl+Shift+E` · `Cmd+Shift+E` — Give every pane the same room · `equalize`
 - [x] `Ctrl+Shift+J` · `Cmd+Shift+J` — The pane to a tab of its own · `pane_to_tab`

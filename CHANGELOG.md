@@ -5,6 +5,17 @@
 
 ## [未リリース]
 
+## [0.115.7] - 2026-10-17
+
+### 追加
+
+- F12 で、バージョン・OS・拡大率を埋めたバグ報告のフォームをブラウザーで開く（ito-bugreport）。キー名は `bug_report`（設定の「キー」で変えられる）。ヘルプの「Lists and boxes」にも載る。
+- `.github/ISSUE_TEMPLATE/bug_report.yml`（ito の共通のフォーム）を `cargo run -p tsumugi --example make-bugform` で作る。`scripts/verify.sh` と CI の `checklists.yml` が `--check` で確かめ、フォームに `version`・`os`・`context` の id があることはテストで見る。
+
+### 変更
+
+- `scripts/ito-first.allow` から `ito-bugreport` を外した。
+
 ## [0.115.6] - 2026-10-17
 
 ### 変更

@@ -1177,6 +1177,16 @@ fn new_session(client: &Client, cwd: std::path::PathBuf, place: Place) -> Result
 
 /// The sidebar's width when the window first opens, and how far a drag may
 /// take it (docs/v1-scope.md 1f).
+/// Who the bug form is for; the form is `.github/ISSUE_TEMPLATE/bug_report.yml`.
+fn bug_spec() -> ito_bugreport::Spec<'static> {
+    ito_bugreport::Spec {
+        app: "tsumugi",
+        version: env!("CARGO_PKG_VERSION"),
+        repo: "https://github.com/uchmk/tsumugi",
+        template: "bug_report.yml",
+    }
+}
+
 const SIDEBAR: f32 = 288.0;
 /// Dragged narrower than `RAIL_AT`, the sidebar becomes the rail, and the
 /// rail dragged wider than it becomes the sidebar again (the design's 1i A).
@@ -2202,6 +2212,7 @@ impl App {
                 _ => self.find = Some(find::Bar::new(w.focus)),
             },
             keys::Action::Help => self.help = if self.help.is_some() { None } else { Some(help::View::new()) },
+            keys::Action::BugReport => self.report_bug(),
             keys::Action::Overview => {
                 self.lists = match &self.lists {
                     Some(v) if v.page == lists::Page::All => None,
@@ -6677,6 +6688,16 @@ impl App {
         Some(ui.input(|i| i.time))
     }
 
+    /// F12: the browser opens the bug form filled with the version, the OS and
+    /// what the app knows. egui opens it, not `menu::open_url`: that keeps a
+    /// shell away from the address, so it refuses the `&` and `%` of a form's.
+    fn report_bug(&self) {
+        let home = std::env::var_os("USERPROFILE").or_else(|| std::env::var_os("HOME")).map(std::path::PathBuf::from);
+        let context = ito_bugreport::Context { home: home.as_deref(), scale: Some(self.ctx.pixels_per_point()), ..Default::default() };
+        let url = ito_bugreport::url(&bug_spec(), &[("context", ito_bugreport::context(&context))]);
+        self.ctx.open_url(egui::OpenUrl::new_tab(url));
+    }
+
     /// A page of a dev server: beside the panes in the built-in browser, or
     /// (Linux has none) in the system's.
     fn show_page(&mut self, url: &str) {
@@ -7349,6 +7370,7 @@ impl App {
                     | keys::Action::Overview
                     | keys::Action::Notices
                     | keys::Action::Waiting => !typing,
+                    keys::Action::BugReport => true,
                     keys::Action::Search | keys::Action::Help => !typing || self.search.is_some() && a == keys::Action::Search,
                     _ => false,
                 };

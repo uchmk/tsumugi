@@ -30,3 +30,4 @@ jobs:
           save-if: ${{ github.ref == 'refs/heads/main' }}
       - run: cargo run -p tsumugi --example make-testcheck -- --check
       - run: cargo run -p tsumugi --example make-keycheck -- --check
+      - run: cargo run -p tsumugi --example make-bugform -- --check

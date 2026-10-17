@@ -60,6 +60,7 @@ const KINDS: [(&str, &[Action]); 4] = [
             Action::Input,
             Action::Settings,
             Action::Help,
+            Action::BugReport,
             Action::ClosedList,
         ],
     ),

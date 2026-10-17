@@ -87,6 +87,9 @@ pub enum Action {
     Find,
     /// Every key and what it does, by kind, on one screen (filer's help).
     Help,
+    /// The browser opens the bug form filled with the version, the OS and what
+    /// the app knows (F12; `ito-bugreport`).
+    BugReport,
     /// The pane with the keys trades places with the next one in the tab
     /// (tmux's `swap-pane`), the keys going with it.
     SwapPane,
@@ -172,7 +175,7 @@ fn action_with(key: Key, m: Modifiers, mac: bool, bound: &Bound) -> Option<Actio
 ///
 /// An empty own key is no key: the action has none until the settings give it
 /// one (the palette and the settings screen's button do it without a key).
-pub const NAMED: [(Action, &str, &str, &str); 41] = [
+pub const NAMED: [(Action, &str, &str, &str); 42] = [
     (Action::NewTab, "new_tab", "Ctrl+Shift+T", "Cmd+T"),
     (Action::CloseTab, "close_tab", "Ctrl+Shift+W", "Cmd+W"),
     (Action::NextTab, "next_tab", "Ctrl+Tab", "Ctrl+Tab"),
@@ -210,6 +213,8 @@ pub const NAMED: [(Action, &str, &str, &str); 41] = [
     (Action::Find, "find", "Ctrl+Shift+F", "Cmd+F"),
     // Every program's help key, and filer's.
     (Action::Help, "help", "F1", "F1"),
+    // Every uchmk app's bug report key.
+    (Action::BugReport, "bug_report", "F12", "F12"),
     // X for exchange, E for even, J for (a tab of its) own: no shell's or
     // Claude Code's keys, and not Ctrl+Shift+C / V.
     (Action::SwapPane, "swap_pane", "Ctrl+Shift+X", "Cmd+Shift+X"),
@@ -322,6 +327,7 @@ pub fn title(a: Action) -> &'static str {
         Action::NextPrompt => "To the prompt below",
         Action::Find => "Find in the pane",
         Action::Help => "Every key (this help)",
+        Action::BugReport => "Report a bug: the browser opens the form",
         Action::SwapPane => "Swap the pane with the next one",
         Action::Equalize => "Give every pane the same room",
         Action::PaneToTab => "The pane to a tab of its own",
@@ -925,6 +931,8 @@ fn action_on(key: Key, m: Modifiers, mac: bool) -> Option<Action> {
             Key::Num0 if cmd && !m.shift && !m.alt && !m.ctrl => Some(Action::FontReset),
             Key::F2 if !m.any() => Some(Action::Rename),
             Key::F1 if !m.any() => Some(Action::Help),
+            Key::F12 if !m.any() => Some(Action::BugReport),
+            Key::F12 if !m.any() => Some(Action::BugReport),
             _ if cmd && !m.shift => digit().map(Action::Tab),
             _ => None,
         };

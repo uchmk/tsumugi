@@ -43,6 +43,8 @@ ito-keyscript = { git = "https://github.com/uchmk/ito", rev = "2c82056fc6da21003
 ito-keys = { git = "https://github.com/uchmk/ito", rev = "2c82056fc6da21003b77d27b562eb509d7adf309", features = ["egui"] }
 # keymap.toml, laid out like kura's and yagura's (yazi's).
 ito-keymap = { git = "https://github.com/uchmk/ito", rev = "2c82056fc6da21003b77d27b562eb509d7adf309" }
+# F12: the browser opens the bug form with the version and the OS filled in.
+ito-bugreport = { git = "https://github.com/uchmk/ito", rev = "2c82056fc6da21003b77d27b562eb509d7adf309" }
 # The built-in browser (issue #66, option 2): the OS's own WebView (WebView2,
 # WKWebView) as a child of the window. Linux has none; it opens the browser.
 ito-browser = { git = "https://github.com/uchmk/ito", rev = "2c82056fc6da21003b77d27b562eb509d7adf309" }
