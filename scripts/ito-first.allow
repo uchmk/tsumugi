@@ -2,4 +2,4 @@
 ito-bugreport tsumugi has no F12 bug report yet; to be added with ito-bugreport
 ito-help tsumugi has no ? / F1 key help yet; to be added with ito-help
 ito-testcheck tsumugi's examples/make-testcheck is its own copy; not yet moved to ito-testcheck (ito-testcheck was cut out of it)
-postcard tsumugi-mux frames and state (frame.rs, state.rs) use postcard directly; whether ito-ipc covers the mux protocol is undecided (ask ito if not)
+postcard tsumugi-mux state.rs saves and restores its versioned state file with postcard directly (persistence, not a wire protocol; frame.rs already uses ito_ipc::frame). Share it via ito only if another app needs a versioned binary state file
