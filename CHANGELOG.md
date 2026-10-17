@@ -11,6 +11,12 @@
 
 - 実機（x64）で 5.7 を確かめた（#202）。
 
+## [0.115.15] - 2026-10-17
+
+### 変更
+
+- ito を a37f44e（v0.77.0）に上げた。組み込みのテーマが 13 から 20 になった（Campbell・VS Code Dark+/Light+・GitHub Light・One Light・Rosé Pine Dawn・Tokyo Night Day）。
+
 ## [0.115.14] - 2026-10-17
 
 ### 変更
