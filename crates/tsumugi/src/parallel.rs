@@ -97,13 +97,17 @@ pub fn show(ctx: &egui::Context, view: &mut View, c: &Colors) -> Option<Answer> 
                 .inner_margin(egui::Margin::symmetric(20, 16))
                 .show(ui, |ui| {
                     ui.set_width((screen.width() - 40.0).clamp(300.0, 600.0));
-                    ui.label(RichText::new(tr("parallel.title")).size(16.0).strong().color(c.strong()));
-                    ui.label(RichText::new(tr("parallel.lead")).size(12.0).color(c.dim));
+                    ui.label(RichText::new(tr("parallel.title")).size(ito_theme::zoomed(ui.ctx(), 16.0)).strong().color(c.strong()));
+                    ui.label(RichText::new(tr("parallel.lead")).size(ito_theme::zoomed(ui.ctx(), 12.0)).color(c.dim));
                     ui.add_space(10.0);
-                    ui.label(RichText::new(tr("parallel.repo")).size(11.0).color(c.faint()));
-                    ui.add(egui::TextEdit::singleline(&mut view.folder).font(egui::FontId::monospace(12.5)).desired_width(f32::INFINITY));
+                    ui.label(RichText::new(tr("parallel.repo")).size(ito_theme::zoomed(ui.ctx(), 11.0)).color(c.faint()));
+                    ui.add(
+                        egui::TextEdit::singleline(&mut view.folder)
+                            .font(egui::FontId::monospace(ito_theme::zoomed(ui.ctx(), 12.5)))
+                            .desired_width(f32::INFINITY),
+                    );
                     ui.add_space(8.0);
-                    ui.label(RichText::new(tr("parallel.work")).size(11.0).color(c.faint()));
+                    ui.label(RichText::new(tr("parallel.work")).size(ito_theme::zoomed(ui.ctx(), 11.0)).color(c.faint()));
                     let mut gone = None;
                     for (k, t) in view.tasks.iter_mut().enumerate() {
                         ui.horizontal(|ui| {

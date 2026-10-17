@@ -364,7 +364,8 @@ pub fn status_bar(
     let StatusExtra { up_ms, nerd, clock, git, tokens, block, cost } = extra;
     let (up_ms, nerd) = (*up_ms, *nerd);
     let mut click = None;
-    let small = |t: String, c: Color32| RichText::new(t).font(FontId::proportional(11.5)).color(c);
+    let zctx = ui.ctx().clone();
+    let small = |t: String, c: Color32| RichText::new(t).font(FontId::proportional(ito_theme::zoomed(&zctx, 11.5))).color(c);
     // The design's two lines: after the counts, and before the right.
     let divider = |ui: &mut egui::Ui| {
         let (r, _) = ui.allocate_exact_size(egui::vec2(1.0, 14.0), egui::Sense::hover());
@@ -406,7 +407,8 @@ pub fn status_bar(
             // need is kept, and the rest is the folder's, cut with an ellipsis.
             let mut keep = if i.branch.is_empty() { 0.0 } else { 40.0 + 12.0 + 4.0 + 12.0 };
             if !i.branch.is_empty() {
-                keep += ui.fonts_mut(|f| f.layout_no_wrap(i.branch.clone(), FontId::proportional(11.5), pal.fg).size().x);
+                let branch_size = ito_theme::zoomed(ui.ctx(), 11.5);
+                keep += ui.fonts_mut(|f| f.layout_no_wrap(i.branch.clone(), FontId::proportional(branch_size), pal.fg).size().x);
                 if git.is_some() {
                     keep += 90.0;
                 }
@@ -414,7 +416,12 @@ pub fn status_bar(
             let room = (ui.available_width() - keep).max(40.0);
             ui.scope(|ui| {
                 ui.set_max_width(room);
-                ui.add(egui::Label::new(RichText::new(crate::home_short(&i.cwd)).font(FontId::monospace(11.0)).color(pal.fg)).truncate());
+                ui.add(
+                    egui::Label::new(
+                        RichText::new(crate::home_short(&i.cwd)).font(FontId::monospace(ito_theme::zoomed(ui.ctx(), 11.0))).color(pal.fg),
+                    )
+                    .truncate(),
+                );
             });
             if !i.branch.is_empty() {
                 ui.add_space(4.0);
@@ -436,8 +443,12 @@ pub fn status_bar(
                 // screen's language, as the other apps' clocks.
                 let now = chrono::Local::now().naive_local();
                 let lang = crate::i18n::current_language();
-                ui.label(RichText::new(clock.text(&now, lang)).font(FontId::monospace(11.5)).color(crate::theme::colors().strong()))
-                    .on_hover_text(ito_common::Clock::full(&now, lang));
+                ui.label(
+                    RichText::new(clock.text(&now, lang))
+                        .font(FontId::monospace(ito_theme::zoomed(ui.ctx(), 11.5)))
+                        .color(crate::theme::colors().strong()),
+                )
+                .on_hover_text(ito_common::Clock::full(&now, lang));
                 ui.add_space(12.0);
             }
             // The pane's character set; a menu of others off Windows, where
@@ -448,7 +459,7 @@ pub fn status_bar(
             } else {
                 let color = if charset == "UTF-8" { pal.fg_dim } else { ink(gold()) };
                 ui.menu_button(small(charset.into(), color), |ui| {
-                    ui.label(RichText::new(tr("charset.title")).size(11.5).color(pal.fg_dim));
+                    ui.label(RichText::new(tr("charset.title")).size(ito_theme::zoomed(ui.ctx(), 11.5)).color(pal.fg_dim));
                     for name in ito_pane::CHARSETS {
                         if ui.selectable_label(name == charset, name).clicked() {
                             click = Some(StatusClick::Charset(name.to_owned()));
@@ -513,7 +524,8 @@ pub fn status_bar(
 /// request, coloured by its checks, a click away from its page.
 fn git_marks(ui: &mut egui::Ui, pal: &Palette, g: &crate::gitinfo::Git, click: &mut Option<StatusClick>) {
     use crate::gitinfo::Checks;
-    let small = |t: String, c: Color32| RichText::new(t).font(FontId::proportional(11.5)).color(c);
+    let zctx = ui.ctx().clone();
+    let small = |t: String, c: Color32| RichText::new(t).font(FontId::proportional(ito_theme::zoomed(&zctx, 11.5))).color(c);
     if let Some((ahead, behind)) = g.ahead {
         if ahead > 0 {
             ui.label(small(format!("↑{ahead}"), gold())).on_hover_text(format!("{ahead} commit(s) not pushed"));
@@ -565,10 +577,10 @@ pub fn pr_line(pr: &crate::gitinfo::Pr) -> (String, Color32) {
 /// terminal's font, cut at the width rather than wrapped.
 pub fn peek(ui: &mut egui::Ui, pal: &Palette, lines: &[String]) {
     if lines.is_empty() {
-        ui.label(RichText::new(tr("sidebar.nothing_yet")).size(11.5).color(pal.fg_dim));
+        ui.label(RichText::new(tr("sidebar.nothing_yet")).size(ito_theme::zoomed(ui.ctx(), 11.5)).color(pal.fg_dim));
         return;
     }
-    let font = FontId::monospace(11.0);
+    let font = FontId::monospace(ito_theme::zoomed(ui.ctx(), 11.0));
     let width = 520.0;
     let shown: Vec<_> = lines
         .iter()
@@ -1109,7 +1121,7 @@ pub fn search_box(
                     }
                     ui.add_space(4.0);
                     if found.is_empty() {
-                        ui.label(RichText::new(tr("title.nothing_matches")).color(pal.fg_dim).size(12.0));
+                        ui.label(RichText::new(tr("title.nothing_matches")).color(pal.fg_dim).size(ito_theme::zoomed(ui.ctx(), 12.0)));
                     }
                     for (k, e) in found.iter().enumerate() {
                         let (rect, resp) = ui.allocate_exact_size(egui::vec2(ui.available_width(), 26.0), egui::Sense::click());
@@ -1122,12 +1134,16 @@ pub fn search_box(
                         }
                         // The detail at most 40% of the line, the title the rest;
                         // both cut short, so nothing runs out of the box.
-                        let mut job = egui::text::LayoutJob::simple_singleline(e.detail.clone(), FontId::proportional(11.5), pal.fg_dim);
+                        let mut job = egui::text::LayoutJob::simple_singleline(
+                            e.detail.clone(),
+                            FontId::proportional(ito_theme::zoomed(ui.ctx(), 11.5)),
+                            pal.fg_dim,
+                        );
                         job.wrap = egui::text::TextWrapping::truncate_at_width(rect.width() * 0.4);
                         let detail = ui.fonts_mut(|f| f.layout_job(job));
                         let mut job = egui::text::LayoutJob::simple_singleline(
                             e.title.clone(),
-                            FontId::proportional(12.5),
+                            FontId::proportional(ito_theme::zoomed(ui.ctx(), 12.5)),
                             crate::theme::colors().strong(),
                         );
                         job.wrap = egui::text::TextWrapping::truncate_at_width((rect.width() - detail.size().x - 28.0).max(20.0));
@@ -1154,7 +1170,7 @@ pub fn search_box(
 
 /// The sidebar's order button: two arrows and the order's short name.
 pub fn sort_button(ui: &mut egui::Ui, pal: &Palette, label: &str) -> egui::Response {
-    let galley = ui.painter().layout_no_wrap(label.to_owned(), FontId::proportional(11.5), pal.fg_dim);
+    let galley = ui.painter().layout_no_wrap(label.to_owned(), FontId::proportional(ito_theme::zoomed(ui.ctx(), 11.5)), pal.fg_dim);
     let size = egui::vec2(galley.size().x + 30.0, 24.0);
     let (rect, resp) = ui.allocate_exact_size(size, egui::Sense::click());
     let resp = resp.on_hover_text(crate::i18n::tr("sort.hover"));
@@ -1177,7 +1193,7 @@ pub fn sort_button(ui: &mut egui::Ui, pal: &Palette, label: &str) -> egui::Respo
 /// `dot`, a state's colour before the words.
 pub fn filter_button(ui: &mut egui::Ui, pal: &Palette, label: &str, dot: Option<Color32>, on: bool) -> egui::Response {
     let color = if on { crate::theme::colors().strong() } else { crate::theme::colors().dim };
-    let galley = ui.painter().layout_no_wrap(label.to_owned(), FontId::proportional(11.5), color);
+    let galley = ui.painter().layout_no_wrap(label.to_owned(), FontId::proportional(ito_theme::zoomed(ui.ctx(), 11.5)), color);
     let pad = if dot.is_some() { 21.0 } else { 9.0 };
     let size = egui::vec2(galley.size().x + pad + 9.0, 22.0);
     let (rect, resp) = ui.allocate_exact_size(size, egui::Sense::click());
@@ -1481,7 +1497,7 @@ pub fn restore_screen(ui: &mut egui::Ui, pal: &Palette, view: &mut RestoreView) 
         .stroke(egui::Stroke::new(1.0, crate::theme::colors().border_strong()))
         .inner_margin(20.0)
         .show(&mut child, |ui| {
-            ui.label(RichText::new(tr("restore.title")).size(18.0).strong().color(pal.fg));
+            ui.label(RichText::new(tr("restore.title")).size(ito_theme::zoomed(ui.ctx(), 18.0)).strong().color(pal.fg));
             let lead =
                 if panes.len() == 1 { trf("restore.lead_one", &[&when]) } else { trf("restore.lead", &[&panes.len().to_string(), &when]) };
             ui.label(RichText::new(lead).color(pal.fg_dim));
@@ -1494,7 +1510,7 @@ pub fn restore_screen(ui: &mut egui::Ui, pal: &Palette, view: &mut RestoreView) 
                 let some = count > 0 && !all;
                 let ticked = &mut view.ticked;
                 egui::Frame::NONE.inner_margin(egui::Margin::symmetric(8, 2)).show(ui, |ui| {
-                    let label = RichText::new(tr("restore.select_all")).size(12.5).color(pal.fg_dim);
+                    let label = RichText::new(tr("restore.select_all")).size(ito_theme::zoomed(ui.ctx(), 12.5)).color(pal.fg_dim);
                     if ui.add(egui::Checkbox::new(&mut all, label).indeterminate(some)).clicked() {
                         tick_all(ticked);
                     }
@@ -1531,7 +1547,10 @@ pub fn restore_screen(ui: &mut egui::Ui, pal: &Palette, view: &mut RestoreView) 
                                 let room = ui.available_width() * 0.45;
                                 ui.scope(|ui| {
                                     ui.set_max_width(room);
-                                    ui.add(egui::Label::new(RichText::new(what).size(12.0).color(pal.fg_dim)).truncate());
+                                    ui.add(
+                                        egui::Label::new(RichText::new(what).size(ito_theme::zoomed(ui.ctx(), 12.0)).color(pal.fg_dim))
+                                            .truncate(),
+                                    );
                                 });
                                 ui.add_space(12.0);
                                 ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
@@ -1547,7 +1566,10 @@ pub fn restore_screen(ui: &mut egui::Ui, pal: &Palette, view: &mut RestoreView) 
             ui.add_space(10.0);
             ui.separator();
             ui.horizontal(|ui| {
-                ui.checkbox(&mut view.always, RichText::new(tr("restore.always")).size(12.5).color(pal.fg_dim));
+                ui.checkbox(
+                    &mut view.always,
+                    RichText::new(tr("restore.always")).size(ito_theme::zoomed(ui.ctx(), 12.5)).color(pal.fg_dim),
+                );
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     let picked: Vec<SessionId> = view.ticked.iter().filter(|(_, on)| *on).map(|(id, _)| *id).collect();
                     let restore = egui::Button::new(

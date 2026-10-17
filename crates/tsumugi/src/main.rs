@@ -6558,6 +6558,8 @@ impl eframe::App for App {
     }
 
     fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
+        // The screens of the window's own grow and shrink with the panes' letters.
+        ito_theme::set_text_zoom(ui.ctx(), self.font.size / self.settings_now.font.size);
         self.animated = false;
         self.peek = None;
         self.cursor_seen = None;
@@ -7629,7 +7631,7 @@ impl App {
 
         self.waiting_and_closed(&ctx, &client, &workspaces, &sessions);
         if let Some(mut view) = self.help.take() {
-            if help::show(&ctx, &mut view, &theme::colors(), self.font.size / self.settings_now.font.size) {
+            if help::show(&ctx, &mut view, &theme::colors()) {
                 self.help = Some(view);
             }
         }

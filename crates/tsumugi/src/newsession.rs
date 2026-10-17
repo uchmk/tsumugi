@@ -412,7 +412,7 @@ pub fn show(
         }
     });
     chrome::modal(ctx, egui::LayerId::new(egui::Order::Middle, egui::Id::new("new-session-dim")));
-    let label = |t: &str| RichText::new(t).size(11.0).strong().color(crate::theme::colors().dim);
+    let label = |t: &str| RichText::new(t).size(ito_theme::zoomed(ctx, 11.0)).strong().color(crate::theme::colors().dim);
     egui::Area::new(egui::Id::new("new-session"))
         .order(egui::Order::Foreground)
         .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
@@ -426,10 +426,15 @@ pub fn show(
                     ui.set_width(560.0);
                     ui.spacing_mut().item_spacing = egui::vec2(6.0, 6.0);
                     ui.horizontal(|ui| {
-                        ui.label(RichText::new(tr("newsession.title")).size(16.0).strong().color(crate::theme::colors().strong()));
+                        ui.label(
+                            RichText::new(tr("newsession.title"))
+                                .size(ito_theme::zoomed(ui.ctx(), 16.0))
+                                .strong()
+                                .color(crate::theme::colors().strong()),
+                        );
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             let key = crate::keys::label(crate::keys::Action::NewTab);
-                            ui.label(RichText::new(key).font(FontId::monospace(11.5)).color(chrome::grey()));
+                            ui.label(RichText::new(key).font(FontId::monospace(ito_theme::zoomed(ui.ctx(), 11.5))).color(chrome::grey()));
                         });
                     });
                     ui.add_space(8.0);
@@ -442,7 +447,7 @@ pub fn show(
                         egui::EventFilter { tab: completion.is_some(), horizontal_arrows: true, vertical_arrows: true, escape: false };
                     let field = egui::TextEdit::singleline(&mut d.folder)
                         .id(egui::Id::new("ns-folder"))
-                        .font(FontId::monospace(13.0))
+                        .font(FontId::monospace(ito_theme::zoomed(ui.ctx(), 13.0)))
                         .desired_width(f32::INFINITY)
                         .event_filter(filter);
                     let f = ui.add(field);
@@ -455,15 +460,20 @@ pub fn show(
                     }
                     for (k, r) in shown.iter().enumerate() {
                         // The arrows walk these from the folder; Tab passes them by.
-                        let (rect, resp) = ui.allocate_exact_size(egui::vec2(ui.available_width(), 26.0), egui::Sense::CLICK);
+                        let (rect, resp) =
+                            ui.allocate_exact_size(egui::vec2(ui.available_width(), ito_theme::zoomed(ui.ctx(), 26.0)), egui::Sense::CLICK);
                         let p = ui.painter();
                         if d.selected == Some(k) || resp.hovered() {
                             p.rect_filled(rect, 6.0, crate::theme::colors().chosen());
                         }
-                        let name = p.layout_no_wrap(crate::home_short(&r.folder), FontId::monospace(12.5), crate::theme::colors().strong());
+                        let name = p.layout_no_wrap(
+                            crate::home_short(&r.folder),
+                            FontId::monospace(ito_theme::zoomed(ui.ctx(), 12.5)),
+                            crate::theme::colors().strong(),
+                        );
                         let w = name.size().x;
                         p.galley(egui::pos2(rect.left() + 10.0, rect.center().y - name.size().y / 2.0), name, Color32::WHITE);
-                        let note = p.layout_no_wrap(r.note.clone(), FontId::proportional(12.0), pal.fg_dim);
+                        let note = p.layout_no_wrap(r.note.clone(), FontId::proportional(ito_theme::zoomed(ui.ctx(), 12.0)), pal.fg_dim);
                         p.galley(egui::pos2(rect.left() + 20.0 + w, rect.center().y - note.size().y / 2.0), note, pal.fg_dim);
                         if resp.clicked() {
                             d.folder = crate::home_short(&r.folder);
@@ -511,11 +521,12 @@ pub fn show(
                     });
                     // More panes in the tab, beside the first (a profile keeps them).
                     ui.horizontal(|ui| {
-                        ui.label(RichText::new(tr("newsession.beside")).size(12.0).color(pal.fg_dim));
+                        ui.label(RichText::new(tr("newsession.beside")).size(ito_theme::zoomed(ui.ctx(), 12.0)).color(pal.fg_dim));
                         let mut gone = None;
                         d.beside_id = None;
                         for (k, s) in d.more.iter().enumerate() {
-                            let chip = ui.add(egui::Button::new(RichText::new(format!("{}  ×", s.label())).size(12.0)));
+                            let chip = ui
+                                .add(egui::Button::new(RichText::new(format!("{}  ×", s.label())).size(ito_theme::zoomed(ui.ctx(), 12.0))));
                             d.beside_id = d.beside_id.or(Some(chip.id));
                             if ring(ui, chip).on_hover_text(tr("newsession.take_off")).clicked() {
                                 gone = Some(k);
@@ -525,7 +536,8 @@ pub fn show(
                             d.more.remove(k);
                         }
                         if d.more.len() < MORE_MOST {
-                            let add = ui.add(egui::Button::new(RichText::new(tr("newsession.add_pane")).size(12.0)));
+                            let add =
+                                ui.add(egui::Button::new(RichText::new(tr("newsession.add_pane")).size(ito_theme::zoomed(ui.ctx(), 12.0))));
                             d.beside_id = d.beside_id.or(Some(add.id));
                             let add = ring(ui, add);
                             egui::Popup::menu(&add).show(|ui| {
@@ -538,14 +550,16 @@ pub fn show(
                             });
                         }
                         if d.more.is_empty() {
-                            ui.label(RichText::new(tr("newsession.one_pane")).size(12.0).color(chrome::grey()));
+                            ui.label(
+                                RichText::new(tr("newsession.one_pane")).size(ito_theme::zoomed(ui.ctx(), 12.0)).color(chrome::grey()),
+                            );
                         }
                     });
                     // Where it runs: shown once WSL, SSH or a serial port is there
                     // (or a profile asked for one).
                     if !d.places.is_empty() || d.on != Where::Here {
                         ui.horizontal(|ui| {
-                            ui.label(RichText::new(tr("newsession.runs_on")).size(12.0).color(pal.fg_dim));
+                            ui.label(RichText::new(tr("newsession.runs_on")).size(ito_theme::zoomed(ui.ctx(), 12.0)).color(pal.fg_dim));
                             let mut places = Where::with_kept(&d.places);
                             if !places.contains(&d.on) {
                                 places.push(d.on.clone());
@@ -558,13 +572,25 @@ pub fn show(
                             ring(ui, combo.response);
                             match d.on {
                                 Where::Ssh(_) => {
-                                    ui.label(RichText::new(tr("newsession.ssh_note")).size(12.0).color(chrome::grey()));
+                                    ui.label(
+                                        RichText::new(tr("newsession.ssh_note"))
+                                            .size(ito_theme::zoomed(ui.ctx(), 12.0))
+                                            .color(chrome::grey()),
+                                    );
                                 }
                                 Where::Mux(_) => {
-                                    ui.label(RichText::new(tr("newsession.mux_note")).size(12.0).color(chrome::grey()));
+                                    ui.label(
+                                        RichText::new(tr("newsession.mux_note"))
+                                            .size(ito_theme::zoomed(ui.ctx(), 12.0))
+                                            .color(chrome::grey()),
+                                    );
                                 }
                                 Where::Serial(_) => {
-                                    ui.label(RichText::new(tr("newsession.serial_note")).size(12.0).color(chrome::grey()));
+                                    ui.label(
+                                        RichText::new(tr("newsession.serial_note"))
+                                            .size(ito_theme::zoomed(ui.ctx(), 12.0))
+                                            .color(chrome::grey()),
+                                    );
                                 }
                                 _ => {}
                             }
@@ -578,8 +604,9 @@ pub fn show(
                         // The rules' tags dashed, as the design draws them; a
                         // click takes either kind off.
                         for (t, auto) in rule_tags.iter().map(|t| (t.clone(), true)).chain(d.tags.clone().into_iter().map(|t| (t, false))) {
-                            let w = ui.fonts_mut(|f| f.layout_no_wrap(t.clone(), FontId::proportional(11.0), pal.fg).size().x) + 12.0;
-                            let (rect, resp) = ui.allocate_exact_size(egui::vec2(w, 16.0), egui::Sense::CLICK);
+                            let tag_size = ito_theme::zoomed(ui.ctx(), 11.0);
+                            let w = ui.fonts_mut(|f| f.layout_no_wrap(t.clone(), FontId::proportional(tag_size), pal.fg).size().x) + 12.0;
+                            let (rect, resp) = ui.allocate_exact_size(egui::vec2(w, ito_theme::zoomed(ui.ctx(), 16.0)), egui::Sense::CLICK);
                             let p = ui.painter();
                             chrome::tag_chip(p, rect.min, &t, false);
                             if auto {
@@ -621,7 +648,7 @@ pub fn show(
                                 egui::TextEdit::singleline(&mut d.branch)
                                     .id(egui::Id::new("ns-branch"))
                                     .hint_text(hint)
-                                    .font(FontId::monospace(12.0))
+                                    .font(FontId::monospace(ito_theme::zoomed(ui.ctx(), 12.0)))
                                     .desired_width(220.0),
                             );
                         }
@@ -644,8 +671,12 @@ pub fn show(
                         for (key, what) in
                             [("Tab", tr("newsession.next")), ("Enter", tr("newsession.create_key")), ("Alt+Enter", tr("newsession.split"))]
                         {
-                            ui.label(RichText::new(key).font(FontId::monospace(12.0)).color(crate::theme::colors().fg));
-                            ui.label(RichText::new(what).size(12.0).color(pal.fg_dim));
+                            ui.label(
+                                RichText::new(key)
+                                    .font(FontId::monospace(ito_theme::zoomed(ui.ctx(), 12.0)))
+                                    .color(crate::theme::colors().fg),
+                            );
+                            ui.label(RichText::new(what).size(ito_theme::zoomed(ui.ctx(), 12.0)).color(pal.fg_dim));
                             ui.add_space(6.0);
                         }
                         let create =
@@ -674,7 +705,7 @@ fn start_button(ui: &mut egui::Ui, text: &str, on: bool) -> egui::Response {
     } else {
         (Color32::TRANSPARENT, crate::theme::colors().border, crate::theme::colors().fg)
     };
-    let b = egui::Button::new(RichText::new(text).size(12.5).color(color))
+    let b = egui::Button::new(RichText::new(text).size(ito_theme::zoomed(ui.ctx(), 12.5)).color(color))
         .fill(fill)
         .stroke(egui::Stroke::new(1.0, stroke))
         .min_size(egui::vec2(128.0, 32.0));

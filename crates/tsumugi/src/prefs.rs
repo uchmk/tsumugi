@@ -760,7 +760,7 @@ fn keys(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut Vec<
     let fixed = |win: &str, m: &str| (if mac { m } else { win }).replace("{0}", tr("prefs.keys.arrows"));
     let fixed_row = |ui: &mut egui::Ui, title: &str, key: &str| {
         row(ui, l, title, "", |ui| {
-            ui.label(RichText::new(key).font(FontId::monospace(12.0)).color(c.dim));
+            ui.label(RichText::new(key).font(FontId::monospace(ito_theme::zoomed(ui.ctx(), 12.0))).color(c.dim));
         });
     };
     // Above the table, so they are seen without scrolling past it.
@@ -796,7 +796,7 @@ fn keys(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut Vec<
     if let Some(edits) = ito_prefs::keys_page(ui, l, key_words(), &table, &mut edit.keys) {
         out.push(Change::Keys(edits));
     }
-    ui.label(RichText::new(tr("prefs.keys.footer")).size(12.0).color(c.dim));
+    ui.label(RichText::new(tr("prefs.keys.footer")).size(ito_theme::zoomed(ui.ctx(), 12.0)).color(c.dim));
 }
 
 /// The sounds by what the list says.
@@ -871,7 +871,8 @@ fn notifications(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: 
         };
         let (head, _) = ui.allocate_exact_size(egui::vec2(width, 40.0), egui::Sense::hover());
         for ((_, words, color), r) in states.iter().zip(&columns(head)[1..]) {
-            let text = ui.fonts_mut(|f| f.layout_no_wrap(words.to_string(), FontId::proportional(13.0), crate::chrome::ink(*color)));
+            let zoomed_size = ito_theme::zoomed(ui.ctx(), 13.0);
+            let text = ui.fonts_mut(|f| f.layout_no_wrap(words.to_string(), FontId::proportional(zoomed_size), crate::chrome::ink(*color)));
             let left = r.center().x - (text.size().x + 14.0) / 2.0;
             ui.painter().circle_filled(egui::pos2(left + 4.0, r.center().y), 4.0, *color);
             ui.painter().galley(egui::pos2(left + 14.0, r.center().y - text.size().y / 2.0), text, *color);
@@ -890,8 +891,8 @@ fn notifications(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: 
             // to their bottom and take back the row's room.
             let mut inner = ui.new_child(egui::UiBuilder::new().max_rect(words));
             inner.spacing_mut().item_spacing.y = 2.0;
-            inner.label(RichText::new(label).size(13.0).color(c.strong()));
-            inner.add(egui::Label::new(RichText::new(note).size(12.0).color(c.dim)).truncate());
+            inner.label(RichText::new(label).size(ito_theme::zoomed(ui.ctx(), 13.0)).color(c.strong()));
+            inner.add(egui::Label::new(RichText::new(note).size(ito_theme::zoomed(ui.ctx(), 12.0)).color(c.dim)).truncate());
             let mut flipped = None;
             for (k, r) in cols[1..].iter().enumerate() {
                 let at = egui::Rect::from_center_size(r.center(), egui::vec2(40.0, 22.0));
@@ -1021,7 +1022,7 @@ fn notifications(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: 
     section(ui, l, tr("prefs.head.quiet_tags"), |ui| {
         ui.add_space(8.0);
         ui.horizontal(|ui| {
-            ui.label(RichText::new(tr("prefs.notify.quiet_line")).size(12.0).color(c.dim));
+            ui.label(RichText::new(tr("prefs.notify.quiet_line")).size(ito_theme::zoomed(ui.ctx(), 12.0)).color(c.dim));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if ui.link(tr("prefs.notify.edit_tags")).clicked() {
                     out.push(Change::GoTo(Page::Tags));
@@ -1044,7 +1045,8 @@ fn chips(ui: &mut egui::Ui, tags: &[String], quiet: &[String], mut click: impl F
     ui.horizontal_wrapped(|ui| {
         for t in tags {
             let q = quiet.contains(t);
-            let w = ui.fonts_mut(|f| f.layout_no_wrap(t.clone(), FontId::proportional(11.0), c.fg).size().x) + 12.0;
+            let zoomed_size = ito_theme::zoomed(ui.ctx(), 11.0);
+            let w = ui.fonts_mut(|f| f.layout_no_wrap(t.clone(), FontId::proportional(zoomed_size), c.fg).size().x) + 12.0;
             let (r, resp) = ui.allocate_exact_size(egui::vec2(w, 16.0), egui::Sense::click());
             let chip = crate::chrome::tag_chip(ui.painter(), r.min, t, q);
             if q {
@@ -1162,13 +1164,17 @@ fn sessions(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut 
             sep(ui, l);
             ui.add_space(10.0);
             let head = if d.was.is_some() { tr("prefs.sessions.edit_profile") } else { tr("prefs.sessions.a_new_profile") };
-            ui.label(RichText::new(head).size(13.0).strong().color(c.strong()));
+            ui.label(RichText::new(head).size(ito_theme::zoomed(ui.ctx(), 13.0)).strong().color(c.strong()));
             egui::Grid::new("profile-edit").num_columns(2).spacing(egui::vec2(14.0, 8.0)).show(ui, |ui| {
                 ui.label(RichText::new(tr("prefs.sessions.name")).color(c.dim));
                 ui.add(egui::TextEdit::singleline(&mut d.name).desired_width(260.0));
                 ui.end_row();
                 ui.label(RichText::new(tr("prefs.sessions.folder")).color(c.dim));
-                ui.add(egui::TextEdit::singleline(&mut d.folder).desired_width(360.0).font(FontId::monospace(12.5)));
+                ui.add(
+                    egui::TextEdit::singleline(&mut d.folder)
+                        .desired_width(360.0)
+                        .font(FontId::monospace(ito_theme::zoomed(ui.ctx(), 12.5))),
+                );
                 ui.end_row();
                 ui.label(RichText::new(tr("prefs.sessions.starts")).color(c.dim));
                 if let Some(v) = select(ui, "profile-start", d.start.as_str(), &starts()) {
@@ -1182,7 +1188,7 @@ fn sessions(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut 
                 ui.add(
                     egui::TextEdit::singleline(&mut d.place)
                         .hint_text(tr("prefs.sessions.place_hint"))
-                        .font(FontId::monospace(12.5))
+                        .font(FontId::monospace(ito_theme::zoomed(ui.ctx(), 12.5)))
                         .desired_width(260.0),
                 );
                 ui.end_row();
@@ -1228,7 +1234,7 @@ fn sessions(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut 
             ui.horizontal(|ui| {
                 let ok = !p.name.is_empty() && !p.folder.is_empty() && !taken && (d.font_size.trim().is_empty() || p.font_size.is_some());
                 if taken {
-                    ui.label(RichText::new(tr("prefs.sessions.taken")).size(12.0).color(c.err));
+                    ui.label(RichText::new(tr("prefs.sessions.taken")).size(ito_theme::zoomed(ui.ctx(), 12.0)).color(c.err));
                 }
                 let (save, cancel) = crate::chrome::foot(ui, egui::Button::new(tr("prefs.common.save")), ok, tr("prefs.common.cancel"));
                 if save.clicked() {
@@ -1416,14 +1422,14 @@ fn tab_menu(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut 
         }
         sep(ui, l);
         ui.add_space(10.0);
-        ui.label(RichText::new(tr("prefs.menu.own_item")).size(12.0).color(c.dim));
+        ui.label(RichText::new(tr("prefs.menu.own_item")).size(ito_theme::zoomed(ui.ctx(), 12.0)).color(c.dim));
         ui.horizontal(|ui| {
             ui.add(egui::TextEdit::singleline(&mut edit.item.0).hint_text(tr("prefs.menu.its_words")).desired_width(160.0));
             ui.add(
                 egui::TextEdit::singleline(&mut edit.item.1)
                     .hint_text("lazygit -p {folder}")
                     .desired_width(260.0)
-                    .font(FontId::monospace(12.5)),
+                    .font(FontId::monospace(ito_theme::zoomed(ui.ctx(), 12.5))),
             );
             let ok = !edit.item.0.trim().is_empty() && !edit.item.1.trim().is_empty();
             if ui.add_enabled(ok, egui::Button::new(tr("prefs.common.add"))).clicked() {
@@ -1468,8 +1474,12 @@ fn tags(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut Vec<
         if let Some(tag) = edit.tag.clone() {
             ui.add_space(4.0);
             ui.horizontal(|ui| {
+                let zoomed_size = ito_theme::zoomed(ui.ctx(), 11.0);
                 let (r, _) = ui.allocate_exact_size(
-                    egui::vec2(ui.fonts_mut(|f| f.layout_no_wrap(tag.clone(), FontId::proportional(11.0), c.fg).size().x) + 12.0, 16.0),
+                    egui::vec2(
+                        ui.fonts_mut(|f| f.layout_no_wrap(tag.clone(), FontId::proportional(zoomed_size), c.fg).size().x) + 12.0,
+                        ito_theme::zoomed(ui.ctx(), 16.0),
+                    ),
                     egui::Sense::hover(),
                 );
                 crate::chrome::tag_chip(ui.painter(), r.min, &tag, false);
@@ -1536,7 +1546,8 @@ fn tags(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut Vec<
                 ui.add_space(4.0);
                 let change = edit.rule.at != Some(k) && button(ui, l, tr("prefs.common.edit"));
                 ui.add_space(8.0);
-                let w = ui.fonts_mut(|f| f.layout_no_wrap(r.tag.clone(), FontId::proportional(11.0), c.fg).size().x) + 12.0;
+                let zoomed_size = ito_theme::zoomed(ui.ctx(), 11.0);
+                let w = ui.fonts_mut(|f| f.layout_no_wrap(r.tag.clone(), FontId::proportional(zoomed_size), c.fg).size().x) + 12.0;
                 let (rect, _) = ui.allocate_exact_size(egui::vec2(w, 16.0), egui::Sense::hover());
                 crate::chrome::tag_chip(ui.painter(), rect.min, &r.tag, false);
                 (gone, change)
@@ -1564,13 +1575,13 @@ fn tags(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut Vec<
                     egui::TextEdit::singleline(&mut d.folder)
                         .hint_text(tr("prefs.tags.folder_hint"))
                         .desired_width(130.0)
-                        .font(FontId::monospace(12.5)),
+                        .font(FontId::monospace(ito_theme::zoomed(ui.ctx(), 12.5))),
                 );
                 ui.add(
                     egui::TextEdit::singleline(&mut d.branch)
                         .hint_text(tr("prefs.tags.branch_hint"))
                         .desired_width(110.0)
-                        .font(FontId::monospace(12.5)),
+                        .font(FontId::monospace(ito_theme::zoomed(ui.ctx(), 12.5))),
                 );
                 ui.add(egui::TextEdit::singleline(&mut d.tag).hint_text(tr("prefs.tags.tag_hint")).desired_width(80.0));
                 let ok = (!d.folder.trim().is_empty() || !d.branch.trim().is_empty()) && !d.tag.trim().is_empty();
@@ -1659,13 +1670,13 @@ fn shell(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut Vec
             // This tsumugi's own commands, by its full path (`hooks::commands`).
             let json = crate::hooks::add("").unwrap_or_default();
             let json = json.trim_end();
-            ui.label(RichText::new(json).font(FontId::monospace(11.5)).color(c.fg));
+            ui.label(RichText::new(json).font(FontId::monospace(ito_theme::zoomed(ui.ctx(), 11.5))).color(c.fg));
             if ui.small_button(tr("prefs.shell.copy")).clicked() {
                 out.push(Change::Copy(json.to_owned()));
             }
             ui.add_space(6.0);
             let line = if cfg!(windows) { "tsumugi shell-hook pwsh >> $PROFILE" } else { "tsumugi shell-hook bash >> ~/.bashrc" };
-            ui.label(RichText::new(line).font(FontId::monospace(12.0)).color(c.fg));
+            ui.label(RichText::new(line).font(FontId::monospace(ito_theme::zoomed(ui.ctx(), 12.0))).color(c.fg));
             if ui.small_button(format!("{} ", tr("prefs.shell.copy"))).clicked() {
                 out.push(Change::Copy(line.to_owned()));
             }
@@ -1783,7 +1794,7 @@ fn theme(ui: &mut egui::Ui, l: Look, pal: &Palette, seen: &Seen, out: &mut Vec<C
         ui.add_space(6.0);
         let line = trf("prefs.theme.line", &[family, &f.size.to_string(), material, motion]);
         if ui
-            .add(egui::Label::new(RichText::new(line).size(12.0).color(l.c.dim)).sense(egui::Sense::click()))
+            .add(egui::Label::new(RichText::new(line).size(ito_theme::zoomed(ui.ctx(), 12.0)).color(l.c.dim)).sense(egui::Sense::click()))
             .on_hover_text(tr("prefs.theme.hover"))
             .clicked()
         {
@@ -1839,7 +1850,7 @@ fn preview(ui: &mut egui::Ui, pal: &Palette) {
     let pane = egui::Rect::from_min_max(egui::pos2(side.right() + 10.0, rect.top() + 10.0), rect.max - egui::vec2(10.0, 10.0));
     p.rect_filled(pane, 8.0, pal.bg);
     p.rect_stroke(pane, 8.0, egui::Stroke::new(1.0, c.wait), egui::StrokeKind::Inside);
-    let mono = FontId::monospace(11.5);
+    let mono = FontId::monospace(ito_theme::zoomed(ui.ctx(), 11.5));
     let lines: [(&str, Color32); 6] = [
         ("● Update(src/terminal.rs)", c.done),
         ("  ⎿  Updated 3 lines", c.dim),

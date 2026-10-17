@@ -130,10 +130,10 @@ fn translated(all: &[Group]) -> Vec<ito_help::Group> {
 }
 
 /// Draw it: false when it closes (Esc, its own key, × or a click outside).
-/// `zoom` is the panes' letter size over the settings' (the font keys): the
-/// help's letters and rows follow it, and what no longer fits scrolls.
-pub fn show(ctx: &egui::Context, view: &mut View, c: &Colors, zoom: f32) -> bool {
-    let zoom = if zoom.is_finite() { zoom.clamp(0.5, 4.0) } else { 1.0 };
+/// The help's letters and rows follow the panes' (`ito_theme::set_text_zoom`,
+/// the font keys), and what no longer fits scrolls.
+pub fn show(ctx: &egui::Context, view: &mut View, c: &Colors) -> bool {
+    let zoom = ito_theme::text_zoom(ctx);
     let row_h = ROW_H * zoom;
     let mut keep = true;
     let screen = ctx.content_rect();
@@ -253,11 +253,12 @@ mod tests {
     fn draw_in(ctx: egui::Context, w: f32, h: f32, zoom: f32) -> (View, Vec<(String, egui::Rect)>) {
         let mut view = View::new();
         let mut texts = Vec::new();
+        ito_theme::set_text_zoom(&ctx, zoom);
         for _ in 0..3 {
             let input =
                 egui::RawInput { screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(w, h))), ..Default::default() };
             let mut out = ctx.run_ui(input, |ui| {
-                assert!(show(ui.ctx(), &mut view, &crate::theme::colors(), zoom));
+                assert!(show(ui.ctx(), &mut view, &crate::theme::colors()));
             });
             out.textures_delta.clear();
             texts.clear();
