@@ -1,65 +1,42 @@
-//! "Export or import settings" (Settings, Advanced): one text file holding
-//! the settings, the keys, the profiles, the saved prompts, `theme.toml` and the themes in `themes/`, to
-//! carry to another machine. Each file is a block under a line
-//! `=== <its path in the settings folder> ===`; importing writes each back,
-//! the one there kept beside it as `<name>.bak` first. An export with the
-//! settings but no keymap.toml (one from before it) puts the keymap.toml
-//! there aside too, or its keys would stand over the export's `[keys]`.
+//! "Export or import settings" (Settings, Advanced): one TOML file holding
+//! `common.toml`, the common themes and tsumugi's own settings files, to
+//! carry to another machine. The format and the work are ito's
+//! (`ito_common::bundle`); this keeps the list of tsumugi's files, the
+//! reading of an export made before the bundle (a text with a block per
+//! file under `=== <path> ===`), and the `keymap.toml` that would stand
+//! over an export's `[keys]`.
 
 use std::path::{Path, PathBuf};
 
-const HEAD: &str = "# tsumugi settings export";
+use ito_common::bundle::{self, Bundle, Restored};
 
-/// The files of the settings folder that go in, by their path in it.
-fn files(dir: &Path) -> Vec<String> {
-    let mut out: Vec<String> = ["config.toml", "keymap.toml", "profiles.toml", "prompts.toml", "layouts.toml", "theme.toml"]
-        .iter()
-        .filter(|n| dir.join(n).is_file())
-        .map(|n| n.to_string())
-        .collect();
-    if let Ok(entries) = std::fs::read_dir(dir.join("themes")) {
-        let mut themes: Vec<String> = entries
-            .flatten()
-            .filter_map(|e| e.file_name().to_str().map(str::to_owned))
-            .filter(|n| n.ends_with(".toml"))
-            .map(|n| format!("themes/{n}"))
-            .collect();
-        themes.sort();
-        out.extend(themes);
-    }
-    out
+const OLD_HEAD: &str = "# tsumugi settings export";
+
+/// Whether `name` (its path in the settings folder) is one of tsumugi's
+/// settings files: the fixed ones, and the themes in `themes/`.
+pub fn keep(name: &str) -> bool {
+    let theme = name.strip_prefix("themes/").is_some_and(|n| n.ends_with(".toml") && !n.contains(['/', '\\']) && !n.starts_with('.'));
+    matches!(name, "config.toml" | "keymap.toml" | "profiles.toml" | "prompts.toml" | "layouts.toml" | "theme.toml") || theme
 }
 
-/// The files as one text.
-pub fn pack(files: &[(String, String)]) -> String {
-    let mut s = format!("{HEAD} {}\n", env!("CARGO_PKG_VERSION"));
-    for (name, text) in files {
-        s.push_str(&format!("=== {name} ===\n"));
-        s.push_str(text);
-        if !text.ends_with('\n') {
-            s.push('\n');
-        }
-    }
-    s
-}
-
-/// The files in a text `pack` made. Only names of the settings folder's
-/// own kinds come out: nothing can be written outside it. An export made
-/// before v0.87.0 names the settings `settings.toml`: they come out as
-/// `config.toml`.
+/// The files in a text an export made before the bundle wrote. Only names
+/// of the settings folder's own kinds come out: nothing can be written
+/// outside it. One from before v0.87.0 names the settings `settings.toml`:
+/// they come out as `config.toml`.
 pub fn unpack(text: &str) -> Result<Vec<(String, String)>, String> {
     let mut lines = text.split_inclusive('\n');
-    if !lines.next().is_some_and(|l| l.starts_with(HEAD)) {
+    if !lines.next().is_some_and(|l| l.starts_with(OLD_HEAD)) {
         return Err("not a tsumugi settings export".into());
     }
     let mut out: Vec<(String, String)> = Vec::new();
     for l in lines {
         let t = l.trim_end_matches(['\r', '\n']);
         if let Some(name) = t.strip_prefix("=== ").and_then(|r| r.strip_suffix(" ===")) {
-            if !allowed(name) {
+            let name = if name == "settings.toml" { "config.toml" } else { name };
+            if !keep(name) {
                 return Err(format!("`{name}` is not a settings file"));
             }
-            out.push((if name == "settings.toml" { "config.toml" } else { name }.to_string(), String::new()));
+            out.push((name.to_string(), String::new()));
         } else if let Some((_, body)) = out.last_mut() {
             body.push_str(l);
         }
@@ -70,44 +47,42 @@ pub fn unpack(text: &str) -> Result<Vec<(String, String)>, String> {
     Ok(out)
 }
 
-fn allowed(name: &str) -> bool {
-    let theme = name.strip_prefix("themes/").is_some_and(|n| n.ends_with(".toml") && !n.contains(['/', '\\']) && !n.starts_with('.'));
-    matches!(name, "config.toml" | "settings.toml" | "keymap.toml" | "profiles.toml" | "prompts.toml" | "layouts.toml" | "theme.toml")
-        || theme
+/// ito's base folder (where `common.toml` is) and the settings folder.
+fn folders() -> Result<(PathBuf, PathBuf), String> {
+    let app = tsumugi_mux::settings::default_path().and_then(|p| p.parent().map(Path::to_path_buf)).ok_or("no settings folder")?;
+    let base = ito_i18n::base_dir().ok_or("no settings folder")?;
+    Ok((base, app))
 }
 
-/// Write the export into `to` (a folder): its file's path (a thread's work).
-pub fn export(dir: &Path, to: &Path) -> Result<PathBuf, String> {
-    let read: Vec<(String, String)> =
-        files(dir).into_iter().filter_map(|n| std::fs::read_to_string(dir.join(&n)).ok().map(|t| (n, t))).collect();
-    let file = to.join(format!("tsumugi-settings-{}.txt", chrono::Local::now().format("%Y%m%d")));
-    std::fs::write(&file, pack(&read)).map_err(|e| format!("{}: {e}", file.display()))?;
-    Ok(file)
+/// Write the settings to `file` (a thread's work): how many files went in.
+pub fn export(file: &Path) -> Result<usize, String> {
+    let (base, app) = folders()?;
+    bundle::export(file, &base, &app, "tsumugi", env!("CARGO_PKG_VERSION"), &keep)
 }
 
-/// Read an export back into the settings folder (a thread's work): how many
-/// files were written.
-pub fn import(dir: &Path, from: &Path) -> Result<usize, String> {
-    let text = std::fs::read_to_string(from).map_err(|e| format!("{}: {e}", from.display()))?;
-    let files = unpack(&text)?;
-    for (name, body) in &files {
-        let path = dir.join(name);
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent).map_err(|e| format!("{}: {e}", parent.display()))?;
-        }
-        if path.is_file() {
-            let mut bak = path.clone().into_os_string();
-            bak.push(".bak");
-            std::fs::copy(&path, bak).map_err(|e| format!("{}: {e}", path.display()))?;
-        }
-        std::fs::write(&path, body).map_err(|e| format!("{}: {e}", path.display()))?;
+/// Read an export (a bundle, or an older text) back over the settings (a
+/// thread's work).
+pub fn import(file: &Path) -> Result<Restored, String> {
+    let (base, app) = folders()?;
+    import_in(file, &base, &app)
+}
+
+fn import_in(file: &Path, base: &Path, app: &Path) -> Result<Restored, String> {
+    let text = std::fs::read_to_string(file).map_err(|e| format!("{}: {e}", file.display()))?;
+    let b = if text.starts_with(OLD_HEAD) {
+        let files = unpack(&text)?.into_iter().map(|(n, t)| (format!("app/{n}"), t)).collect();
+        Bundle { format: bundle::FORMAT, app: "tsumugi".into(), version: String::new(), files }
+    } else {
+        bundle::parse(&text)?
+    };
+    let done = bundle::restore(&b, base, app, "tsumugi", &keep)?;
+    // An export with the settings but no keymap.toml (one from before it) puts
+    // the keymap.toml there aside, or its keys would stand over the export's `[keys]`.
+    let keymap = app.join("keymap.toml");
+    if b.files.contains_key("app/config.toml") && !b.files.contains_key("app/keymap.toml") && keymap.is_file() {
+        std::fs::rename(&keymap, app.join("keymap.toml.bak")).map_err(|e| format!("{}: {e}", keymap.display()))?;
     }
-    let has = |n: &str| files.iter().any(|(name, _)| name == n);
-    let keymap = dir.join("keymap.toml");
-    if has("config.toml") && !has("keymap.toml") && keymap.is_file() {
-        std::fs::rename(&keymap, dir.join("keymap.toml.bak")).map_err(|e| format!("{}: {e}", keymap.display()))?;
-    }
-    Ok(files.len())
+    Ok(done)
 }
 
 /// A session's output, written as `tsumugi-<name>-<date>-<time>.txt` in
@@ -153,25 +128,28 @@ pub fn place() -> Option<PathBuf> {
     Some(if downloads.is_dir() { downloads } else { home })
 }
 
+/// The file the Backup card starts with: in [`place`], named by the day.
+pub fn default_file() -> &'static Path {
+    static FILE: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
+    FILE.get_or_init(|| place().unwrap_or_default().join(format!("tsumugi-settings-{}.toml", chrono::Local::now().format("%Y%m%d"))))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn an_export_comes_back_as_it_went() {
-        let files = vec![
-            ("config.toml".to_string(), "theme = \"dark\"\n".to_string()),
-            ("themes/Mine.toml".to_string(), "name = \"Mine\"".to_string()),
-        ];
-        let text = pack(&files);
-        let back = unpack(&text).unwrap();
-        assert_eq!(back[0], files[0]);
-        assert_eq!(back[1], ("themes/Mine.toml".to_string(), "name = \"Mine\"\n".to_string()));
+    fn an_older_export_is_read_and_nothing_leaves_the_folder() {
+        let head = OLD_HEAD;
+        let back =
+            unpack(&format!("{head} 0.100.0\n=== config.toml ===\ntheme = \"dark\"\n=== themes/Mine.toml ===\nname = \"Mine\"")).unwrap();
+        assert_eq!(back[0], ("config.toml".to_string(), "theme = \"dark\"\n".to_string()));
+        assert_eq!(back[1].0, "themes/Mine.toml");
         assert!(unpack("hello").is_err());
-        assert!(unpack(&format!("{HEAD} 0\n=== ../evil.toml ===\nx\n")).is_err(), "nothing outside the folder");
-        assert!(unpack(&format!("{HEAD} 0\n=== themes/../../x.toml ===\nx\n")).is_err());
-        let old = unpack(&format!("{HEAD} 0.86.0\n=== settings.toml ===\nx = 1\n")).unwrap();
-        assert_eq!(old, vec![("config.toml".to_string(), "x = 1\n".to_string())], "an older export's settings");
+        assert!(unpack(&format!("{head} 0\n=== ../evil.toml ===\nx\n")).is_err(), "nothing outside the folder");
+        assert!(unpack(&format!("{head} 0\n=== themes/../../x.toml ===\nx\n")).is_err());
+        let old = unpack(&format!("{head} 0.86.0\n=== settings.toml ===\nx = 1\n")).unwrap();
+        assert_eq!(old, vec![("config.toml".to_string(), "x = 1\n".to_string())], "an even older export's settings");
     }
 
     #[test]
@@ -183,23 +161,32 @@ mod tests {
 
     #[test]
     fn importing_keeps_the_old_file() {
-        let dir = std::env::temp_dir().join(format!("tsumugi-export-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
+        let root = std::env::temp_dir().join(format!("tsumugi-export-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let (base, dir) = (root.join("uchmk"), root.join("uchmk").join("tsumugi"));
         std::fs::create_dir_all(dir.join("themes")).unwrap();
+        std::fs::create_dir_all(base.join("themes")).unwrap();
         std::fs::write(dir.join("config.toml"), "old = 1\n").unwrap();
         std::fs::write(dir.join("themes/A.toml"), "a = 1\n").unwrap();
         std::fs::write(dir.join("keymap.toml"), "[[window.keymap]]\n").unwrap();
-        let file = export(&dir, &dir).unwrap();
+        std::fs::write(dir.join("notes.toml"), "x = 1\n").unwrap();
+        let file = root.join("out.toml");
+        let b = bundle::collect(&base, &dir, "tsumugi", "1", &keep).unwrap();
+        assert_eq!(b.files.keys().map(String::as_str).collect::<Vec<_>>(), ["app/config.toml", "app/keymap.toml", "app/themes/A.toml"]);
+        std::fs::write(&file, bundle::to_text(&b).unwrap()).unwrap();
         std::fs::write(dir.join("config.toml"), "newer = 2\n").unwrap();
-        assert_eq!(import(&dir, &file).unwrap(), 3);
+        let done = import_in(&file, &base, &dir).unwrap();
+        assert_eq!(done.written, ["app/config.toml"]);
         assert_eq!(std::fs::read_to_string(dir.join("config.toml")).unwrap(), "old = 1\n");
-        assert_eq!(std::fs::read_to_string(dir.join("config.toml.bak")).unwrap(), "newer = 2\n");
+        let kept = std::fs::read_dir(&dir).unwrap().flatten().find(|e| e.file_name().to_string_lossy().starts_with("config.toml.bak-"));
+        assert_eq!(std::fs::read_to_string(kept.expect("the one there is kept").path()).unwrap(), "newer = 2\n");
+        assert!(dir.join("keymap.toml").exists(), "a bundle with the keymap keeps it");
         // An export from before keymap.toml: the one here is put aside.
-        let older = dir.join("older.txt");
-        std::fs::write(&older, pack(&[("config.toml".into(), "[keys]\nhelp = \"F9\"\n".into())])).unwrap();
-        assert_eq!(import(&dir, &older).unwrap(), 1);
+        let older = root.join("older.txt");
+        std::fs::write(&older, format!("{OLD_HEAD} 0.100.0\n=== config.toml ===\n[keys]\nhelp = \"F9\"\n")).unwrap();
+        assert_eq!(import_in(&older, &base, &dir).unwrap().written, ["app/config.toml"]);
         assert!(!dir.join("keymap.toml").exists());
         assert_eq!(std::fs::read_to_string(dir.join("keymap.toml.bak")).unwrap(), "[[window.keymap]]\n");
-        let _ = std::fs::remove_dir_all(&dir);
+        let _ = std::fs::remove_dir_all(&root);
     }
 }

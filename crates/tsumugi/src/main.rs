@@ -2458,19 +2458,12 @@ impl App {
                     }
                 }
                 prefs::Change::RestartServer => self.restart_server(ui.ctx()),
-                prefs::Change::Export => self.job(|| {
-                    let dir = tsumugi_mux::settings::default_path()
-                        .and_then(|p| p.parent().map(std::path::Path::to_path_buf))
-                        .ok_or("no settings folder")?;
-                    let to = export::place().ok_or("no home folder")?;
-                    export::export(&dir, &to).map(|f| trf("toast.exported", &[&home_short(&f)]))
-                }),
-                prefs::Change::Import(from) => self.job(move || {
+                prefs::Change::Backup(ito_prefs::Backup::Export(to)) => {
+                    self.job(move || export::export(&to).map(|_| trf("toast.exported", &[&home_short(&to)])))
+                }
+                prefs::Change::Backup(ito_prefs::Backup::Import(from)) => self.job(move || {
                     let _turn = ONE_AT_A_TIME.lock().unwrap_or_else(|e| e.into_inner());
-                    let dir = tsumugi_mux::settings::default_path()
-                        .and_then(|p| p.parent().map(std::path::Path::to_path_buf))
-                        .ok_or("no settings folder")?;
-                    export::import(&dir, std::path::Path::new(&from)).map(|n| trf("toast.imported", &[&n.to_string()]))
+                    export::import(&from).map(|r| trf("toast.imported", &[&r.written.len().to_string()]))
                 }),
                 prefs::Change::GoTo(_) => {}
                 prefs::Change::MuteTag(tag, on) => client.mute_tag(tag, on),

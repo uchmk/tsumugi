@@ -152,7 +152,6 @@ const INDEX: &[(Page, &str)] = &[
     (Page::Advanced, "prefs.advanced.pane_log"),
     (Page::Advanced, "prefs.advanced.secure_input"),
     (Page::Advanced, "prefs.advanced.settings_folder"),
-    (Page::Advanced, "prefs.advanced.export"),
     (Page::Advanced, "prefs.advanced.usage"),
     (Page::Advanced, "prefs.advanced.saved_tabs"),
 ];
@@ -185,6 +184,7 @@ pub fn index() -> Vec<(Page, &'static str)> {
     out.extend(ito_prefs::window_index(more()).into_iter().map(|k| (Page::General, k)));
     out.extend(ito_prefs::fonts_index(more()).into_iter().filter(|k| !ito_prefs::FONT_KEYS.contains(k)).map(|k| (Page::Appearance, k)));
     out.extend(ito_prefs::shell_index(shell_words()).into_iter().filter(|k| !ito_prefs::SHELL_KEYS.contains(k)).map(|k| (Page::Shell, k)));
+    out.extend(ito_prefs::backup_index(more()).into_iter().map(|k| (Page::Advanced, k)));
     // There is no build to show (no commit is known), so its label is not drawn.
     out.extend(ito_prefs::about_index(more(), w).into_iter().filter(|k| *k != more().commit).map(|k| (Page::About, k)));
     out.extend(keys.map(|a| (Page::Keys, tr_desc(crate::keys::title(a)))));
@@ -207,6 +207,7 @@ pub fn index() -> Vec<(Page, &'static str)> {
                 .map(|k| (Page::Shell, k)),
         );
         let en = &ito_prefs::MORE_EN;
+        out.extend(ito_prefs::backup_index(en).into_iter().map(|k| (Page::Advanced, k)));
         out.extend(ito_prefs::about_index(en, &ito_prefs::EN).into_iter().filter(|k| *k != en.commit).map(|k| (Page::About, k)));
         out.extend(keys_index(&ito_prefs::KEYS_EN).map(|k| (Page::Keys, k)));
     }
@@ -248,7 +249,6 @@ pub struct Edit {
     /// A new item of one's own for the tab's menu: its words and command.
     item: (String, String),
     /// The file to import.
-    import: String,
     /// The hooks' own lines are shown, to copy.
     lines: bool,
 }
@@ -359,8 +359,7 @@ pub enum Change {
     RestartServer,
     /// Another page of the screen (the screen does this itself).
     GoTo(Page),
-    Export,
-    Import(String),
+    Backup(ito_prefs::Backup),
     Close,
 }
 
@@ -1734,30 +1733,9 @@ fn advanced(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut 
         sep(ui, l);
         row(ui, l, tr("prefs.advanced.saved_tabs"), &seen.state_path, |_| ());
         sep(ui, l);
-        if row(ui, l, tr("prefs.advanced.export"), tr("prefs.advanced.export_note"), |ui| button(ui, l, tr("prefs.advanced.export_button")))
-        {
-            out.push(Change::Export);
-        }
-        ui.horizontal(|ui| {
-            ui.add(
-                egui::TextEdit::singleline(&mut edit.import)
-                    .hint_text(tr("prefs.advanced.import_hint"))
-                    .desired_width(360.0)
-                    .font(FontId::monospace(12.5)),
-            );
-            if ui
-                .add_enabled(!edit.import.trim().is_empty(), egui::Button::new(tr("prefs.advanced.import")))
-                .on_hover_text(tr("prefs.advanced.import_hover"))
-                .clicked()
-            {
-                out.push(Change::Import(edit.import.trim().to_owned()));
-                edit.import.clear();
-            }
-        });
-        ui.add_space(8.0);
-        sep(ui, l);
         row(ui, l, tr("prefs.advanced.usage"), tr("prefs.advanced.usage_note"), |ui| status(ui, tr("prefs.common.none"), c.fg));
     });
+    out.extend(ito_prefs::backup_card(ui, l, more(), crate::export::default_file()).into_iter().map(Change::Backup));
 }
 
 fn about(ui: &mut egui::Ui, l: Look, out: &mut Vec<Change>) {
