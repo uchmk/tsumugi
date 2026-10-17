@@ -1,0 +1,5 @@
+# Known gaps against ito, kept visible on purpose: `<crate> <reason>`. Each line is a migration still to do, not a decision to stay.
+ito-bugreport tsumugi has no F12 bug report yet; to be added with ito-bugreport
+ito-help tsumugi has no ? / F1 key help yet; to be added with ito-help
+ito-testcheck tsumugi's examples/make-testcheck is its own copy; not yet moved to ito-testcheck (ito-testcheck was cut out of it)
+postcard tsumugi-mux frames and state (frame.rs, state.rs) use postcard directly; whether ito-ipc covers the mux protocol is undecided (ask ito if not)

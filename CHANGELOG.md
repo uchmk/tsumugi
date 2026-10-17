@@ -5,6 +5,12 @@
 
 ## [未リリース]
 
+## [0.115.5] - 2026-10-17
+
+### 変更
+
+- ito を `2c82056` に上げた（ito-layout の列のつかみ 0.58.0、ito-palette の変更 0.57.0・0.59.0。tsumugi は ito-palette を使わない）。
+- ito-first の確認（`scripts/ito-first.py`・`ito-first.allow`・`ito-first.txt`・`ito-required.txt`）を入れ、`lanes.conf` の `files=` に足した。ito-bugreport・ito-help・ito-testcheck・postcard は移行待ちとして allow に載せた。
 ## [0.115.4] - 2026-10-17
 
 ### 変更
