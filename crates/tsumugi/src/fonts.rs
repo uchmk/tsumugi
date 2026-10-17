@@ -42,7 +42,7 @@ pub struct Loaded {
 /// does (its icons are what a prompt such as starship draws); a system font
 /// behind egui's own for what those lack (Japanese, in the first place).
 /// Reads files: not on the UI thread, but for the first frame.
-pub fn load(family: &str) -> Loaded {
+pub fn load(family: &str, mono: ito_common::MonoFont) -> Loaded {
     let mut fonts = egui::FontDefinitions::default();
     let chosen = if family.trim().is_empty() { None } else { find(family.trim()) };
     let regular = chosen.clone().or_else(nerd_font);
@@ -68,6 +68,11 @@ pub fn load(family: &str) -> Loaded {
             }
             file = Some(path.clone());
         }
+    }
+    // No font chosen and no Nerd Font to draw with: the one every uchmk app
+    // carries (common.toml `mono_font`). A file in front keeps its ligatures.
+    if regular.is_none() {
+        ito_fonts::register(&mut fonts, mono);
     }
     // The window's words: a proportional face in front of egui's own, and its
     // bold for titles (egui has no bold of its own: `strong` is only a colour).

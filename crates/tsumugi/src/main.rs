@@ -1448,6 +1448,8 @@ struct App {
     forgotten: Option<(Vec<history::Closed>, std::time::Instant)>,
     /// `[font] family` as installed, and the file it found.
     font_family: String,
+    /// `mono_font` in common.toml as the fonts were loaded.
+    mono_font: ito_common::MonoFont,
     font_file: Option<std::path::PathBuf>,
     /// The font file's ligatures, when it has a file (Q8).
     shaper: Option<std::sync::Arc<ito_pane::Shaper>>,
@@ -1717,7 +1719,9 @@ impl App {
                 machines.push(m);
             }
         }
-        let loaded = fonts::load(&first_font.family);
+        let mono_font =
+            ito_i18n::base_dir().and_then(|b| ito_common::Common::read(&b).ok()).map(|(c, _)| c.mono_font_or_default()).unwrap_or_default();
+        let loaded = fonts::load(&first_font.family, mono_font);
         cc.egui_ctx.set_fonts(loaded.defs);
         let nerd = loaded.nerd;
         let (settings_tx, settings_rx) = std::sync::mpsc::channel();
@@ -1868,6 +1872,7 @@ impl App {
             toast: None,
             forgotten: None,
             font_family: first_font.family.clone(),
+            mono_font,
             font_file: loaded.file,
             shaper: loaded.shaper,
             faces_found: [false; 3],
@@ -2398,6 +2403,7 @@ impl App {
             facts: self.facts.as_ref(),
             language: &self.language,
             scale: self.common.scale_or_one(),
+            mono: self.common.mono_font_or_default(),
             window: self.common.window_or_default(),
             choice: (&self.theme_choice.0, &self.theme_choice.1, &self.theme_choice.2),
             clock: &clock,
@@ -6997,9 +7003,9 @@ impl App {
                         if s.font.family != self.font_family {
                             self.font_family = s.font.family.clone();
                             let (tx, rx) = std::sync::mpsc::channel();
-                            let (family, wake) = (s.font.family.clone(), ctx.clone());
+                            let (family, wake, mono) = (s.font.family.clone(), ctx.clone(), self.mono_font);
                             let _ = std::thread::Builder::new().name("fonts".into()).spawn(move || {
-                                let _ = tx.send(fonts::load(&family));
+                                let _ = tx.send(fonts::load(&family, mono));
                                 wake.request_repaint();
                             });
                             self.fonts_rx = Some(rx);
@@ -7033,6 +7039,17 @@ impl App {
                     if on_top != self.common.window_or_default().always_on_top {
                         let level = if on_top { egui::WindowLevel::AlwaysOnTop } else { egui::WindowLevel::Normal };
                         ctx.send_viewport_cmd(egui::ViewportCommand::WindowLevel(level));
+                    }
+                    let mono = common.mono_font_or_default();
+                    if mono != self.mono_font {
+                        self.mono_font = mono;
+                        let (tx, rx) = std::sync::mpsc::channel();
+                        let (family, wake) = (self.font_family.clone(), ctx.clone());
+                        let _ = std::thread::Builder::new().name("fonts".into()).spawn(move || {
+                            let _ = tx.send(fonts::load(&family, mono));
+                            wake.request_repaint();
+                        });
+                        self.fonts_rx = Some(rx);
                     }
                     self.common = common;
                     self.common_warning = warnings.into_iter().next();

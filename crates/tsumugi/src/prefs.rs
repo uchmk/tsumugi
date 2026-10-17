@@ -184,6 +184,12 @@ pub fn index() -> Vec<(Page, &'static str)> {
     out.extend(ito_prefs::window_index(more()).into_iter().map(|k| (Page::General, k)));
     out.extend(ito_prefs::fonts_index(more()).into_iter().filter(|k| !ito_prefs::FONT_KEYS.contains(k)).map(|k| (Page::Appearance, k)));
     out.extend(ito_prefs::shell_index(shell_words()).into_iter().filter(|k| !ito_prefs::SHELL_KEYS.contains(k)).map(|k| (Page::Shell, k)));
+    out.extend(
+        ito_prefs::mono_font_index(more())
+            .into_iter()
+            .filter(|k| *k != ito_prefs::MONO_FONT_KEY && *k != more().mono_system)
+            .map(|k| (Page::Appearance, k)),
+    );
     out.extend(ito_prefs::backup_index(more()).into_iter().map(|k| (Page::Advanced, k)));
     // There is no build to show (no commit is known), so its label is not drawn.
     out.extend(ito_prefs::about_index(more(), w).into_iter().filter(|k| *k != more().commit).map(|k| (Page::About, k)));
@@ -207,6 +213,12 @@ pub fn index() -> Vec<(Page, &'static str)> {
                 .map(|k| (Page::Shell, k)),
         );
         let en = &ito_prefs::MORE_EN;
+        out.extend(
+            ito_prefs::mono_font_index(en)
+                .into_iter()
+                .filter(|k| *k != ito_prefs::MONO_FONT_KEY && *k != en.mono_system)
+                .map(|k| (Page::Appearance, k)),
+        );
         out.extend(ito_prefs::backup_index(en).into_iter().map(|k| (Page::Advanced, k)));
         out.extend(ito_prefs::about_index(en, &ito_prefs::EN).into_iter().filter(|k| *k != en.commit).map(|k| (Page::About, k)));
         out.extend(keys_index(&ito_prefs::KEYS_EN).map(|k| (Page::Keys, k)));
@@ -393,6 +405,8 @@ pub struct Seen<'a> {
     pub language: &'a str,
     /// `scale` in common.toml: the whole window's size (1.0 when unset).
     pub scale: f32,
+    /// `mono_font` in common.toml.
+    pub mono: ito_common::MonoFont,
     /// `[window]` in common.toml.
     pub window: ito_common::WindowPrefs,
     /// The theme as common.toml picks it (`theme`, `dark_theme`,
@@ -608,6 +622,7 @@ fn appearance(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mu
             ito_prefs::FontChange::Ligatures(v) => Change::Set(Some("font"), "ligatures", v.to_string()),
         });
     }
+    out.extend(ito_prefs::mono_font_card(ui, l, more(), seen.mono).map(Change::Common));
     section(ui, l, tr("prefs.appearance.nerd"), |ui| {
         let found = if seen.nerd { tr("prefs.appearance.nerd_found") } else { tr("prefs.appearance.nerd_missing") };
         if row(ui, l, tr("prefs.appearance.nerd"), &trf("prefs.appearance.nerd_note", &[found]), |ui| switch(ui, l, a.nerd_icons)) {
@@ -1899,6 +1914,7 @@ mod tests {
                 facts: Some(&self.facts),
                 language: "auto",
                 scale: 1.0,
+                mono: Default::default(),
                 window: Default::default(),
                 choice: ("dark", "tsumugi Dark", "tsumugi Light"),
                 clock: &self.clock,

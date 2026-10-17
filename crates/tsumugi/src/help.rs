@@ -311,7 +311,7 @@ mod tests {
     #[test]
     fn it_fits_in_japanese() {
         crate::i18n::set_language_here("ja");
-        let fonts = crate::fonts::load("").defs;
+        let fonts = crate::fonts::load("", Default::default()).defs;
         for (w, h) in [(1280.0, 800.0), (1280.0, 600.0), (1000.0, 700.0), (1366.0, 640.0)] {
             let ctx = egui::Context::default();
             ctx.set_fonts(fonts.clone());

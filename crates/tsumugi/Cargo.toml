@@ -20,38 +20,40 @@ name = "make-keycheck"
 test = true
 
 [build-dependencies]
-ito-winres = { git = "https://github.com/uchmk/ito", rev = "a37f44e8d2555fa6178f4977d902fe390e708364" }
+ito-winres = { git = "https://github.com/uchmk/ito", rev = "a68949115800c7cd42b9539ecbe8cc98b3c12b16" }
 
 [dependencies]
-ito-pane = { git = "https://github.com/uchmk/ito", rev = "a37f44e8d2555fa6178f4977d902fe390e708364", features = ["egui", "wgpu"] }
+ito-pane = { git = "https://github.com/uchmk/ito", rev = "a68949115800c7cd42b9539ecbe8cc98b3c12b16", features = ["egui", "wgpu"] }
 tsumugi-mux = { path = "../tsumugi-mux" }
-ito-mcp = { git = "https://github.com/uchmk/ito", rev = "a37f44e8d2555fa6178f4977d902fe390e708364" }
-ito-layout = { git = "https://github.com/uchmk/ito", rev = "a37f44e8d2555fa6178f4977d902fe390e708364", features = ["egui"] }
+ito-mcp = { git = "https://github.com/uchmk/ito", rev = "a68949115800c7cd42b9539ecbe8cc98b3c12b16" }
+ito-layout = { git = "https://github.com/uchmk/ito", rev = "a68949115800c7cd42b9539ecbe8cc98b3c12b16", features = ["egui"] }
 # The language uchmk's apps share (common.toml), set from the settings screen.
-ito-i18n = { git = "https://github.com/uchmk/ito", rev = "a37f44e8d2555fa6178f4977d902fe390e708364", features = ["edit"] }
+ito-i18n = { git = "https://github.com/uchmk/ito", rev = "a68949115800c7cd42b9539ecbe8cc98b3c12b16", features = ["edit"] }
 # What every uchmk app shares: common.toml (the theme and the clock too),
 # editing a settings file in place, watching it.
-ito-common = { git = "https://github.com/uchmk/ito", rev = "a37f44e8d2555fa6178f4977d902fe390e708364", features = ["clock", "egui"] }
+ito-common = { git = "https://github.com/uchmk/ito", rev = "a68949115800c7cd42b9539ecbe8cc98b3c12b16", features = ["clock", "egui"] }
+# The monospace face every uchmk app carries (JetBrains Mono), when no font is chosen.
+ito-fonts = { git = "https://github.com/uchmk/ito", rev = "a68949115800c7cd42b9539ecbe8cc98b3c12b16", features = ["egui"] }
 # The themes, shared with every uchmk app; `pane` for the terminal's colours.
-ito-theme = { git = "https://github.com/uchmk/ito", rev = "a37f44e8d2555fa6178f4977d902fe390e708364", features = ["pane"] }
+ito-theme = { git = "https://github.com/uchmk/ito", rev = "a68949115800c7cd42b9539ecbe8cc98b3c12b16", features = ["pane"] }
 # The settings screen, shared with every uchmk app: the nav, the rows and
 # their controls, and the pages for common.toml (language, clock, theme).
-ito-notify = { git = "https://github.com/uchmk/ito", rev = "a37f44e8d2555fa6178f4977d902fe390e708364" }
-ito-prefs = { git = "https://github.com/uchmk/ito", rev = "a37f44e8d2555fa6178f4977d902fe390e708364" }
+ito-notify = { git = "https://github.com/uchmk/ito", rev = "a68949115800c7cd42b9539ecbe8cc98b3c12b16" }
+ito-prefs = { git = "https://github.com/uchmk/ito", rev = "a68949115800c7cd42b9539ecbe8cc98b3c12b16" }
 # The key notation of `--keys` scripts (`<C-a>`), the same as kura and yagura.
-ito-keyscript = { git = "https://github.com/uchmk/ito", rev = "a37f44e8d2555fa6178f4977d902fe390e708364" }
-ito-keys = { git = "https://github.com/uchmk/ito", rev = "a37f44e8d2555fa6178f4977d902fe390e708364", features = ["egui"] }
+ito-keyscript = { git = "https://github.com/uchmk/ito", rev = "a68949115800c7cd42b9539ecbe8cc98b3c12b16" }
+ito-keys = { git = "https://github.com/uchmk/ito", rev = "a68949115800c7cd42b9539ecbe8cc98b3c12b16", features = ["egui"] }
 # keymap.toml, laid out like kura's and yagura's (yazi's).
-ito-keymap = { git = "https://github.com/uchmk/ito", rev = "a37f44e8d2555fa6178f4977d902fe390e708364" }
+ito-keymap = { git = "https://github.com/uchmk/ito", rev = "a68949115800c7cd42b9539ecbe8cc98b3c12b16" }
 # F12: the browser opens the bug form with the version and the OS filled in.
-ito-bugreport = { git = "https://github.com/uchmk/ito", rev = "a37f44e8d2555fa6178f4977d902fe390e708364" }
-ito-help = { git = "https://github.com/uchmk/ito", rev = "a37f44e8d2555fa6178f4977d902fe390e708364" }
+ito-bugreport = { git = "https://github.com/uchmk/ito", rev = "a68949115800c7cd42b9539ecbe8cc98b3c12b16" }
+ito-help = { git = "https://github.com/uchmk/ito", rev = "a68949115800c7cd42b9539ecbe8cc98b3c12b16" }
 # The built-in browser (issue #66, option 2): the OS's own WebView (WebView2,
 # WKWebView) as a child of the window. Linux has none; it opens the browser.
-ito-browser = { git = "https://github.com/uchmk/ito", rev = "a37f44e8d2555fa6178f4977d902fe390e708364" }
+ito-browser = { git = "https://github.com/uchmk/ito", rev = "a68949115800c7cd42b9539ecbe8cc98b3c12b16" }
 # `tsumugi.com` (src/bin/tsumugi-com.rs) and the answers `out` and `err`
 # write (v0.114.0), shared with every uchmk app; the same commit as the others.
-ito-console = { git = "https://github.com/uchmk/ito", rev = "a37f44e8d2555fa6178f4977d902fe390e708364" }
+ito-console = { git = "https://github.com/uchmk/ito", rev = "a68949115800c7cd42b9539ecbe8cc98b3c12b16" }
 # eframe's own defaults, but for `winit/default`: that draws the title on
 # Wayland's window frame with ab_glyph, which brings the unmaintained
 # ttf-parser (RUSTSEC-2026-0192, QUESTIONS.md Q10). winit below keeps the
@@ -101,4 +103,4 @@ libc = "0.2"
 
 [dev-dependencies]
 # The generator of TESTING-CHECKS.md (examples/make-testcheck.rs).
-ito-testcheck = { git = "https://github.com/uchmk/ito", rev = "a37f44e8d2555fa6178f4977d902fe390e708364" }
+ito-testcheck = { git = "https://github.com/uchmk/ito", rev = "a68949115800c7cd42b9539ecbe8cc98b3c12b16" }

@@ -309,6 +309,7 @@ Covered by tests, not listed below: 1.15, 1.16
 - [ ] **11.6** Japanese text and a Nerd Font icon in a prompt → Japanese from the system font, icons from the Nerd Font, neither as boxes
 - [ ] **11.7** Japanese, Korean and Chinese in the sidebar and a pane, next to kura showing the same → The same faces as kura picks for each (the shared fallback order), none as boxes
 - [ ] **11.8** A font with Hebrew and Arabic (Courier New, Consolas); `printf 'ab \u05d0\u05d1\u05d2 cd (x \u05d3\u05d4)\n\u05e9\u05dc\u05d5\u05dd 42 \u05e2\u05d5\u05dc\u05dd\n\u0645\u0631\u062d\u0628\u0627\n'`; then drag across the Hebrew of the first row, copy and paste it → The Hebrew and Arabic read right to left in place (the first row `ab גבא cd (x הד)`, the second `םלוע 42 םולש`, 42 still 42), the Arabic too, its letters in their separate forms (not joined); the Latin around them as it was; the cursor and the drag's highlight sit on the letters drawn; what is pasted is in the order written (`אבג`)
+- [ ] **11.9** With no font chosen and no Nerd Font installed, Settings → Appearance → Monospace font: Bundled, then System → Bundled: the panes and the window's code text are in JetBrains Mono; System: the system's own search as before; `mono_font = "system"` in `common.toml`; the change applies without a restart; a chosen font family or an installed Nerd Font still wins
 
 ## 12. Claude Code's hooks
 
