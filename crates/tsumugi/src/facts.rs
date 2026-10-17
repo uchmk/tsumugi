@@ -41,23 +41,14 @@ pub fn gather(shell: Option<String>) -> Facts {
         .ok()
         .and_then(|e| e.parent().map(PathBuf::from))
         .is_some_and(|d| d.join("conpty.dll").is_file() && d.join("OpenConsole.exe").is_file());
-    Facts { shells: installed_shells(), hooks: crate::hooks::installed(), shell, shell_hook, autostart: crate::autostart::is_on(), conpty }
-}
-
-/// The shells there are, in the order the list shows them.
-const KNOWN: [(&str, &str); 8] = [
-    ("PowerShell 7", "pwsh"),
-    ("Windows PowerShell", "powershell"),
-    ("Command Prompt", "cmd"),
-    ("bash", "bash"),
-    ("zsh", "zsh"),
-    ("fish", "fish"),
-    ("nushell", "nu"),
-    ("sh", "sh"),
-];
-
-fn installed_shells() -> Vec<(String, String)> {
-    KNOWN.iter().filter(|(_, p)| locate(p)).map(|(l, p)| (l.to_string(), p.to_string())).collect()
+    Facts {
+        shells: ito_pane::installed_shells(),
+        hooks: crate::hooks::installed(),
+        shell,
+        shell_hook,
+        autostart: crate::autostart::is_on(),
+        conpty,
+    }
 }
 
 pub fn locate(program: &str) -> bool {
@@ -73,7 +64,7 @@ mod tests {
     #[test]
     fn a_shell_on_the_path_is_found() {
         // `sh` is on every test machine but Windows; `cmd` on Windows.
-        let found = installed_shells();
+        let found = ito_pane::installed_shells();
         let want = if cfg!(windows) { "cmd" } else { "sh" };
         assert!(found.iter().any(|(_, p)| p == want), "{found:?}");
         assert!(!locate("no-such-shell-tsumugi"));
