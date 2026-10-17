@@ -810,8 +810,15 @@ fn window() -> std::process::ExitCode {
     // the zoom, and on Windows moved to the pixels it was closed at by `put`
     // (in the creator, while the window is hidden), so a second screen at
     // another scale gets it back (#176).
-    let saved = ito_common::window::Saved::load(winplace::dir().filter(|_| winplace::wanted(&first.window.quake)));
+    let window_prefs =
+        ito_i18n::base_dir().and_then(|b| ito_common::Common::read(&b).ok()).map(|(c, _)| c.window_or_default()).unwrap_or_default();
+    let saved = ito_common::window::Saved::load(
+        winplace::dir().filter(|_| winplace::wanted(&first.window.quake) && ito_prefs::keeps_place(&window_prefs)),
+    );
     viewport = saved.viewport(viewport);
+    if window_prefs.always_on_top {
+        viewport = viewport.with_always_on_top();
+    }
     if first.window.own_titlebar() {
         // macOS keeps its traffic lights, over the band; elsewhere the band
         // draws its own buttons (chrome::top_band).
@@ -2391,6 +2398,7 @@ impl App {
             facts: self.facts.as_ref(),
             language: &self.language,
             scale: self.common.scale_or_one(),
+            window: self.common.window_or_default(),
             choice: (&self.theme_choice.0, &self.theme_choice.1, &self.theme_choice.2),
             clock: &clock,
             keymap: &self.keymap_layers,
@@ -2444,6 +2452,11 @@ impl App {
                     Ok(if on { trf("toast.shell_hook_in", &[&home_short(&p)]) } else { trf("toast.shell_hook_out", &[&home_short(&p)]) })
                 }),
                 prefs::Change::BugReport => self.report_bug(),
+                prefs::Change::ForgetPlace => {
+                    if let Some(dir) = winplace::dir() {
+                        let _ = ito_prefs::forget_place(&dir).map_err(|e| self.say(e, true));
+                    }
+                }
                 prefs::Change::RestartServer => self.restart_server(ui.ctx()),
                 prefs::Change::Export => self.job(|| {
                     let dir = tsumugi_mux::settings::default_path()
@@ -4109,10 +4122,16 @@ impl App {
         }
     }
 
+    /// Whether this window keeps its place: the first window, not in quake
+    /// mode, and `[window] remember_place` on.
+    fn keeps_place(&self) -> bool {
+        winplace::wanted(&self.settings_now.window.quake) && ito_prefs::keeps_place(&self.common.window_or_default())
+    }
+
     /// Write down where the window is once it holds still, for the next
     /// start. The first window only, and not in quake mode.
     fn remember_place(&mut self, ctx: &egui::Context) {
-        if !winplace::wanted(&self.settings_now.window.quake) {
+        if !self.keeps_place() {
             return;
         }
         if let Some(place) = self.place.as_mut() {
@@ -6499,7 +6518,7 @@ impl eframe::App for App {
     /// The window's place now, held still or not, so a move just before
     /// closing is kept.
     fn on_exit(&mut self) {
-        if !winplace::wanted(&self.settings_now.window.quake) {
+        if !self.keeps_place() {
             return;
         }
         if let Some(place) = &mut self.place {
@@ -7017,6 +7036,11 @@ impl App {
                     i18n::follow(&self.language);
                     let s = &self.settings_now;
                     self.theme_choice = common.theme_choice(Some((&s.theme, &s.dark_theme, &s.light_theme)));
+                    let on_top = common.window_or_default().always_on_top;
+                    if on_top != self.common.window_or_default().always_on_top {
+                        let level = if on_top { egui::WindowLevel::AlwaysOnTop } else { egui::WindowLevel::Normal };
+                        ctx.send_viewport_cmd(egui::ViewportCommand::WindowLevel(level));
+                    }
                     self.common = common;
                     self.common_warning = warnings.into_iter().next();
                     // The whole window's scale, as every uchmk app shares it;

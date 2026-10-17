@@ -157,8 +157,16 @@ pub fn show(ctx: &egui::Context, view: &mut View, c: &Colors) -> bool {
     let all = translated(&groups(keys::label, keys::mac()));
     let width = (screen.width() - 48.0).clamp(280.0, 1600.0);
     let room = (screen.height() - 110.0).max(160.0);
-    let style =
-        ito_help::Style { font: FontId::proportional(12.0), row_h: ROW_H, head: c.dim, keys: c.wait_text(), desc: c.fg, bar: c.dim };
+    let style = ito_help::Style {
+        font: FontId::proportional(12.0),
+        row_h: ROW_H,
+        head: c.dim,
+        keys: c.wait_text(),
+        desc: c.fg,
+        warn: c.wait_text(),
+        dim: c.dim,
+        bar: c.dim,
+    };
     let plan = ito_help::plan(&all, room, ROW_H, ((width / 300.0) as usize).clamp(1, 4), SMALLEST);
     let tall = plan.columns.iter().map(Vec::len).max().unwrap_or(0) as f32 * ROW_H * plan.scale;
     egui::Area::new(egui::Id::new("help")).order(egui::Order::Foreground).anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO).show(

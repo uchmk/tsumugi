@@ -30,19 +30,21 @@ pub enum Page {
     Theme,
     Shell,
     Advanced,
+    About,
 }
 
 impl Page {
-    pub const ALL: [Page; 9] = [
+    pub const ALL: [Page; 10] = [
         Page::General,
         Page::Appearance,
-        Page::Keys,
-        Page::Notifications,
+        Page::Theme,
         Page::Sessions,
         Page::Tags,
-        Page::Theme,
         Page::Shell,
+        Page::Keys,
+        Page::Notifications,
         Page::Advanced,
+        Page::About,
     ];
 
     pub fn title(self) -> &'static str {
@@ -56,6 +58,7 @@ impl Page {
             Page::Theme => tr("prefs.page.theme"),
             Page::Shell => tr("prefs.page.shell"),
             Page::Advanced => tr("prefs.page.advanced"),
+            Page::About => more().p_about,
         }
     }
 
@@ -70,6 +73,7 @@ impl Page {
             Page::Theme => tr("prefs.lead.theme"),
             Page::Shell => tr("prefs.lead.shell"),
             Page::Advanced => tr("prefs.lead.advanced"),
+            Page::About => more().p_about_lead,
         }
     }
 }
@@ -185,14 +189,18 @@ pub fn index() -> Vec<(Page, &'static str)> {
         ]
     };
     out.extend(shared(w));
-    out.extend(ito_prefs::bug_index(w).into_iter().map(|k| (Page::Advanced, k)));
+    out.extend(ito_prefs::window_index(more()).into_iter().map(|k| (Page::General, k)));
+    // There is no build to show (no commit is known), so its label is not drawn.
+    out.extend(ito_prefs::about_index(more(), w).into_iter().filter(|k| *k != more().commit).map(|k| (Page::About, k)));
     out.extend(keys.map(|a| (Page::Keys, tr_desc(crate::keys::title(a)))));
     out.extend(keys_index(key_words()).map(|k| (Page::Keys, k)));
     if crate::i18n::current_language() != "en" {
         out.extend(keys.map(|a| (Page::Keys, crate::keys::title(a))));
         out.extend(INDEX.iter().filter(|(_, k)| here(k)).map(|(p, k)| (*p, crate::i18n::tr_en(k))));
         out.extend(shared(&ito_prefs::EN));
-        out.extend(ito_prefs::bug_index(&ito_prefs::EN).into_iter().map(|k| (Page::Advanced, k)));
+        out.extend(ito_prefs::window_index(&ito_prefs::MORE_EN).into_iter().map(|k| (Page::General, k)));
+        let en = &ito_prefs::MORE_EN;
+        out.extend(ito_prefs::about_index(en, &ito_prefs::EN).into_iter().filter(|k| *k != en.commit).map(|k| (Page::About, k)));
         out.extend(keys_index(&ito_prefs::KEYS_EN).map(|k| (Page::Keys, k)));
     }
     out
@@ -319,6 +327,8 @@ pub enum Change {
     TestNotification,
     /// The Feedback card's button: the bug report, as F12 opens it.
     BugReport,
+    /// The Window card's "forget the saved place".
+    ForgetPlace,
     /// Every `[[notify.webhooks]]`, in place of those there and of the one
     /// address of before (`[notify] webhook`).
     Webhooks(Vec<Place>),
@@ -377,6 +387,8 @@ pub struct Seen<'a> {
     pub language: &'a str,
     /// `scale` in common.toml: the whole window's size (1.0 when unset).
     pub scale: f32,
+    /// `[window]` in common.toml.
+    pub window: ito_common::WindowPrefs,
     /// The theme as common.toml picks it (`theme`, `dark_theme`,
     /// `light_theme`), and its clock.
     pub choice: (&'a str, &'a str, &'a str),
@@ -397,6 +409,11 @@ fn words() -> &'static Words {
 /// or come only while a key is being taken).
 fn keys_index(w: &KeyWords) -> [&'static str; 2] {
     [w.by_key, w.changed_only]
+}
+
+/// The words of the shared Window card and About page, likewise.
+fn more() -> &'static ito_prefs::MoreWords {
+    ito_prefs::MoreWords::of(crate::i18n::current_language())
 }
 
 fn key_words() -> &'static KeyWords {
@@ -428,6 +445,7 @@ pub fn show(ui: &mut egui::Ui, pal: &Palette, screen: &mut Screen, seen: &Seen) 
             Page::Theme => theme(ui, l, pal, seen, &mut out),
             Page::Shell => shell(ui, l, seen, edit, &mut out),
             Page::Advanced => advanced(ui, l, seen, edit, &mut out),
+            Page::About => about(ui, l, &mut out),
         }
         follow_focus(ui);
     });
@@ -501,6 +519,11 @@ fn general(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut V
             out.push(Change::Autostart(!on.unwrap_or(false)));
         }
     });
+    let window = ito_prefs::window_card(ui, l, more(), &seen.window);
+    out.extend(window.changes.into_iter().map(Change::Common));
+    if window.forget {
+        out.push(Change::ForgetPlace);
+    }
     section(ui, l, tr("prefs.head.closing"), |ui| {
         if row(ui, l, tr("prefs.general.keep_sessions"), tr("prefs.general.keep_note"), |ui| switch(ui, l, g.keep_sessions)) {
             out.push(set("keep_sessions", !g.keep_sessions));
@@ -1812,8 +1835,16 @@ fn advanced(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut 
         sep(ui, l);
         row(ui, l, tr("prefs.advanced.usage"), tr("prefs.advanced.usage_note"), |ui| status(ui, tr("prefs.common.none"), c.fg));
     });
-    if ito_prefs::bug_card(ui, l, words()) {
-        out.push(Change::BugReport);
+}
+
+fn about(ui: &mut egui::Ui, l: Look, out: &mut Vec<Change>) {
+    let system = ito_bugreport::os_line();
+    let about =
+        ito_prefs::About { version: env!("CARGO_PKG_VERSION"), commit: None, system: &system, license: Some(env!("CARGO_PKG_LICENSE")) };
+    for action in ito_prefs::about_page(ui, l, more(), words(), "tsumugi", &about) {
+        match action {
+            ito_prefs::AboutAction::Report => out.push(Change::BugReport),
+        }
     }
 }
 
@@ -1967,6 +1998,7 @@ mod tests {
                 facts: Some(&self.facts),
                 language: "auto",
                 scale: 1.0,
+                window: Default::default(),
                 choice: ("dark", "tsumugi Dark", "tsumugi Light"),
                 clock: &self.clock,
             };
@@ -2385,7 +2417,7 @@ mod tests {
         assert_eq!(screen.page, Page::Appearance);
         run.key(&mut screen, egui::Key::Tab, ctrl | egui::Modifiers::SHIFT);
         run.key(&mut screen, egui::Key::Tab, ctrl | egui::Modifiers::SHIFT);
-        assert_eq!(screen.page, Page::Advanced, "round from the first");
+        assert_eq!(screen.page, Page::About, "round from the first");
         run.key(&mut screen, egui::Key::PageDown, ctrl);
         assert_eq!(screen.page, Page::General);
 

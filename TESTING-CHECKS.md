@@ -273,7 +273,7 @@ Covered by tests, not listed below: 1.15, 1.16
 
 ## 9. The settings screen
 
-- [x] **9.1** `Ctrl+,` → The screen with its nine pages and the search field over them; the band says Settings in the middle with an X; no sidebar or status bar; `Esc` and the X close it
+- [ ] **9.1** `Ctrl+,` → The screen with its ten pages (General, Appearance, Theme, Sessions, Tags, Shell, Keys, Notifications, Advanced, About) and the search field over them; the band says Settings in the middle with an X; no sidebar or status bar; `Esc` and the X close it
 - [ ] **9.2** Change something on each page → Only that line of `config.toml` changes (diff the file); comments stay. Language, the clock and the theme change that line of `common.toml` in the uchmk folder instead
 - [ ] **9.3** Write a mistake into `config.toml` by hand → A red line above the status bar says what and where, until it is fixed; nothing else changes
 - [ ] **9.4** Open config.toml / Open the settings folder → The system's editor / file manager opens
@@ -284,6 +284,8 @@ Covered by tests, not listed below: 1.15, 1.16
 - [x] **9.9** `Ctrl+,` (macOS `Cmd+,`) with the settings open → They close and stay closed (not reopened on their first page)
 - [~] **9.10** Settings → General → Scale, pick 150% → The whole window (bands, sidebar, settings and panes) grows at once; `scale = 1.5` in `common.toml`, `config.toml` unchanged; `Ctrl+=` and `Ctrl+-` still change only the panes' font size
 - [ ] **9.11** With tsumugi and kura (or yagura) open, write `scale = 1.25` into `common.toml` by hand → Both windows grow to 125% within a couple of seconds; Settings → General → Scale shows 125%
+- [ ] **9.12** v0.115.12: General → **Window**: turn *Remember the window's place* off, move and resize the window, quit and start again; turn it on again, move, quit, start; turn *Keep on top* on and off; press *Forget the saved place* and start again → `[window]` in `common.toml` has `remember_place = false` / `always_on_top = true`; with it off the window opens at its default place and `window.toml` in the state folder is not written; with it on it opens where it was left; *Keep on top* takes effect at once, without a restart, and at the next start; Forget deletes `window.toml` (the next start opens at the default place)
+- [ ] **9.13** v0.115.12: Settings → **About**: the version, system and licence rows, *Copy the details*, the Feedback button; search for `version` → The version is this build's, the system line is the OS; Copy puts the version and system on the clipboard; the button opens the bug form (as F12); the search lists About
 
 ## 10. Themes
 
@@ -468,4 +470,4 @@ Covered by tests, not listed below: 1.15, 1.16
 - [ ] **20.7** `.\tsumugi ls \| Tee-Object ls.txt`, then `.\tsumugi \| Out-Null` → The first prints the list and `ls.txt` has it; the second comes back once the window is up, with the window still open
 - [ ] **20.8** `$v = .\tsumugi` (v0.114.0); while the window is open, `Get-ChildItem $env:TEMP -Filter tsumugi-com-*`; close the window and list them again. Then copy the folder to one whose path has Japanese in it and, in `cmd` there, run `tsumugi.exe env` → The prompt comes back once the window is up; two files `tsumugi-com-<number>-<number>.out` and `.err` are listed while it is open, and none once it is closed. In `cmd`, the Japanese folder in the report reads right, with no `?` or garbled letters
 - [ ] **20.9** `F12` in the window (v0.115.7), with a session focused and again on the Welcome screen; then the same from Settings → Keys (the `bug_report` row) → The browser opens a new-issue page of `uchmk/tsumugi` from the *Bug report* form, with the version line (`tsumugi 0.115.7 (x86_64)`), the OS and the *Context* (Scale, Config) already filled in; the home folder, if it shows, is `~`; nothing is typed into the pane
-- [ ] **20.10** Settings → Advanced, the *Feedback* card at the bottom, press its button (v0.115.9); search the settings for `bug` → The same form opens as with 20.9; the search finds the card on Advanced
+- [ ] **20.10** Settings → About, the *Feedback* card, press its button (v0.115.9, moved to About in v0.115.12); search the settings for `bug` → The same form opens as with 20.9; the search finds the card on About
