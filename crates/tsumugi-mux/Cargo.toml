@@ -8,9 +8,9 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
-ito-ipc = { git = "https://github.com/uchmk/ito", rev = "2c82056fc6da21003b77d27b562eb509d7adf309" }
-ito-pane = { git = "https://github.com/uchmk/ito", rev = "2c82056fc6da21003b77d27b562eb509d7adf309", features = ["serde"] }
-ito-layout = { git = "https://github.com/uchmk/ito", rev = "2c82056fc6da21003b77d27b562eb509d7adf309", features = ["serde"] }
+ito-ipc = { git = "https://github.com/uchmk/ito", rev = "f274b415143ec2b3da1c16681e468bea12dcd234" }
+ito-pane = { git = "https://github.com/uchmk/ito", rev = "f274b415143ec2b3da1c16681e468bea12dcd234", features = ["serde"] }
+ito-layout = { git = "https://github.com/uchmk/ito", rev = "f274b415143ec2b3da1c16681e468bea12dcd234", features = ["serde"] }
 serde = { version = "1", features = ["derive"] }
 # Pure Rust, with a documented and stable wire format (1.0). bincode was the
 # first choice and is unmaintained since 2025 (its 3.0.0 is only a notice);
@@ -22,8 +22,8 @@ crossbeam-channel = "0.5"
 toml = "1.1"
 # Editing config.toml in place -- one key, its comments and layout kept --
 # and the clock, both shared with every uchmk app.
-ito-notify = { git = "https://github.com/uchmk/ito", rev = "2c82056fc6da21003b77d27b562eb509d7adf309" }
-ito-common = { git = "https://github.com/uchmk/ito", rev = "2c82056fc6da21003b77d27b562eb509d7adf309" }
+ito-notify = { git = "https://github.com/uchmk/ito", rev = "f274b415143ec2b3da1c16681e468bea12dcd234" }
+ito-common = { git = "https://github.com/uchmk/ito", rev = "f274b415143ec2b3da1c16681e468bea12dcd234" }
 
 [target."cfg(windows)".dependencies]
 windows = { version = "0.62", features = ["Win32_Foundation", "Win32_Security", "Win32_Security_Authorization", "Win32_Storage_FileSystem", "Win32_System_IO", "Win32_System_Pipes", "Win32_System_Threading"] }

@@ -1,15 +1,18 @@
-# 実機チェックリスト
+# Real-machine checklist
 
-`TESTING.md` から `cargo run -p tsumugi --example make-testcheck` で生成している。**正は TESTING.md** で、
-このファイルはその表を 1 行ずつ印を付けられる形に並べたもの。食い違ったら TESTING.md を信じること。
+Generated from `TESTING.md` by `cargo run -p tsumugi --example make-testcheck`. **TESTING.md is the source**; this file is
+its tables as one line per row that can be ticked. If they disagree, believe TESTING.md.
 
-**チェック（`[x]` と `[~]`）だけは手で書いてよく、生成し直しても残る。**それ以外を書き換えても次の生成で消える。
-`[x]` は実機で確かめた印、`[~]` は見た目の行を画面の画像で判断した印（済みには数えない。持ち主が同じ画像を見て `[x]` にする）。
-**件数はこのファイルに書かない**（印を付けた PR が並ぶと必ずぶつかるため）。`-- --stats` で出る。
+**Only the ticks (`[x]` and `[~]`) may be written by hand; they survive regeneration.** Anything else is overwritten.
+`[x]` is a row checked on a real machine, `[~]` an appearance row judged from a screenshot (not counted as done: the owner
+looks at the same picture and makes it `[x]`). **No counts are written here** (pull requests that tick would always conflict):
+`-- --stats` prints them.
 
-付ける前に「失敗していたら、画面かディスクの何が違ったはずか」を自問すること。キーは [TESTING-KEYS.md](TESTING-KEYS.md)。
+Before ticking, ask: if this had failed, what would be different on the screen or on the disk? Keys are in [TESTING-KEYS.md](TESTING-KEYS.md).
 
 ## 1. The window and the server
+
+Covered by tests, not listed below: 1.15, 1.16
 
 - [x] **1.1** Start `tsumugi` with no session and nothing to restore → **Start your first session**: the folder it was started from first, the default folder, the last ones closed, **Choose another folder…**; Enter (or a click) starts the settings' program there. The window opens in under a second
 - [x] **1.3** Close the window, then start `tsumugi` again → The same tab and the same shell, its output still there: the server kept it
@@ -23,8 +26,6 @@
 - [ ] **1.12** Build and start a newer window while the server of the build before runs, when the two speak the same version (no **tsumugi was updated**); then Settings → Advanced → Restart the server → A toast "The server is still tsumugi <old> (this is <new>): Settings → Advanced → Restart the server…", once; Settings → Advanced shows "Running · <old> · <up>"; after the restart it shows the new version and no toast comes
 - [x] **1.13** Start tsumugi on a machine (or a Windows user) it never ran on → The window opens 1280 × 800
 - [x] **1.14** With a `settings.toml` of 0.86.0 in `%APPDATA%\tsumugi\` and its state in `%LOCALAPPDATA%\tsumugi\`, start the newer tsumugi (an unattended run: lay the kit's files out that way in a scratch folder and point `APPDATA` and `LOCALAPPDATA` there, with `TSUMUGI_*_HOME`, the older names and `UCHMK_CONFIG_DIR` unset) → The same settings and the same tabs as before; `config.toml` is in `%APPDATA%\uchmk\tsumugi\`, the state in `%LOCALAPPDATA%\uchmk\tsumugi\`; the old folders have no settings or state left (an old `server` folder may stay)
-- [x] **1.15** With the window open, in a git repository: `tsumugi new . --worktree side -- claude` from another terminal; then `exit` the session (or `/exit` Claude Code) → A new tab in the worktree `<repo>-side` (its branch `side` in the tab's heading); when the session ends the window asks whether to remove the worktree, as for one made with **in a worktree** (the text and the list file: `cli.rs`)
-- [x] **1.16** With two tabs, the second's pane split, and the window behind another program (or minimized): from a terminal in front, `tsumugi focus <the number of the second tab's lower pane>`; then close the window and run it again → The window comes to the front (not just a flashing taskbar button), also from minimized, shows the second tab, and the lower pane has the keys; with no window, one opens on that session and the command returns at once (it does not wait on that window). A second window open: the one that had the keys last answers. (Run from a program in the background, Windows lets the window come back and flash but not take the front.)
 
 ## 2. Panes and splits
 
@@ -82,7 +83,7 @@
 - [~] **2.51** After 2.46: close the window (the server keeps running), open it again → The picture is back where it was; a second pane or a split shows its own
 - [~] **2.52** In PowerShell 7: ``"$($PSStyle.OutputRendering) NO_COLOR=$env:NO_COLOR TERM=$env:TERM"``, then ``Write-Host "a `e[4mu`e[0m `e[4:2mdd`e[0m `e[4:3;58;2;255;0;0mcurl`e[0m `e[4:4mdots`e[0m `e[4:5mdash`e[0m `e[9mstrike`e[0m [`e[8mhid`e[0m]"``; then in Git Bash: `printf 'a \e[4mu\e[0m \e[4:2mdd\e[0m \e[4:3;58;2;255;0;0mcurl\e[0m \e[4:4mdots\e[0m \e[4:5mdash\e[0m \e[9mstrike\e[0m [\e[8mhid\e[0m]\n'`; then close the window and open it again → In both shells: a single and a double line, a red wave under **curl**, dots and dashes under the next two, a line through **strike**, and `[   ]` with nothing between; the lines run unbroken under each word and come back the same after reopening. If either is not so, turn on **Log what each pane sends and receives** (Settings → Advanced), run both again and put the log's `out` lines for each shell in the report, with whether `OpenConsole.exe` sits beside the `tsumugi.exe` the server runs from (the ConPTY that rewrote them). If PowerShell's log lacks the plain ones (`4m`, `9m`, `8m`, `0m`) but has the ones with a colon, PowerShell dropped them, not ConPTY (`$PSStyle.OutputRendering` strips the escapes it knows, and its pattern has no colon): put that first line in the report too
 - [x] **2.53** In a split, run `nvim` (or `vim` with `set autoread` and `au FocusGained * checktime`) on a file in the left pane; in the right pane `echo x >> thatfile`; click the left pane again. Then switch to another app and back (Alt+Tab) → vim reloads the file as soon as its pane is clicked, without a keypress; no stray `^[[I` / `^[[O` appears in the right pane's shell or in vim's text
-- [~] **2.54** In bash: `printf '\e[>q\e[c'; read -rs -d c r; echo "${r@Q}"`; then in nvim `:checkhealth` (its terminal section); then start `claude` and let it stream a long answer → The reply holds `tsumugi` and tsumugi's own version, the one `tsumugi --version` prints (`\EP>|tsumugi X.Y.Z\E\\`; ito's 0.x before v0.96.0) and then `\E[?62;4;22`; nvim names the terminal; Claude's long answer scrolls without tearing or half-drawn lines
+- [~] **2.54** In bash: `printf '\e[>q\e[c'; read -rs -d c r; echo "${r@Q}"`; then in nvim `:checkhealth` (its terminal section); then start `claude` and let it stream a long answer → The reply holds `tsumugi` and tsumugi's own version, the one `tsumugi --version` prints (`\EP>\|tsumugi X.Y.Z\E\\`; ito's 0.x before v0.96.0) and then `\E[?62;4;22`; nvim names the terminal; Claude's long answer scrolls without tearing or half-drawn lines
 - [x] **2.55** In bash: `printf '\e[>1u'; IFS= read -rsn7 a; printf '\e[<u'; echo "${a@Q}"`, then press `Shift+Enter`. Then in nvim (0.10 or later) insert mode `:imap <S-CR> X`, press `Shift+Enter`; quit and press `Shift+Enter` at the shell prompt. On Windows also try it in WSL and in a pane on an SSH machine → bash prints `$'\E[13;2u'`; nvim types `X` (not a new line); at the prompt `Shift+Enter` runs the line as `Enter` does. Windows's local pane gives the code too (ConPTY made it a plain Enter before); note whether WSL does
 - [~] **2.56** `git log --oneline -3; echo https://example.com src/main.rs:3 127.0.0.1:8080 12345`, then `Ctrl+Shift+Space` (`Cmd+Shift+Space`); type the label on the address; paste in Notepad. Again, `Shift` and the label on `src/main.rs:3` (in a folder that has it). Again, `Esc` → Gold labels on the hashes, the address, the path, the IP and the number, the bottom ones `a`, `s`, …; the address on the clipboard and the labels gone; the file opens in the editor at line 3; `Esc` leaves and keys reach the shell again
 - [x] **2.57** `echo hello world`; drag over `hello` and paste in Notepad. Then turn off **Copy a selection when the mouse lets go** (Settings → General → Copy and paste), drag over `world`, paste; then `Ctrl+Shift+C` (`Cmd+C`), paste → `hello` on the clipboard as soon as the button lets go; with the switch off the clipboard still holds `hello` after the drag, and `world` after `Ctrl+Shift+C`
@@ -302,7 +303,7 @@
 - [ ] **11.2** Pick Cascadia Code; `printf '\e[1mbold\e[0m \e[3mitalic\e[0m'` → The pane in Cascadia; bold and italic in their own faces; the line under the list names the files found
 - [ ] **11.3** Consolas → Its bold and italic found too (`consolab.ttf`, `consolai.ttf`)
 - [ ] **11.4** Size and line height: type a value, Enter → The grid re-fits; text in the middle of taller rows; `tsumugi ls` shows the new columns × rows after a moment; `Esc` in the field leaves it as it was
-- [ ] **11.5** Cascadia Code or Fira Code, `echo '-> != == >= => |> www'` → Each shown as one sign, on the grid; Ligatures off draws them as plain characters
+- [ ] **11.5** Cascadia Code or Fira Code, `echo '-> != == >= => \|> www'` → Each shown as one sign, on the grid; Ligatures off draws them as plain characters
 - [ ] **11.6** Japanese text and a Nerd Font icon in a prompt → Japanese from the system font, icons from the Nerd Font, neither as boxes
 - [ ] **11.7** Japanese, Korean and Chinese in the sidebar and a pane, next to kura showing the same → The same faces as kura picks for each (the shared fallback order), none as boxes
 - [ ] **11.8** A font with Hebrew and Arabic (Courier New, Consolas); `printf 'ab \u05d0\u05d1\u05d2 cd (x \u05d3\u05d4)\n\u05e9\u05dc\u05d5\u05dd 42 \u05e2\u05d5\u05dc\u05dd\n\u0645\u0631\u062d\u0628\u0627\n'`; then drag across the Hebrew of the first row, copy and paste it → The Hebrew and Arabic read right to left in place (the first row `ab גבא cd (x הד)`, the second `םלוע 42 םולש`, 42 still 42), the Arabic too, its letters in their separate forms (not joined); the Latin around them as it was; the cursor and the drag's highlight sit on the letters drawn; what is pasted is in the order written (`אבג`)
