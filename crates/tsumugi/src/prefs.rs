@@ -93,10 +93,6 @@ const INDEX: &[(Page, &str)] = &[
     (Page::General, "prefs.general.copy_on_select"),
     (Page::General, "prefs.general.warn_multiline"),
     (Page::General, "prefs.general.warn_large"),
-    (Page::Appearance, "prefs.appearance.font"),
-    (Page::Appearance, "prefs.appearance.size"),
-    (Page::Appearance, "prefs.appearance.line_height"),
-    (Page::Appearance, "prefs.appearance.ligatures"),
     (Page::Appearance, "prefs.appearance.nerd"),
     (Page::Appearance, "prefs.appearance.titlebar"),
     (Page::Appearance, "prefs.appearance.material"),
@@ -143,9 +139,6 @@ const INDEX: &[(Page, &str)] = &[
     (Page::Tags, "prefs.tags.shown"),
     (Page::Tags, "prefs.tags.edit_tag"),
     (Page::Tags, "prefs.tags.quiet"),
-    (Page::Shell, "prefs.shell.default_shell"),
-    (Page::Shell, "prefs.shell.arguments"),
-    (Page::Shell, "prefs.shell.environment"),
     (Page::Shell, "prefs.shell.claude_hooks"),
     (Page::Shell, "prefs.shell.integration"),
     (Page::Shell, "prefs.shell.lines"),
@@ -190,6 +183,8 @@ pub fn index() -> Vec<(Page, &'static str)> {
     };
     out.extend(shared(w));
     out.extend(ito_prefs::window_index(more()).into_iter().map(|k| (Page::General, k)));
+    out.extend(ito_prefs::fonts_index(more()).into_iter().filter(|k| !ito_prefs::FONT_KEYS.contains(k)).map(|k| (Page::Appearance, k)));
+    out.extend(ito_prefs::shell_index(shell_words()).into_iter().filter(|k| !ito_prefs::SHELL_KEYS.contains(k)).map(|k| (Page::Shell, k)));
     // There is no build to show (no commit is known), so its label is not drawn.
     out.extend(ito_prefs::about_index(more(), w).into_iter().filter(|k| *k != more().commit).map(|k| (Page::About, k)));
     out.extend(keys.map(|a| (Page::Keys, tr_desc(crate::keys::title(a)))));
@@ -199,6 +194,18 @@ pub fn index() -> Vec<(Page, &'static str)> {
         out.extend(INDEX.iter().filter(|(_, k)| here(k)).map(|(p, k)| (*p, crate::i18n::tr_en(k))));
         out.extend(shared(&ito_prefs::EN));
         out.extend(ito_prefs::window_index(&ito_prefs::MORE_EN).into_iter().map(|k| (Page::General, k)));
+        out.extend(
+            ito_prefs::fonts_index(&ito_prefs::MORE_EN)
+                .into_iter()
+                .filter(|k| !ito_prefs::FONT_KEYS.contains(k))
+                .map(|k| (Page::Appearance, k)),
+        );
+        out.extend(
+            ito_prefs::shell_index(&ito_prefs::SHELL_EN)
+                .into_iter()
+                .filter(|k| !ito_prefs::SHELL_KEYS.contains(k))
+                .map(|k| (Page::Shell, k)),
+        );
         let en = &ito_prefs::MORE_EN;
         out.extend(ito_prefs::about_index(en, &ito_prefs::EN).into_iter().filter(|k| *k != en.commit).map(|k| (Page::About, k)));
         out.extend(keys_index(&ito_prefs::KEYS_EN).map(|k| (Page::Keys, k)));
@@ -233,8 +240,8 @@ pub struct Edit {
     profile: Option<ProfileDraft>,
     /// The tag rule being written: a new one, or the one at `at` from "Edit".
     rule: RuleDraft,
-    /// The variables being edited, from "Edit".
-    env: Option<Vec<(String, String)>>,
+    /// The Shell card's environment variables being edited.
+    env: ito_prefs::ShellEdit,
     /// The tag "Edit a tag" has, and its new name.
     tag: Option<String>,
     rename: String,
@@ -416,6 +423,10 @@ fn more() -> &'static ito_prefs::MoreWords {
     ito_prefs::MoreWords::of(crate::i18n::current_language())
 }
 
+fn shell_words() -> &'static ito_prefs::ShellWords {
+    ito_prefs::ShellWords::of(crate::i18n::current_language())
+}
+
 fn key_words() -> &'static KeyWords {
     KeyWords::of(crate::i18n::current_language())
 }
@@ -561,61 +572,44 @@ fn general(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut V
 }
 
 fn appearance(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut Vec<Change>) {
-    let c = l.c;
     let f = &seen.settings.font;
     let a = &seen.settings.appearance;
-    section(ui, l, tr("prefs.head.text"), |ui| {
-        let mut families: Vec<(&str, &str)> = vec![("", tr("prefs.common.automatic"))];
-        families.extend(seen.font_names.iter().map(|n| (n.as_str(), n.as_str())));
-        if !f.family.is_empty() && !seen.font_names.contains(&f.family) {
-            families.push((f.family.as_str(), f.family.as_str()));
+    let using = match &seen.font_file {
+        Some(file) => {
+            let styles: Vec<&str> = [tr("prefs.appearance.bold"), tr("prefs.appearance.italic"), tr("prefs.appearance.bold_italic")]
+                .into_iter()
+                .zip(seen.faces)
+                .filter(|(_, on)| *on)
+                .map(|(s, _)| s)
+                .collect();
+            let styles = if styles.is_empty() {
+                tr("prefs.appearance.no_styles").to_owned()
+            } else {
+                trf("prefs.appearance.with", &[&styles.join(tr("prefs.common.list_sep"))])
+            };
+            format!("{file} ({styles})")
         }
-        if let Some(family) = row(ui, l, tr("prefs.appearance.font"), tr("prefs.appearance.font_note"), |ui| {
-            select(ui, "font-family", f.family.as_str(), &families)
-        }) {
-            out.push(Change::Set(Some("font"), "family", cfg::quote(family)));
-        }
-        let using = match &seen.font_file {
-            Some(file) => {
-                let styles: Vec<&str> = [tr("prefs.appearance.bold"), tr("prefs.appearance.italic"), tr("prefs.appearance.bold_italic")]
-                    .into_iter()
-                    .zip(seen.faces)
-                    .filter(|(_, on)| *on)
-                    .map(|(s, _)| s)
-                    .collect();
-                let styles = if styles.is_empty() {
-                    tr("prefs.appearance.no_styles").to_owned()
-                } else {
-                    trf("prefs.appearance.with", &[&styles.join(tr("prefs.common.list_sep"))])
-                };
-                format!("{file} ({styles})")
-            }
-            None if !f.family.is_empty() => trf("prefs.appearance.not_found", &[&f.family]),
-            None => tr("prefs.appearance.builtin").to_owned(),
-        };
-        ui.label(RichText::new(using).size(11.5).color(c.dim));
-        ui.add_space(6.0);
-        sep(ui, l);
-        if let Some(t) = row(ui, l, tr("prefs.appearance.size"), tr("prefs.appearance.size_note"), |ui| {
-            field(ui, &mut edit.drafts, "font-size", &f.size.to_string(), "13", 80.0)
-        }) {
-            if let Ok(v) = t.trim().parse::<f32>() {
-                out.push(Change::Set(Some("font"), "size", v.clamp(8.0, 32.0).to_string()));
-            }
-        }
-        sep(ui, l);
-        if let Some(t) = row(ui, l, tr("prefs.appearance.line_height"), tr("prefs.appearance.line_height_note"), |ui| {
-            field(ui, &mut edit.drafts, "line-height", &format!("{:.2}", f.line_height), "1.00", 80.0)
-        }) {
-            if let Ok(v) = t.trim().parse::<f32>() {
-                out.push(Change::Set(Some("font"), "line_height", format!("{:.2}", v.clamp(0.8, 2.0))));
-            }
-        }
-        sep(ui, l);
-        if row(ui, l, tr("prefs.appearance.ligatures"), tr("prefs.appearance.ligatures_note"), |ui| switch(ui, l, f.ligatures)) {
-            out.push(Change::Set(Some("font"), "ligatures", (!f.ligatures).to_string()));
-        }
-        sep(ui, l);
+        None if !f.family.is_empty() => trf("prefs.appearance.not_found", &[&f.family]),
+        None => tr("prefs.appearance.builtin").to_owned(),
+    };
+    let now = ito_prefs::Fonts {
+        family: &f.family,
+        families: seen.font_names,
+        size: f.size,
+        line_height: Some(f.line_height),
+        ligatures: Some(f.ligatures),
+        using: &using,
+        size_range: (8.0, 32.0),
+    };
+    for ch in ito_prefs::fonts_card(ui, l, more(), &mut edit.drafts, &now) {
+        out.push(match ch {
+            ito_prefs::FontChange::Family(v) => Change::Set(Some("font"), "family", cfg::quote(&v)),
+            ito_prefs::FontChange::Size(v) => Change::Set(Some("font"), "size", v.to_string()),
+            ito_prefs::FontChange::LineHeight(v) => Change::Set(Some("font"), "line_height", format!("{v:.2}")),
+            ito_prefs::FontChange::Ligatures(v) => Change::Set(Some("font"), "ligatures", v.to_string()),
+        });
+    }
+    section(ui, l, tr("prefs.appearance.nerd"), |ui| {
         let found = if seen.nerd { tr("prefs.appearance.nerd_found") } else { tr("prefs.appearance.nerd_missing") };
         if row(ui, l, tr("prefs.appearance.nerd"), &trf("prefs.appearance.nerd_note", &[found]), |ui| switch(ui, l, a.nerd_icons)) {
             out.push(Change::Set(Some("appearance"), "nerd_icons", (!a.nerd_icons).to_string()));
@@ -1588,89 +1582,18 @@ fn tags(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut Vec<
 fn shell(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut Vec<Change>) {
     let c = l.c;
     let sh = &seen.settings.shell;
-    section(ui, l, tr("prefs.head.shell"), |ui| {
-        let auto = trf("prefs.shell.auto", &[&ito_pane::shell_label(None)]);
-        let mut shells: Vec<(&str, &str)> = vec![("", auto.as_str())];
-        if let Some(f) = seen.facts {
-            shells.extend(f.shells.iter().map(|(label, program)| (program.as_str(), label.as_str())));
-        }
-        if !sh.program.is_empty() && !shells.iter().any(|(p, _)| *p == sh.program) {
-            shells.push((sh.program.as_str(), sh.program.as_str()));
-        }
-        if let Some(p) = row(ui, l, tr("prefs.shell.default_shell"), tr("prefs.shell.default_shell_note"), |ui| {
-            select(ui, "shell", sh.program.as_str(), &shells)
-        }) {
-            out.push(Change::Set(Some("shell"), "program", cfg::quote(p)));
-        }
-        sep(ui, l);
-        let args = sh.args.join(" ");
-        if let Some(t) = row(ui, l, tr("prefs.shell.arguments"), tr("prefs.shell.arguments_note"), |ui| {
-            field(ui, &mut edit.drafts, "shell-args", &args, "-NoLogo", 200.0)
-        }) {
-            let list: Vec<String> = t.split_whitespace().map(str::to_owned).collect();
-            out.push(Change::Set(Some("shell"), "args", cfg::quote_list(&list)));
-        }
-        sep(ui, l);
-        let words =
-            if sh.env.is_empty() { tr("prefs.common.edit").to_owned() } else { trf("prefs.shell.edit_n", &[&sh.env.len().to_string()]) };
-        if row(ui, l, tr("prefs.shell.environment"), tr("prefs.shell.environment_note"), |ui| button(ui, l, &words)) {
-            edit.env = match edit.env {
-                Some(_) => None,
-                None => Some(sh.env.iter().map(|(k, v)| (k.clone(), v.clone())).collect()),
-            };
-        }
-        let mut done = false;
-        if let Some(vars) = &mut edit.env {
-            let mut gone = None;
-            for (k, (name, value)) in vars.iter_mut().enumerate() {
-                ui.horizontal(|ui| {
-                    ui.add(egui::TextEdit::singleline(name).hint_text("NAME").desired_width(160.0).font(FontId::monospace(12.5)));
-                    ui.label("=");
-                    ui.add(
-                        egui::TextEdit::singleline(value)
-                            .hint_text(tr("prefs.shell.value"))
-                            .desired_width(280.0)
-                            .font(FontId::monospace(12.5)),
-                    );
-                    if ui.small_button(tr("prefs.common.remove")).clicked() {
-                        gone = Some(k);
-                    }
-                });
-            }
-            if let Some(k) = gone {
-                vars.remove(k);
-            }
-            ui.horizontal(|ui| {
-                if ui.small_button(tr("prefs.shell.add_variable")).clicked() {
-                    vars.push((String::new(), String::new()));
-                }
-                let names: Vec<&str> = vars.iter().map(|(n, _)| n.trim()).filter(|n| !n.is_empty()).collect();
-                let bad = names.iter().any(|n| n.contains(['=', ' ']));
-                if bad {
-                    ui.label(RichText::new(tr("prefs.shell.bad_name")).size(12.0).color(c.err));
-                }
-                let (save, cancel) = crate::chrome::foot(ui, egui::Button::new(tr("prefs.common.save")), !bad, tr("prefs.common.cancel"));
-                if save.clicked() {
-                    for old in sh.env.keys().filter(|k| !names.contains(&k.as_str())) {
-                        out.push(Change::SetIn("shell.env".into(), toml_key(old), None));
-                    }
-                    for (name, value) in vars.iter().filter(|(n, _)| !n.trim().is_empty()) {
-                        if sh.env.get(name.trim()) != Some(value) {
-                            out.push(Change::SetIn("shell.env".into(), toml_key(name.trim()), Some(cfg::quote(value))));
-                        }
-                    }
-                    done = true;
-                }
-                if cancel.clicked() {
-                    done = true;
-                }
-            });
-            ui.add_space(8.0);
-        }
-        if done {
-            edit.env = None;
-        }
-    });
+    let auto = trf("prefs.shell.auto", &[&ito_pane::shell_label(None)]);
+    let found: &[(String, String)] = seen.facts.map(|f| f.shells.as_slice()).unwrap_or(&[]);
+    let now = ito_prefs::Shell { program: &sh.program, auto: &auto, shells: found, args: &sh.args, env: &sh.env };
+    let words = shell_words();
+    for ch in ito_prefs::shell_card(ui, l, words, &mut edit.drafts, &mut edit.env, &now) {
+        out.push(match ch {
+            ito_prefs::ShellChange::Program(p) => Change::Set(Some("shell"), "program", cfg::quote(&p)),
+            ito_prefs::ShellChange::Args(list) => Change::Set(Some("shell"), "args", cfg::quote_list(&list)),
+            ito_prefs::ShellChange::SetVar { name, value } => Change::SetIn("shell.env".into(), toml_key(&name), Some(cfg::quote(&value))),
+            ito_prefs::ShellChange::RemoveVar(name) => Change::SetIn("shell.env".into(), toml_key(&name), None),
+        });
+    }
     section(ui, l, tr("prefs.head.hooks"), |ui| {
         let facts = seen.facts;
         let hooks = facts.map(|f| f.hooks);
@@ -2130,7 +2053,7 @@ mod tests {
             .map(tr)
             .filter(|label| !index.iter().any(|(_, words)| *label == *words || (words.len() >= 8 && label.contains(words))))
             .collect();
-        assert!(source.split(needle.as_str()).count() > 60, "the rows' labels are looked up by key");
+        assert!(source.split(needle.as_str()).count() > 50, "the rows' labels are looked up by key");
         assert!(missing.is_empty(), "rows the search cannot find: {missing:?}");
     }
 
