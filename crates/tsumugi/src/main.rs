@@ -1501,6 +1501,10 @@ struct App {
     settings_tx: std::sync::mpsc::Sender<Read>,
     /// The settings as last read, for the settings screen and the clock.
     settings_now: tsumugi_mux::settings::Settings,
+    /// `config.toml` has been read once (`settings_now` is not the default).
+    settings_loaded: bool,
+    /// Tags already handed a colour in `[tags.colors]`, until it reads back.
+    tag_colors_sent: std::collections::BTreeSet<String>,
     /// `language` in common.toml, for the settings screen.
     language: String,
     /// common.toml as last read: the language, the theme and the clock every
@@ -1899,6 +1903,8 @@ impl App {
             settings: settings_rx,
             settings_tx: settings_tx.clone(),
             settings_now: tsumugi_mux::settings::Settings::default(),
+            settings_loaded: false,
+            tag_colors_sent: Default::default(),
             language: "auto".into(),
             common: ito_common::Common::default(),
             highlights: Vec::new(),
@@ -2967,6 +2973,7 @@ impl App {
                 all_tags.push(t.clone());
             }
         }
+        self.settle_tag_colors(&all_tags);
         let projects = sort::projects(&tabs);
         // A filter on something no longer there lets everything through.
         if self.filter.tag.as_ref().is_some_and(|t| !all_tags.contains(t)) {
@@ -4757,6 +4764,37 @@ impl App {
 
     /// A tag's new name: in the rules and the colours of the settings, on the
     /// sessions that have it, and quiet if it was.
+    /// Give the tags in use that have no colour of their own one in
+    /// `[tags.colors]`, a free one where there is one (`chrome::settle_tag_colors`).
+    fn settle_tag_colors(&mut self, in_use: &[String]) {
+        if !self.settings_loaded {
+            return;
+        }
+        let new: Vec<(String, &'static str)> = chrome::settle_tag_colors(in_use, &self.settings_now.tags.colors)
+            .into_iter()
+            .filter(|(t, _)| !self.tag_colors_sent.contains(t))
+            .collect();
+        if new.is_empty() {
+            return;
+        }
+        self.tag_colors_sent.extend(new.iter().map(|(t, _)| t.clone()));
+        edit_settings(self.settings_tx.clone(), move |text| {
+            // What the file holds now, not what was seen: a colour put there
+            // meanwhile stays.
+            let held = tsumugi_mux::settings::parse(text)?.tags.colors;
+            let mut t = text.to_owned();
+            for (tag, hex) in new.iter().filter(|(tag, _)| !held.contains_key(tag)) {
+                let key = if tag.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-') {
+                    tag.clone()
+                } else {
+                    tsumugi_mux::settings::quote(tag)
+                };
+                t = tsumugi_mux::settings::set_key(&t, Some("tags.colors"), &key, &tsumugi_mux::settings::quote(hex))?;
+            }
+            Ok(t)
+        });
+    }
+
     fn rename_tag(&mut self, client: &Client, sessions: &[Info], old: String, new: String) {
         let ids: Vec<SessionId> = sessions.iter().filter(|i| i.tags.contains(&old)).map(|i| i.id).collect();
         if !ids.is_empty() {
@@ -7014,6 +7052,7 @@ impl App {
                         }
                         let shell_changed = s.shell.program != self.settings_now.shell.program;
                         self.settings_now = s.clone();
+                        self.settings_loaded = true;
                         self.highlights = s.highlights();
                         price::set(&s.prices);
                         facts_again |= shell_changed && self.prefs.is_some();

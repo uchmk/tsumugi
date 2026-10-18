@@ -698,10 +698,43 @@ pub fn tag_colors(tag: &str) -> (Color32, Color32) {
         ((0x3d, 0x6b, 0x3a), (0xea, 0xff, 0xe6)),
         ((0x7a, 0x3a, 0x5e), (0xff, 0xe8, 0xf4)),
     ];
-    // FNV-1a: the same on every machine, unlike std's hasher.
-    let h = tag.bytes().fold(0x811c_9dc5u32, |h, b| (h ^ u32::from(b)).wrapping_mul(0x0100_0193));
-    let ((r, g, b), (r2, g2, b2)) = COLORS[h as usize % COLORS.len()];
+    let ((r, g, b), (r2, g2, b2)) = COLORS[tag_slot(tag)];
     (Color32::from_rgb(r, g, b), Color32::from_rgb(r2, g2, b2))
+}
+
+/// The palette slot a tag's name falls on. FNV-1a: the same on every
+/// machine, unlike std's hasher.
+fn tag_slot(tag: &str) -> usize {
+    let h = tag.bytes().fold(0x811c_9dc5u32, |h, b| (h ^ u32::from(b)).wrapping_mul(0x0100_0193));
+    h as usize % TAG_PALETTE.len()
+}
+
+/// Colours for the tags in use that have none of their own yet, to be written
+/// to `[tags.colors]`: the one their name falls on if no other tag in use has
+/// it, else the first the others leave free (with all eight taken, the least
+/// shared). Written once, a tag keeps its colour, in every window and after
+/// a restart, whatever tags come later.
+pub fn settle_tag_colors(tags: &[String], own: &std::collections::BTreeMap<String, String>) -> Vec<(String, &'static str)> {
+    let mut count = [0usize; TAG_PALETTE.len()];
+    let slot_of = |hex: &str| TAG_PALETTE.iter().position(|p| p.eq_ignore_ascii_case(hex));
+    for hex in tags.iter().filter_map(|t| own.get(t)) {
+        if let Some(i) = slot_of(hex) {
+            count[i] += 1;
+        }
+    }
+    let mut out = Vec::new();
+    for tag in tags.iter().filter(|t| !t.contains('{') && !own.contains_key(*t)) {
+        let want = tag_slot(tag);
+        let pick = if count[want] == 0 {
+            want
+        } else {
+            let least = count.iter().copied().min().unwrap_or(0);
+            (0..count.len()).find(|&i| count[i] == least).unwrap_or(want)
+        };
+        count[pick] += 1;
+        out.push((tag.clone(), TAG_PALETTE[pick]));
+    }
+    out
 }
 
 /// A tag's chip at `at` (its left top), filled like the design's; its
@@ -1637,7 +1670,39 @@ pub fn foot(ui: &mut egui::Ui, main: egui::Button<'_>, enabled: bool, cancel: &s
 
 #[cfg(test)]
 mod tests {
-    use super::{breathe, edge_at, elapsed, sweep_at, when_words, BREATHE, SWEEP};
+    use super::{breathe, edge_at, elapsed, settle_tag_colors, sweep_at, when_words, BREATHE, SWEEP, TAG_PALETTE};
+
+    /// Tags in use never share a colour while one is free, an own colour is
+    /// left alone, and a tag already settled is not given another.
+    #[test]
+    fn settled_tag_colors_do_not_collide() {
+        let names = ["tsumugi", "kura", "yagura", "minato", "ito", "michi", "a", "b"];
+        let tags: Vec<String> = names.iter().map(|n| (*n).to_owned()).collect();
+        let none = std::collections::BTreeMap::new();
+        let first = settle_tag_colors(&tags, &none);
+        assert_eq!(first.len(), 8);
+        let mut hexes: Vec<&str> = first.iter().map(|(_, h)| *h).collect();
+        hexes.sort_unstable();
+        hexes.dedup();
+        assert_eq!(hexes.len(), 8, "{first:?}");
+        // Written down, nothing more to settle.
+        let own = first.iter().map(|(t, h)| (t.clone(), (*h).to_owned())).collect();
+        assert!(settle_tag_colors(&tags, &own).is_empty());
+        // A ninth tag shares one, and an own colour of any kind is not touched.
+        let mut more = tags.clone();
+        more.push("c".into());
+        let ninth = settle_tag_colors(&more, &own);
+        assert_eq!(ninth.len(), 1);
+        assert!(TAG_PALETTE.contains(&ninth[0].1));
+    }
+
+    /// A tag on its own keeps the colour its name gives it.
+    #[test]
+    fn a_lone_tag_keeps_its_named_colour() {
+        let none = std::collections::BTreeMap::new();
+        let got = settle_tag_colors(&["claude".to_owned()], &none);
+        assert_eq!(got[0].1, TAG_PALETTE[super::tag_slot("claude")]);
+    }
 
     /// The bell's list grows with its entries, also when they arrive while it
     /// is open (a lane saw only 1.5 rows once there were two).
