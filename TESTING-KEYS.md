@@ -104,11 +104,11 @@ Windows and Linux keys first; the macOS key is after `·`.
 
 ## Copy mode
 
-- [ ] `Arrows / h j k l` · `Arrows / h j k l` — Move the cursor; past the top or bottom, the output moves
+- [x] `Arrows / h j k l` · `Arrows / h j k l` — Move the cursor; past the top or bottom, the output moves
 - [x] `PageUp / PageDown` · `PageUp / PageDown` — A page through the scrollback
 - [x] `g / G` · `g / G` — The oldest line / the newest
 - [x] `0 / $ (Home / End)` · `0 / $ (Home / End)` — The start / the end of the line
-- [ ] `v / Space` · `v / Space` — Start a selection at the cursor, or drop it
+- [x] `v / Space` · `v / Space` — Start a selection at the cursor, or drop it
 - [x] `y / Enter` · `y / Enter` — Copy the selection (none: the cursor's line) and leave
 - [x] `Esc / q` · `Esc / q` — Leave without copying
 
