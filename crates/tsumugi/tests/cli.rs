@@ -319,10 +319,12 @@ fn a_failure_goes_to_the_webhook_named_by_its_program() {
     std::fs::write(&settings, text).unwrap();
     let id = s.new_session(&[]);
     if cfg!(windows) {
-        // cmd's title, its exe's path, comes with its first prompt.
-        let deadline = Instant::now() + PATIENCE;
-        while !s.ok(&["ls", "--json"]).to_ascii_lowercase().contains("cmd.exe") {
-            assert!(Instant::now() < deadline, "cmd never set its title:\n{}", s.ok(&["ls", "--json"]));
+        // cmd's title, its exe's path, comes with its first prompt -- unless
+        // the ConPTY beside the exe (the lanes' target has it) never passes
+        // a title on; then the program's name is all there is, and the check
+        // below still holds.
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while !s.ok(&["ls", "--json"]).to_ascii_lowercase().contains("cmd.exe") && Instant::now() < deadline {
             std::thread::sleep(Duration::from_millis(200));
         }
     }

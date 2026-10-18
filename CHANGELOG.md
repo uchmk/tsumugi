@@ -5,6 +5,13 @@
 
 ## [未リリース]
 
+## [0.115.24] - 2026-10-18
+
+### 修正
+
+- 実機のレーンで `cargo test` が毎回落ちていた件（Lane status: win）。テスト `a_failure_goes_to_the_webhook_named_by_its_program` は cmd の題（exe のパス）が付くのを 60 秒待っていたが、
+  レーンの target には `conpty.dll` と `OpenConsole.exe` が exe の隣にあり、その ConPTY 経由だと cmd の題が上がってこない。待ちを 10 秒までにして、題が無くても番組名で通知されることを確かめるようにした。
+
 ## [0.115.23] - 2026-10-18
 
 ### 変更
