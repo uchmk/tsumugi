@@ -822,11 +822,7 @@ fn window() -> std::process::ExitCode {
     if first.window.own_titlebar() {
         // macOS keeps its traffic lights, over the band; elsewhere the band
         // draws its own buttons (chrome::top_band).
-        viewport = if cfg!(target_os = "macos") {
-            viewport.with_fullsize_content_view(true).with_titlebar_shown(false).with_title_shown(false)
-        } else {
-            viewport.with_decorations(false)
-        };
+        viewport = ito_titlebar::frameless(viewport);
     }
     // Material, or less than all of the window over the desktop: the
     // window is made see-through when it opens.
@@ -6619,7 +6615,7 @@ impl eframe::App for App {
             // Last, so its pointer is the one shown over the edges.
             let maximized = ui.ctx().input(|i| i.viewport().maximized.unwrap_or(false));
             if !frame && !maximized {
-                chrome::resize_edges(ui.ctx());
+                ito_titlebar::resize_edges(ui.ctx());
             }
         }
         if self.animated {
@@ -7538,7 +7534,7 @@ impl App {
             old_server: Some(client.server_build()).filter(|b| !b.is_empty() && b != env!("CARGO_PKG_VERSION")),
         };
         let band = egui::Panel::top("band")
-            .exact_size(40.0)
+            .exact_size(ito_titlebar::HEIGHT)
             .frame(egui::Frame::NONE.fill(self.chrome_fill(crate::theme::colors().side)))
             .show(ui, |ui| {
                 chrome::top_band(
@@ -7577,12 +7573,8 @@ impl App {
             let ctx = self.ctx.clone();
             self.restart_server(&ctx);
         }
-        match band.window {
-            Some(chrome::WindowOp::Drag) => ctx.send_viewport_cmd(egui::ViewportCommand::StartDrag),
-            Some(chrome::WindowOp::ToggleMax) => ctx.send_viewport_cmd(egui::ViewportCommand::Maximized(!maximized)),
-            Some(chrome::WindowOp::Minimize) => ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(true)),
-            Some(chrome::WindowOp::Close) => ctx.send_viewport_cmd(egui::ViewportCommand::Close),
-            None => {}
+        if let Some(op) = band.window {
+            ito_titlebar::apply(&ctx, op, maximized);
         }
 
         if !lights_on_side {

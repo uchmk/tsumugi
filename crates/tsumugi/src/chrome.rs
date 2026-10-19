@@ -622,40 +622,6 @@ pub fn plus_button(ui: &mut egui::Ui, pal: &Palette) -> egui::Response {
     resp
 }
 
-/// The bell in `rect` (28 by 24), with the unread count on it.
-pub fn bell(ui: &mut egui::Ui, rect: egui::Rect, pal: &Palette, notices: &[Notice]) -> egui::Response {
-    let unread: Vec<&Notice> = notices.iter().filter(|n| !n.read).collect();
-    let resp = ui.interact(rect, ui.id().with("bell"), egui::Sense::click());
-    let resp = resp.on_hover_text(trf("sidebar.notices", &[&unread.len().to_string(), &crate::keys::label(crate::keys::Action::Notices)]));
-    let p = ui.painter_at(rect.expand(6.0));
-    if resp.hovered() {
-        p.rect_filled(rect, 6.0, pal.selection.gamma_multiply(0.5));
-    }
-    // A bell, drawn: the cup, its lip and the clapper.
-    let c = rect.center() + egui::vec2(0.0, -1.0);
-    let stroke = egui::Stroke::new(1.4, if unread.is_empty() { pal.fg_dim } else { pal.fg });
-    let cup = vec![
-        c + egui::vec2(-5.5, 4.0),
-        c + egui::vec2(-4.5, -1.0),
-        c + egui::vec2(-3.0, -4.5),
-        c + egui::vec2(0.0, -5.5),
-        c + egui::vec2(3.0, -4.5),
-        c + egui::vec2(4.5, -1.0),
-        c + egui::vec2(5.5, 4.0),
-    ];
-    p.add(egui::Shape::line(cup, stroke));
-    p.line_segment([c + egui::vec2(-6.5, 4.0), c + egui::vec2(6.5, 4.0)], stroke);
-    p.circle_filled(c + egui::vec2(0.0, 6.2), 1.4, stroke.color);
-    if !unread.is_empty() {
-        let color = if unread.iter().any(|n| n.state == State::Error) { red() } else { gold() };
-        let text = if unread.len() > 9 { "9+".to_owned() } else { unread.len().to_string() };
-        let at = rect.right_top() + egui::vec2(-5.0, 5.0);
-        p.circle_filled(at, 7.0, color);
-        p.text(at, egui::Align2::CENTER_CENTER, text, FontId::proportional(10.0), crate::theme::colors().on_accent());
-    }
-    resp
-}
-
 /// `[tags.colors]`: tags given a colour of their own.
 static TAG_COLORS: std::sync::RwLock<std::collections::BTreeMap<String, Color32>> =
     std::sync::RwLock::new(std::collections::BTreeMap::new());
@@ -773,11 +739,12 @@ pub fn tags_that_fit(widths: &[f32], shown: usize, room: f32, more_w: impl Fn(us
     (0, 0.0)
 }
 
-/// The band along the top of the window (the design's 1c): the name, the
-/// search box and the bell in the middle of the window, and the tags of the
-/// session with the keys on the right, `[tags] shown` and `+N`. When the
-/// window is narrow the tags give way to `+N` first, then the box shrinks
-/// to its magnifier (1o); the box never moves for them.
+/// The band along the top of the window (the design's 1c): `ito_titlebar`
+/// draws the bar, the search box and the bell in the middle of the window;
+/// the name is on the left and, on the right, the tags of the session with
+/// the keys, `[tags] shown` and `+N`. When the window is narrow the tags give
+/// way to `+N` first, then the box shrinks to its magnifier (1o); the box
+/// never moves for them.
 pub fn top_band(
     ui: &mut egui::Ui,
     pal: &Palette,
@@ -787,165 +754,136 @@ pub fn top_band(
     notices: &[Notice],
     frame: &BandFrame,
 ) -> BandOut {
-    let whole = ui.max_rect();
-    let p = ui.painter().clone();
-    p.line_segment([whole.left_bottom(), whole.right_bottom()], egui::Stroke::new(1.0, crate::theme::colors().border));
-    let mut out = BandOut::default();
-    // As the title bar: the band's empty parts move the window and a double
-    // click maximizes it. Taken first, so what is drawn on it comes first.
-    if frame.own {
-        // The band is the mouse's: none of it is a stop for Tab, which goes
-        // to what the window shows under it.
-        let bg = ui.interact(whole, ui.id().with("band-drag"), egui::Sense::CLICK | egui::Sense::DRAG);
-        if bg.double_clicked() {
-            out.window = Some(WindowOp::ToggleMax);
-        } else if bg.drag_started() {
-            out.window = Some(WindowOp::Drag);
-        }
-    }
-    let buttons = if frame.own && !cfg!(target_os = "macos") { 3.0 * CAPTION_W } else { 0.0 };
-    if buttons > 0.0 {
-        if let Some(op) = caption_buttons(
-            ui,
-            egui::Rect::from_min_max(egui::pos2(whole.right() - buttons, whole.top()), whole.right_bottom()),
-            pal,
-            frame.maximized,
-        ) {
-            out.window = Some(op);
-        }
-    }
-    let mut rect = whole;
-    rect.min.x += frame.left;
-    rect.max.x -= buttons;
-    // The mark: two threads, cyan and gold (the design's 10 A).
-    let o = egui::pos2(rect.left() + 16.0, rect.center().y);
-    let wave = |amp: f32, color: Color32| {
-        let pts: Vec<egui::Pos2> = (0..=16)
-            .map(|k| {
-                let x = k as f32;
-                o + egui::vec2(x, -amp * ((x / 16.0) * std::f32::consts::TAU).cos())
-            })
-            .collect();
-        p.add(egui::Shape::line(pts, egui::Stroke::new(1.6, color)));
+    let unread: Vec<&Notice> = notices.iter().filter(|n| !n.read).collect();
+    let search_key = crate::keys::label(crate::keys::Action::Search);
+    let bell = trf("sidebar.notices", &[&unread.len().to_string(), &crate::keys::label(crate::keys::Action::Notices)]);
+    let spec = ito_titlebar::Spec {
+        own: frame.own,
+        left: frame.left,
+        maximized: frame.maximized,
+        unread: unread.len(),
+        any_error: unread.iter().any(|n| n.state == State::Error),
+        centre: !frame.settings,
+        words: ito_titlebar::Words {
+            search: tr("title.search"),
+            search_key: &search_key,
+            bell: &bell,
+            minimize: tr("title.minimize"),
+            maximize: tr("title.maximize"),
+            restore: tr("title.restore"),
+            close: tr("title.close"),
+        },
     };
-    wave(4.0, cyan());
-    wave(2.0, gold());
-    let name = p.layout_no_wrap("tsumugi".into(), FontId::proportional(13.0), crate::theme::colors().strong());
-    let name_right = o.x + 24.0 + name.size().x;
-    p.galley(egui::pos2(o.x + 24.0, rect.center().y - name.size().y / 2.0), name, Color32::WHITE);
-    if frame.settings {
-        p.text(whole.center(), egui::Align2::CENTER_CENTER, tr("title.settings"), FontId::proportional(13.0), pal.fg_dim);
-        let r =
-            egui::Rect::from_min_max(egui::pos2(rect.right() - 44.0, whole.top() + 4.0), egui::pos2(rect.right(), whole.bottom() - 4.0));
-        let resp = ui.interact(r, ui.id().with("close-settings"), egui::Sense::CLICK).on_hover_text(tr("title.close_settings"));
-        if resp.hovered() {
-            p.rect_filled(r, 4.0, crate::theme::colors().hover());
-        }
-        let c = r.center();
-        let stroke = egui::Stroke::new(1.2, if resp.hovered() { crate::theme::colors().strong() } else { pal.fg_dim });
-        p.line_segment([c + egui::vec2(-4.5, -4.5), c + egui::vec2(4.5, 4.5)], stroke);
-        p.line_segment([c + egui::vec2(4.5, -4.5), c + egui::vec2(-4.5, 4.5)], stroke);
-        out.close_settings = resp.clicked();
-        return out;
-    }
-
-    // The box and the bell beside it, in the middle of the window whatever
-    // the tags (the user's ask of 2026-10-09): as wide as there is room for
-    // on both sides of the middle, then only the magnifier.
-    const BELL: f32 = 34.0;
-    let middle = whole.center().x;
-    let half = (middle - name_right - 12.0).min(rect.right() - 12.0 - middle);
-    let box_w = 420.0f32.min(2.0 * half - BELL);
-    let compact = box_w < 160.0;
-    let w = if compact { 30.0 } else { box_w };
-    let group_left = (middle - (w + BELL) / 2.0).max(name_right + 12.0);
-    let r = egui::Rect::from_min_size(egui::pos2(group_left, rect.center().y - 13.0), egui::vec2(w, 26.0));
-    // The tags at the right, in what the box and the bell leave: up to
-    // `[tags] shown`, then +N; fewer, and +N, when they do not fit.
-    let mut left_edge = r.right() + BELL + 12.0;
-    // An old server stays flagged right of the bell until it is restarted
-    // (the toast alone was gone before it could be read).
-    if let Some(build) = &frame.old_server {
-        // Red and bold-sized: it asks for a restart, which is easy to miss.
-        let galley = p.layout_no_wrap(tr("title.old_server").to_owned(), FontId::proportional(12.0), Color32::WHITE);
-        let chip = egui::Rect::from_min_size(egui::pos2(left_edge - 6.0, rect.center().y - 9.0), egui::vec2(galley.size().x + 16.0, 18.0));
-        if chip.right() + 12.0 < rect.right() {
-            let resp = ui
-                .interact(chip, ui.id().with("old-server"), egui::Sense::CLICK)
-                .on_hover_text(trf("title.old_server_hint", &[build, env!("CARGO_PKG_VERSION")]));
-            let fill = if resp.hovered() { Color32::from_rgb(240, 64, 64) } else { Color32::from_rgb(214, 40, 40) };
-            p.rect_filled(chip, 4.0, fill);
-            p.galley(egui::pos2(chip.left() + 8.0, chip.center().y - galley.size().y / 2.0), galley, Color32::WHITE);
-            out.restart_server = resp.clicked();
-            left_edge = chip.right() + 12.0;
-        }
-    }
-    // The session with the keys is writing a work log: its name and LOG,
-    // lit; a click opens the file. Dim while a full-screen program has the
-    // screen, which the log leaves out.
-    if let Some(log) = &frame.log {
-        let mut name: String = log.name.chars().take(18).collect();
-        if name.chars().count() < log.name.chars().count() {
-            name.push('…');
-        }
-        let text = if log.paused { format!("{name} · LOG ‖") } else { format!("{name} · LOG") };
-        let ink = Color32::WHITE;
-        let galley = p.layout_no_wrap(text, FontId::proportional(11.0), ink);
-        let chip = egui::Rect::from_min_size(egui::pos2(left_edge - 6.0, rect.center().y - 8.0), egui::vec2(galley.size().x + 12.0, 16.0));
-        if chip.right() + 12.0 < rect.right() {
-            let hint = trf(if log.paused { "title.log_paused" } else { "title.log" }, &[&log.path]);
-            let resp = ui
-                .interact(chip, ui.id().with("work-log"), egui::Sense::CLICK)
-                .on_hover_cursor(egui::CursorIcon::PointingHand)
-                .on_hover_text(hint);
-            p.rect_filled(chip, 4.0, if resp.hovered() { LOG_HOVER } else { LOG_FILL });
-            p.galley(egui::pos2(chip.left() + 6.0, chip.center().y - galley.size().y / 2.0), galley, ink);
-            out.open_log = resp.clicked();
-            left_edge = chip.right() + 12.0;
-        }
-    }
-    let room = (rect.right() - 12.0) - left_edge;
-    let chip_w = |t: &str| p.layout_no_wrap(t.to_owned(), FontId::proportional(11.0), pal.fg).size().x + 12.0;
-    let more_w = |n: usize| p.layout_no_wrap(format!("+{n}"), FontId::proportional(11.0), pal.fg).size().x + 12.0;
-    let (n, used) = tags_that_fit(&tags.iter().map(|t| chip_w(t)).collect::<Vec<_>>(), shown, room, more_w);
-    if used > 0.0 {
-        let mut x = rect.right() - 12.0 - used;
-        for t in &tags[..n] {
-            x = tag_chip(&p, egui::pos2(x, rect.center().y - 8.0), t, muted_tags.contains(t)).right() + 5.0;
-        }
-        if n < tags.len() {
-            let r = more_chip(&p, egui::pos2(x, rect.center().y - 8.0), tags.len() - n, pal.fg_dim);
-            ui.interact(r, ui.id().with("more-tags"), egui::Sense::hover()).on_hover_text(tags[n..].join(", "));
-        }
-    }
-
-    let resp = ui.interact(r, ui.id().with("search"), egui::Sense::CLICK).on_hover_text(tr("title.search"));
-    let fill = if resp.hovered() { crate::theme::colors().hover() } else { crate::theme::colors().panel };
-    p.rect_filled(r, 6.0, fill);
-    p.rect_stroke(r, 6.0, egui::Stroke::new(1.0, crate::theme::colors().border), egui::StrokeKind::Inside);
-    let glass = egui::pos2(r.left() + 15.0, r.center().y - 1.0);
-    let stroke = egui::Stroke::new(1.3, pal.fg_dim);
-    p.circle_stroke(glass, 4.0, stroke);
-    p.line_segment([glass + egui::vec2(3.0, 3.0), glass + egui::vec2(6.0, 6.0)], stroke);
-    if !compact {
-        let key = p.layout_no_wrap(crate::keys::label(crate::keys::Action::Search), FontId::monospace(11.0), grey());
-        let key_x = r.right() - 10.0 - key.size().x;
-        let mut job = egui::text::LayoutJob::simple_singleline(tr("title.search").into(), FontId::proportional(12.0), pal.fg_dim);
-        job.wrap = egui::text::TextWrapping::truncate_at_width((key_x - r.left() - 40.0).max(0.0));
-        let words = ui.fonts_mut(|f| f.layout_job(job));
-        if key_x - r.left() > 140.0 {
-            p.galley(egui::pos2(r.left() + 28.0, r.center().y - 7.0), words, pal.fg_dim);
-        }
-        p.galley(egui::pos2(key_x, r.center().y - key.size().y / 2.0), key, grey());
-    }
-    out.search = resp.clicked();
-    // The bell just right of the box (the notices, the box's neighbour).
-    let bell_rect = egui::Rect::from_min_size(egui::pos2(r.right() + 6.0, rect.center().y - 12.0), egui::vec2(28.0, 24.0));
-    out.bell = bell(ui, bell_rect, pal, notices).clicked();
-    out.bell_anchor = Some(egui::pos2(bell_rect.right() - 380.0, bell_rect.bottom() + 6.0));
-    out
+    let whole = ui.max_rect();
+    let mut band = BandOut::default();
+    let bar = ito_titlebar::show(
+        ui,
+        &spec,
+        |ui, rect| {
+            // The mark: two threads, cyan and gold (the design's 10 A).
+            let p = ui.painter().clone();
+            let o = egui::pos2(rect.left() + 16.0, rect.center().y);
+            let wave = |amp: f32, color: Color32| {
+                let pts: Vec<egui::Pos2> = (0..=16)
+                    .map(|k| {
+                        let x = k as f32;
+                        o + egui::vec2(x, -amp * ((x / 16.0) * std::f32::consts::TAU).cos())
+                    })
+                    .collect();
+                p.add(egui::Shape::line(pts, egui::Stroke::new(1.6, color)));
+            };
+            wave(4.0, cyan());
+            wave(2.0, gold());
+            let name = p.layout_no_wrap("tsumugi".into(), FontId::proportional(13.0), crate::theme::colors().strong());
+            let name_right = o.x + 24.0 + name.size().x;
+            p.galley(egui::pos2(o.x + 24.0, rect.center().y - name.size().y / 2.0), name, Color32::WHITE);
+            name_right
+        },
+        |ui, free| {
+            let p = ui.painter().clone();
+            if frame.settings {
+                p.text(whole.center(), egui::Align2::CENTER_CENTER, tr("title.settings"), FontId::proportional(13.0), pal.fg_dim);
+                let edge = free.right() + 12.0;
+                let r = egui::Rect::from_min_max(egui::pos2(edge - 44.0, whole.top() + 4.0), egui::pos2(edge, whole.bottom() - 4.0));
+                let resp = ui.interact(r, ui.id().with("close-settings"), egui::Sense::CLICK).on_hover_text(tr("title.close_settings"));
+                if resp.hovered() {
+                    p.rect_filled(r, 4.0, crate::theme::colors().hover());
+                }
+                let c = r.center();
+                let stroke = egui::Stroke::new(1.2, if resp.hovered() { crate::theme::colors().strong() } else { pal.fg_dim });
+                p.line_segment([c + egui::vec2(-4.5, -4.5), c + egui::vec2(4.5, 4.5)], stroke);
+                p.line_segment([c + egui::vec2(4.5, -4.5), c + egui::vec2(-4.5, 4.5)], stroke);
+                band.close_settings = resp.clicked();
+                return;
+            }
+            // The tags at the right, in what the box and the bell leave: up to
+            // `[tags] shown`, then +N; fewer, and +N, when they do not fit.
+            let right = free.right();
+            let mid = free.center().y;
+            let mut left_edge = free.left();
+            // An old server stays flagged right of the bell until it is restarted
+            // (the toast alone was gone before it could be read).
+            if let Some(build) = &frame.old_server {
+                // Red and bold-sized: it asks for a restart, which is easy to miss.
+                let galley = p.layout_no_wrap(tr("title.old_server").to_owned(), FontId::proportional(12.0), Color32::WHITE);
+                let chip = egui::Rect::from_min_size(egui::pos2(left_edge - 6.0, mid - 9.0), egui::vec2(galley.size().x + 16.0, 18.0));
+                if chip.right() < right {
+                    let resp = ui
+                        .interact(chip, ui.id().with("old-server"), egui::Sense::CLICK)
+                        .on_hover_text(trf("title.old_server_hint", &[build, env!("CARGO_PKG_VERSION")]));
+                    let fill = if resp.hovered() { Color32::from_rgb(240, 64, 64) } else { Color32::from_rgb(214, 40, 40) };
+                    p.rect_filled(chip, 4.0, fill);
+                    p.galley(egui::pos2(chip.left() + 8.0, chip.center().y - galley.size().y / 2.0), galley, Color32::WHITE);
+                    band.restart_server = resp.clicked();
+                    left_edge = chip.right() + 12.0;
+                }
+            }
+            // The session with the keys is writing a work log: its name and LOG,
+            // lit; a click opens the file. Dim while a full-screen program has the
+            // screen, which the log leaves out.
+            if let Some(log) = &frame.log {
+                let mut name: String = log.name.chars().take(18).collect();
+                if name.chars().count() < log.name.chars().count() {
+                    name.push('…');
+                }
+                let text = if log.paused { format!("{name} · LOG ‖") } else { format!("{name} · LOG") };
+                let ink = Color32::WHITE;
+                let galley = p.layout_no_wrap(text, FontId::proportional(11.0), ink);
+                let chip = egui::Rect::from_min_size(egui::pos2(left_edge - 6.0, mid - 8.0), egui::vec2(galley.size().x + 12.0, 16.0));
+                if chip.right() < right {
+                    let hint = trf(if log.paused { "title.log_paused" } else { "title.log" }, &[&log.path]);
+                    let resp = ui
+                        .interact(chip, ui.id().with("work-log"), egui::Sense::CLICK)
+                        .on_hover_cursor(egui::CursorIcon::PointingHand)
+                        .on_hover_text(hint);
+                    p.rect_filled(chip, 4.0, if resp.hovered() { LOG_HOVER } else { LOG_FILL });
+                    p.galley(egui::pos2(chip.left() + 6.0, chip.center().y - galley.size().y / 2.0), galley, ink);
+                    band.open_log = resp.clicked();
+                    left_edge = chip.right() + 12.0;
+                }
+            }
+            let room = right - left_edge;
+            let chip_w = |t: &str| p.layout_no_wrap(t.to_owned(), FontId::proportional(11.0), pal.fg).size().x + 12.0;
+            let more_w = |n: usize| p.layout_no_wrap(format!("+{n}"), FontId::proportional(11.0), pal.fg).size().x + 12.0;
+            let (n, used) = tags_that_fit(&tags.iter().map(|t| chip_w(t)).collect::<Vec<_>>(), shown, room, more_w);
+            if used > 0.0 {
+                let mut x = right - used;
+                for t in &tags[..n] {
+                    x = tag_chip(&p, egui::pos2(x, mid - 8.0), t, muted_tags.contains(t)).right() + 5.0;
+                }
+                if n < tags.len() {
+                    let r = more_chip(&p, egui::pos2(x, mid - 8.0), tags.len() - n, pal.fg_dim);
+                    ui.interact(r, ui.id().with("more-tags"), egui::Sense::hover()).on_hover_text(tags[n..].join(", "));
+                }
+            }
+        },
+    );
+    band.window = bar.window;
+    band.search = bar.search;
+    band.bell = bar.bell;
+    band.bell_anchor = bar.bell_rect.map(|r| egui::pos2(r.right() - 380.0, r.bottom() + 6.0));
+    band
 }
-
 /// How the band is to be a title bar.
 pub struct BandFrame {
     /// The window has no system title bar: the band is it.
@@ -984,118 +922,7 @@ pub struct BandOut {
     pub bell: bool,
     /// Where its list goes, under it.
     pub bell_anchor: Option<egui::Pos2>,
-    pub window: Option<WindowOp>,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub enum WindowOp {
-    Drag,
-    ToggleMax,
-    Minimize,
-    Close,
-}
-
-/// A caption button's width, as Windows 11 has them.
-const CAPTION_W: f32 = 46.0;
-
-/// Minimize, maximize (restore when maximized) and close, in `rect`, drawn
-/// as Windows draws them: thin lines, close red under the pointer.
-fn caption_buttons(ui: &mut egui::Ui, rect: egui::Rect, pal: &Palette, maximized: bool) -> Option<WindowOp> {
-    let mut out = None;
-    let ops = [
-        (WindowOp::Minimize, tr("title.minimize")),
-        (WindowOp::ToggleMax, if maximized { tr("title.restore") } else { tr("title.maximize") }),
-        (WindowOp::Close, tr("title.close")),
-    ];
-    for (k, (op, words)) in ops.into_iter().enumerate() {
-        let r = egui::Rect::from_min_size(rect.min + egui::vec2(k as f32 * CAPTION_W, 0.0), egui::vec2(CAPTION_W, rect.height()));
-        let resp = ui.interact(r, ui.id().with(("caption", k)), egui::Sense::CLICK).on_hover_text(words);
-        let p = ui.painter();
-        let hot = resp.hovered();
-        let close = op == WindowOp::Close;
-        if hot {
-            p.rect_filled(r, 0.0, if close { Color32::from_rgb(0xc4, 0x2b, 0x1c) } else { crate::theme::colors().hover() });
-        }
-        let color = if hot && close { Color32::WHITE } else { pal.fg };
-        let stroke = egui::Stroke::new(1.0, color);
-        let c = r.center();
-        match op {
-            WindowOp::Minimize => {
-                p.line_segment([c + egui::vec2(-5.0, 0.0), c + egui::vec2(5.0, 0.0)], stroke);
-            }
-            WindowOp::ToggleMax if maximized => {
-                // Two windows, one behind the other.
-                p.rect_stroke(
-                    egui::Rect::from_center_size(c + egui::vec2(-1.0, 1.0), egui::vec2(8.0, 8.0)),
-                    1.0,
-                    stroke,
-                    egui::StrokeKind::Inside,
-                );
-                p.line_segment([c + egui::vec2(-3.0, -5.0), c + egui::vec2(5.0, -5.0)], stroke);
-                p.line_segment([c + egui::vec2(5.0, -5.0), c + egui::vec2(5.0, 3.0)], stroke);
-            }
-            WindowOp::ToggleMax => {
-                p.rect_stroke(egui::Rect::from_center_size(c, egui::vec2(10.0, 10.0)), 1.0, stroke, egui::StrokeKind::Inside);
-            }
-            WindowOp::Close | WindowOp::Drag => {
-                p.line_segment([c + egui::vec2(-5.0, -5.0), c + egui::vec2(5.0, 5.0)], stroke);
-                p.line_segment([c + egui::vec2(-5.0, 5.0), c + egui::vec2(5.0, -5.0)], stroke);
-            }
-        }
-        if resp.clicked() {
-            out = Some(op);
-        }
-    }
-    out
-}
-
-/// A window without the system's frame is resized by its edges: a 6px
-/// strip along each, and the corners, set the pointer and start the
-/// system's resizing on a press (on the press, not once a drag is seen: by
-/// then the pointer has left the window, outward). Called last in a frame,
-/// so its pointer is the one shown. Not while maximized.
-pub fn resize_edges(ctx: &egui::Context) {
-    use egui::{CursorIcon as C, ResizeDirection as D};
-    let r = ctx.content_rect();
-    let (pos, pressed) = ctx.input(|i| (i.pointer.latest_pos(), i.pointer.primary_pressed()));
-    let Some(p) = pos else { return };
-    let Some(dir) = edge_at(r, p) else { return };
-    ctx.set_cursor_icon(match dir {
-        D::North | D::South => C::ResizeVertical,
-        D::East | D::West => C::ResizeHorizontal,
-        D::NorthWest | D::SouthEast => C::ResizeNwSe,
-        D::NorthEast | D::SouthWest => C::ResizeNeSw,
-    });
-    if pressed {
-        ctx.send_viewport_cmd(egui::ViewportCommand::BeginResize(dir));
-    }
-}
-
-/// Which edge or corner of `r` the point `p` is on, if any. The top edge is
-/// thinner: the band under it is the title bar to drag by.
-fn edge_at(r: egui::Rect, p: egui::Pos2) -> Option<egui::ResizeDirection> {
-    use egui::ResizeDirection as D;
-    const EDGE: f32 = 6.0;
-    const CORNER: f32 = 12.0;
-    if !r.contains(p) {
-        return None;
-    }
-    let (left, right) = (p.x - r.left() < EDGE, r.right() - p.x < EDGE);
-    let (top, bottom) = (p.y - r.top() < EDGE / 2.0, r.bottom() - p.y < EDGE);
-    let (near_left, near_right) = (p.x - r.left() < CORNER, r.right() - p.x < CORNER);
-    let (near_top, near_bottom) = (p.y - r.top() < CORNER, r.bottom() - p.y < CORNER);
-    let dir = match () {
-        _ if (top && near_left) || (left && near_top) => D::NorthWest,
-        _ if (top && near_right) || (right && near_top) => D::NorthEast,
-        _ if (bottom && near_left) || (left && near_bottom) => D::SouthWest,
-        _ if (bottom && near_right) || (right && near_bottom) => D::SouthEast,
-        _ if top => D::North,
-        _ if bottom => D::South,
-        _ if left => D::West,
-        _ if right => D::East,
-        _ => return None,
-    };
-    Some(dir)
+    pub window: Option<ito_titlebar::WindowOp>,
 }
 
 /// The command palette opened (`Ctrl+Shift+P`): a field, and the entries
@@ -1670,7 +1497,7 @@ pub fn foot(ui: &mut egui::Ui, main: egui::Button<'_>, enabled: bool, cancel: &s
 
 #[cfg(test)]
 mod tests {
-    use super::{breathe, edge_at, elapsed, settle_tag_colors, sweep_at, when_words, BREATHE, SWEEP, TAG_PALETTE};
+    use super::{breathe, elapsed, settle_tag_colors, sweep_at, when_words, BREATHE, SWEEP, TAG_PALETTE};
 
     /// Tags in use never share a colour while one is free, an own colour is
     /// left alone, and a tag already settled is not given another.
@@ -1793,21 +1620,6 @@ mod tests {
         assert_eq!(when_words(t("2026-10-06 07:02"), t("2026-10-06 08:00")), "today at 07:02");
         assert_eq!(when_words(t("2026-10-01 07:02"), t("2026-10-06 08:00")), "2026/10/01 07:02");
     }
-    use eframe::egui::{pos2, Rect, ResizeDirection as D};
-
-    #[test]
-    fn the_edges_and_corners_resize() {
-        let r = Rect::from_min_max(pos2(0.0, 0.0), pos2(800.0, 600.0));
-        assert_eq!(edge_at(r, pos2(798.0, 300.0)), Some(D::East));
-        assert_eq!(edge_at(r, pos2(2.0, 300.0)), Some(D::West));
-        assert_eq!(edge_at(r, pos2(400.0, 597.0)), Some(D::South));
-        assert_eq!(edge_at(r, pos2(400.0, 1.0)), Some(D::North));
-        assert_eq!(edge_at(r, pos2(400.0, 5.0)), None, "the top edge is thin: the band is dragged there");
-        assert_eq!(edge_at(r, pos2(798.0, 595.0)), Some(D::SouthEast));
-        assert_eq!(edge_at(r, pos2(790.0, 1.0)), Some(D::NorthEast), "the corners reach further along");
-        assert_eq!(edge_at(r, pos2(400.0, 300.0)), None);
-    }
-
     #[test]
     fn the_ring_breathes_and_the_line_runs_round() {
         assert!(breathe(0.0) < 0.001, "faint at the start");

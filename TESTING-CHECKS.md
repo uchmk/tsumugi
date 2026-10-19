@@ -326,9 +326,9 @@ Covered by tests, not listed below: 1.15, 1.16
 
 ## 13. The window's frame
 
-- [~] **13.1** Look at the window (Windows) → No system title bar: the band carries minimize, maximize and close on the right
-- [x] **13.2** Drag the band's empty part → The window moves; drag it to the screen's top: it maximizes (Aero Snap)
-- [x] **13.3** Double-click the band → Maximizes; again, restores
+- [ ] **13.1** Look at the window (Windows) → No system title bar: the band carries minimize, maximize and close on the right
+- [ ] **13.2** Drag the band's empty part → The window moves; drag it to the screen's top: it maximizes (Aero Snap)
+- [ ] **13.3** Double-click the band → Maximizes; again, restores
 - [ ] **13.4** Each of the three buttons → Minimize, maximize/restore (its icon changes), close; close turns red under the pointer
 - [ ] **13.5** Each edge and corner → The pointer changes and dragging resizes; not while maximized
 - [ ] **13.6** Hover the maximize button (Windows 11) → Note whether Snap Layouts appear (they may not: the button is tsumugi's own)
