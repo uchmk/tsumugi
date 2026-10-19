@@ -1302,9 +1302,9 @@ struct App {
     /// goes, so does the window.
     had_tabs: bool,
     /// The bell's list is open, and where.
-    bell_open: Option<egui::Pos2>,
+    bell_open: Option<egui::Rect>,
     /// Where the bell's list goes: under the bell, as last drawn.
-    bell_anchor: egui::Pos2,
+    bell_anchor: egui::Rect,
     /// After a restart: the "Welcome back" screen, until it is answered.
     restore: Option<chrome::RestoreView>,
     /// The sidebar's "Jump to waiting" was pressed.
@@ -1782,7 +1782,7 @@ impl App {
             title: String::new(),
             had_tabs: false,
             bell_open: None,
-            bell_anchor: egui::pos2(20.0, 60.0),
+            bell_anchor: egui::Rect::from_min_size(egui::pos2(332.0, 32.0), egui::vec2(28.0, 24.0)),
             restore,
             jump_waiting: false,
             nerd,
@@ -7491,7 +7491,7 @@ impl App {
         };
         match status {
             Some(chrome::StatusClick::Bell) => {
-                self.bell_open = Some(egui::pos2(20.0, 60.0));
+                self.bell_open = Some(egui::Rect::from_min_size(egui::pos2(332.0, 32.0), egui::vec2(28.0, 24.0)));
                 self.bell_opening = true;
             }
             Some(chrome::StatusClick::Open(url)) => {
@@ -7548,8 +7548,8 @@ impl App {
                 )
             })
             .inner;
-        if let Some(at) = band.bell_anchor {
-            self.bell_anchor = egui::pos2(at.x.max(8.0), at.y);
+        if let Some(r) = band.bell_rect {
+            self.bell_anchor = r;
         }
         if band.bell {
             self.bell_open = match self.bell_open {
@@ -7582,19 +7582,22 @@ impl App {
         }
 
         if let Some(at) = self.bell_open {
-            let notices = client.notices();
-            match chrome::bell_list(&ctx, &self.palette, at, &notices) {
-                Some(chrome::BellAction::Open(session, id)) => {
+            let notices = chrome::list_notices(&client.notices());
+            let (title, kinds) = chrome::list_words(ito_notices::unread(&notices));
+            let words =
+                ito_notices::Words { title: &title, mark_read: tr("notices.mark_read"), empty: tr("notices.empty"), ago: "{} ago", kinds };
+            match ito_notices::show(&ctx, at, &notices, &words) {
+                Some(ito_notices::Action::Open(go, id)) => {
                     client.read_notices(Some(vec![id]));
-                    self.go_to(&client, &workspaces, session);
+                    if let Some(session) = go {
+                        self.go_to(&client, &workspaces, session);
+                    }
                     self.bell_open = None;
                 }
-                Some(chrome::BellAction::ReadAll) => client.read_notices(None),
-                Some(chrome::BellAction::Close) if !self.bell_opening => self.bell_open = None,
+                Some(ito_notices::Action::ReadAll) => client.read_notices(None),
+                Some(ito_notices::Action::Close) if !self.bell_opening => self.bell_open = None,
                 _ => {}
             }
-        } else {
-            ctx.data_mut(|d| d.remove::<Option<usize>>(egui::Id::new("bell-list-row")));
         }
 
         let made = match &mut self.new_session {

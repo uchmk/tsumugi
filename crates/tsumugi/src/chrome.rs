@@ -881,7 +881,7 @@ pub fn top_band(
     band.window = bar.window;
     band.search = bar.search;
     band.bell = bar.bell;
-    band.bell_anchor = bar.bell_rect.map(|r| egui::pos2(r.right() - 380.0, r.bottom() + 6.0));
+    band.bell_rect = bar.bell_rect;
     band
 }
 /// How the band is to be a title bar.
@@ -920,8 +920,8 @@ pub struct BandOut {
     pub close_settings: bool,
     /// The bell was clicked.
     pub bell: bool,
-    /// Where its list goes, under it.
-    pub bell_anchor: Option<egui::Pos2>,
+    /// The bell's rect, which its list hangs under.
+    pub bell_rect: Option<egui::Rect>,
     pub window: Option<ito_titlebar::WindowOp>,
 }
 
@@ -1137,14 +1137,6 @@ pub struct StatusExtra {
     pub cost: (Option<f64>, f64),
 }
 
-/// What the notification list was asked to do.
-pub enum BellAction {
-    /// Go to the session, and count it read.
-    Open(SessionId, u64),
-    ReadAll,
-    Close,
-}
-
 /// Makes `layer` modal for this frame: Tab and Shift+Tab wrap inside it and
 /// the controls behind never take the focus. Call it every frame the dialog
 /// is open, after its area is shown.
@@ -1173,130 +1165,32 @@ pub fn hold_tab(ctx: &egui::Context, layer: egui::LayerId, first: Option<egui::I
     }
 }
 
-/// The list the bell opens (1h, the user's ask of 2026-10-06): newest first,
-/// unread ones bright, each opening its session; "Mark all read" on top.
-pub fn bell_list(ctx: &egui::Context, pal: &Palette, at: egui::Pos2, notices: &[Notice]) -> Option<BellAction> {
-    let mut action = None;
-    let now = now_ms();
-    // The row the keys are on (0 is the newest), kept between frames; ↑↓ move
-    // it, Enter opens it, Esc closes the list. None until a key is pressed.
-    let sel_id = egui::Id::new("bell-list-row");
-    let mut sel = ctx.data(|d| d.get_temp::<Option<usize>>(sel_id)).flatten();
-    let mut moved = false;
-    if !notices.is_empty() {
-        let last = notices.len() - 1;
-        ctx.input_mut(|i| {
-            if i.consume_key(egui::Modifiers::NONE, egui::Key::ArrowDown) {
-                sel = Some(sel.map_or(0, |s| (s + 1).min(last)));
-                moved = true;
-            }
-            if i.consume_key(egui::Modifiers::NONE, egui::Key::ArrowUp) {
-                sel = Some(sel.map_or(0, |s| s.saturating_sub(1)));
-                moved = true;
-            }
-        });
-        if let Some(s) = sel.filter(|_| ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Enter))) {
-            if let Some(n) = notices.iter().rev().nth(s) {
-                action = Some(BellAction::Open(n.session, n.id));
-            }
-        }
-    }
-    if ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape)) {
-        action = Some(BellAction::Close);
-    }
-    ctx.data_mut(|d| d.insert_temp(sel_id, sel));
-    let area = egui::Area::new(egui::Id::new("bell-list")).order(egui::Order::Foreground).fixed_pos(at);
-    let mut first = None;
-    let resp = area.show(ctx, |ui| {
-        egui::Frame::NONE
-            .fill(crate::theme::colors().panel)
-            .stroke(egui::Stroke::new(1.0, crate::theme::colors().border_strong()))
-            .corner_radius(10.0)
-            .inner_margin(10.0)
-            .show(ui, |ui| {
-                ui.set_width(360.0);
-                ui.horizontal(|ui| {
-                    let unread = notices.iter().filter(|n| !n.read).count();
-                    ui.label(RichText::new(trf("notices.title", &[&unread.to_string()])).strong().color(pal.fg));
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        let mark = ui.add_enabled(unread > 0, egui::Button::new(tr("notices.mark_read")).small());
-                        if unread > 0 {
-                            first = Some(mark.id);
-                        }
-                        if mark.clicked() {
-                            action = Some(BellAction::ReadAll);
-                        }
-                    });
-                });
-                ui.separator();
-                if notices.is_empty() {
-                    ui.label(RichText::new(tr("notices.empty")).color(pal.fg_dim));
-                    return;
-                }
-                // The rows' own height, not what an Area leaves of its last
-                // frame's size: a list that gained an entry stayed at 1.5 rows.
-                let rows = notices.len() as f32 * (46.0 + ui.spacing().item_spacing.y);
-                egui::ScrollArea::vertical()
-                    .max_height(rows.min(420.0))
-                    .min_scrolled_height(rows.min(420.0))
-                    .auto_shrink([false, false])
-                    .show(ui, |ui| {
-                        for (row, n) in notices.iter().rev().enumerate() {
-                            let text_color = if n.read { pal.fg_dim } else { pal.fg };
-                            let (rect, resp) = ui.allocate_exact_size(egui::vec2(ui.available_width(), 46.0), egui::Sense::click());
-                            first = first.or(Some(resp.id));
-                            let p = ui.painter_at(rect);
-                            let keyed = sel == Some(row);
-                            if keyed && moved {
-                                resp.scroll_to_me(None);
-                            }
-                            if resp.hovered() || keyed {
-                                p.rect_filled(rect, 6.0, pal.selection.gamma_multiply(0.6));
-                            }
-                            let dot = rect.left_top() + egui::vec2(10.0, 14.0);
-                            if n.read {
-                                p.circle_stroke(dot, 4.0, egui::Stroke::new(1.2, state_color(n.state)));
-                            } else {
-                                p.circle_filled(dot, 4.0, state_color(n.state));
-                            }
-                            let word = match n.state {
-                                _ if n.trigger => "trigger",
-                                State::Waiting => "waiting",
-                                State::Error => "error",
-                                _ => "finished",
-                            };
-                            // The time first, then the word, and the title cut
-                            // short in what is left: a long one ran over both.
-                            let line = |text: String, size: f32, color: Color32, width: f32| {
-                                let mut job = egui::text::LayoutJob::simple_singleline(text, FontId::proportional(size), color);
-                                job.wrap = egui::text::TextWrapping::truncate_at_width(width.max(10.0));
-                                ui.fonts_mut(|f| f.layout_job(job))
-                            };
-                            let ago = line(format!("{} ago", elapsed(now.saturating_sub(n.at_ms))), 11.0, pal.fg_dim, rect.width());
-                            let room = rect.width() - 22.0 - 6.0 - ago.size().x - 10.0;
-                            let word = line(format!(" · {word}"), 13.0, text_color, room / 2.0);
-                            let title = line(crate::sort::display_title(&n.title, ""), 13.0, text_color, room - word.size().x);
-                            let head = rect.left_top() + egui::vec2(22.0, 6.0);
-                            let after = head + egui::vec2(title.size().x, 0.0);
-                            p.galley(egui::pos2(rect.right() - 6.0 - ago.size().x, rect.top() + 6.0), ago, pal.fg_dim);
-                            p.galley(head, title, text_color);
-                            p.galley(after, word, text_color);
-                            if !n.note.is_empty() {
-                                let note = line(n.note.clone(), 11.5, pal.fg_dim, rect.width() - 22.0 - 6.0);
-                                p.galley(rect.left_top() + egui::vec2(22.0, 25.0), note, pal.fg_dim);
-                            }
-                            if resp.clicked() {
-                                action = Some(BellAction::Open(n.session, n.id));
-                            }
-                        }
-                    });
-            });
-    });
-    hold_tab(ctx, resp.response.layer_id, first);
-    if resp.response.clicked_elsewhere() && action.is_none() {
-        action = Some(BellAction::Close);
-    }
-    action
+/// The notices as `ito_notices` lists them, oldest first as the server keeps
+/// them; a click goes to the session.
+pub fn list_notices(notices: &[Notice]) -> Vec<ito_notices::Notice<SessionId>> {
+    use ito_notices::Kind;
+    notices
+        .iter()
+        .map(|n| ito_notices::Notice {
+            id: n.id,
+            at: std::time::UNIX_EPOCH + std::time::Duration::from_millis(n.at_ms),
+            kind: match n.state {
+                _ if n.trigger => Kind::Info,
+                State::Waiting => Kind::Wait,
+                State::Error => Kind::Err,
+                _ => Kind::Ok,
+            },
+            title: crate::sort::display_title(&n.title, ""),
+            note: Some(n.note.clone()).filter(|s| !s.is_empty()),
+            go: Some(n.session),
+            read: n.read,
+        })
+        .collect()
+}
+
+/// The list's texts; the kinds' words are in `ito_notices::Kind`'s order.
+pub fn list_words(unread: usize) -> (String, [&'static str; 5]) {
+    (trf("notices.title", &[&unread.to_string()]), ["finished", "trigger", "warning", "error", "waiting"])
 }
 
 /// The "Welcome back" screen's state: which saved panes are ticked.
@@ -1531,43 +1425,33 @@ mod tests {
         assert_eq!(got[0].1, TAG_PALETTE[super::tag_slot("claude")]);
     }
 
-    /// The bell's list grows with its entries, also when they arrive while it
-    /// is open (a lane saw only 1.5 rows once there were two).
+    /// The list takes the server's notices as they are: the title cut as the
+    /// panes show it, a trigger apart from the state, no note when empty.
     #[test]
-    fn bell_list_grows_with_its_entries() {
-        let ctx = egui::Context::default();
-        let notice = |id: u64| tsumugi_mux::Notice {
+    fn notices_map_to_the_shared_list() {
+        let notice = |id: u64, state: tsumugi_mux::State, trigger: bool, note: &str| tsumugi_mux::Notice {
             id,
-            session: 1,
-            state: tsumugi_mux::State::Done,
+            session: id + 10,
+            state,
             title: format!("pane {id}"),
-            note: String::new(),
-            at_ms: 0,
-            read: false,
-            trigger: false,
+            note: note.to_owned(),
+            at_ms: 1000,
+            read: id == 1,
+            trigger,
         };
-        let height = |notices: &[tsumugi_mux::Notice]| {
-            let input = egui::RawInput {
-                screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1280.0, 800.0))),
-                ..Default::default()
-            };
-            let mut out = ctx.run_ui(input, |ui| {
-                super::bell_list(ui.ctx(), &super::Palette::default(), egui::pos2(100.0, 40.0), notices);
-            });
-            out.textures_delta.clear();
-            ctx.memory(|m| m.area_rect(egui::Id::new("bell-list"))).map_or(0.0, |r| r.height())
-        };
-        let mut seen = Vec::new();
-        for n in 1..=4u64 {
-            let list: Vec<_> = (1..=n).map(notice).collect();
-            // A few frames, as the window draws them while it is open.
-            let mut h = 0.0;
-            for _ in 0..4 {
-                h = height(&list);
-            }
-            seen.push((n, h));
-        }
-        assert!(seen.windows(2).all(|w| w[1].1 >= w[0].1 + 40.0), "the list stays small: {seen:?}");
+        let list = super::list_notices(&[
+            notice(1, tsumugi_mux::State::Done, false, ""),
+            notice(2, tsumugi_mux::State::Waiting, false, "ok?"),
+            notice(3, tsumugi_mux::State::Error, false, ""),
+            notice(4, tsumugi_mux::State::Waiting, true, "hit"),
+        ]);
+        use ito_notices::Kind;
+        assert_eq!(list.iter().map(|n| n.kind).collect::<Vec<_>>(), [Kind::Ok, Kind::Wait, Kind::Err, Kind::Info]);
+        assert_eq!(list.iter().map(|n| n.go).collect::<Vec<_>>(), [Some(11), Some(12), Some(13), Some(14)]);
+        assert_eq!(list[0].note, None);
+        assert_eq!(list[1].note.as_deref(), Some("ok?"));
+        assert!(list[0].read && !list[1].read);
+        assert_eq!(ito_notices::unread(&list), 3);
     }
 
     /// "Select all" ticks every row, finished ones too, unless all were
