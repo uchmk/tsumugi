@@ -5,6 +5,12 @@
 
 ## [未リリース]
 
+## [0.115.48] - 2026-10-19
+
+### 変更
+
+- ito を v0.88.0（382f9ea）に上げ、`scripts/lanes.sh sync` で `scripts/ito-required.txt` を写した（`ito-titlebar` と `ito-notices` が全アプリの必須になった。tsumugi は両方とも使っている）。
+
 ## [0.115.47] - 2026-10-19
 
 ### 変更
