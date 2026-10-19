@@ -8,7 +8,7 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::{mpsc, Arc};
 
-use ito_notify::notifier::{Action, Notifier, Toast};
+use ito_notify::notifier::{Action, Notifier, Toast, OPEN};
 use ito_notify::toast::App;
 use tsumugi_mux::{Notice, SessionId, State};
 
@@ -271,14 +271,14 @@ fn toast(session: SessionId, title: &str, body: &str, state: Option<State>) -> T
     if waiting && ANSWER_BUTTONS.load(std::sync::atomic::Ordering::Relaxed) {
         actions.extend([act("Allow", "allow", false), act("Deny", "deny", false)]);
     }
-    actions.extend([act("Open", "open", false), act("Later", "dismiss", true)]);
+    actions.extend([act("Open", OPEN, false), act("Later", "dismiss", true)]);
     Toast {
         title: title.into(),
         body: body.into(),
         // One per session: a newer one replaces the last in the Action Center.
         tag: session.to_string(),
         urgent: (waiting || state == Some(State::Error)) && STAY.load(std::sync::atomic::Ordering::Relaxed),
-        launch: "open".into(),
+        launch: OPEN.into(),
         actions,
     }
 }
@@ -327,7 +327,7 @@ impl Teller {
             Arc::new(move |tag, arg| {
                 let Ok(session) = tag.parse::<SessionId>() else { return };
                 match arg {
-                    "open" => click(session, Reply::Open),
+                    OPEN => click(session, Reply::Open),
                     "allow" => click(session, Reply::Allow),
                     "deny" => click(session, Reply::Deny),
                     _ => {}
