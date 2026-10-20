@@ -1921,7 +1921,7 @@ mod tests {
                 server_up: "3m".into(),
                 address: "/run/tsumugi.sock".into(),
                 settings_path: "/home/u/.config/tsumugi".into(),
-                state_path: "/home/u/.local/state/tsumugi/state.toml".into(),
+                state_path: "/home/u/.local/state/tsumugi/state".into(),
                 facts: Some(&self.facts),
                 language: "auto",
                 scale: 1.0,
