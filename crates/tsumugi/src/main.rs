@@ -31,6 +31,7 @@ mod hooks;
 mod import;
 mod inputbox;
 mod json;
+mod keep;
 mod keys;
 mod keyscript;
 mod material;
@@ -1082,13 +1083,16 @@ fn start_here(client: &Client) -> Result<RemotePane, String> {
     new_session(client, cwd, Place::NewWorkspace)
 }
 
-/// "Always restore without asking", kept as a file beside the state.
-fn always_restore_file() -> Option<std::path::PathBuf> {
-    tsumugi_mux::state::default_path().map(|p| p.with_file_name("always-restore"))
+/// "Always restore without asking", kept as `always-restore.toml`; the
+/// file of that name without an extension (before 0.115.65) counts as yes.
+#[derive(serde::Serialize, serde::Deserialize, Default)]
+struct AlwaysRestore {
+    always: bool,
 }
 
 fn always_restore() -> bool {
-    always_restore_file().is_some_and(|p| p.exists())
+    let old = || keep::file("always-restore").filter(|p| p.is_file()).map(|_| AlwaysRestore { always: true });
+    keep::load("always-restore.toml", old).always
 }
 
 /// The sidebar's own choices, kept beside the state file between runs: a
@@ -1105,20 +1109,33 @@ struct View {
     hooks_asked: bool,
 }
 
-impl View {
-    fn file() -> Option<std::path::PathBuf> {
-        tsumugi_mux::state::default_path().map(|p| p.with_file_name("view"))
-    }
+/// `view.toml`: the words of the choices.
+#[derive(serde::Serialize, serde::Deserialize, Default)]
+#[serde(default)]
+struct ViewFile {
+    sort: String,
+    density: String,
+    rail: bool,
+    asked: bool,
+    hooks_asked: bool,
+}
 
-    /// Read at the start; the order alone was kept in `sort` before v0.15.
+impl View {
+    /// Read at the start. Before 0.115.65 it was `view`, a `key=value` line
+    /// each; the order alone was kept in `sort` before v0.15.
     fn load() -> Self {
-        let read = |p: Option<std::path::PathBuf>| p.and_then(|p| std::fs::read_to_string(p).ok());
-        match read(Self::file()) {
-            Some(text) => Self::parse(&text),
-            None => {
-                let sort = read(tsumugi_mux::state::default_path().map(|p| p.with_file_name("sort")));
-                Self { sort: sort.and_then(|w| sort::Sort::from_word(w.trim())).unwrap_or_default(), ..Self::default() }
-            }
+        let old = || {
+            let view = keep::old_text("view").map(|t| Self::parse(&t));
+            let sort = || keep::old_text("sort").and_then(|w| sort::Sort::from_word(w.trim()));
+            Some(view.or_else(|| sort().map(|sort| Self { sort, ..Self::default() }))?.file())
+        };
+        let f: ViewFile = keep::load("view.toml", old);
+        Self {
+            sort: sort::Sort::from_word(&f.sort).unwrap_or_default(),
+            density: sort::Density::from_word(&f.density).unwrap_or_default(),
+            rail: f.rail,
+            asked: f.asked,
+            hooks_asked: f.hooks_asked,
         }
     }
 
@@ -1137,40 +1154,24 @@ impl View {
         v
     }
 
-    fn text(self) -> String {
-        let yes = |b: bool| if b { "yes" } else { "no" };
-        format!(
-            "sort={}\ndensity={}\nrail={}\nasked={}\nhooks_asked={}\n",
-            self.sort.word(),
-            self.density.word(),
-            yes(self.rail),
-            yes(self.asked),
-            yes(self.hooks_asked)
-        )
+    fn file(self) -> ViewFile {
+        ViewFile {
+            sort: self.sort.word().to_owned(),
+            density: self.density.word().to_owned(),
+            rail: self.rail,
+            asked: self.asked,
+            hooks_asked: self.hooks_asked,
+        }
     }
 
     /// Written on a thread of its own: no disk on the window's thread.
     fn save(self) {
-        let _ = std::thread::Builder::new().name("view".into()).spawn(move || {
-            let Some(p) = Self::file() else { return };
-            if let Some(dir) = p.parent() {
-                let _ = std::fs::create_dir_all(dir);
-            }
-            let _ = std::fs::write(p, self.text());
-        });
+        keep::save("view.toml", &self.file());
     }
 }
 
 fn set_always_restore(on: bool) {
-    let Some(p) = always_restore_file() else { return };
-    if on {
-        if let Some(dir) = p.parent() {
-            let _ = std::fs::create_dir_all(dir);
-        }
-        let _ = std::fs::write(p, b"");
-    } else {
-        let _ = std::fs::remove_file(p);
-    }
+    keep::save("always-restore.toml", &AlwaysRestore { always: on });
 }
 
 fn new_session(client: &Client, cwd: std::path::PathBuf, place: Place) -> Result<RemotePane, String> {
@@ -1800,10 +1801,7 @@ impl App {
             place: None,
             secure: secure::Secure::default(),
             known_cwds: HashMap::new(),
-            closed: closed_file()
-                .and_then(|p| std::fs::read_to_string(p).ok())
-                .map(|t| t.lines().filter(|l| !l.is_empty()).map(std::path::PathBuf::from).collect())
-                .unwrap_or_default(),
+            closed: load_closed(),
             shown_tab: None,
             shown_panes: std::collections::HashSet::new(),
             tab_at: None,
@@ -2575,12 +2573,7 @@ impl App {
             self.closed.insert(0, f);
         }
         self.closed.truncate(CLOSED_KEPT);
-        let list = self.closed.clone();
-        let _ = std::thread::Builder::new().name("closed".into()).spawn(move || {
-            let Some(p) = closed_file() else { return };
-            let text: String = list.iter().map(|f| format!("{}\n", f.display())).collect();
-            let _ = std::fs::write(p, text);
-        });
+        keep::save("closed-folders.toml", &ClosedFolders { folders: self.closed.clone() });
     }
 
     /// Start what the new-session dialog asked for.
@@ -6330,31 +6323,35 @@ fn write_rules(text: &str, rules: &[tsumugi_mux::settings::TagRule]) -> Result<S
 /// How many folders of ended sessions are kept.
 const CLOSED_KEPT: usize = 20;
 
-/// The folders of sessions that ended, beside the state file.
-fn closed_file() -> Option<std::path::PathBuf> {
-    tsumugi_mux::state::default_path().map(|p| p.with_file_name("closed-folders"))
+/// The folders of sessions that ended, newest first: `closed-folders.toml`
+/// (before 0.115.65 `closed-folders`, a folder a line).
+#[derive(serde::Serialize, serde::Deserialize, Default)]
+struct ClosedFolders {
+    folders: Vec<std::path::PathBuf>,
 }
 
-/// The input box's history, kept beside the state file: one prompt a line,
-/// its backslashes and line breaks escaped.
-fn history_file() -> Option<std::path::PathBuf> {
-    tsumugi_mux::state::default_path().map(|p| p.with_file_name("history"))
+fn load_closed() -> Vec<std::path::PathBuf> {
+    let old = || {
+        keep::old_text("closed-folders")
+            .map(|t| ClosedFolders { folders: t.lines().filter(|l| !l.is_empty()).map(std::path::PathBuf::from).collect() })
+    };
+    keep::load("closed-folders.toml", old).folders
+}
+
+/// The input box's history: `history.toml` (before 0.115.65 `history`, a
+/// prompt a line with its backslashes and line breaks escaped).
+#[derive(serde::Serialize, serde::Deserialize, Default)]
+struct History {
+    prompts: Vec<String>,
 }
 
 fn load_history() -> Vec<String> {
-    let text = history_file().and_then(|p| std::fs::read_to_string(p).ok()).unwrap_or_default();
-    text.lines().map(unescape_line).collect()
+    let old = || keep::old_text("history").map(|t| History { prompts: t.lines().map(unescape_line).collect() });
+    keep::load("history.toml", old).prompts
 }
 
-fn save_history(list: Vec<String>) {
-    let _ = std::thread::Builder::new().name("history".into()).spawn(move || {
-        let Some(p) = history_file() else { return };
-        if let Some(dir) = p.parent() {
-            let _ = std::fs::create_dir_all(dir);
-        }
-        let text: String = list.iter().map(|l| format!("{}\n", escape_line(l))).collect();
-        let _ = std::fs::write(p, text);
-    });
+fn save_history(prompts: Vec<String>) {
+    keep::save("history.toml", &History { prompts });
 }
 
 /// The cursor of the pane with the keys as `--keys` writes it, column and
@@ -6397,10 +6394,6 @@ fn shape(n: &Node<SessionId>) -> String {
             format!("{dir} {ratio:.2} ({}, {})", shape(first), shape(second))
         }
     }
-}
-
-fn escape_line(s: &str) -> String {
-    s.replace('\\', "\\\\").replace('\n', "\\n").replace('\r', "")
 }
 
 fn unescape_line(s: &str) -> String {
@@ -8150,7 +8143,7 @@ fn layout_pane(i: Option<&Info>) -> layouts::Pane {
 
 #[cfg(test)]
 mod tests {
-    use super::{cursor_lines, escape_line, json_string, keep_tab_for_pane, layout_pane, shape, unescape_line, View};
+    use super::{cursor_lines, json_string, keep_tab_for_pane, layout_pane, shape, unescape_line, View, ViewFile};
 
     #[test]
     fn a_claude_pane_is_saved_as_claude_before_its_hooks_run() {
@@ -8254,18 +8247,37 @@ mod tests {
     }
 
     #[test]
-    fn a_prompt_of_several_lines_is_one_line_of_the_history() {
-        let p = "first\nsecond with a \\n written\\";
-        let line = escape_line(p);
-        assert!(!line.contains('\n'));
-        assert_eq!(unescape_line(&line), p);
+    fn the_older_history_lines_read() {
+        let line = r"first\nsecond with a \\ written";
+        assert_eq!(unescape_line(line), "first\nsecond with a \\ written");
     }
 
     #[test]
     fn the_sidebars_choices_come_back() {
         let v = View { sort: crate::sort::Sort::Needs, density: crate::sort::Density::Lines, rail: true, asked: true, hooks_asked: true };
-        assert_eq!(View::parse(&v.text()), v);
-        assert_eq!(View::parse("nonsense\nsort=nope"), View::default());
+        let text = toml::to_string(&v.file()).unwrap();
+        let f: ViewFile = toml::from_str(&text).unwrap();
+        assert_eq!((f.sort.as_str(), f.density.as_str()), ("needs", "lines"));
+        assert!(f.rail && f.asked && f.hooks_asked);
+        // The older `key=value` lines still read.
+        assert_eq!(
+            View::parse(
+                "sort=needs
+density=lines
+rail=yes
+asked=yes
+hooks_asked=yes
+"
+            ),
+            v
+        );
+        assert_eq!(
+            View::parse(
+                "nonsense
+sort=nope"
+            ),
+            View::default()
+        );
     }
 
     /// Tab with nothing focused stays the pane's: no button of the window

@@ -13,8 +13,21 @@ use serde::{Deserialize, Serialize};
 use crate::proto::SessionId;
 
 /// Bumped when the shape below changes; a file of another version is left
-/// alone rather than misread.
-const VERSION: u32 = 9;
+/// alone rather than misread. From 10 the file is TOML (`state.toml`, with a
+/// `version` key); 2 to 9 were binary (postcard, a 4-byte version first, in
+/// the file `state`) and are still read.
+const VERSION: u32 = 10;
+
+/// The last binary shape.
+const BINARY: u32 = 9;
+
+/// What `state.toml` holds: the version, then the state.
+#[derive(Serialize, Deserialize)]
+struct File {
+    version: u32,
+    #[serde(flatten)]
+    saved: Saved,
+}
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Saved {
@@ -410,24 +423,41 @@ mod old {
     }
 }
 
-/// Where the state is kept: `state` in `TSUMUGI_STATE_HOME` when set; else
-/// in tsumugi's state folder beside every uchmk app's (`%LOCALAPPDATA%\uchmk\tsumugi\state` on
+/// Where the state is kept: `state.toml` in `TSUMUGI_STATE_HOME` when set; else
+/// in tsumugi's state folder beside every uchmk app's (`%LOCALAPPDATA%\uchmk\tsumugi\state.toml` on
 /// Windows, `ito_common::state_dir`). The first time, the old state is moved
-/// there (`places`).
+/// there (`places`). Before 0.115.65 the file was `state`, binary; [`load`]
+/// reads that when there is no `state.toml` yet, and leaves it.
 pub fn default_path() -> Option<PathBuf> {
     crate::places::move_old_once();
     if let Some(d) = ito_common::env_dir("TSUMUGI_STATE_HOME") {
-        return Some(d.join("state"));
+        return Some(d.join("state.toml"));
     }
-    Some(ito_common::state_dir("tsumugi")?.join("state"))
+    Some(ito_common::state_dir("tsumugi")?.join("state.toml"))
 }
 
 /// The saved state, or nothing when there is none or it cannot be read.
 pub fn load(path: &Path) -> Option<Saved> {
-    let bytes = std::fs::read(path).ok()?;
-    let (version, rest) = bytes.split_first_chunk::<4>()?;
-    match u32::from_le_bytes(*version) {
-        VERSION => postcard::from_bytes(rest).ok(),
+    let bytes = match std::fs::read(path) {
+        Ok(b) => b,
+        // No `state.toml` yet: the binary `state` an older build kept.
+        Err(_) if path.file_name()? == "state.toml" => std::fs::read(path.with_file_name("state")).ok()?,
+        Err(_) => return None,
+    };
+    let saved = from_bytes(&bytes)?;
+    // An empty one is what `store` writes for "nothing to keep".
+    (!saved.workspaces.is_empty()).then_some(saved)
+}
+
+/// The state in `bytes`: TOML, or one of the older binary shapes.
+fn from_bytes(bytes: &[u8]) -> Option<Saved> {
+    let binary = bytes.split_first_chunk::<4>().map(|(v, rest)| (u32::from_le_bytes(*v), rest)).filter(|(v, _)| (2..=BINARY).contains(v));
+    let Some((version, rest)) = binary else {
+        let file: File = toml::from_str(std::str::from_utf8(bytes).ok()?).ok()?;
+        return (file.version == VERSION).then_some(file.saved);
+    };
+    match version {
+        BINARY => postcard::from_bytes(rest).ok(),
         8 => postcard::from_bytes::<old::V8>(rest).ok().map(Into::into),
         7 => postcard::from_bytes::<old::V7>(rest).ok().map(Into::into),
         6 => postcard::from_bytes::<old::V6>(rest).ok().map(Into::into),
@@ -439,21 +469,15 @@ pub fn load(path: &Path) -> Option<Saved> {
     }
 }
 
-/// Write the state, or remove the file when there is nothing to keep. The
-/// file is replaced whole (written aside, then renamed), so a restart in the
-/// middle leaves the old one rather than half of the new.
+/// Write the state. The file is replaced whole (written aside, then
+/// renamed), so a restart in the middle leaves the old one rather than half
+/// of the new. With nothing to keep it holds no tabs rather than going away:
+/// the older binary `state` beside it would be read again.
 pub fn store(path: &Path, saved: &Saved) -> io::Result<()> {
-    if saved.workspaces.is_empty() {
-        return match std::fs::remove_file(path) {
-            Err(e) if e.kind() != io::ErrorKind::NotFound => Err(e),
-            _ => Ok(()),
-        };
-    }
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir)?;
     }
-    let mut bytes = VERSION.to_le_bytes().to_vec();
-    bytes.extend(postcard::to_allocvec(saved).map_err(io::Error::other)?);
+    let bytes = toml::to_string(&File { version: VERSION, saved: saved.clone() }).map_err(io::Error::other)?.into_bytes();
     // To the disk before it takes the old one's place: a power cut right
     // after a save leaves the old file or the new, never an empty one.
     let aside = path.with_extension("new");
@@ -695,18 +719,28 @@ mod tests {
     #[test]
     fn the_state_comes_back_as_it_was_written() {
         let dir = std::env::temp_dir().join(format!("tsumugi-state-test-{}", std::process::id()));
-        let path = dir.join("state");
+        let path = dir.join("state.toml");
         let saved = Saved {
             workspaces: vec![SavedWorkspace {
                 name: "mine".into(),
                 pinned: true,
                 note: "the release".into(),
-                layout: Node::Leaf(7),
+                layout: Node::Split {
+                    dir: crate::proto::Dir::Right,
+                    ratio: 0.5,
+                    first: Box::new(Node::Leaf(7)),
+                    second: Box::new(Node::Split {
+                        dir: crate::proto::Dir::Down,
+                        ratio: 0.25,
+                        first: Box::new(Node::Leaf(8)),
+                        second: Box::new(Node::Leaf(9)),
+                    }),
+                },
                 focus: 7,
                 panes: vec![SavedPane {
                     id: 7,
                     cwd: "/tmp".into(),
-                    shell: None,
+                    shell: Some(("pwsh".into(), vec!["-NoLogo".into()])),
                     claude: Some("abc".into()),
                     title: "t".into(),
                     state: crate::proto::State::Waiting,
@@ -723,8 +757,44 @@ mod tests {
         store(&path, &saved).unwrap();
         assert_eq!(load(&path), Some(saved));
         store(&path, &Saved::default()).unwrap();
-        assert!(!path.exists(), "nothing to keep, no file");
-        assert_eq!(load(&path), None);
+        assert_eq!(load(&path), None, "nothing to keep");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// With no `state.toml`, the binary `state` of an older build is read;
+    /// once `state.toml` is there, the old file no longer counts.
+    #[test]
+    fn the_older_binary_file_is_taken_over() {
+        let dir = std::env::temp_dir().join(format!("tsumugi-state-old-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let ws = SavedWorkspace {
+            name: String::new(),
+            pinned: false,
+            note: String::new(),
+            layout: Node::Leaf(1),
+            focus: 1,
+            panes: vec![SavedPane {
+                id: 1,
+                cwd: "/tmp".into(),
+                shell: None,
+                claude: None,
+                title: "t".into(),
+                state: crate::proto::State::Done,
+                muted: false,
+                tags: vec![],
+                charset: String::new(),
+                agent: String::new(),
+                profile: String::new(),
+            }],
+        };
+        let saved = Saved { workspaces: vec![ws], at_ms: 3, muted_tags: vec![] };
+        let mut bytes = BINARY.to_le_bytes().to_vec();
+        bytes.extend(postcard::to_allocvec(&saved).unwrap());
+        std::fs::write(dir.join("state"), bytes).unwrap();
+        let path = dir.join("state.toml");
+        assert_eq!(load(&path), Some(saved.clone()));
+        store(&path, &Saved::default()).unwrap();
+        assert_eq!(load(&path), None, "an empty state.toml hides the old file");
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

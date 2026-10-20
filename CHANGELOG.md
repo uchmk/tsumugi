@@ -5,6 +5,17 @@
 
 ## [未リリース]
 
+## [0.115.65] - 2026-10-20
+
+### 変更
+
+- ito を 0.93.0（`f6b5817`）に上げた。common-spec の「状態のファイルも TOML」に合わせ、状態のファイルを TOML にした（`ito_common::kept` で読み書き）:
+  `state` → `state.toml`（`version` の鍵つき。中身は同じ）、`closed-sessions.json` → `closed-sessions.toml`、`closed-folders` → `closed-folders.toml`、
+  `history` → `history.toml`、`view`（と古い `sort`）→ `view.toml`、`worktrees` → `worktrees.toml`、`always-restore` → `always-restore.toml`。
+- 新しいファイルが無いときだけ古い形を 1 回読んで TOML に書き直す。古いファイルは消さない。
+  保存するタブが無いときは `state.toml` を消さず空で書く（古い `state` が読み直されないように）。
+- 設定の画面の「保存したタブ」が `state.toml` を示す。
+
 ## [0.115.64] - 2026-10-20
 
 ### 変更

@@ -1,7 +1,8 @@
 //! The sessions that ended, newest first: what each was, where, how many
 //! tokens its conversation took, and the last lines on its screen (the
 //! server sends them as it lets the session go). Kept beside the state as
-//! `closed-sessions.json`, so the list outlives the window and the server.
+//! `closed-sessions.toml`, so the list outlives the window and the server.
+//! Before 0.115.65 it was `closed-sessions.json`, read once.
 
 use std::path::PathBuf;
 
@@ -11,7 +12,8 @@ use crate::json::Json;
 pub const KEPT: usize = 30;
 
 /// One ended session.
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(default)]
 pub struct Closed {
     pub title: String,
     pub command: String,
@@ -31,38 +33,14 @@ pub struct Closed {
     pub last: Vec<String>,
 }
 
-/// The file beside the state.
-pub fn file() -> Option<PathBuf> {
-    tsumugi_mux::state::default_path().map(|p| p.with_file_name("closed-sessions.json"))
+/// The file's shape: the list is a table's array, newest first.
+#[derive(Default, serde::Serialize, serde::Deserialize)]
+struct File {
+    entries: Vec<Closed>,
 }
 
-/// The list written out, newest first.
-pub fn to_json(list: &[Closed]) -> String {
-    let s = |v: &str| Json::String(v.to_owned());
-    let n = |v: u64| Json::Number(v as f64);
-    Json::Array(
-        list.iter()
-            .map(|c| {
-                Json::Object(vec![
-                    ("title".into(), s(&c.title)),
-                    ("command".into(), s(&c.command)),
-                    ("cwd".into(), s(&c.cwd.to_string_lossy())),
-                    ("claude".into(), Json::Bool(c.claude)),
-                    ("conversation".into(), s(&c.conversation)),
-                    ("state".into(), s(&c.state)),
-                    ("tokens".into(), n(c.tokens)),
-                    ("cost".into(), Json::Number(c.cost)),
-                    ("ended_ms".into(), n(c.ended_ms)),
-                    ("last".into(), Json::Array(c.last.iter().map(|l| s(l)).collect())),
-                ])
-            })
-            .collect(),
-    )
-    .pretty()
-}
-
-/// The list read back; what cannot be read is left out.
-pub fn from_json(text: &str) -> Vec<Closed> {
+/// The older `closed-sessions.json` read back; what cannot be read is left out.
+fn from_json(text: &str) -> Vec<Closed> {
     let Ok(json) = Json::parse(text) else { return Vec::new() };
     let Some(items) = json.array() else { return Vec::new() };
     let num = |j: &Json, k: &str| match j.get(k) {
@@ -98,15 +76,15 @@ pub fn from_json(text: &str) -> Vec<Closed> {
 
 /// The list kept, or none.
 pub fn load() -> Vec<Closed> {
-    file().and_then(|p| std::fs::read_to_string(p).ok()).map(|t| from_json(&t)).unwrap_or_default()
+    let old = || crate::keep::old_text("closed-sessions.json").map(|t| File { entries: from_json(&t) });
+    let mut list = crate::keep::load("closed-sessions.toml", old).entries;
+    list.truncate(KEPT);
+    list
 }
 
 /// Write the list on a thread.
 pub fn save(list: Vec<Closed>) {
-    let _ = std::thread::Builder::new().name("closed-sessions".into()).spawn(move || {
-        let Some(p) = file() else { return };
-        let _ = crate::files::write_atomic(&p, to_json(&list));
-    });
+    crate::keep::save("closed-sessions.toml", &File { entries: list });
 }
 
 /// Put an ended session at the top, the oldest beyond [`KEPT`] dropped.
@@ -143,8 +121,15 @@ mod tests {
         };
         let two = Closed { cwd: PathBuf::from("C:\\dev\\x"), ..Closed::default() };
         let list = vec![one, two];
-        assert_eq!(from_json(&to_json(&list)), list);
+        let text = toml::to_string(&File { entries: list.clone() }).unwrap();
+        assert_eq!(toml::from_str::<File>(&text).unwrap().entries, list);
         assert!(from_json("not json").is_empty());
+        // The older JSON still reads.
+        let json = r#"[{"title":"t","cwd":"/x","claude":true,"tokens":7,"last":["a"]}]"#;
+        assert_eq!(
+            from_json(json),
+            [Closed { title: "t".into(), cwd: "/x".into(), claude: true, tokens: 7, last: vec!["a".into()], ..Closed::default() }]
+        );
         let mut many = Vec::new();
         for k in 0..KEPT + 3 {
             push(&mut many, Closed { tokens: k as u64, ..Closed::default() });

@@ -167,11 +167,13 @@ fn new_worktree_starts_the_session_in_a_worktree_of_its_own() {
     });
     assert!(same_folder(cols[3], &tree), "folder {:?} is not {}", cols[3], tree.display());
     assert_eq!(git(&["rev-parse", "side"]), first, "the branch was not made from --from");
-    let list = std::fs::read_to_string(s.dir.join("worktrees")).expect("the worktree list");
+    let text = std::fs::read_to_string(s.dir.join("worktrees.toml")).expect("the worktree list");
+    let table = text.parse::<toml::Table>().expect("TOML");
+    let list = table["paths"].as_array().expect("paths");
     assert!(
-        list.lines().any(|l| same_folder(l, &tree)),
+        list.iter().filter_map(|p| p.as_str()).any(|l| same_folder(l, &tree)),
         "not on the list:
-{list}"
+{text}"
     );
 
     let refused = s.run(&["new", "repo", "--worktree", "side", "--from", "main"]);

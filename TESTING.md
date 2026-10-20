@@ -392,6 +392,7 @@ to `cli.rs` and a line to this table instead of a row.
 | 8.4 | 8.1 with fourteen or more tabs | The list scrolls; Restore and Start fresh stay in sight; the time reads `today at …` or `yesterday at …` |
 | 8.5 | A session where `codex` ran; restart the machine (or the server) | The restored tab types `codex resume --last`; with `[agents.gemini] resume = "…"`, a Gemini session types that |
 | 8.6 | 8.1 with some sessions that had finished (`exit` in them first); click **Select all**, then again, then tick one row by hand | The box above the rows is half-filled while some are ticked; the first click ticks every row (the finished ones now say `new shell in …`) and Restore counts them all; the second clears them all and Restore is greyed; one row ticked makes the box half-filled again |
+| 8.7 | With an older build (before v0.115.65) leave split tabs, a closed tab, a closed folder in the sidebar and a few input-box prompts; stop it, start this build; then look in `%LOCALAPPDATA%\uchmk\tsumugi\` (v0.115.65) | **Welcome back** lists the tabs as in 8.1; the closed tab, folder and prompts (`↑`) are back; `state.toml`, `closed-sessions.toml`, `closed-folders.toml`, `history.toml`, `view.toml` and `worktrees.toml` now exist beside the old files (`state`, `closed-sessions.json` and so on), which are left; close every tab and restart: no Welcome back, not the old tabs |
 
 ## 9. The settings screen
 

@@ -100,29 +100,29 @@ fn unmake(path: &Path) -> Result<(), String> {
     git(&main, &["worktree", "remove", &target]).map(drop).map_err(|e| format!("git worktree remove: {e}"))
 }
 
-fn list_file() -> Option<PathBuf> {
-    tsumugi_mux::state::default_path().map(|p| p.with_file_name("worktrees"))
+/// The worktrees tsumugi made, kept as `worktrees.toml`.
+#[derive(serde::Serialize, serde::Deserialize, Default)]
+struct List {
+    paths: Vec<PathBuf>,
 }
 
 /// The worktrees tsumugi made and has not removed.
 pub fn ours() -> Vec<PathBuf> {
-    let text = list_file().and_then(|p| std::fs::read_to_string(p).ok()).unwrap_or_default();
-    text.lines().filter(|l| !l.trim().is_empty()).map(PathBuf::from).collect()
+    // Before 0.115.65: `worktrees`, a path a line.
+    let old = || {
+        crate::keep::old_text("worktrees").map(|t| List { paths: t.lines().filter(|l| !l.trim().is_empty()).map(PathBuf::from).collect() })
+    };
+    crate::keep::load("worktrees.toml", old).paths
 }
 
 /// Put `path` on the list, or take it off.
 pub fn remember(path: &Path, on: bool) {
-    let Some(file) = list_file() else { return };
-    let mut list = ours();
-    list.retain(|p| p != path);
+    let mut paths = ours();
+    paths.retain(|p| p != path);
     if on {
-        list.push(path.to_path_buf());
+        paths.push(path.to_path_buf());
     }
-    if let Some(dir) = file.parent() {
-        let _ = std::fs::create_dir_all(dir);
-    }
-    let text: String = list.iter().map(|p| format!("{}\n", p.display())).collect();
-    let _ = std::fs::write(file, text);
+    crate::keep::save_now("worktrees.toml", &List { paths });
 }
 
 #[cfg(test)]
