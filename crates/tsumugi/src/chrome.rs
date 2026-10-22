@@ -764,6 +764,7 @@ pub fn top_band(
         unread: unread.len(),
         any_error: unread.iter().any(|n| n.state == State::Error),
         centre: !frame.settings,
+        right_min: 0.0,
         words: ito_titlebar::Words {
             search: tr("title.search"),
             search_key: &search_key,

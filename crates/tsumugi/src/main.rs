@@ -6635,6 +6635,8 @@ impl App {
                 keyscript::Do::Done => (script.done.clone(), "keys: done\n".to_owned()),
                 // tsumugi defines no readings of its own.
                 keyscript::Do::Read { .. } => (None, String::new()),
+                // Nor does it switch theme or language from a script.
+                keyscript::Do::Theme(_) | keyscript::Do::Lang(_) => (None, String::new()),
                 keyscript::Do::Quit => {
                     // Asked for by the script: no question about the
                     // sessions still running. No later frame writes the
