@@ -932,7 +932,6 @@ fn action_on(key: Key, m: Modifiers, mac: bool) -> Option<Action> {
             Key::F2 if !m.any() => Some(Action::Rename),
             Key::F1 if !m.any() => Some(Action::Help),
             Key::F12 if !m.any() => Some(Action::BugReport),
-            Key::F12 if !m.any() => Some(Action::BugReport),
             _ if cmd && !m.shift => digit().map(Action::Tab),
             _ => None,
         };
@@ -972,6 +971,7 @@ fn action_on(key: Key, m: Modifiers, mac: bool) -> Option<Action> {
         Key::Num0 if m.ctrl && !m.shift && !m.alt => Some(Action::FontReset),
         Key::F2 if !m.any() => Some(Action::Rename),
         Key::F1 if !m.any() => Some(Action::Help),
+        Key::F12 if !m.any() => Some(Action::BugReport),
         // Alt+Shift++ / Alt+Shift+-, Windows Terminal's: `+` is Shift and
         // `=` on a US keyboard, Shift and `;` on a JIS one.
         Key::Equals | Key::Plus if m.alt && m.shift && !m.ctrl => Some(Action::SplitRight),
@@ -1005,6 +1005,14 @@ mod tests {
     const CTRL: Modifiers = Modifiers { alt: false, ctrl: true, shift: false, mac_cmd: false, command: true };
     const CTRL_ALT: Modifiers = Modifiers { alt: true, ctrl: true, shift: false, mac_cmd: false, command: true };
     const CMD: Modifiers = Modifiers { alt: false, ctrl: false, shift: false, mac_cmd: true, command: true };
+
+    #[test]
+    fn f12_reports_a_bug_on_every_os() {
+        let none = Modifiers::default();
+        assert_eq!(action_on(Key::F12, none, false), Some(Action::BugReport));
+        assert_eq!(action_on(Key::F12, none, true), Some(Action::BugReport));
+        assert_eq!(action_on(Key::F12, CTRL, false), None);
+    }
 
     #[test]
     fn windows_terminal_keys_off_mac() {
