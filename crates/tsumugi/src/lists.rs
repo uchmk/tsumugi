@@ -649,12 +649,15 @@ fn layouts_page(ui: &mut egui::Ui, view: &mut View, layouts: &[Template], c: &Co
         ui.add_space(12.0);
         return;
     }
-    let (up, down, enter, delete) = ui.input(|i| {
+    // Taken, so nothing else (a focused row, the window behind) acts on the
+    // same Enter: it opened the layout twice.
+    let none = egui::Modifiers::NONE;
+    let (up, down, enter, delete) = ui.input_mut(|i| {
         (
-            i.key_pressed(egui::Key::ArrowUp),
-            i.key_pressed(egui::Key::ArrowDown),
-            i.key_pressed(egui::Key::Enter),
-            i.key_pressed(egui::Key::Delete),
+            i.consume_key(none, egui::Key::ArrowUp),
+            i.consume_key(none, egui::Key::ArrowDown),
+            i.consume_key(none, egui::Key::Enter),
+            i.consume_key(none, egui::Key::Delete),
         )
     });
     let (k, act) = closed_keys(view.shown, layouts.len(), (up, down, enter, delete));
@@ -704,12 +707,13 @@ fn history(ui: &mut egui::Ui, view: &mut View, closed: &[Closed], c: &Colors, ma
     // The keys, as on All sessions: Up and Down pick one, Enter starts it
     // again, Delete takes it off the list (the owner, 2026-10-10: the page
     // took no key, and its output hid behind a button).
-    let keys = ui.input(|i| {
+    let none = egui::Modifiers::NONE;
+    let keys = ui.input_mut(|i| {
         (
-            i.key_pressed(egui::Key::ArrowUp),
-            i.key_pressed(egui::Key::ArrowDown),
-            i.key_pressed(egui::Key::Enter),
-            i.key_pressed(egui::Key::Delete),
+            i.consume_key(none, egui::Key::ArrowUp),
+            i.consume_key(none, egui::Key::ArrowDown),
+            i.consume_key(none, egui::Key::Enter),
+            i.consume_key(none, egui::Key::Delete),
         )
     });
     let (up, down) = (keys.0, keys.1);
