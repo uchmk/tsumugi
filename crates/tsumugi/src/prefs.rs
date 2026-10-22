@@ -1607,7 +1607,7 @@ fn tags(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut Vec<
 fn shell(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut Vec<Change>) {
     let c = l.c;
     let sh = &seen.settings.shell;
-    let auto = trf("prefs.shell.auto", &[&ito_pane::shell_label(None)]);
+    let auto = trf("prefs.shell.auto", &[&ito_pane::shell_label(ito_pane::default_shell().as_deref())]);
     let found: &[(String, String)] = seen.facts.map(|f| f.shells.as_slice()).unwrap_or(&[]);
     let now = ito_prefs::Shell { program: &sh.program, auto: &auto, shells: found, args: &sh.args, env: &sh.env };
     let words = shell_words();
