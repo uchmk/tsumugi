@@ -1392,6 +1392,7 @@ fn menu_label(word: &str) -> &'static str {
         "new-window" => tr("tab.new_window"),
         "filer" => tr("tab.open_filer"),
         "editor" => tr("tab.open_editor"),
+        "copy-name" => tr("tab.copy_name"),
         "copy-path" => tr("tab.copy_path"),
         "save-output" => tr("tab.save_output"),
         "work-log" => tr("tab.work_log"),

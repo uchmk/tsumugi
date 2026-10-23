@@ -809,10 +809,10 @@ new window**;
 **Open the folder in kura**, **Open in the editor** (the commands in
 `[open]` above, set in Settings → Sessions → Open with; with several, a
 click runs the first and ▶ opens the rest by program name, as Sakura
-Editor's menus do), **Copy the folder path**; your own items from
+Editor's menus do), **Copy the tab name**, **Copy the folder path**; your own items from
 `[[menu.session]]`; and **Close the session**, which asks a second click
 while something is running in it. `[menu] hide` leaves out any of rename,
-note, tags, mute, pin, restart, duplicate, new-window, filer, editor, copy-path,
+note, tags, mute, pin, restart, duplicate, new-window, filer, editor, copy-name, copy-path,
 save-output, work-log, pr, close.
 
 Themes: tsumugi Dark (the default) and Light, Tokyo Night, Catppuccin Mocha

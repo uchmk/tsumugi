@@ -3831,6 +3831,12 @@ impl App {
                                 }
                                 "filer" => open_with(ui, tr("tab.open_filer"), &self.open.filer, focus),
                                 "editor" => open_with(ui, tr("tab.open_editor"), &self.open.editor, focus),
+                                "copy-name" => {
+                                    if ui.button(tr("tab.copy_name")).clicked() {
+                                        ui.ctx().copy_text(w.name.clone());
+                                        ui.close();
+                                    }
+                                }
                                 "copy-path" => {
                                     if ui.button(tr("tab.copy_path")).clicked() {
                                         ui.ctx().copy_text(focus.cwd.display().to_string());

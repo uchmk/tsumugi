@@ -647,7 +647,7 @@ impl Default for Open {
 
 /// The tab's right-click menu: built-in items to leave out, by their words
 /// (`rename`, `note`, `tags`, `mute`, `pin`, `restart`, `duplicate`, `new-window`,
-/// `filer`, `editor`, `copy-path`, `save-output`, `pr`, `close`), and items of one's own.
+/// `filer`, `editor`, `copy-name`, `copy-path`, `save-output`, `pr`, `close`), and items of one's own.
 #[derive(Clone, Debug, Default, PartialEq, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Menu {
@@ -668,8 +668,9 @@ pub struct MenuItem {
 }
 
 /// The words of the menu's own items, for `menu.hide`.
-pub const MENU_ITEMS: [&str; 16] = [
+pub const MENU_ITEMS: [&str; 17] = [
     "rename",
+    "copy-name",
     "note",
     "tags",
     "mute",
@@ -704,7 +705,7 @@ pub fn menu_words(order: &[String]) -> Vec<&'static str> {
 /// The group an item is drawn in; a line goes between two groups.
 pub fn menu_group(word: &str) -> &'static str {
     match word {
-        "rename" | "note" | "tags" | "mute" | "pin" | "read-only" => "look",
+        "rename" | "copy-name" | "note" | "tags" | "mute" | "pin" | "read-only" => "look",
         "restart" | "duplicate" | "new-window" => "start",
         "filer" | "editor" | "copy-path" | "save-output" | "work-log" | "pr" => "folder",
         _ => "close",
@@ -715,6 +716,7 @@ pub fn menu_group(word: &str) -> &'static str {
 pub fn menu_label(word: &str) -> &'static str {
     match word {
         "rename" => "Rename",
+        "copy-name" => "Copy the tab name",
         "note" => "Note",
         "tags" => "Tags",
         "mute" => "Mute notifications",
