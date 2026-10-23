@@ -7250,6 +7250,11 @@ impl App {
                 if closing {
                     self.prefs = None;
                 }
+                // F12 needs no pane, so it works over the settings too (#278).
+                let bug = ctx.input(|i| i.events.iter().any(|e| matches!(e, egui::Event::Key { key, pressed: true, modifiers, .. } if keys::action(*key, *modifiers) == Some(keys::Action::BugReport))));
+                if bug {
+                    self.report_bug();
+                }
             }
             // Copy mode and the find bar end when the keys go to another pane.
             if self.copy_mode.is_some_and(|(id, _)| id != w.focus) {
