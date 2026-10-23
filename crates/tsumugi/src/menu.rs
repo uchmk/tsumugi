@@ -12,12 +12,27 @@ use tsumugi_mux::WorkspaceId;
 /// way `[open]` and `[[menu.session]]` in the settings are written.
 pub fn run(line: String) {
     let _ = std::thread::Builder::new().name("menu-command".into()).spawn(move || {
+        let line = with_app_path(&line);
         let mut cmd = shell(&line);
         cmd.stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
         if let Ok(mut child) = cmd.spawn() {
             let _ = child.wait();
         }
     });
+}
+
+/// `line` with a first word that names another uchmk app (`kura {folder}`)
+/// swapped for the exe that app registered or was pinned to, so it need not
+/// be on `PATH`. Any other line stays as it is.
+fn with_app_path(line: &str) -> String {
+    let (first, rest) = line.split_once(char::is_whitespace).unwrap_or((line, ""));
+    if !ito_common::apps::valid_name(first) {
+        return line.to_owned();
+    }
+    let Some(found) = ito_common::apps::pinned(first) else { return line.to_owned() };
+    let exe = found.exe.to_string_lossy();
+    let quoted = if cfg!(windows) { format!("\"{exe}\"") } else { format!("'{}'", exe.replace('\'', "'\\''")) };
+    format!("{quoted} {rest}")
 }
 
 #[cfg(windows)]
@@ -200,6 +215,13 @@ pub fn new_window(tab: WorkspaceId, at: Option<At>) {
 
 #[cfg(test)]
 mod tests {
+    /// A first word that is not an app name leaves the line alone.
+    #[test]
+    fn a_line_without_an_app_name_is_unchanged() {
+        assert_eq!(super::with_app_path("code --goto {file}"), "code --goto {file}");
+        assert_eq!(super::with_app_path(r"C:xy.exe a"), r"C:xy.exe a");
+    }
+
     /// A line starting with a quoted program keeps every quote: only the
     /// outer pair `/S` takes off is added.
     #[test]

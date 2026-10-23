@@ -255,6 +255,8 @@ pub struct Edit {
     rule: RuleDraft,
     /// The Shell card's environment variables being edited.
     env: ito_prefs::ShellEdit,
+    /// The Apps card's "pin an app" form.
+    apps: ito_prefs::AppsForm,
     /// The tag "Edit a tag" has, and its new name.
     tag: Option<String>,
     rename: String,
@@ -337,6 +339,8 @@ pub enum Change {
     /// One key of common.toml, which kura and yagura read too: the
     /// language, the theme and the clock.
     Common(CommonChange),
+    /// Pins in common.toml's `[apps]`, or takes them out.
+    Apps(Vec<ito_common::apps::Edit>),
     /// Every `[[tags.rule]]`, in place of those there.
     Rules(Vec<TagRule>),
     /// Every `[[menu.session]]`, in place of those there.
@@ -1263,6 +1267,26 @@ fn sessions(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut 
             out.push(Change::Set(Some("open"), "file", cfg::quote(&t)));
         }
     });
+    let words = ito_prefs::AppsWords {
+        head: tr("prefs.apps.head"),
+        looking: tr("prefs.apps.looking"),
+        none: tr("prefs.apps.none"),
+        from_setting: tr("prefs.apps.from_setting"),
+        from_registered: tr("prefs.apps.from_registered"),
+        from_path: tr("prefs.apps.from_path"),
+        not_found: tr("prefs.apps.not_found"),
+        bad_path: tr("prefs.apps.bad_path"),
+        path_hint: tr("prefs.apps.path_hint"),
+        clear: tr("prefs.apps.clear"),
+        add_name: tr("prefs.apps.add_name"),
+        add_path: tr("prefs.apps.add_path"),
+        add: tr("prefs.apps.add"),
+        bad_name: tr("prefs.apps.bad_name"),
+    };
+    let edits = ito_prefs::apps_card(ui, l, &words, seen.facts.map(|f| f.apps.as_slice()), &mut edit.drafts, &mut edit.apps);
+    if !edits.is_empty() {
+        out.push(Change::Apps(edits));
+    }
     tab_menu(ui, l, seen, edit, out);
 }
 
@@ -1889,6 +1913,7 @@ mod tests {
                 shell_hook: Some(false),
                 autostart: false,
                 conpty: true,
+                apps: Vec::new(),
             };
             Self {
                 ctx: egui::Context::default(),

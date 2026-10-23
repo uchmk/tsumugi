@@ -331,6 +331,22 @@ pane_below_first = "最初のペインの下のペイン"
 add_pane = "ペインを足す"
 taken = "同じ名前のプロファイルがあります"
 
+[prefs.apps]
+head = "ほかのアプリ"
+looking = "アプリを探しています…"
+none = "ほかのアプリはまだ見つかっていません"
+from_setting = "ここで指定"
+from_registered = "アプリが登録"
+from_path = "PATH で発見"
+not_found = "見つかりません"
+bad_path = "そのパスはファイルではありません"
+path_hint = "プログラムのパス"
+clear = "指定を外す"
+add_name = "アプリの名前"
+add_path = "プログラムのパス"
+add = "指定する"
+bad_name = "名前は英数字と - と _ で書いてください"
+
 [prefs.open]
 editor = "エディターのコマンド"
 editor_note = "タブのメニューの「エディターで開く」。{folder} はセッションのフォルダー"

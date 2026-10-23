@@ -100,7 +100,13 @@ fn main() -> std::process::ExitCode {
         attach_console();
     }
     match args.first().map(String::as_str) {
-        None => window(),
+        None => {
+            // Tell the other uchmk apps where this exe is (best effort, off the UI thread).
+            let _ = std::thread::Builder::new().name("register-app".into()).spawn(|| {
+                let _ = ito_common::apps::register("tsumugi", env!("CARGO_PKG_VERSION"));
+            });
+            window()
+        }
         Some("server") => server(),
         Some("proxy") => proxy(),
         Some("ls") => ls(&args[1..]),
@@ -2414,6 +2420,15 @@ impl App {
         for change in changes {
             match change {
                 // The window's keys live in keymap.toml.
+                prefs::Change::Apps(edits) => {
+                    let tx = self.settings_tx.clone();
+                    let _ = std::thread::Builder::new().name("write-apps".into()).spawn(move || {
+                        let Some(base) = ito_common::base_dir() else { return };
+                        let read = ito_common::edit_common(&base, |t| ito_common::apps::write_edits(t, &edits))
+                            .and_then(|()| ito_common::Common::read(&base));
+                        let _ = tx.send(Read::Common(read));
+                    });
+                }
                 prefs::Change::Keys(edits) => edit_keymap(self.settings_tx.clone(), edits),
                 prefs::Change::Set(table, key, value) => {
                     edit_settings(self.settings_tx.clone(), move |t| tsumugi_mux::settings::set_key(t, table, key, &value))
@@ -7085,6 +7100,9 @@ impl App {
                     }
                     self.common = common;
                     self.common_warning = warnings.into_iter().next();
+                    if self.prefs.is_some() {
+                        self.read_facts();
+                    }
                     // The whole window's scale, as every uchmk app shares it;
                     // tsumugi's own Ctrl+= and Ctrl+- stay the font size.
                     let scale = self.common.scale_or_one();

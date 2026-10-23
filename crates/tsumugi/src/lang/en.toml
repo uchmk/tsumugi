@@ -338,6 +338,22 @@ pane_below_first = "Pane below the first"
 add_pane = "Add a pane"
 taken = "Another profile has that name"
 
+[prefs.apps]
+head = "OTHER APPS"
+looking = "Looking for the apps…"
+none = "No other app is known yet"
+from_setting = "pinned here"
+from_registered = "registered by the app"
+from_path = "found on PATH"
+not_found = "not found"
+bad_path = "That path is not a file"
+path_hint = "Path to the program"
+clear = "Unpin"
+add_name = "App name"
+add_path = "Path to the program"
+add = "Pin"
+bad_name = "Use letters, digits, - and _ for the name"
+
 [prefs.open]
 editor = "Editor command"
 editor_note = "The tab menu's “Open in the editor”; {folder} is the session's folder"

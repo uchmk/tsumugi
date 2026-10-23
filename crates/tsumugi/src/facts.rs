@@ -20,6 +20,8 @@ pub struct Facts {
     pub autostart: bool,
     /// `conpty.dll` and `OpenConsole.exe` are beside the exe (Windows).
     pub conpty: bool,
+    /// The other uchmk apps and where each is started from (`ito_common::apps`).
+    pub apps: Vec<ito_common::apps::Row>,
 }
 
 /// Read them on a thread of its own.
@@ -48,6 +50,9 @@ pub fn gather(shell: Option<String>) -> Facts {
         shell_hook,
         autostart: crate::autostart::is_on(),
         conpty,
+        apps: ito_common::apps::scan(
+            &ito_common::base_dir().and_then(|b| ito_common::Common::read(&b).ok()).map(|(c, _)| c.apps).unwrap_or_default(),
+        ),
     }
 }
 
