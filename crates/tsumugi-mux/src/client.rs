@@ -17,6 +17,9 @@ use crate::transport::{self, Address};
 
 /// How long a request that waits for its answer (`list`, `spawn`) waits.
 const ANSWER: Duration = Duration::from_secs(10);
+/// How long a prompt's Enter waits behind its text, so a program that reads a
+/// burst of input as a paste (Claude Code) takes the Enter as a key.
+pub const ENTER_AFTER_TEXT: Duration = Duration::from_millis(150);
 
 #[derive(Default)]
 struct Remote {
@@ -406,11 +409,31 @@ impl Client {
     /// paste as text (#35). Several lines are pasted, so they arrive as one,
     /// in bracketed paste where the program asked for it. Its notices are
     /// read, as with any key.
+    ///
+    /// The Enter follows after [`ENTER_AFTER_TEXT`], on a thread: sent in the
+    /// same burst, Claude Code's input box takes it as part of the paste and
+    /// the line sits there unsent (#281).
     pub fn send_prompt(&self, id: SessionId, text: String) {
+        self.type_prompt(id, text);
+        let inner = self.0.clone();
+        let _ = std::thread::Builder::new().name("prompt-enter".into()).spawn(move || {
+            std::thread::sleep(ENTER_AFTER_TEXT);
+            inner.send(ToServer::Input { id, bytes: b"\r".to_vec() });
+        });
+    }
+
+    /// The text of [`Client::send_prompt`] without its Enter, for a caller
+    /// that sends the Enter itself once the text has gone (`tsumugi send`,
+    /// whose process ends before a thread's Enter would).
+    pub fn type_prompt(&self, id: SessionId, text: String) {
         match typed_line(&text) {
             Some(bytes) => self.0.send(ToServer::Input { id, bytes }),
             None => self.0.send(ToServer::Paste { id, text }),
         }
+    }
+
+    /// Press Enter in a session.
+    pub fn press_enter(&self, id: SessionId) {
         self.0.send(ToServer::Input { id, bytes: b"\r".to_vec() });
     }
 

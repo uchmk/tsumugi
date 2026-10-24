@@ -561,7 +561,11 @@ fn remote(what: &str, args: &[String]) -> std::process::ExitCode {
                 Ok(_) => {}
                 Err(e) => return fail(e.to_string()),
             }
-            client.send_prompt(id, rest.join(" "));
+            client.type_prompt(id, rest.join(" "));
+            // The Enter on its own a moment later (#281): in the same burst
+            // Claude Code's input box reads it as part of a paste.
+            std::thread::sleep(tsumugi_mux::client::ENTER_AFTER_TEXT);
+            client.press_enter(id);
             // Sent before this process ends: a question after it is answered
             // once the server has it.
             match client.list() {
