@@ -648,17 +648,10 @@ impl Default for Open {
             editor: vec!["code {folder}".into()],
             filer: vec!["kura {folder}".into()],
             file: "code --goto {file}:{line}:{column}".into(),
-            system: DEFAULT_SYSTEM_EXTENSIONS.iter().map(|e| (*e).to_owned()).collect(),
+            system: ito_openin::SYSTEM_EXTENSIONS.iter().map(|e| (*e).to_owned()).collect(),
         }
     }
 }
-
-/// What `[open] system` holds when the settings do not say.
-const DEFAULT_SYSTEM_EXTENSIONS: [&str; 40] = [
-    "mp4", "mkv", "mov", "avi", "webm", "wmv", "flv", "m4v", "mpg", "mpeg", "mp3", "wav", "flac", "m4a", "ogg", "aac", "opus", "png",
-    "jpg", "jpeg", "gif", "bmp", "webp", "tiff", "ico", "heic", "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "zip", "7z", "rar",
-    "iso", "exe", "msi", "psd",
-];
 
 impl Open {
     /// Whether `file` is of a kind `[open] system` names, by its extension.
