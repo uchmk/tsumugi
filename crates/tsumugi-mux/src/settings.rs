@@ -109,6 +109,9 @@
 //! editor = ["code {folder}", "sakura {folder}"]
 //! filer = "kura {folder}"
 //! file = "code --goto {file}:{line}:{column}"
+//! # `system`: extensions that open the system's way instead (a video in its
+//! # player, not in the editor); the default has media, documents, archives.
+//! system = ["mp4", "pdf"]
 //!
 //! # The tab's menu (the design's 1j): items left out, and more of your own.
 //! [menu]
@@ -633,6 +636,10 @@ pub struct Open {
     /// `{line}` and `{column}` (1 when the output named none). Empty: the
     /// system's own way of opening it.
     pub file: String,
+    /// Extensions (no dot, any case) that a Ctrl+click opens the system's
+    /// own way instead of with `file`: videos, music, pictures, documents.
+    #[serde(deserialize_with = "one_or_more")]
+    pub system: Vec<String>,
 }
 
 impl Default for Open {
@@ -641,7 +648,23 @@ impl Default for Open {
             editor: vec!["code {folder}".into()],
             filer: vec!["kura {folder}".into()],
             file: "code --goto {file}:{line}:{column}".into(),
+            system: DEFAULT_SYSTEM_EXTENSIONS.iter().map(|e| (*e).to_owned()).collect(),
         }
+    }
+}
+
+/// What `[open] system` holds when the settings do not say.
+const DEFAULT_SYSTEM_EXTENSIONS: [&str; 40] = [
+    "mp4", "mkv", "mov", "avi", "webm", "wmv", "flv", "m4v", "mpg", "mpeg", "mp3", "wav", "flac", "m4a", "ogg", "aac", "opus", "png",
+    "jpg", "jpeg", "gif", "bmp", "webp", "tiff", "ico", "heic", "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "zip", "7z", "rar",
+    "iso", "exe", "msi", "psd",
+];
+
+impl Open {
+    /// Whether `file` is of a kind `[open] system` names, by its extension.
+    pub fn opens_with_system(&self, file: &Path) -> bool {
+        let Some(ext) = file.extension().and_then(|e| e.to_str()) else { return false };
+        self.system.iter().any(|s| s.trim_start_matches('.').eq_ignore_ascii_case(ext))
     }
 }
 
@@ -1390,7 +1413,14 @@ mod tests {
         assert_eq!(s.shell.command(), Some(("pwsh".to_string(), vec!["-NoLogo".to_string()])));
         assert_eq!(s.shell.env.get("EDITOR").map(String::as_str), Some("code --wait"));
         assert_eq!(s.advanced, Advanced::default());
-        assert_eq!(s.open, Open { editor: vec!["code {folder}".into(), "sakura {folder}".into()], ..Open::default() });
+        assert_eq!(
+            s.open,
+            Open {
+                editor: vec!["code {folder}".into(), "sakura {folder}".into()],
+                system: vec!["mp4".into(), "pdf".into()],
+                ..Open::default()
+            }
+        );
         assert_eq!(s.menu.hide, ["new-window"]);
         assert_eq!(s.menu.session[0].command, "wt -d {folder} lazygit");
         assert_eq!(s.remote.hosts, ["box"]);
@@ -1575,6 +1605,12 @@ command = \" \"
     fn an_editor_is_one_command_or_more() {
         let one = parse("[open]\nfiler = \"filer {folder}\"\n").unwrap();
         assert_eq!(one.open.filer, ["filer {folder}"]);
+        let open = Open::default();
+        assert!(open.opens_with_system(Path::new("/v/Clip.MP4")), "any case");
+        assert!(!open.opens_with_system(Path::new("/src/main.rs")));
+        assert!(!open.opens_with_system(Path::new("/src/Makefile")));
+        let mine = parse("[open]\nsystem = [\".rs\"]\n").unwrap();
+        assert!(mine.open.opens_with_system(Path::new("a.rs")) && !mine.open.opens_with_system(Path::new("a.mp4")));
         let more = parse("[open]\neditor = [\"code {folder}\", \"\", \"sakura {folder}\"]\nfiler = []\n").unwrap();
         assert_eq!(more.open.editor, ["code {folder}", "sakura {folder}"], "an empty one left out");
         assert!(more.open.filer.is_empty());

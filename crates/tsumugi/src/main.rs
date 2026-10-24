@@ -5189,7 +5189,7 @@ impl App {
         };
         let home = std::env::var_os(if cfg!(windows) { "USERPROFILE" } else { "HOME" }).map(std::path::PathBuf::from);
         let path = menu::resolve(&path, cwd, home.as_deref());
-        menu::open_path(path, line, column, self.open.file.clone(), self.jobs.0.clone());
+        menu::open_path(path, line, column, self.open.clone(), self.jobs.0.clone());
     }
 
     fn say(&mut self, words: String, error: bool) {
@@ -7591,7 +7591,7 @@ impl App {
         }
         if band.open_log {
             if let Some(i) = &focus_info {
-                menu::open_path(std::path::PathBuf::from(&i.logging), None, None, self.open.file.clone(), self.jobs.0.clone());
+                menu::open_path(std::path::PathBuf::from(&i.logging), None, None, self.open.clone(), self.jobs.0.clone());
             }
         }
         if band.close_settings {

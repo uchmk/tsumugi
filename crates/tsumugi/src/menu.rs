@@ -139,18 +139,26 @@ pub fn resolve(path: &str, cwd: &Path, home: Option<&Path>) -> PathBuf {
 }
 
 /// Open a file a pane printed (a Ctrl+click on it): with `[open] file` at
-/// the line and column, or the system's own way when that is empty or it is
-/// a folder. Looks at the disk on a thread; what went wrong goes to `told`.
-pub fn open_path(path: PathBuf, line: Option<u32>, column: Option<u32>, command: String, told: Sender<Result<String, String>>) {
+/// the line and column, or the system's own way when that is empty, it is
+/// a folder, or its extension is one of `[open] system`. Looks at the disk on
+/// a thread; what went wrong goes to `told`.
+pub fn open_path(
+    path: PathBuf,
+    line: Option<u32>,
+    column: Option<u32>,
+    open: tsumugi_mux::settings::Open,
+    told: Sender<Result<String, String>>,
+) {
     let _ = std::thread::Builder::new().name("open-path".into()).spawn(move || {
         let Ok(meta) = std::fs::metadata(&path) else {
             let _ = told.send(Err(format!("No such file: {}", path.display())));
             return;
         };
-        if meta.is_dir() || command.trim().is_empty() {
+        let command = &open.file;
+        if meta.is_dir() || command.trim().is_empty() || open.opens_with_system(&path) {
             open_with_system(&path);
         } else {
-            run(tsumugi_mux::settings::fill_file(&command, &path, line.unwrap_or(1), column.unwrap_or(1)));
+            run(tsumugi_mux::settings::fill_file(command, &path, line.unwrap_or(1), column.unwrap_or(1)));
         }
     });
 }
