@@ -18,7 +18,7 @@
 #                                       (on JIS that key is `;`/`+`: `Ctrl+=` there is 'Ctrl+Shift+vk:0xBB')
 #   Send-Text '日本語'                  characters through SendInput (KEYEVENTF_UNICODE)
 #   Send-KeysAtOnce 'Ctrl+Shift+L' 'Esc'      the chords in one SendInput: nothing can come between them
-#   Send-Click -X 120 -Y 40 [-Right|-Middle]  a click at egui points from the window's client corner
+#   Send-Click -X 120 -Y 40 [-Right|-Middle] [-Ctrl]  a click at egui points from the window's client corner
 #   Send-DoubleClick -X 120 -Y 40              two clicks in one SendInput (a word, a divider's reset)
 #   Send-Drag -X 10 -Y 40 -ToX 200 -ToY 40     the left button down, moved in steps, up (a selection, a divider)
 #   Send-Wheel -X 120 -Y 200 -Notches -3       the wheel there; negative is towards you (down)
@@ -77,6 +77,7 @@ public static class Native {
     [DllImport("user32.dll")] static extern bool GetCursorInfo(ref CURSORINFO info);
     [DllImport("user32.dll")] static extern IntPtr LoadCursor(IntPtr instance, IntPtr name);
     [DllImport("user32.dll")] static extern uint GetDoubleClickTime();
+[DllImport("user32.dll")] static extern void keybd_event(byte vk, byte scan, uint flags, UIntPtr extra);
     [DllImport("user32.dll")] public static extern IntPtr SetProcessDpiAwarenessContext(IntPtr value);
     [DllImport("user32.dll", SetLastError = true)] public static extern IntPtr OpenInputDesktop(uint flags, bool inherit, uint access);
     [DllImport("user32.dll")] public static extern bool CloseDesktop(IntPtr d);
@@ -169,6 +170,9 @@ public static class Native {
         uint down = button == 1 ? 0x0008u : button == 2 ? 0x0020u : 0x0002u;
         return Send(new INPUT[] { Mouse(down, 0), Mouse(down << 1, 0) });
     }
+
+    // Control held (down) or let go (up).
+    public static void Ctrl(bool down) { keybd_event(0x11, 0, down ? 0u : 0x0002u, UIntPtr.Zero); }
 
     // Two left clicks in one SendInput: well inside the double-click time,
     // which separate calls from PowerShell were not always.
@@ -468,12 +472,15 @@ function Move-KitCursor([double]$X, [double]$Y, [double]$Scale = 1.0) {
 
 # X, Y in egui points from the client area's top-left, as the focus log
 # gives them; -Scale when tsumugi's zoom is not 100%.
-function Send-Click([double]$X, [double]$Y, [switch]$Right, [switch]$Middle, [double]$Scale = 1.0) {
+function Send-Click([double]$X, [double]$Y, [switch]$Right, [switch]$Middle, [switch]$Ctrl, [double]$Scale = 1.0) {
     if (-not (Wait-InputReady)) { throw 'input does not reach tsumugi; click not sent' }
     Move-KitCursor $X $Y $Scale
     Start-Sleep -Milliseconds 50
     $button = if ($Right) { 1 } elseif ($Middle) { 2 } else { 0 }
-    if ([TsumugiKit.Native]::Click($button) -eq 0) { throw 'SendInput sent nothing for the click' }
+    if ($Ctrl) { [TsumugiKit.Native]::Ctrl($true); Start-Sleep -Milliseconds 30 }
+    try {
+        if ([TsumugiKit.Native]::Click($button) -eq 0) { throw 'SendInput sent nothing for the click' }
+    } finally { if ($Ctrl) { [TsumugiKit.Native]::Ctrl($false) } }
     Start-Sleep -Milliseconds 150
 }
 
