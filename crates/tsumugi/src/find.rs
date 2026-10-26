@@ -91,7 +91,9 @@ pub fn show(ctx: &egui::Context, pane: egui::Rect, bar: &mut Bar, c: &Colors) ->
             close = i.consume_key(egui::Modifiers::NONE, egui::Key::Escape);
         });
     }
-    let width = 330.0_f32.min(pane.width() - 16.0).max(160.0);
+    // The bar's letters and widths follow the panes' size (row 5.18).
+    let zoom = ito_theme::text_zoom(ctx);
+    let width = (330.0 * zoom).min(pane.width() - 16.0).max(160.0);
     let at = egui::pos2(pane.right() - width - 10.0, pane.top() + 6.0);
     egui::Area::new(egui::Id::new(("find-bar", bar.id))).order(egui::Order::Foreground).fixed_pos(at).show(ctx, |ui| {
         egui::Frame::NONE
@@ -100,6 +102,9 @@ pub fn show(ctx: &egui::Context, pane: egui::Rect, bar: &mut Bar, c: &Colors) ->
             .corner_radius(8.0)
             .inner_margin(egui::Margin::symmetric(8, 5))
             .show(ui, |ui| {
+                for font in ui.style_mut().text_styles.values_mut() {
+                    font.size *= zoom;
+                }
                 ui.set_width(width - 16.0);
                 ui.horizontal(|ui| {
                     let words = match bar.said {
@@ -109,7 +114,7 @@ pub fn show(ctx: &egui::Context, pane: egui::Rect, bar: &mut Bar, c: &Colors) ->
                         Some(Some(true)) => RichText::new(tr("find.wrapped")).color(c.dim),
                         _ => RichText::new(""),
                     };
-                    let room = ui.available_width() - 3.0 * 24.0 - 96.0;
+                    let room = ui.available_width() - 3.0 * 24.0 * zoom - 96.0 * zoom;
                     let field = ui.add(
                         egui::TextEdit::singleline(&mut bar.needle).id(field_id).hint_text(tr("find.hint")).desired_width(room.max(60.0)),
                     );
@@ -117,7 +122,7 @@ pub fn show(ctx: &egui::Context, pane: egui::Rect, bar: &mut Bar, c: &Colors) ->
                         field.request_focus();
                     }
                     bar.keyed = field.has_focus() || ctx.memory(|m| m.has_focus(field_id));
-                    ui.add_sized(egui::vec2(96.0, 18.0), egui::Label::new(words.size(11.5)).truncate());
+                    ui.add_sized(egui::vec2(96.0 * zoom, 18.0 * zoom), egui::Label::new(words.size(11.5 * zoom)).truncate());
                     if ui.small_button("↑").on_hover_text(tr("find.older")).clicked() {
                         step = Some(true);
                     }
