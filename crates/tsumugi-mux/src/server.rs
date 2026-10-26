@@ -1013,14 +1013,23 @@ impl Rules {
 
     /// `info`'s tags after it moved: the ones the rules gave it where it was
     /// (`was`, the tags given there) and do not give it here are taken off,
-    /// and this folder's put on. A tag added by hand stays, unless a rule
+    /// and this folder's new ones put on. A tag added by hand stays, unless a rule
     /// gave the same one where it was.
     fn follow(&self, info: &mut Info, was: &[String]) -> bool {
         let now = self.given(&info.cwd, &info.branch);
         let before = info.tags.len();
         info.tags.retain(|t| !was.contains(t) || now.contains(t));
         let taken = info.tags.len() != before;
-        self.apply(info) | taken
+        // Only a tag the rules did not give it before: one taken off by hand
+        // (the new-session dialog) stays off while the rules say the same.
+        let mut added = false;
+        for t in now.into_iter().filter(|t| !was.contains(t)) {
+            if !info.tags.contains(&t) && info.tags.len() < crate::proto::MAX_TAGS {
+                info.tags.push(t);
+                added = true;
+            }
+        }
+        added | taken
     }
 
     /// Put on `info` the tags its folder's and branch's rules give it. Only
@@ -2291,6 +2300,18 @@ mod tags {
         i.cwd = PathBuf::from("/dev/filer/src");
         assert!(!r.follow(&mut i, &was), "a folder under it keeps the tag");
         assert_eq!(i.tags, ["mine", "filer"]);
+    }
+
+    /// A rule's tag taken off in the new-session dialog stays off when the
+    /// shell reports its folder (the same rule gives it before and after).
+    #[test]
+    fn a_rule_tag_taken_off_stays_off_while_the_rule_is_the_same() {
+        let r = rules(vec![TagRule { folder: "/dev/filer".into(), branch: String::new(), tag: "filer".into() }]);
+        let mut i = info("/dev/filer", &[]);
+        let was = r.given(&i.cwd, &i.branch);
+        i.cwd = PathBuf::from("/dev/filer/src");
+        assert!(!r.follow(&mut i, &was));
+        assert!(i.tags.is_empty());
     }
 
     #[test]
