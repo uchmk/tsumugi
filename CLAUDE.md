@@ -72,6 +72,8 @@ kura と同じ。`Cargo.toml` の `version` が正、版の繰り上げと CHANG
 - `.github/workflows/release.yml` を Actions タブから `workflow_dispatch` で回し、`tag` に `vX.Y.Z` を渡す（タグが無ければ作られる。
   クラウドのセッションからタグは push できない）。`Cargo.toml` の版と違えば落ちる。成果物は 6 つ（Windows は ConPTY と `tsumugi.com` を同梱した `.zip`、
   macOS と Linux は `.tar.gz`）、最後に `release-sums.yml` が SHA-256 の表をノートに足す。
+- **`release.yml` の成功で終わりにしない。**`bash scripts/release-check.sh vX.Y.Z` が `RELEASE OK`（成果物 6 つ・SHA-256 の表に 6 行・ノート）になるまでが完了。
+  表を見ていないまま「完了」と報告しない。見られなければ「未確認」と理由を書く。ノートが長い（WARN）ときは `gh release edit` で主な変更 3〜5 件を先頭に足す。
 - ノートは前のタグからの `vX.Y.Z:` のコミットの最初の段落から作る。英語で、それだけで意味が通るように書く。前のリリースのタグができてから次を投げる。
 
 ## Windows 実機のセッション
