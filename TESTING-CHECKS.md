@@ -223,17 +223,17 @@ Covered by tests, not listed below: 1.15, 1.16
 
 ## 6. New sessions
 
-- [ ] **6.1** `Ctrl+Shift+T`, Enter → Claude Code starts in a new tab in the focused pane's folder
+- [x] **6.1** `Ctrl+Shift+T`, Enter → Claude Code starts in a new tab in the focused pane's folder
 - [x] **6.2** `Ctrl+Shift+T`, Shell, `Alt+Enter` → A shell split to the right instead of a tab
 - [~] **6.3** Type part of a folder, `Tab` → Completes from the folders listed, including **closed** ones from sessions that ended; the cursor at its end; a second `Tab` moves on
 - [ ] **6.4** Add a tag, and take a dashed (folder rule) tag off → The new session wears exactly what the dialog showed
 - [~] **6.5** Beside it → + Pane twice (Claude Code, Shell), Create → One tab of three panes: the first, one to its right, one below that
-- [ ] **6.6** Tick Save as a profile, name it; next time Profile… → it → The folder, start, tags and panes come back
-- [ ] **6.7** Tick In a new git worktree in a repository, Create → A folder `<repo>-tsumugi-MMDD-HHMM` beside the repository on its own branch, and the session in it; a toast says so
-- [ ] **6.8** `exit` the last session in that worktree → **Remove the worktree?**; Remove takes the folder (the branch stays); with uncommitted changes git refuses and the toast says why
-- [ ] **6.9** `Ctrl+Shift+T`, then only the keyboard: `Tab` through the dialog, `←`/`→` on the ways to start, `Space` on a button, `Shift+Tab` back → A cyan ring shows where the keys are; Tab completes the folder once and then moves on to the way picked in START (one stop for the whole row), then + Pane, the tag, the two ticks, Create and Cancel; `←`/`→` walk the row round, Profile… included, and Shift+Tab from + Pane comes back on the way picked; `Enter` on Cancel cancels, `Enter` in a field creates
+- [x] **6.6** Tick Save as a profile, name it; next time Profile… → it → The folder, start, tags and panes come back
+- [x] **6.7** Tick In a new git worktree in a repository, Create → A folder `<repo>-tsumugi-MMDD-HHMM` beside the repository on its own branch, and the session in it; a toast says so
+- [x] **6.8** `exit` the last session in that worktree → **Remove the worktree?**; Remove takes the folder (the branch stays); with uncommitted changes git refuses and the toast says why
+- [x] **6.9** `Ctrl+Shift+T`, then only the keyboard: `Tab` through the dialog, `←`/`→` on the ways to start, `Space` on a button, `Shift+Tab` back → A cyan ring shows where the keys are; Tab completes the folder once and then moves on to the way picked in START (one stop for the whole row), then + Pane, the tag, the two ticks, Create and Cancel; `←`/`→` walk the row round, Profile… included, and Shift+Tab from + Pane comes back on the way picked; `Enter` on Cancel cancels, `Enter` in a field creates
 - [ ] **6.10** Search `parallel` → Start in parallel; two prompts; Start 2 → Two folders `<repo>-tsumugi-MMDD-HHMM-1`/`-2` beside the repository on branches `tsumugi/MMDD-HHMM-1`/`-2`, two tabs, Claude Code started in each on its own prompt (quotes in a prompt kept); Esc or Cancel starts nothing
-- [ ] **6.11** `Ctrl+Shift+T`, `Tab` to Shell (the ring on it), `Enter` → A shell starts, as Alt+Enter would split one: Enter on a way to start picks it and creates
+- [x] **6.11** `Ctrl+Shift+T`, `Tab` to Shell (the ring on it), `Enter` → A shell starts, as Alt+Enter would split one: Enter on a way to start picks it and creates
 - [ ] **6.12** With WSL installed: `Ctrl+Shift+T`, Runs on → WSL: Ubuntu, Shell, Create → A Linux shell in the same folder (`/mnt/c/…`); Docker Desktop's distributions are not offered; no console window flashes when the dialog opens
 - [ ] **6.13** With a `Host box` in `~/.ssh/config`: Runs on → SSH: box, Claude Code, tick Save as a profile, Create → `ssh box` starts in the pane (asks for a password or key if it needs one) and `claude` is typed once logged in; `Host *` lines are not offered; Profile… → it next time picks SSH: box again
 - [ ] **6.14** With tsumugi on `box`'s `PATH`: `Ctrl+Shift+T`, Runs on → SSH: box, kept there, Shell, Create → A shell on box's own server in its home folder; the sidebar says `on box`, the title starts `[box]`, MACHINES lists This machine and box with their counts
