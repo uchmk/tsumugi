@@ -603,7 +603,11 @@ pub fn show(
                     ui.horizontal_wrapped(|ui| {
                         // The rules' tags dashed, as the design draws them; a
                         // click takes either kind off.
-                        for (t, auto) in rule_tags.iter().map(|t| (t.clone(), true)).chain(d.tags.clone().into_iter().map(|t| (t, false))) {
+                        for (t, auto) in rule_tags
+                            .iter()
+                            .map(|t| (t.clone(), true))
+                            .chain(d.tags.clone().into_iter().filter(|t| !rule_tags.contains(t)).map(|t| (t, false)))
+                        {
                             let tag_size = ito_theme::zoomed(ui.ctx(), 11.0);
                             let w = ui.fonts_mut(|f| f.layout_no_wrap(t.clone(), FontId::proportional(tag_size), pal.fg).size().x) + 12.0;
                             let (rect, resp) = ui.allocate_exact_size(egui::vec2(w, ito_theme::zoomed(ui.ctx(), 16.0)), egui::Sense::CLICK);
@@ -616,6 +620,7 @@ pub fn show(
                             if resp.on_hover_text(hint).clicked() {
                                 if auto {
                                     d.dropped.push(t.clone());
+                                    d.tags.retain(|x| *x != t);
                                 } else {
                                     d.tags.retain(|x| *x != t);
                                 }
