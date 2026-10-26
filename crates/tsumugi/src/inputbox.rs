@@ -286,233 +286,240 @@ impl InputBox {
             .stroke(egui::Stroke::new(1.0, if focused { c.run } else { c.border_strong() }))
             .corner_radius(10.0)
             .inner_margin(egui::Margin::symmetric(12, 8));
-        let shown =
-            frame.show(ui, |ui| {
-                ui.set_width(ui.available_width());
-                // Where it goes: the pane, or tags instead.
-                ui.horizontal(|ui| {
-                    ui.label(RichText::new(tr("inputbox.to")).size(ito_theme::zoomed(ui.ctx(), 12.0)).color(c.dim));
-                    let pane_on = self.to_tags.is_empty();
-                    if ui
-                        .selectable_label(pane_on, RichText::new(name).size(ito_theme::zoomed(ui.ctx(), 12.0)))
-                        .on_hover_text(tr("inputbox.to_hover"))
-                        .clicked()
-                    {
-                        self.to_tags.clear();
-                    }
-                    // Others picked to get the same prompt, each taken off by a click.
-                    if pane_on {
-                        let mut gone = None;
-                        for s in &self.to_also {
-                            let n = others.iter().find(|(o, _)| o == s).map_or("", |(_, n)| n.as_str());
-                            if ui
-                                .selectable_label(true, RichText::new(format!("+ {n}")).size(ito_theme::zoomed(ui.ctx(), 12.0)))
-                                .on_hover_text(tr("inputbox.also_hover"))
-                                .clicked()
-                            {
-                                gone = Some(*s);
-                            }
-                        }
-                        if let Some(g) = gone {
-                            self.to_also.retain(|s| *s != g);
+        let shown = frame.show(ui, |ui| {
+            ui.set_width(ui.available_width());
+            // Where it goes: the pane, or tags instead.
+            ui.horizontal(|ui| {
+                ui.label(RichText::new(tr("inputbox.to")).size(ito_theme::zoomed(ui.ctx(), 12.0)).color(c.dim));
+                let pane_on = self.to_tags.is_empty();
+                if ui
+                    .selectable_label(pane_on, RichText::new(name).size(ito_theme::zoomed(ui.ctx(), 12.0)))
+                    .on_hover_text(tr("inputbox.to_hover"))
+                    .clicked()
+                {
+                    self.to_tags.clear();
+                }
+                // Others picked to get the same prompt, each taken off by a click.
+                if pane_on {
+                    let mut gone = None;
+                    for s in &self.to_also {
+                        let n = others.iter().find(|(o, _)| o == s).map_or("", |(_, n)| n.as_str());
+                        if ui
+                            .selectable_label(true, RichText::new(format!("+ {n}")).size(ito_theme::zoomed(ui.ctx(), 12.0)))
+                            .on_hover_text(tr("inputbox.also_hover"))
+                            .clicked()
+                        {
+                            gone = Some(*s);
                         }
                     }
-                    let rest: Vec<&(SessionId, String)> = others.iter().filter(|(o, _)| *o != to).collect();
-                    if !rest.is_empty() {
-                        let menu = stay_open(RichText::new(tr("inputbox.sessions")).size(ito_theme::zoomed(ui.ctx(), 12.0)).color(c.dim))
-                            .ui(ui, |ui| {
-                                ui.set_min_width(220.0);
-                                ui.label(RichText::new(tr("inputbox.send_to")).size(ito_theme::zoomed(ui.ctx(), 11.5)).color(c.dim));
-                                for (o, n) in &rest {
-                                    let mut on = self.to_also.contains(o);
-                                    if ui.checkbox(&mut on, n.as_str()).changed() {
-                                        self.to_tags.clear();
-                                        if on {
-                                            self.to_also.push(*o);
-                                        } else {
-                                            self.to_also.retain(|s| s != o);
+                    if let Some(g) = gone {
+                        self.to_also.retain(|s| *s != g);
+                    }
+                }
+                let rest: Vec<&(SessionId, String)> = others.iter().filter(|(o, _)| *o != to).collect();
+                if !rest.is_empty() {
+                    // A fixed id: the chips ahead of the button come and go, and an
+                    // id from the position would close the menu on every tick.
+                    let menu = ui
+                        .push_id("inputbox-sessions", |ui| {
+                            stay_open(RichText::new(tr("inputbox.sessions")).size(ito_theme::zoomed(ui.ctx(), 12.0)).color(c.dim)).ui(
+                                ui,
+                                |ui| {
+                                    ui.set_min_width(220.0);
+                                    ui.label(RichText::new(tr("inputbox.send_to")).size(ito_theme::zoomed(ui.ctx(), 11.5)).color(c.dim));
+                                    for (o, n) in &rest {
+                                        let mut on = self.to_also.contains(o);
+                                        if ui.checkbox(&mut on, n.as_str()).changed() {
+                                            self.to_tags.clear();
+                                            if on {
+                                                self.to_also.push(*o);
+                                            } else {
+                                                self.to_also.retain(|s| s != o);
+                                            }
                                         }
                                     }
-                                }
-                                ui.separator();
-                                if ui.button(tr("inputbox.every")).clicked() {
-                                    self.to_tags.clear();
-                                    self.to_also = rest.iter().map(|(o, _)| *o).collect();
-                                    ui.close();
-                                }
-                                if !self.to_also.is_empty() && ui.button(tr("inputbox.only_this")).clicked() {
-                                    self.to_also.clear();
-                                    ui.close();
-                                }
-                            });
-                        // The keys stay with the box (a click on the menu took
-                        // them): an Esc to close it must not reach the shell.
-                        if menu.0.clicked() {
-                            self.focus = true;
-                        }
-                        menus_open |= menu.1.is_some();
-                        menu.0.on_hover_text(tr("inputbox.sessions_hint"));
-                    }
-                    if !tags.is_empty() {
-                        ui.label(RichText::new("or").size(ito_theme::zoomed(ui.ctx(), 12.0)).color(c.faint()));
-                    }
-                    for t in tags {
-                        let on = self.to_tags.contains(t);
-                        let tag_size = ito_theme::zoomed(ui.ctx(), 11.0);
-                        let w = ui.fonts_mut(|f| f.layout_no_wrap(t.clone(), FontId::proportional(tag_size), c.fg).size().x) + 12.0;
-                        let (r, resp) = ui.allocate_exact_size(egui::vec2(w, ito_theme::zoomed(ui.ctx(), 16.0)), egui::Sense::click());
-                        crate::chrome::tag_chip(ui.painter(), r.min, t, !on);
-                        if on {
-                            ui.painter().rect_stroke(r.expand(1.5), 5.0, egui::Stroke::new(1.0, c.strong()), egui::StrokeKind::Outside);
-                        }
-                        if resp.on_hover_text(trf("inputbox.tag_hover", &[t])).clicked() {
-                            if on {
-                                self.to_tags.retain(|x| x != t);
-                            } else {
-                                self.to_tags.push(t.clone());
-                            }
-                        }
-                    }
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        // Prompts kept: one picked goes into the draft.
-                        let mut picked = false;
-                        let menu = stay_open(RichText::new(tr("inputbox.prompts")).size(ito_theme::zoomed(ui.ctx(), 12.0)).color(c.dim))
-                            .ui(ui, |ui| {
-                                ui.set_min_width(260.0);
-                                if self.prompts.is_empty() {
-                                    ui.label(RichText::new(tr("inputbox.none_kept")).size(ito_theme::zoomed(ui.ctx(), 11.5)).color(c.dim));
-                                }
-                                let mut gone = None;
-                                for (k, p) in self.prompts.iter().enumerate() {
-                                    ui.horizontal(|ui| {
-                                        if ui.small_button("×").on_hover_text(tr("inputbox.forget")).clicked() {
-                                            gone = Some(k);
-                                        }
-                                        if ui.button(&p.name).on_hover_text(&p.text).clicked() {
-                                            if draft.text.trim().is_empty() {
-                                                draft.text.clone_from(&p.text);
-                                            } else {
-                                                draft.text = format!("{}\n{}", draft.text.trim_end(), p.text);
-                                            }
-                                            picked = true;
-                                            ui.close();
-                                        }
-                                    });
-                                }
-                                if let Some(k) = gone {
-                                    self.prompts.remove(k);
-                                    self.prompts_changed = true;
-                                }
-                                ui.separator();
-                                if draft.text.trim().is_empty() {
-                                    ui.label(
-                                        RichText::new(tr("inputbox.placeholders")).size(ito_theme::zoomed(ui.ctx(), 11.0)).color(c.faint()),
-                                    );
-                                } else {
-                                    ui.horizontal(|ui| {
-                                        ui.add(
-                                            egui::TextEdit::singleline(&mut self.naming)
-                                                .hint_text(tr("inputbox.name_hint"))
-                                                .desired_width(160.0),
-                                        );
-                                        if ui.add_enabled(!self.naming.trim().is_empty(), egui::Button::new(tr("inputbox.save"))).clicked()
-                                        {
-                                            let name = std::mem::take(&mut self.naming).trim().to_owned();
-                                            self.prompts.retain(|p| p.name != name);
-                                            self.prompts.push(crate::prompts::Prompt { name, text: draft.text.trim_end().to_owned() });
-                                            self.prompts_changed = true;
-                                            ui.close();
-                                        }
-                                    });
-                                }
-                            });
-                        // Back to the box to go on writing, or to send.
-                        if menu.0.clicked() || picked {
-                            self.focus = true;
-                        }
-                        menus_open |= menu.1.is_some();
-                        if queued > 0 {
-                            ui.label(
-                                RichText::new(trf("inputbox.queued", &[&queued.to_string()]))
-                                    .size(ito_theme::zoomed(ui.ctx(), 11.5))
-                                    .color(c.wait),
+                                    ui.separator();
+                                    if ui.button(tr("inputbox.every")).clicked() {
+                                        self.to_tags.clear();
+                                        self.to_also = rest.iter().map(|(o, _)| *o).collect();
+                                        ui.close();
+                                    }
+                                    if !self.to_also.is_empty() && ui.button(tr("inputbox.only_this")).clicked() {
+                                        self.to_also.clear();
+                                        ui.close();
+                                    }
+                                },
                             )
-                            .on_hover_text(tr("inputbox.queued_hover"));
-                        }
-                        // The design's: every session keeps its draft.
-                        ui.label(RichText::new(tr("inputbox.draft")).size(ito_theme::zoomed(ui.ctx(), 11.5)).color(c.faint()))
-                            .on_hover_text(tr("inputbox.draft_hover"));
-                    });
-                });
-                // A line under where it goes (the design's).
-                let (line, _) = ui.allocate_exact_size(egui::vec2(ui.available_width(), 7.0), egui::Sense::hover());
-                ui.painter().hline(line.x_range().expand(12.0), line.center().y, egui::Stroke::new(1.0, c.border));
-                let edit = egui::TextEdit::multiline(&mut draft.text)
-                    .id(id)
-                    .hint_text(trf("inputbox.hint", &[if cfg!(target_os = "macos") { "Cmd+Enter" } else { "Ctrl+Enter" }]))
-                    .desired_rows(4)
-                    .desired_width(f32::INFINITY)
-                    .font(FontId::proportional(ito_theme::zoomed(ui.ctx(), 14.0)))
-                    .frame(egui::Frame::NONE);
-                let resp = ui.add(edit);
-                if std::mem::take(&mut self.focus) {
-                    resp.request_focus();
+                        })
+                        .inner;
+                    // The keys stay with the box (a click on the menu took
+                    // them): an Esc to close it must not reach the shell.
+                    if menu.0.clicked() {
+                        self.focus = true;
+                    }
+                    menus_open |= menu.1.is_some();
+                    menu.0.on_hover_text(tr("inputbox.sessions_hint"));
                 }
-                if resp.changed() {
-                    self.back = None;
+                if !tags.is_empty() {
+                    ui.label(RichText::new("or").size(ito_theme::zoomed(ui.ctx(), 12.0)).color(c.faint()));
                 }
-                ui.horizontal(|ui| {
-                    let mut gone = None;
-                    for (k, f) in draft.files.iter().enumerate() {
-                        let name = f.file_name().map_or_else(|| f.display().to_string(), |n| n.to_string_lossy().into_owned());
-                        // An image's mark or a file's, and its size when known.
-                        let image = f
-                            .extension()
-                            .and_then(|e| e.to_str())
-                            .is_some_and(|e| ["png", "jpg", "jpeg", "gif", "webp", "bmp"].contains(&e.to_ascii_lowercase().as_str()));
-                        let mark = if image { "▣" } else { "▤" };
-                        let size = draft.sizes.get(f).map(|b| format!(" · {}", size_words(*b))).unwrap_or_default();
-                        let chip =
-                            egui::Button::new(RichText::new(format!("{mark} {name}{size}  ×")).size(ito_theme::zoomed(ui.ctx(), 12.0)))
-                                .fill(c.panel)
-                                .stroke(egui::Stroke::new(1.0, c.border));
-                        if ui.add(chip).on_hover_text(format!("{}: click to take it off", f.display())).clicked() {
-                            gone = Some(k);
+                for t in tags {
+                    let on = self.to_tags.contains(t);
+                    let tag_size = ito_theme::zoomed(ui.ctx(), 11.0);
+                    let w = ui.fonts_mut(|f| f.layout_no_wrap(t.clone(), FontId::proportional(tag_size), c.fg).size().x) + 12.0;
+                    let (r, resp) = ui.allocate_exact_size(egui::vec2(w, ito_theme::zoomed(ui.ctx(), 16.0)), egui::Sense::click());
+                    crate::chrome::tag_chip(ui.painter(), r.min, t, !on);
+                    if on {
+                        ui.painter().rect_stroke(r.expand(1.5), 5.0, egui::Stroke::new(1.0, c.strong()), egui::StrokeKind::Outside);
+                    }
+                    if resp.on_hover_text(trf("inputbox.tag_hover", &[t])).clicked() {
+                        if on {
+                            self.to_tags.retain(|x| x != t);
+                        } else {
+                            self.to_tags.push(t.clone());
                         }
                     }
-                    if let Some(k) = gone {
-                        draft.files.remove(k);
-                    }
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        let key = if cfg!(target_os = "macos") { "Cmd+Enter" } else { "Ctrl+Enter" };
-                        let label = if self.later { tr("inputbox.queue") } else { tr("inputbox.send") };
-                        let button = egui::Button::new(RichText::new(format!("{label}   {key}")).color(c.on_accent()).strong())
-                            .fill(if self.later { c.wait } else { c.run })
-                            .min_size(egui::vec2(110.0, 28.0));
-                        let empty = draft.text.trim().is_empty() && draft.files.is_empty();
-                        let clicked = ui.add_enabled(!empty, button).clicked();
-                        let shift = if cfg!(target_os = "macos") { "Cmd+Shift+Enter" } else { "Ctrl+Shift+Enter" };
-                        ui.toggle_value(&mut self.later, RichText::new(tr("inputbox.when_done")).size(ito_theme::zoomed(ui.ctx(), 12.0)))
-                            .on_hover_text(trf("inputbox.when_done_hover", &[shift]));
-                        if (clicked || send || later_key) && !empty {
-                            let text = Self::prompt(&draft);
-                            let to = if !self.to_tags.is_empty() {
-                                To::Tags(self.to_tags.clone())
-                            } else if self.to_also.is_empty() {
-                                To::Session(to)
+                }
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    // Prompts kept: one picked goes into the draft.
+                    let mut picked = false;
+                    let menu = stay_open(RichText::new(tr("inputbox.prompts")).size(ito_theme::zoomed(ui.ctx(), 12.0)).color(c.dim)).ui(
+                        ui,
+                        |ui| {
+                            ui.set_min_width(260.0);
+                            if self.prompts.is_empty() {
+                                ui.label(RichText::new(tr("inputbox.none_kept")).size(ito_theme::zoomed(ui.ctx(), 11.5)).color(c.dim));
+                            }
+                            let mut gone = None;
+                            for (k, p) in self.prompts.iter().enumerate() {
+                                ui.horizontal(|ui| {
+                                    if ui.small_button("×").on_hover_text(tr("inputbox.forget")).clicked() {
+                                        gone = Some(k);
+                                    }
+                                    if ui.button(&p.name).on_hover_text(&p.text).clicked() {
+                                        if draft.text.trim().is_empty() {
+                                            draft.text.clone_from(&p.text);
+                                        } else {
+                                            draft.text = format!("{}\n{}", draft.text.trim_end(), p.text);
+                                        }
+                                        picked = true;
+                                        ui.close();
+                                    }
+                                });
+                            }
+                            if let Some(k) = gone {
+                                self.prompts.remove(k);
+                                self.prompts_changed = true;
+                            }
+                            ui.separator();
+                            if draft.text.trim().is_empty() {
+                                ui.label(
+                                    RichText::new(tr("inputbox.placeholders")).size(ito_theme::zoomed(ui.ctx(), 11.0)).color(c.faint()),
+                                );
                             } else {
-                                To::Sessions(std::iter::once(to).chain(self.to_also.iter().copied()).collect())
-                            };
-                            sent = Some(Send { to, text: text.clone(), later: self.later || later_key });
-                            self.remember(draft.text.trim_end());
-                            self.back = None;
-                            draft = Draft::default();
-                        }
-                        let paste = if cfg!(target_os = "macos") { "Cmd+V" } else { "Ctrl+V" };
-                        ui.label(RichText::new(trf("inputbox.foot", &[paste])).size(ito_theme::zoomed(ui.ctx(), 11.5)).color(c.faint()));
-                    });
+                                ui.horizontal(|ui| {
+                                    ui.add(
+                                        egui::TextEdit::singleline(&mut self.naming)
+                                            .hint_text(tr("inputbox.name_hint"))
+                                            .desired_width(160.0),
+                                    );
+                                    if ui.add_enabled(!self.naming.trim().is_empty(), egui::Button::new(tr("inputbox.save"))).clicked() {
+                                        let name = std::mem::take(&mut self.naming).trim().to_owned();
+                                        self.prompts.retain(|p| p.name != name);
+                                        self.prompts.push(crate::prompts::Prompt { name, text: draft.text.trim_end().to_owned() });
+                                        self.prompts_changed = true;
+                                        ui.close();
+                                    }
+                                });
+                            }
+                        },
+                    );
+                    // Back to the box to go on writing, or to send.
+                    if menu.0.clicked() || picked {
+                        self.focus = true;
+                    }
+                    menus_open |= menu.1.is_some();
+                    if queued > 0 {
+                        ui.label(
+                            RichText::new(trf("inputbox.queued", &[&queued.to_string()]))
+                                .size(ito_theme::zoomed(ui.ctx(), 11.5))
+                                .color(c.wait),
+                        )
+                        .on_hover_text(tr("inputbox.queued_hover"));
+                    }
+                    // The design's: every session keeps its draft.
+                    ui.label(RichText::new(tr("inputbox.draft")).size(ito_theme::zoomed(ui.ctx(), 11.5)).color(c.faint()))
+                        .on_hover_text(tr("inputbox.draft_hover"));
                 });
             });
+            // A line under where it goes (the design's).
+            let (line, _) = ui.allocate_exact_size(egui::vec2(ui.available_width(), 7.0), egui::Sense::hover());
+            ui.painter().hline(line.x_range().expand(12.0), line.center().y, egui::Stroke::new(1.0, c.border));
+            let edit = egui::TextEdit::multiline(&mut draft.text)
+                .id(id)
+                .hint_text(trf("inputbox.hint", &[if cfg!(target_os = "macos") { "Cmd+Enter" } else { "Ctrl+Enter" }]))
+                .desired_rows(4)
+                .desired_width(f32::INFINITY)
+                .font(FontId::proportional(ito_theme::zoomed(ui.ctx(), 14.0)))
+                .frame(egui::Frame::NONE);
+            let resp = ui.add(edit);
+            if std::mem::take(&mut self.focus) {
+                resp.request_focus();
+            }
+            if resp.changed() {
+                self.back = None;
+            }
+            ui.horizontal(|ui| {
+                let mut gone = None;
+                for (k, f) in draft.files.iter().enumerate() {
+                    let name = f.file_name().map_or_else(|| f.display().to_string(), |n| n.to_string_lossy().into_owned());
+                    // An image's mark or a file's, and its size when known.
+                    let image = f
+                        .extension()
+                        .and_then(|e| e.to_str())
+                        .is_some_and(|e| ["png", "jpg", "jpeg", "gif", "webp", "bmp"].contains(&e.to_ascii_lowercase().as_str()));
+                    let mark = if image { "▣" } else { "▤" };
+                    let size = draft.sizes.get(f).map(|b| format!(" · {}", size_words(*b))).unwrap_or_default();
+                    let chip = egui::Button::new(RichText::new(format!("{mark} {name}{size}  ×")).size(ito_theme::zoomed(ui.ctx(), 12.0)))
+                        .fill(c.panel)
+                        .stroke(egui::Stroke::new(1.0, c.border));
+                    if ui.add(chip).on_hover_text(format!("{}: click to take it off", f.display())).clicked() {
+                        gone = Some(k);
+                    }
+                }
+                if let Some(k) = gone {
+                    draft.files.remove(k);
+                }
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    let key = if cfg!(target_os = "macos") { "Cmd+Enter" } else { "Ctrl+Enter" };
+                    let label = if self.later { tr("inputbox.queue") } else { tr("inputbox.send") };
+                    let button = egui::Button::new(RichText::new(format!("{label}   {key}")).color(c.on_accent()).strong())
+                        .fill(if self.later { c.wait } else { c.run })
+                        .min_size(egui::vec2(110.0, 28.0));
+                    let empty = draft.text.trim().is_empty() && draft.files.is_empty();
+                    let clicked = ui.add_enabled(!empty, button).clicked();
+                    let shift = if cfg!(target_os = "macos") { "Cmd+Shift+Enter" } else { "Ctrl+Shift+Enter" };
+                    ui.toggle_value(&mut self.later, RichText::new(tr("inputbox.when_done")).size(ito_theme::zoomed(ui.ctx(), 12.0)))
+                        .on_hover_text(trf("inputbox.when_done_hover", &[shift]));
+                    if (clicked || send || later_key) && !empty {
+                        let text = Self::prompt(&draft);
+                        let to = if !self.to_tags.is_empty() {
+                            To::Tags(self.to_tags.clone())
+                        } else if self.to_also.is_empty() {
+                            To::Session(to)
+                        } else {
+                            To::Sessions(std::iter::once(to).chain(self.to_also.iter().copied()).collect())
+                        };
+                        sent = Some(Send { to, text: text.clone(), later: self.later || later_key });
+                        self.remember(draft.text.trim_end());
+                        self.back = None;
+                        draft = Draft::default();
+                    }
+                    let paste = if cfg!(target_os = "macos") { "Cmd+V" } else { "Ctrl+V" };
+                    ui.label(RichText::new(trf("inputbox.foot", &[paste])).size(ito_theme::zoomed(ui.ctx(), 11.5)).color(c.faint()));
+                });
+            });
+        });
         if self.menu_was_open && !menus_open {
             self.focus = true;
         }
