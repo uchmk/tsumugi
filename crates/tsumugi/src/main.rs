@@ -1695,7 +1695,9 @@ fn torn_at(ctx: &egui::Context, p: egui::Pos2) -> Option<menu::At> {
     let inner = ctx.input(|i| i.viewport().inner_rect)?;
     let zoom = ctx.zoom_factor();
     let at = (inner.min + p.to_vec2() - egui::vec2(60.0, 16.0)) * zoom;
-    Some(menu::At { pos: [at.x, at.y], scale: ctx.pixels_per_point() / zoom })
+    let at = menu::At { pos: [at.x, at.y], scale: ctx.pixels_per_point() / zoom };
+    // Off every screen (dropped past an edge or in a gap) it would open out of reach (#297).
+    Some(menu::clamp_to_screens(at, [1280.0, 800.0], [60.0, 16.0], &ito_common::window::screens()))
 }
 
 /// Where in the server's order a tab dropped at `gap` among the rows shown

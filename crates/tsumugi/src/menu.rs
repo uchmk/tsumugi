@@ -182,6 +182,30 @@ pub struct At {
     pub scale: f32,
 }
 
+/// `at` moved so the new window's band stays reachable: on the screen the
+/// pointer (`grab` points in from the corner) is on, or the nearest one. The
+/// window is `size` points; `screens` are in pixels. Unchanged where the scale
+/// is 0 (not put on pixels) or no screens are known (#297).
+pub fn clamp_to_screens(at: At, size: [f32; 2], grab: [f32; 2], screens: &[ito_common::window::Screen]) -> At {
+    if at.scale <= 0.0 || screens.is_empty() {
+        return at;
+    }
+    let k = at.scale;
+    let (px, py) = (at.pos[0] * k, at.pos[1] * k);
+    let (cx, cy) = (px + grab[0] * k, py + grab[1] * k);
+    let gap = |s: &ito_common::window::Screen| {
+        let dx = (s.x - cx).max(cx - (s.x + s.w)).max(0.0);
+        let dy = (s.y - cy).max(cy - (s.y + s.h)).max(0.0);
+        dx * dx + dy * dy
+    };
+    let Some(s) = screens.iter().min_by(|a, b| gap(a).total_cmp(&gap(b))) else { return at };
+    let band = 100.0 * k;
+    let w = size[0] * k;
+    let x = px.clamp(s.x + band - w, (s.x + s.w - band).max(s.x + band - w));
+    let y = py.clamp(s.y, (s.y + s.h - band).max(s.y));
+    At { pos: [x / k, y / k], scale: at.scale }
+}
+
 /// Where this window was asked to open, if anywhere.
 pub fn window_at() -> Option<At> {
     std::env::var(WINDOW_AT).ok().and_then(|v| parse_at(&v))
@@ -223,6 +247,31 @@ pub fn new_window(tab: WorkspaceId, at: Option<At>) {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
+    fn screen(x: f32, w: f32) -> ito_common::window::Screen {
+        ito_common::window::Screen { x, y: 0.0, w, h: 1080.0, scale: 1.0, primary: x == 0.0 }
+    }
+
+    #[test]
+    fn a_torn_window_is_kept_on_a_screen() {
+        let screens = [screen(0.0, 1920.0)];
+        let at = |x: f32, y: f32| At { pos: [x, y], scale: 1.0 };
+        let c = |a| clamp_to_screens(a, [1280.0, 800.0], [60.0, 16.0], &screens);
+        assert_eq!(c(at(500.0, 300.0)), at(500.0, 300.0));
+        assert_eq!(c(at(3000.0, 2000.0)), at(1820.0, 980.0));
+        assert_eq!(c(at(-5000.0, -50.0)), at(-1180.0, 0.0));
+        assert_eq!(clamp_to_screens(At { pos: [9e3, 9e3], scale: 0.0 }, [1280.0, 800.0], [60.0, 16.0], &screens).pos, [9e3, 9e3]);
+        assert_eq!(clamp_to_screens(at(9e3, 9e3), [1280.0, 800.0], [60.0, 16.0], &[]), at(9e3, 9e3));
+    }
+
+    #[test]
+    fn a_torn_window_picks_the_screen_under_the_pointer() {
+        let screens = [screen(0.0, 1920.0), screen(1920.0, 1920.0)];
+        let at = At { pos: [2500.0, 200.0], scale: 1.0 };
+        assert_eq!(clamp_to_screens(at, [1280.0, 800.0], [60.0, 16.0], &screens), at);
+    }
+
     /// A first word that is not an app name leaves the line alone.
     #[test]
     fn a_line_without_an_app_name_is_unchanged() {
