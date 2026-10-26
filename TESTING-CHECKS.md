@@ -268,7 +268,7 @@ Covered by tests, not listed below: 1.15, 1.16
 - [x] **7.13** Write `Run the tests in {project} on {branch}`, **Prompts…** → name it, Save; empty the box, **Prompts…** → it, `Ctrl+Enter` → The menu stays open while the name is typed; `prompts.toml` beside the settings holds it; picked, it fills the box and the keys are back in it; the session gets the project's and branch's names in place of the braces; with **+ Sessions**, each its own
 - [x] **7.14** Open **Prompts…** or **+ Sessions**, press `Esc`, type → The menu closes, the box stays open with the keys; nothing reaches the shell
 - [ ] **7.15** Queue a prompt for a session in another tab that is running Claude Code; let it stop on a permission question (`1. Yes / 2. No`) → The prompt stays queued while the question is up; it is sent only once the question is answered and the session waits with no question
-- [ ] **7.16** In the input box of session A press `↑` (a past prompt shows), switch to session B and press `↑` / `↓`; then `Shift+↑` in a two-line draft → B's own draft is never replaced by A's; Shift+↑ selects in the draft, it does not walk the history
+- [x] **7.16** In the input box of session A press `↑` (a past prompt shows), switch to session B and press `↑` / `↓`; then `Shift+↑` in a two-line draft → B's own draft is never replaced by A's; Shift+↑ selects in the draft, it does not walk the history
 
 ## 8. Restoring after a restart
 
