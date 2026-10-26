@@ -282,19 +282,19 @@ Covered by tests, not listed below: 1.15, 1.16
 
 ## 9. The settings screen
 
-- [ ] **9.1** `Ctrl+,` → The screen with its ten pages (General, Appearance, Theme, Sessions, Tags, Shell, Keys, Notifications, Advanced, About) and the search field over them; the band says Settings in the middle with an X; no sidebar or status bar; `Esc` and the X close it
+- [x] **9.1** `Ctrl+,` → The screen with its ten pages (General, Appearance, Theme, Sessions, Tags, Shell, Keys, Notifications, Advanced, About) and the search field over them; the band says Settings in the middle with an X; no sidebar or status bar; `Esc` and the X close it
 - [ ] **9.2** Change something on each page → Only that line of `config.toml` changes (diff the file); comments stay. Language, the clock and the theme change that line of `common.toml` in the uchmk folder instead
-- [ ] **9.3** Write a mistake into `config.toml` by hand → A red line above the status bar says what and where, until it is fixed; nothing else changes
-- [ ] **9.4** Open config.toml / Open the settings folder → The system's editor / file manager opens
+- [x] **9.3** Write a mistake into `config.toml` by hand → A red line above the status bar says what and where, until it is fixed; nothing else changes
+- [x] **9.4** Open config.toml / Open the settings folder → The system's editor / file manager opens
 - [~] **9.5** Type `scroll` in Search settings → Only Advanced in the list, with a count; its Scrollback row lit; Enter goes there. `copy` lists General (**Copy a selection when the mouse lets go**)
 - [ ] **9.6** Next to the design's "Settings: every page" → The same pages, sections and rows in the same order
-- [ ] **9.7** Only the keyboard: `Ctrl+Tab` / `Ctrl+Shift+Tab` through the pages, `Tab` through a page, `Space` on a switch, `Esc` twice → A cyan ring on the control with the keys; Tab never stops on the top band or the list of pages; Space flips the switch (the file changes); the first Esc leaves the control, the second closes the screen; nothing typed reaches the shell behind it
-- [ ] **9.8** Notifications → WHEN A SESSION… → A line between rows; the three state columns the same width, each switch in the middle of its column and row, under its heading's dot
+- [~] **9.7** Only the keyboard: `Ctrl+Tab` / `Ctrl+Shift+Tab` through the pages, `Tab` through a page, `Space` on a switch, `Esc` twice → A cyan ring on the control with the keys; Tab never stops on the top band or the list of pages; Space flips the switch (the file changes); the first Esc leaves the control, the second closes the screen; nothing typed reaches the shell behind it
+- [~] **9.8** Notifications → WHEN A SESSION… → A line between rows; the three state columns the same width, each switch in the middle of its column and row, under its heading's dot
 - [x] **9.9** `Ctrl+,` (macOS `Cmd+,`) with the settings open → They close and stay closed (not reopened on their first page)
 - [~] **9.10** Settings → General → Scale, pick 150% → The whole window (bands, sidebar, settings and panes) grows at once; `scale = 1.5` in `common.toml`, `config.toml` unchanged; `Ctrl+=` and `Ctrl+-` still change only the panes' font size
 - [ ] **9.11** With tsumugi and kura (or yagura) open, write `scale = 1.25` into `common.toml` by hand → Both windows grow to 125% within a couple of seconds; Settings → General → Scale shows 125%
-- [ ] **9.12** v0.115.12: General → **Window**: turn *Remember the window's place* off, move and resize the window, quit and start again; turn it on again, move, quit, start; turn *Keep on top* on and off; press *Forget the saved place* and start again → `[window]` in `common.toml` has `remember_place = false` / `always_on_top = true`; with it off the window opens at its default place and `window.toml` in the state folder is not written; with it on it opens where it was left; *Keep on top* takes effect at once, without a restart, and at the next start; Forget deletes `window.toml` (the next start opens at the default place)
-- [ ] **9.13** v0.115.12: Settings → **About**: the version, system and licence rows, *Copy the details*, the Feedback button; search for `version` → The version is this build's, the system line is the OS; Copy puts the version and system on the clipboard; the button opens the bug form (as F12); the search lists About
+- [x] **9.12** v0.115.12: General → **Window**: turn *Remember the window's place* off, move and resize the window, quit and start again; turn it on again, move, quit, start; turn *Keep on top* on and off; press *Forget the saved place* and start again → `[window]` in `common.toml` has `remember_place = false` / `always_on_top = true`; with it off the window opens at its default place and `window.toml` in the state folder is not written; with it on it opens where it was left; *Keep on top* takes effect at once, without a restart, and at the next start; Forget deletes `window.toml` (the next start opens at the default place)
+- [x] **9.13** v0.115.12: Settings → **About**: the version, system and licence rows, *Copy the details*, the Feedback button; search for `version` → The version is this build's, the system line is the OS; Copy puts the version and system on the clipboard; the button opens the bug form (as F12); the search lists About
 
 ## 10. Themes
 
