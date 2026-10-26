@@ -253,20 +253,20 @@ Covered by tests, not listed below: 1.15, 1.16
 
 ## 7. The input box
 
-- [ ] **7.1** `Ctrl+I`, write two lines (Enter between), `Ctrl+Enter` → The box opens inside the focused pane's card, at its foot, the terminal shortened above it; both lines reach the session as one prompt, then Enter
-- [ ] **7.2** `↑` in the empty box → The last prompt sent; `↓` back
+- [x] **7.1** `Ctrl+I`, write two lines (Enter between), `Ctrl+Enter` → The box opens inside the focused pane's card, at its foot, the terminal shortened above it; both lines reach the session as one prompt, then Enter
+- [x] **7.2** `↑` in the empty box → The last prompt sent; `↓` back
 - [ ] **7.3** Drop two files on the window → Chips in the box; sent, their paths follow the text, quoted when they have spaces
 - [ ] **7.4** Pick a tag as **To**, send → Every session wearing the tag gets it
 - [ ] **7.5** While a session runs, **When done** (or `Ctrl+Shift+Enter`) → `1 queued` on the card and in the box; when the session is done, the prompt goes and a toast says so
 - [ ] **7.6** Queue to a session showing a permission menu → It waits until the menu is answered and the session is done
-- [ ] **7.7** `Esc`, then type `echo ok` and Enter → The box closes and the keys go back to the pane; the draft is kept for next time; the Esc does not reach the shell (`echo ok` runs whole), nor Claude Code (it is not stopped)
+- [x] **7.7** `Esc`, then type `echo ok` and Enter → The box closes and the keys go back to the pane; the draft is kept for next time; the Esc does not reach the shell (`echo ok` runs whole), nor Claude Code (it is not stopped)
 - [ ] **7.8** Take a screenshot (`Win+Shift+S`), `Ctrl+V` in the box → A chip `▣ paste-<date>-<time>.png · N KB`; the PNG is in the settings folder's `attachments`; sent, its path follows the text
-- [ ] **7.9** `Ctrl+V` with text on the clipboard → The text is pasted; no chip
+- [x] **7.9** `Ctrl+V` with text on the clipboard → The text is pasted; no chip
 - [ ] **7.10** Drop a file of a few hundred KB → Its chip says its size, `▤ name · 214 KB`
 - [ ] **7.11** Split the tab, open the box, move the keys with `Alt+Arrows` → The box follows the pane with the keys; a pane narrower than 20 columns has none
 - [ ] **7.12** **+ Sessions** in the box, tick another session, `Esc`, write a prompt, `Ctrl+Enter` → `+ name` beside the pane under To; the menu's Esc does not reach the shell; both sessions get the prompt; a click on `+ name` takes it off
-- [ ] **7.13** Write `Run the tests in {project} on {branch}`, **Prompts…** → name it, Save; empty the box, **Prompts…** → it, `Ctrl+Enter` → The menu stays open while the name is typed; `prompts.toml` beside the settings holds it; picked, it fills the box and the keys are back in it; the session gets the project's and branch's names in place of the braces; with **+ Sessions**, each its own
-- [ ] **7.14** Open **Prompts…** or **+ Sessions**, press `Esc`, type → The menu closes, the box stays open with the keys; nothing reaches the shell
+- [x] **7.13** Write `Run the tests in {project} on {branch}`, **Prompts…** → name it, Save; empty the box, **Prompts…** → it, `Ctrl+Enter` → The menu stays open while the name is typed; `prompts.toml` beside the settings holds it; picked, it fills the box and the keys are back in it; the session gets the project's and branch's names in place of the braces; with **+ Sessions**, each its own
+- [x] **7.14** Open **Prompts…** or **+ Sessions**, press `Esc`, type → The menu closes, the box stays open with the keys; nothing reaches the shell
 - [ ] **7.15** Queue a prompt for a session in another tab that is running Claude Code; let it stop on a permission question (`1. Yes / 2. No`) → The prompt stays queued while the question is up; it is sent only once the question is answered and the session waits with no question
 - [ ] **7.16** In the input box of session A press `↑` (a past prompt shows), switch to session B and press `↑` / `↓`; then `Shift+↑` in a two-line draft → B's own draft is never replaced by A's; Shift+↑ selects in the draft, it does not walk the history
 
