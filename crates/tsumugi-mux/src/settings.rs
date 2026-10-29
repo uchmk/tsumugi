@@ -684,9 +684,11 @@ pub struct MenuItem {
 }
 
 /// The words of the menu's own items, for `menu.hide`.
-pub const MENU_ITEMS: [&str; 17] = [
+pub const MENU_ITEMS: [&str; 19] = [
     "rename",
     "copy-name",
+    "copy-info",
+    "copy-list",
     "note",
     "tags",
     "mute",
@@ -721,7 +723,7 @@ pub fn menu_words(order: &[String]) -> Vec<&'static str> {
 /// The group an item is drawn in; a line goes between two groups.
 pub fn menu_group(word: &str) -> &'static str {
     match word {
-        "rename" | "copy-name" | "note" | "tags" | "mute" | "pin" | "read-only" => "look",
+        "rename" | "copy-name" | "copy-info" | "copy-list" | "note" | "tags" | "mute" | "pin" | "read-only" => "look",
         "restart" | "duplicate" | "new-window" => "start",
         "filer" | "editor" | "copy-path" | "save-output" | "work-log" | "pr" => "folder",
         _ => "close",
@@ -733,6 +735,8 @@ pub fn menu_label(word: &str) -> &'static str {
     match word {
         "rename" => "Rename",
         "copy-name" => "Copy the tab name",
+        "copy-info" => "Copy the session's info",
+        "copy-list" => "Copy the list of sessions",
         "note" => "Note",
         "tags" => "Tags",
         "mute" => "Mute notifications",

@@ -563,6 +563,28 @@ pub fn ls_title(i: &Info) -> String {
     }
 }
 
+/// One row of `tsumugi ls`: id, state, command, folder, title, note, tags (tab-separated).
+pub fn ls_row(i: &Info) -> String {
+    format!("{}\t{}\t{}\t{}\t{}\t{}\t{}", i.id, i.state.word(), i.command, i.cwd.display(), ls_title(i), i.note, i.tags.join(","))
+}
+
+/// What `tsumugi ls` prints, for the clipboard.
+pub fn ls_text(list: &[Info]) -> String {
+    list.iter().map(ls_row).collect::<Vec<_>>().join("\n")
+}
+
+/// A session in words, to tell another session which one is meant: the
+/// number `tsumugi send`/`read` takes, the shown name, the folder and more.
+pub fn session_info(i: &Info, tab_name: &str) -> String {
+    let mut s = format!("session {} ({})\ntab: {}\ncommand: {}\nfolder: {}", i.id, i.state.word(), tab_name, i.command, i.cwd.display());
+    for (k, v) in [("title", ls_title(i)), ("branch", i.branch.clone()), ("note", i.note.clone()), ("tags", i.tags.join(","))] {
+        if !v.is_empty() {
+            s.push_str(&format!("\n{k}: {v}"));
+        }
+    }
+    s
+}
+
 /// The sessions as one JSON array, every field `tsumugi ls` knows.
 pub fn ls_json(list: &[Info]) -> String {
     use crate::json::Json;

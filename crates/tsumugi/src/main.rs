@@ -491,16 +491,7 @@ fn ls(args: &[String]) -> std::process::ExitCode {
         }
         Ok(list) => {
             for i in list {
-                out(&format!(
-                    "{}\t{}\t{}\t{}\t{}\t{}\t{}\n",
-                    i.id,
-                    i.state.word(),
-                    i.command,
-                    i.cwd.display(),
-                    cli::ls_title(&i),
-                    i.note,
-                    i.tags.join(",")
-                ));
+                out(&format!("{}\n", cli::ls_row(&i)));
             }
             std::process::ExitCode::SUCCESS
         }
@@ -3860,6 +3851,23 @@ impl App {
                                 "copy-path" => {
                                     if ui.button(tr("tab.copy_path")).clicked() {
                                         ui.ctx().copy_text(focus.cwd.display().to_string());
+                                        ui.close();
+                                    }
+                                }
+                                "copy-info" => {
+                                    if ui.button(tr("tab.copy_info")).on_hover_text(tr("tab.copy_info_hint")).clicked() {
+                                        let tab = if w.name.is_empty() {
+                                            sort::display_title(&focus.title, &focus.command)
+                                        } else {
+                                            w.name.clone()
+                                        };
+                                        ui.ctx().copy_text(cli::session_info(focus, &tab));
+                                        ui.close();
+                                    }
+                                }
+                                "copy-list" => {
+                                    if ui.button(tr("tab.copy_list")).on_hover_text(tr("tab.copy_list_hint")).clicked() {
+                                        ui.ctx().copy_text(cli::ls_text(sessions));
                                         ui.close();
                                     }
                                 }
