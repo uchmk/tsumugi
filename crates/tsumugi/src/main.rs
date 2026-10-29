@@ -3847,7 +3847,13 @@ impl App {
                                 "editor" => open_with(ui, tr("tab.open_editor"), &self.open.editor, focus),
                                 "copy-name" => {
                                     if ui.button(tr("tab.copy_name")).clicked() {
-                                        ui.ctx().copy_text(w.name.clone());
+                                        // An unnamed tab shows its session's title; that is the name to copy.
+                                        let tab = if w.name.is_empty() {
+                                            sort::display_title(&focus.title, &focus.command)
+                                        } else {
+                                            w.name.clone()
+                                        };
+                                        ui.ctx().copy_text(tab);
                                         ui.close();
                                     }
                                 }
