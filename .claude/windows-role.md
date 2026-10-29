@@ -61,6 +61,7 @@ that can honestly write one. Tick a row only when all of these hold:
 2026-10-03): only when it cannot be measured, after writing down what a failure
 would look like, with the picture you took (`PrintWindow`, cropped and full)
 kept on `C:` and named in the pull request. The owner turns `[~]` into `[x]`.
+If you add the picture to the pull request, save it as `qa-reports/<report-name>-<row>.png` (a new file under `qa-reports/`) and cite it on the report line for the `[~]` row. Never `qa-shots/`: Merge lanes refuses any other new path (tsumugi#325, #326).
 
 In the report, name each key row by its key **in backticks** (`` `Ctrl+Shift+P` ``, `` `Left / Right` ``, and `` `none (give one)` `` plus the action's name for a row with no key), exactly as the row writes it: Merge lanes finds a key's evidence line by that text and refuses a tick without one. A `[~]` names its picture with a file extension (`big.png`) on that line.
 
