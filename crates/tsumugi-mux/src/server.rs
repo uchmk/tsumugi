@@ -871,7 +871,8 @@ fn handle(shared: &Arc<Shared>, client: ClientId, tx: &Sender<ToClient>, msg: To
                         term.end_search();
                     } else {
                         let wrapped = term.search(&ito_pane::plain_pattern(&needle), back);
-                        let _ = tx.send(ToClient::Found { id, wrapped });
+                        let (index, total) = if wrapped.is_some() { match_position(term, &needle) } else { (0, 0) };
+                        let _ = tx.send(ToClient::Found { id, wrapped, index, total });
                     }
                 }
                 ToServer::Copy { primary, .. } => {
@@ -894,6 +895,28 @@ fn handle(shared: &Arc<Shared>, client: ClientId, tx: &Sender<ToClient>, msg: To
             let _ = shared.dirty.send(id);
         }
     }
+}
+
+/// Which match a search is on, and how many the buffer holds, as
+/// `(index, total)` counting from the oldest; `index` is 0 when the
+/// selection has left the match.
+fn match_position(term: &ito_pane::Terminal, needle: &str) -> (usize, usize) {
+    // The search is smart-case: a capital in the needle makes it exact.
+    let exact = needle.chars().any(char::is_uppercase);
+    let want = if exact { needle.to_owned() } else { needle.to_lowercase() };
+    let at = term.found().map(|(a, _)| (a.line.0, a.column.0));
+    let (mut total, mut index) = (0, 0);
+    // Newest first, so the oldest line is last.
+    for (line, _, text) in term.find_lines(needle, usize::MAX).into_iter().rev() {
+        let text = if exact { text } else { text.to_lowercase() };
+        for (byte, _) in text.match_indices(&want) {
+            total += 1;
+            if at == Some((line, text[..byte].chars().count())) {
+                index = total;
+            }
+        }
+    }
+    (index, total)
 }
 
 fn target(msg: &ToServer) -> Option<SessionId> {

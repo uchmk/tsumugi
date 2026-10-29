@@ -18,6 +18,8 @@ pub struct Bar {
     /// The last answer: `None` nothing matched, `Some(true)` it ran off the
     /// end and started again. Unset until one comes.
     pub said: Option<Option<bool>>,
+    /// The match the search is on and how many there are, once it has answered.
+    pub at: (usize, usize),
     /// Give the field the keys this frame (opened, or its key pressed again).
     pub focus: bool,
     /// What was last asked for, so a change starts a new search.
@@ -29,7 +31,7 @@ pub struct Bar {
 
 impl Bar {
     pub fn new(id: SessionId) -> Self {
-        Self { id, needle: String::new(), said: None, focus: true, asked: String::new(), keyed: false }
+        Self { id, needle: String::new(), said: None, at: (0, 0), focus: true, asked: String::new(), keyed: false }
     }
 
     /// The field has the keys: none of them go to the pane, Esc included,
@@ -111,6 +113,10 @@ pub fn show(ctx: &egui::Context, pane: egui::Rect, bar: &mut Bar, c: &Colors) ->
                         Some(None) => RichText::new(tr("find.no_match")).color(c.err),
                         // "From the end again" was cut short in the 96 points (the
                         // real machine, 2.30).
+                        Some(Some(wrapped)) if bar.at.1 > 0 => {
+                            let count = if bar.at.0 > 0 { format!("{} / {}", bar.at.0, bar.at.1) } else { format!("{}", bar.at.1) };
+                            RichText::new(if wrapped { format!("{} {count}", tr("find.wrapped")) } else { count }).color(c.dim)
+                        }
                         Some(Some(true)) => RichText::new(tr("find.wrapped")).color(c.dim),
                         _ => RichText::new(""),
                     };

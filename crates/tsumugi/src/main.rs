@@ -5885,6 +5885,7 @@ impl App {
                 if let Some(bar) = self.find.as_mut().filter(|b| b.id == *id) {
                     if let Some(said) = pane.take_found() {
                         bar.said = Some(said);
+                        bar.at = pane.found_at();
                     }
                     for ask in find::show(&ctx, rect, bar, &theme::colors()) {
                         match ask {

@@ -39,6 +39,8 @@ struct Remote {
     selected: bool,
     /// The answer to `find`, not taken yet.
     found: Option<Option<bool>>,
+    /// Which match that was and how many there are (0, 0 for none).
+    found_at: (usize, usize),
     /// When the program last rang the bell (BEL).
     rang: Option<std::time::Instant>,
 }
@@ -695,7 +697,11 @@ fn receive(inner: &Inner, msg: ToClient) {
         ToClient::Exited { id } => st.screens.entry(id).or_default().exited = true,
         ToClient::Ended { info, last } => st.ended.push((*info, last)),
         ToClient::Text { id, text } => st.texts.push((id, text)),
-        ToClient::Found { id, wrapped } => st.screens.entry(id).or_default().found = Some(wrapped),
+        ToClient::Found { id, wrapped, index, total } => {
+            let r = st.screens.entry(id).or_default();
+            r.found = Some(wrapped);
+            r.found_at = (index, total);
+        }
         ToClient::Clipboard(text) => st.clipboard.push(text),
         ToClient::Primary(text) => st.primary = Some(text),
         ToClient::Picture { id, key, picture } => {
@@ -779,6 +785,12 @@ impl RemotePane {
     /// matched, `Some(Some(wrapped))` when something did.
     pub fn take_found(&self) -> Option<Option<bool>> {
         self.inner.lock().screens.get_mut(&self.id).and_then(|r| r.found.take())
+    }
+
+    /// The match the last `find` is on and how many there are, as `(index, total)`;
+    /// `(0, 0)` when nothing matched.
+    pub fn found_at(&self) -> (usize, usize) {
+        self.inner.lock().screens.get(&self.id).map(|r| r.found_at).unwrap_or_default()
     }
 
     /// End the session's shell.

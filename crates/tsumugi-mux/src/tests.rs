@@ -441,6 +441,35 @@ fn every_sessions_scrollback_is_searched() {
     quiet.kill();
 }
 
+/// A search says which match it is on and how many the buffer holds.
+#[test]
+fn a_search_counts_its_matches() {
+    let at = address();
+    let _srv = serve(&at).expect("the server starts");
+    let c = Client::connect(&at, || {}).expect("a client connects");
+    let pane = c.spawn(std::env::temp_dir(), None, Size::new(80, 24), (8, 16)).expect("a shell starts");
+    until(&pane, "a prompt", |t| !t.trim().is_empty());
+    // The line typed has `$((1+1))`; only the answers have `zq-2`.
+    c.send_prompt(pane.id(), "echo zq-$((1+1)); echo zq-$((1+1))".into());
+    until(&pane, "both answers", |t| t.matches("zq-2").count() == 2);
+    pane.find("zq-2", true);
+    let said = std::cell::Cell::new(None);
+    eventually("the newest match", || {
+        said.set(pane.take_found());
+        said.get().is_some()
+    });
+    let got = pane.found_at();
+    assert_eq!(got, (2, 2));
+    pane.find("zq-2", true);
+    eventually("the older match", || pane.take_found().is_some());
+    assert_eq!(pane.found_at(), (1, 2));
+    // A capital makes the search exact; the output has none, so no match.
+    pane.find("ZQ-2", true);
+    eventually("no exact match", || pane.take_found() == Some(None));
+    assert_eq!(pane.found_at(), (0, 0));
+    pane.kill();
+}
+
 /// A server asked to stop goes, its tabs written down for the next one,
 /// each pane with the profile it was started from.
 #[cfg(unix)]

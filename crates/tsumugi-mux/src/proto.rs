@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 
 /// Bumped whenever a message changes shape: a client and a server that
 /// disagree say so at `Hello` instead of misreading each other.
-pub const VERSION: u32 = 44;
+pub const VERSION: u32 = 45;
 
 /// A `Hello` with this version asks the server to stop, writing down its
 /// tabs first so the next window can bring them back. `Hello` stays the
@@ -531,10 +531,14 @@ pub enum ToClient {
         text: String,
     },
     /// The answer to `Find`: `None` when nothing matched, else whether the
-    /// search ran off the end and started again to find it.
+    /// search ran off the end and started again to find it. `index` is the
+    /// match the search is on (1 for the oldest) and `total` how many the
+    /// buffer holds; both 0 when nothing matched.
     Found {
         id: SessionId,
         wrapped: Option<bool>,
+        index: usize,
+        total: usize,
     },
     /// The answer to `ToServer::Picture`: `None` when the session has let
     /// the picture go.
