@@ -455,7 +455,7 @@ pub fn show(ui: &mut egui::Ui, pal: &Palette, screen: &mut Screen, seen: &Seen) 
         index().into_iter().map(|(p, words)| (Page::ALL.iter().position(|q| *q == p).unwrap_or(0), words)).collect();
     let nav = ito_prefs::Nav { pages: &pages, index: &index, words: words(), file: "config.toml" };
     let page = Page::ALL.iter().position(|p| *p == screen.page).unwrap_or(0);
-    let mut state = ito_prefs::State { page, query: std::mem::take(&mut screen.query), held: screen.held };
+    let mut state = ito_prefs::State { page, query: std::mem::take(&mut screen.query), held: screen.held, search_held: false };
     // Esc leaves the screen, unless a control or the Keys page (a key being
     // pressed for an action, or looked for) has it.
     // While a key is being taken, every key goes to the Keys page: Ctrl+Tab

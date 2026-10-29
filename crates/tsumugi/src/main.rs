@@ -2535,6 +2535,14 @@ impl App {
                 }
                 prefs::Change::OpenFile => {
                     if let Some(p) = tsumugi_mux::settings::default_path() {
+                        // A fresh install has no file yet: make an empty one, or
+                        // the system opens nothing (and leaves a stray console).
+                        if !p.exists() {
+                            if let Some(dir) = p.parent() {
+                                let _ = std::fs::create_dir_all(dir);
+                            }
+                            let _ = std::fs::write(&p, "");
+                        }
                         menu::open_with_system(&p);
                     }
                 }

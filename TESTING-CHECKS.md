@@ -282,10 +282,10 @@ Covered by tests, not listed below: 1.15, 1.16
 
 ## 9. The settings screen
 
-- [x] **9.1** `Ctrl+,` → The screen with its ten pages (General, Appearance, Theme, Sessions, Tags, Shell, Keys, Notifications, Advanced, About) and the search field over them; the band says Settings in the middle with an X; no sidebar or status bar; `Esc` and the X close it
+- [ ] **9.1** `Ctrl+,` → The screen with its ten pages (General, Appearance, Theme, Sessions, Tags, Shell, Keys, Notifications, Advanced, About) and the search field over them; the band says Settings in the middle with an X; no sidebar or status bar; `Esc` and the X close it; at a low window (about 1000x700 px) the page list scrolls and does not run over Open config.toml, and the rows stay readable
 - [ ] **9.2** Change something on each page → Only that line of `config.toml` changes (diff the file); comments stay. Language, the clock and the theme change that line of `common.toml` in the uchmk folder instead
 - [x] **9.3** Write a mistake into `config.toml` by hand → A red line above the status bar says what and where, until it is fixed; nothing else changes
-- [x] **9.4** Open config.toml / Open the settings folder → The system's editor / file manager opens
+- [ ] **9.4** Open config.toml / Open the settings folder (also with no config.toml yet, as on a fresh install) → The system's editor / file manager opens; with no config.toml an empty one is made first and opens
 - [~] **9.5** Type `scroll` in Search settings → Only Advanced in the list, with a count; its Scrollback row lit; Enter goes there. `copy` lists General (**Copy a selection when the mouse lets go**)
 - [ ] **9.6** Next to the design's "Settings: every page" → The same pages, sections and rows in the same order
 - [~] **9.7** Only the keyboard: `Ctrl+Tab` / `Ctrl+Shift+Tab` through the pages, `Tab` through a page, `Space` on a switch, `Esc` twice → A cyan ring on the control with the keys; Tab never stops on the top band or the list of pages; Space flips the switch (the file changes); the first Esc leaves the control, the second closes the screen; nothing typed reaches the shell behind it
