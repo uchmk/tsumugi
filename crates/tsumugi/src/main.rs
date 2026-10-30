@@ -3294,6 +3294,9 @@ impl App {
                     let pr = as_card.then(|| self.git.known(&focus.cwd, &focus.branch).and_then(|g| g.pr)).flatten();
                     let (rect, resp) = ui.allocate_exact_size(egui::vec2(ui.available_width(), height), sense);
                     rows.push((w.id, rect));
+                    // Drawn by hand, so say its name for the screen readers
+                    // and for `--keys` steps that find a row by its text.
+                    resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, tab.name()));
                     let painter = ui.painter_at(rect);
                     let muted = infos.iter().all(|i| i.muted);
                     let quiet_tab = infos.iter().all(|i| quiet(i, &muted_tags));
@@ -6687,6 +6690,15 @@ impl App {
                 keyscript::Do::Read { .. } => (None, String::new()),
                 // Nor does it switch theme or language from a script.
                 keyscript::Do::Theme(_) | keyscript::Do::Lang(_) => (None, String::new()),
+                keyscript::Do::Failed { step, why } => {
+                    // A step that reads the window found it otherwise: say so
+                    // in the done file and end with the code that tells it.
+                    let (done, left) = (script.done.clone(), script.left());
+                    if let Some(done) = done {
+                        let _ = std::fs::write(done, self.script_state(ctx) + &keyscript::failed_report(&step, &why, left));
+                    }
+                    std::process::exit(keyscript::FAILED_EXIT);
+                }
                 keyscript::Do::Quit => {
                     // Asked for by the script: no question about the
                     // sessions still running. No later frame writes the
