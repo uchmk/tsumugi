@@ -928,6 +928,7 @@ impl Notify {
     /// then the `webhooks` in order.
     pub fn places(&self) -> Vec<Place> {
         let place = |url: &str, format: &str, states: &[String]| Place {
+            name: String::new(),
             url: url.trim().to_owned(),
             format: format.to_owned(),
             states: states.to_vec(),
@@ -1025,7 +1026,7 @@ pub fn parse(text: &str) -> Result<Settings, String> {
         return Err(format!("notify.webhook: `{webhook}` is not an http(s) address"));
     }
     for (k, w) in s.notify.webhooks.iter().enumerate() {
-        let place = Place { url: w.url.clone(), format: w.format.clone(), states: w.states.clone() };
+        let place = Place { name: String::new(), url: w.url.clone(), format: w.format.clone(), states: w.states.clone() };
         if let Some(e) = place.problems(&["waiting", "error", "done"]).first() {
             return Err(format!("notify.webhooks {}: {e}", k + 1));
         }

@@ -1527,16 +1527,8 @@ fn tags(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut Vec<
                 if ui.selectable_label(own.is_none(), tr("prefs.common.automatic")).clicked() && own.is_some() {
                     out.push(Change::SetIn("tags.colors".into(), toml_key(&tag), None));
                 }
-                for hex in crate::chrome::TAG_PALETTE {
-                    let fill = Color32::from_hex(hex).unwrap_or(c.dim);
-                    let (r, resp) = ui.allocate_exact_size(egui::vec2(20.0, 20.0), egui::Sense::click());
-                    ui.painter().rect_filled(r, 4.0, fill);
-                    if own.is_some_and(|o| o.eq_ignore_ascii_case(hex)) {
-                        ui.painter().rect_stroke(r.expand(2.0), 5.0, egui::Stroke::new(1.5, c.strong()), egui::StrokeKind::Outside);
-                    }
-                    if resp.on_hover_text(hex).clicked() {
-                        out.push(Change::SetIn("tags.colors".into(), toml_key(&tag), Some(cfg::quote(hex))));
-                    }
+                if let Some(hex) = ito_prefs::tag_picker(ui, l, own.map_or("", String::as_str)) {
+                    out.push(Change::SetIn("tags.colors".into(), toml_key(&tag), Some(cfg::quote(hex))));
                 }
             });
             ui.add_space(6.0);
@@ -2426,9 +2418,9 @@ mod tests {
         run.frame(&mut screen, Vec::new());
         let (_, texts) = run.frame(&mut screen, Vec::new());
         assert!(find(&texts, "https://ntfy.sh/a").is_some(), "its address");
-        let old = Place { url: "https://ntfy.sh/a".into(), format: "ntfy".into(), states: vec!["done".into()] };
+        let old = Place { name: String::new(), url: "https://ntfy.sh/a".into(), format: "ntfy".into(), states: vec!["done".into()] };
         let add = *find(&texts, "Add an address").expect("Add an address");
-        let new = Place { url: String::new(), format: "ntfy".into(), states: STATES.map(String::from).to_vec() };
+        let new = Place { name: String::new(), url: String::new(), format: "ntfy".into(), states: STATES.map(String::from).to_vec() };
         assert_eq!(run.click(&mut screen, add.center()), vec![Change::Webhooks(vec![old.clone(), new])]);
         let test = *find(&texts, "Send a test here").expect("Send a test here");
         assert_eq!(run.click(&mut screen, test.center()), vec![Change::TestWebhook(old)]);

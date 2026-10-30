@@ -4803,15 +4803,15 @@ impl App {
     /// A tag's new name: in the rules and the colours of the settings, on the
     /// sessions that have it, and quiet if it was.
     /// Give the tags in use that have no colour of their own one in
-    /// `[tags.colors]`, a free one where there is one (`chrome::settle_tag_colors`).
+    /// `[tags.colors]`, a free one where there is one (`ito_prefs::settle_tag_colors`).
     fn settle_tag_colors(&mut self, in_use: &[String]) {
         if !self.settings_loaded {
             return;
         }
-        let new: Vec<(String, &'static str)> = chrome::settle_tag_colors(in_use, &self.settings_now.tags.colors)
-            .into_iter()
-            .filter(|(t, _)| !self.tag_colors_sent.contains(t))
-            .collect();
+        let names: Vec<&str> = in_use.iter().map(String::as_str).collect();
+        let own = self.settings_now.tags.colors.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+        let new: Vec<(String, String)> =
+            ito_prefs::settle_tag_colors(&names, &own).into_iter().filter(|(t, _)| !self.tag_colors_sent.contains(t)).collect();
         if new.is_empty() {
             return;
         }
