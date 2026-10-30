@@ -260,6 +260,25 @@ mod tests {
     use super::*;
     use tsumugi_mux::State;
 
+    #[test]
+    fn attention_lists_the_ones_not_running_longest_first() {
+        let mut a = info(1, "C:/a", "pwsh", &[]);
+        let mut b = info(2, "C:/b", "pwsh", &[]);
+        let c = info(3, "C:/c", "pwsh", &[]);
+        a.state = State::Waiting;
+        a.since_ms = 9_000;
+        b.state = State::Error;
+        b.since_ms = 4_000;
+        let out = attention_json(&[a, b, c], 10_000);
+        let ids: Vec<usize> = out
+            .match_indices("\"id\": ")
+            .map(|(i, _)| out[i + 6..].split(|c: char| !c.is_ascii_digit()).next().unwrap().parse().unwrap())
+            .collect();
+        assert_eq!(ids, [2, 1], "{out}");
+        assert!(out.contains("\"for_secs\": 6") && out.contains("\"for_secs\": 1"), "{out}");
+        assert!(out.contains("\"running\": 1") && out.contains("\"waiting\": 1") && out.contains("\"error\": 1"), "{out}");
+    }
+
     fn info(id: SessionId, cwd: &str, command: &str, tags: &[&str]) -> Info {
         Info {
             id,
@@ -613,6 +632,45 @@ pub fn ls_json(list: &[Info]) -> String {
             })
             .collect(),
     )
+    .pretty()
+}
+
+/// What a supervising agent needs first: how many sessions are in each state,
+/// and the ones that want someone (`waiting`, `waiting?`, `error`, `done`),
+/// the longest-waiting first, with how many seconds they have been so at `now_ms`.
+pub fn attention_json(list: &[Info], now_ms: u64) -> String {
+    use crate::json::Json;
+    let s = |v: &str| Json::String(v.to_owned());
+    let count = |word: &str| Json::Number(list.iter().filter(|i| i.state.word() == word).count() as f64);
+    let mut wanting: Vec<&Info> = list.iter().filter(|i| !matches!(i.state, tsumugi_mux::State::Running)).collect();
+    wanting.sort_by_key(|i| (i.since_ms, i.id));
+    Json::Object(vec![
+        ("running".into(), count("running")),
+        ("waiting".into(), count("waiting")),
+        ("maybe_waiting".into(), count("waiting?")),
+        ("done".into(), count("done")),
+        ("error".into(), count("error")),
+        (
+            "needs_attention".into(),
+            Json::Array(
+                wanting
+                    .iter()
+                    .map(|i| {
+                        Json::Object(vec![
+                            ("id".into(), Json::Number(i.id as f64)),
+                            ("state".into(), s(i.state.word())),
+                            ("for_secs".into(), Json::Number((now_ms.saturating_sub(i.since_ms) / 1000) as f64)),
+                            ("title".into(), s(&i.title)),
+                            ("note".into(), s(&i.note)),
+                            ("cwd".into(), s(&i.cwd.to_string_lossy())),
+                            ("branch".into(), s(&i.branch)),
+                            ("tags".into(), Json::Array(i.tags.iter().map(|t| s(t)).collect())),
+                        ])
+                    })
+                    .collect(),
+            ),
+        ),
+    ])
     .pretty()
 }
 

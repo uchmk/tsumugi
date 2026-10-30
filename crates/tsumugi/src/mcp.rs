@@ -41,6 +41,26 @@ fn server() -> Server {
             "The sessions in tsumugi: for each, its number (id), state (running, waiting, done, error, idle), command, folder (cwd), project, git branch, title, note and tags. A session waiting is one asking the user something.",
             |_| sessions(),
         ))
+        .tool(Tool::new(
+            "tsumugi_attention",
+            "A summary for supervising the sessions: how many are running, waiting, maybe waiting, done or in error, and the ones that are not running, longest in their state first, each with for_secs (how long it has been so), title, note, folder, branch and tags. Start here to decide which session to look at (tsumugi_screen) or answer.",
+            |_| attention(),
+        ))
+        .tool(
+            Tool::new(
+                "tsumugi_wait",
+                "Wait until a tsumugi session stops running (it is waiting for an answer, done or in error), for up to `timeout_secs` (50 at most; ask again when it says timed_out). Answers with the session's state, so a supervising agent can sleep on one session instead of polling tsumugi_sessions.",
+                wait,
+            )
+            .input(json!({
+                "type": "object",
+                "properties": {
+                    "session": { "type": "string", "description": "The session's number, or its folder, title, program or tag." },
+                    "timeout_secs": { "type": "integer", "minimum": 1, "description": "How long to wait, at most 50 (30 when left out)." },
+                },
+                "required": ["session"],
+            })),
+        )
         .tool(
             Tool::new(
                 "tsumugi_screen",
@@ -82,6 +102,42 @@ fn client() -> Result<Client, String> {
 fn sessions() -> Answer {
     let list = client()?.list().map_err(|e| e.to_string())?;
     Ok(cli::ls_json(&list))
+}
+
+fn attention() -> Answer {
+    let list = client()?.list().map_err(|e| e.to_string())?;
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_millis() as u64);
+    Ok(cli::attention_json(&list, now))
+}
+
+fn wait(args: &Value) -> Answer {
+    let who = who(args)?;
+    let client = client()?;
+    let id = cli::find(&client.list().map_err(|e| e.to_string())?, &who)?;
+    let timeout = ito_mcp::arg_secs(args, "timeout_secs", 30);
+    let phase = |list: &[tsumugi_mux::Info]| -> Option<Option<(ito_mcp::Phase, &'static str)>> {
+        let i = list.iter().find(|i| i.id == id)?;
+        Some(match i.state {
+            tsumugi_mux::State::Running => None,
+            tsumugi_mux::State::Waiting | tsumugi_mux::State::MaybeWaiting => Some((ito_mcp::Phase::Waiting, i.state.word())),
+            tsumugi_mux::State::Done => Some((ito_mcp::Phase::Done, i.state.word())),
+            tsumugi_mux::State::Error => Some((ito_mcp::Phase::Error, i.state.word())),
+        })
+    };
+    let mut ended = false;
+    let found = ito_mcp::wait(timeout, Duration::from_secs(1), || match client.list().ok().as_deref().and_then(phase) {
+        Some(Some(p)) => Some(p),
+        Some(None) => None,
+        None => {
+            ended = true;
+            Some((ito_mcp::Phase::Error, "gone"))
+        }
+    });
+    Ok(match found {
+        _ if ended => format!("session {id} has ended"),
+        Some((_, word)) => format!("session {id} is {word}"),
+        None => format!("timed_out: session {id} is still running"),
+    })
 }
 
 /// A session named by number or by name; a number arrives as a string or as
@@ -139,7 +195,7 @@ mod tests {
         let s = server();
         let a: Value = serde_json_from(&s.handle(r#"{"jsonrpc":"2.0","id":1,"method":"tools/list"}"#).unwrap());
         let names: Vec<&str> = a["result"]["tools"].as_array().unwrap().iter().map(|t| t["name"].as_str().unwrap()).collect();
-        assert_eq!(names, ["tsumugi_sessions", "tsumugi_screen", "tsumugi_send"]);
+        assert_eq!(names, ["tsumugi_sessions", "tsumugi_attention", "tsumugi_wait", "tsumugi_screen", "tsumugi_send"]);
         for t in a["result"]["tools"].as_array().unwrap() {
             assert_eq!(t["annotations"]["readOnlyHint"] == true, t["name"] != "tsumugi_send", "{t}");
         }
@@ -149,6 +205,11 @@ mod tests {
     fn screen_wants_a_session() {
         let err = screen(&json!({})).unwrap_err();
         assert!(err.contains("session"), "{err}");
+    }
+
+    #[test]
+    fn wait_wants_a_session() {
+        assert!(wait(&json!({"timeout_secs": 1})).unwrap_err().contains("session"));
     }
 
     #[test]

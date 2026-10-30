@@ -1027,6 +1027,8 @@ stdout, so Claude Code (or another MCP client) can read your sessions as tools:
 | Tool | Gives |
 | --- | --- |
 | `tsumugi_sessions` | The sessions: number, state, command, folder, branch, title, note, tags (`tsumugi ls --json`) |
+| `tsumugi_attention` | For supervising: counts per state, and the sessions not running, longest in their state first (`for_secs`) |
+| `tsumugi_wait` | Waits (50 s at most, `timeout_secs`) until one session stops running; answers its state, or `timed_out` |
 | `tsumugi_screen` | One session's last lines (`lines`, 40) or whole scrollback (`all`), by number or name (`tsumugi read`) |
 | `tsumugi_send` | Types `text` into a session and presses Enter (`tsumugi send`), only after you press Allow in a box in a tsumugi window |
 
