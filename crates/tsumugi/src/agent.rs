@@ -18,7 +18,7 @@ description: Use when running inside tsumugi (the terminal for several AI CLI se
 
 tsumugi runs several AI CLI sessions side by side. Each is a numbered session; this one is `$TSUMUGI_SESSION`.
 
-Prefer the MCP tools (`tsumugi_sessions`, `tsumugi_read`, `tsumugi_wait`, `tsumugi_attention`, `tsumugi_send`); the same things are on the command line:
+Prefer the MCP tools (`tsumugi_sessions`, `tsumugi_read`, `tsumugi_wait`, `tsumugi_attention`, `tsumugi_send`, `tsumugi_split`, `tsumugi_close`); the same things are on the command line:
 
 - `tsumugi ls [--json]` lists the sessions (number, state, command, folder, title, tags).
 - `tsumugi read N` shows what session N displays. Reading needs no permission.
@@ -26,7 +26,7 @@ Prefer the MCP tools (`tsumugi_sessions`, `tsumugi_read`, `tsumugi_wait`, `tsumu
 - `tsumugi send N TEXT` types a line into session N. The user must press Allow in a box in their window, and may refuse: say what you send and why, and do not retry a refusal.
 - `tsumugi notify --state waiting|done|error [MESSAGE]` marks this session in the sidebar; `tsumugi tag TAG...` tags it.
 
-Sessions belong to the user. Do not send to or close a session you did not start unless asked to.
+Sessions belong to the user. `tsumugi_split` opens a shell pane for you to work in and `tsumugi_close` closes only such a pane; a session you did not open is never closed from here.
 ";
 
 /// What `setup` asks of ito-agent: the exe that is running, as the MCP server and the hook.

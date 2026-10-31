@@ -1031,6 +1031,8 @@ stdout, so Claude Code (or another MCP client) can read your sessions as tools:
 | `tsumugi_wait` | Waits (50 s at most, `timeout_secs`) until one session stops running; answers its state, or `timed_out` |
 | `tsumugi_screen` | One session's last lines (`lines`, 40) or whole scrollback (`all`), by number or name (`tsumugi read`) |
 | `tsumugi_send` | Types `text` into a session and presses Enter (`tsumugi send`), only after you press Allow in a box in a tsumugi window |
+| `tsumugi_split` | Opens a shell pane beside or below a session (`down`), starting no program; answers its number |
+| `tsumugi_close` | Closes a pane opened with `tsumugi_split`; any other session is refused |
 
 ```sh
 claude mcp add tsumugi -- tsumugi mcp          # the full path to tsumugi(.exe) if it is not on PATH

@@ -34,8 +34,11 @@ pub fn run() -> std::process::ExitCode {
 }
 
 fn server() -> Server {
+    // What this agent opened, so `tsumugi_close` closes only that.
+    let opened = ito_mcp::Opened::new();
+    let (for_split, for_close) = (opened.clone(), opened);
     Server::new("tsumugi", env!("CARGO_PKG_VERSION"))
-        .instructions("tsumugi is the terminal where the user runs several AI CLI sessions (Claude Code and others) side by side. These tools read the sessions of the tsumugi running on this machine: which there are, what each is doing, and what one shows. tsumugi_send types a line into a session only after the user presses Allow in a box in their window; they can say no, so tell them what you are sending and why.")
+        .instructions("tsumugi is the terminal where the user runs several AI CLI sessions (Claude Code and others) side by side. These tools read the sessions of the tsumugi running on this machine: which there are, what each is doing, and what one shows. tsumugi_send types a line into a session only after the user presses Allow in a box in their window; they can say no, so tell them what you are sending and why. tsumugi_split opens a shell pane and tsumugi_close closes only panes opened that way.")
         .tool(Tool::new(
             "tsumugi_sessions",
             "The sessions in tsumugi: for each, its number (id), state (running, waiting, done, error, idle), command, folder (cwd), project, git branch, title, note and tags. A session waiting is one asking the user something.",
@@ -91,7 +94,37 @@ fn server() -> Server {
                 },
                 "required": ["session", "text"],
             }))
+            .writes()
+            .needs_confirm(),
+        )
+        .tool(
+            Tool::new(
+                "tsumugi_split",
+                "Open a new shell pane beside or below a tsumugi session, in its folder, and answer its number. It starts no program: type into it with tsumugi_send (which asks the user). tsumugi_close can close only panes opened this way.",
+                move |args| split(args, &for_split),
+            )
+            .input(json!({
+                "type": "object",
+                "properties": {
+                    "session": { "type": "string", "description": "The session to open the pane beside: its number, or its folder, title, program or tag." },
+                    "down": { "type": "boolean", "description": "Below it instead of to its right." },
+                },
+                "required": ["session"],
+            }))
             .writes(),
+        )
+        .tool(
+            Tool::new(
+                "tsumugi_close",
+                "Close a pane this agent opened with tsumugi_split. Any other session is refused: the user's own sessions are never closed from here.",
+                move |args| close(args, &for_close),
+            )
+            .input(json!({
+                "type": "object",
+                "properties": { "session": { "type": "string", "description": "The number tsumugi_split answered." } },
+                "required": ["session"],
+            }))
+            .destructive(),
         )
 }
 
@@ -166,6 +199,30 @@ fn send(args: &Value) -> Answer {
     Ok(format!("typed into session {id} and sent"))
 }
 
+fn split(args: &Value, opened: &ito_mcp::Opened) -> Answer {
+    let who = who(args)?;
+    let down = args.get("down").and_then(Value::as_bool).unwrap_or(false);
+    let client = client()?;
+    let list = client.list().map_err(|e| e.to_string())?;
+    let id = cli::find(&list, &who)?;
+    let split = cli::Split { who, down, percent: None, count: None, command: Vec::new() };
+    let made = cli::split(&client, &list, id, &split)?;
+    let new = made.last().ok_or("no pane was opened")?;
+    opened.insert(&new.to_string());
+    Ok(format!("opened session {new}"))
+}
+
+fn close(args: &Value, opened: &ito_mcp::Opened) -> Answer {
+    let id = opened.check(&who(args)?)?;
+    let client = client()?;
+    let list = client.list().map_err(|e| e.to_string())?;
+    let sid = cli::find(&list, &id)?;
+    client.attach(sid).kill();
+    client.list().map_err(|e| e.to_string())?;
+    opened.remove(&id);
+    Ok(format!("closed session {id}"))
+}
+
 fn screen(args: &Value) -> Answer {
     let who = who(args)?;
     let lines = args.get("lines").and_then(Value::as_u64).map_or(40, |n| n.max(1) as usize);
@@ -191,14 +248,33 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_tools_are_listed_and_only_send_writes() {
+    fn the_tools_are_listed_and_only_send_split_and_close_write() {
         let s = server();
         let a: Value = serde_json_from(&s.handle(r#"{"jsonrpc":"2.0","id":1,"method":"tools/list"}"#).unwrap());
         let names: Vec<&str> = a["result"]["tools"].as_array().unwrap().iter().map(|t| t["name"].as_str().unwrap()).collect();
-        assert_eq!(names, ["tsumugi_sessions", "tsumugi_attention", "tsumugi_wait", "tsumugi_screen", "tsumugi_send"]);
+        assert_eq!(
+            names,
+            ["tsumugi_sessions", "tsumugi_attention", "tsumugi_wait", "tsumugi_screen", "tsumugi_send", "tsumugi_split", "tsumugi_close"]
+        );
         for t in a["result"]["tools"].as_array().unwrap() {
-            assert_eq!(t["annotations"]["readOnlyHint"] == true, t["name"] != "tsumugi_send", "{t}");
+            assert_eq!(
+                t["annotations"]["readOnlyHint"] == true,
+                !["tsumugi_send", "tsumugi_split", "tsumugi_close"].contains(&t["name"].as_str().unwrap()),
+                "{t}"
+            );
         }
+        for t in a["result"]["tools"].as_array().unwrap() {
+            assert_eq!(t["annotations"]["destructiveHint"] == true, t["name"] == "tsumugi_close", "{t}");
+        }
+    }
+
+    #[test]
+    fn close_refuses_what_the_agent_did_not_open() {
+        let opened = ito_mcp::Opened::new();
+        opened.insert("7");
+        assert!(close(&json!({"session": "3"}), &opened).unwrap_err().contains("not opened by the agent"));
+        assert!(close(&json!({"session": 3}), &opened).unwrap_err().contains("not opened by the agent"));
+        assert!(close(&json!({}), &opened).unwrap_err().contains("session"));
     }
 
     #[test]

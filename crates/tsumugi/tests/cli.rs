@@ -999,3 +999,33 @@ fn hook_session_start_names_the_session_and_is_silent_outside() {
     let out = s.run(&["hook", "session-start"]);
     assert!(out.status.success() && out.stdout.is_empty(), "{:?}", out);
 }
+
+/// `tsumugi_split` opens a pane and `tsumugi_close` closes only such a pane:
+/// the user's own session is refused and stays.
+#[test]
+fn mcp_closes_only_the_panes_it_opened() {
+    use std::io::{BufRead, Write};
+    let s = Server::new("mcp-close");
+    let mine = s.new_session(&[]);
+    let mut child = s.command(&["mcp"]).stdin(Stdio::piped()).stdout(Stdio::piped()).spawn().unwrap();
+    let mut input = child.stdin.take().unwrap();
+    let mut output = std::io::BufReader::new(child.stdout.take().unwrap());
+    let mut call = |id: u32, tool: &str, args: &str| -> String {
+        writeln!(input, r#"{{"jsonrpc":"2.0","id":{id},"method":"tools/call","params":{{"name":"{tool}","arguments":{args}}}}}"#).unwrap();
+        let mut line = String::new();
+        output.read_line(&mut line).unwrap();
+        line
+    };
+    let refused = call(1, "tsumugi_close", &format!(r#"{{"session":"{mine}"}}"#));
+    assert!(refused.contains("not opened by the agent"), "{refused}");
+    let opened = call(2, "tsumugi_split", &format!(r#"{{"session":"{mine}","down":true}}"#));
+    assert!(opened.contains(r#""isError":false"#) && opened.contains("opened session"), "{opened}");
+    let new: String = opened.split("opened session ").nth(1).unwrap().chars().take_while(char::is_ascii_digit).collect();
+    assert!(s.line_of(&s.ok(&["ls"]), &new).is_some(), "the new pane is listed");
+    let closed = call(3, "tsumugi_close", &format!(r#"{{"session":"{new}"}}"#));
+    assert!(closed.contains(r#""isError":false"#) && closed.contains("closed session"), "{closed}");
+    let ls = s.ok(&["ls"]);
+    assert!(s.line_of(&ls, &mine).is_some(), "the user's session stays:\n{ls}");
+    drop(input);
+    let _ = child.wait();
+}
