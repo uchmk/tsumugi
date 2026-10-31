@@ -18,6 +18,7 @@
 // No console window behind the GUI on Windows, in a release build.
 #![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 
+mod agent;
 mod alert;
 mod answer;
 mod backdrop;
@@ -96,7 +97,7 @@ fn main() -> std::process::ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
     // The server and the proxy speak to no one through a console; the proxy's
     // stdout is the line to ssh, and `mcp`'s the line to the LLM client.
-    if args.first().is_some_and(|a| a != "server" && a != "proxy" && a != "mcp") {
+    if args.first().is_some_and(|a| a != "server" && a != "proxy" && a != "mcp" && a != "hook") {
         attach_console();
     }
     match args.first().map(String::as_str) {
@@ -111,9 +112,12 @@ fn main() -> std::process::ExitCode {
         Some("proxy") => proxy(),
         Some("ls") => ls(&args[1..]),
         Some("mcp") => mcp::run(),
+        Some("skill") => agent::skill(&args[1..]),
+        Some("hook") => agent::hook(&args[1..]),
         Some("send" | "read" | "split" | "close" | "log" | "wait") => remote(&args[0], &args[1..]),
         Some("help" | "--help" | "-h") => {
-            out(&format!("tsumugi: the window, or one of\n{}\n{}\n{}\ntsumugi attach N|NAME\ntsumugi proxy                            (what --host runs on the other machine)\ntsumugi notify [--state S] [--session N] [MESSAGE]\ntsumugi tag [--session N] [--remove] TAG...\n{}\n{}\ntsumugi shell-hook bash|zsh|pwsh\ntsumugi env                              version, OS, where the settings and the state are, whether a server answers: to paste into a bug report\ntsumugi mcp                              an MCP server on stdin/stdout, for Claude Code (see the README)\ntsumugi --keys SCRIPT                    the window, pressing the script's keys (`<C-S-t><Wait:500><Shot:tab><Quit>`); TSUMUGI_KEYS_DONE names the file for its state\n\nTSUMUGI_CONFIG_HOME and TSUMUGI_STATE_HOME name other folders for the settings (config.toml) and the state.\n", cli::NEW_USAGE, cli::LAYOUT_USAGE, cli::REMOTE_USAGE, serial::USAGE, tmux::USAGE));
+            out(&format!("tsumugi: the window, or one of\n{}\n{}\n{}\ntsumugi attach N|NAME\ntsumugi proxy                            (what --host runs on the other machine)\ntsumugi notify [--state S] [--session N] [MESSAGE]\ntsumugi tag [--session N] [--remove] TAG...\n{}\n{}\ntsumugi shell-hook bash|zsh|pwsh\ntsumugi env                              version, OS, where the settings and the state are, whether a server answers: to paste into a bug report\ntsumugi skill setup|status|remove        teach Claude Code and Codex about tsumugi (see `tsumugi skill`)
+tsumugi mcp                              an MCP server on stdin/stdout, for Claude Code (see the README)\ntsumugi --keys SCRIPT                    the window, pressing the script's keys (`<C-S-t><Wait:500><Shot:tab><Quit>`); TSUMUGI_KEYS_DONE names the file for its state\n\nTSUMUGI_CONFIG_HOME and TSUMUGI_STATE_HOME name other folders for the settings (config.toml) and the state.\n", cli::NEW_USAGE, cli::LAYOUT_USAGE, cli::REMOTE_USAGE, serial::USAGE, tmux::USAGE));
             std::process::ExitCode::SUCCESS
         }
         Some("notify") => notify(&args[1..]),

@@ -938,3 +938,64 @@ fn answers_into_a_closed_pipe_are_let_go() {
         assert!(out.status.success() && !err.contains("panicked"), "tsumugi {args:?} into a closed pipe: {:?}\n{err}", out.status);
     }
 }
+
+/// `tsumugi skill setup|status|remove` against a home folder of its own
+/// (`ITO_AGENT_HOME`): the skill, the MCP server and the SessionStart hook
+/// are written once, setup twice changes nothing, `--no-hook` takes the hook
+/// back, and `remove` leaves the user's own servers and hooks alone.
+#[test]
+fn skill_setup_status_remove_keep_the_users_own_files() {
+    let s = Server::new("skill");
+    let home = s.dir.join("home");
+    std::fs::create_dir_all(home.join(".claude")).unwrap();
+    std::fs::write(home.join(".claude.json"), r#"{"mcpServers":{"other":{"command":"x"}}}"#).unwrap();
+    std::fs::write(
+        home.join(".claude").join("settings.json"),
+        r#"{"hooks":{"SessionStart":[{"hooks":[{"type":"command","command":"mine"}]}]}}"#,
+    )
+    .unwrap();
+    let run = |args: &[&str]| {
+        let out = s.command(args).env("ITO_AGENT_HOME", &home).env_remove("CODEX_HOME").output().unwrap();
+        assert!(out.status.success(), "tsumugi {args:?}: {:?}\n{}", out.status, String::from_utf8_lossy(&out.stderr));
+        String::from_utf8(out.stdout).unwrap()
+    };
+    let read = |p: &str| std::fs::read_to_string(home.join(p)).unwrap();
+
+    let plan = run(&["skill", "setup", "--dry-run"]);
+    assert!(plan.contains("claude"), "{plan}");
+    assert!(!home.join(".claude").join("skills").exists(), "a dry run writes nothing");
+
+    run(&["skill", "setup", "--agent", "claude"]);
+    assert!(read(".claude/skills/tsumugi/SKILL.md").contains("name: tsumugi"));
+    let json = read(".claude.json");
+    assert!(json.contains("\"other\"") && json.contains("\"tsumugi\"") && json.contains("\"mcp\""), "{json}");
+    let settings = read(".claude/settings.json");
+    assert!(settings.contains("mine") && settings.contains("hook session-start"), "{settings}");
+    let status = run(&["skill", "status", "--agent", "claude"]);
+    for item in ["skill", "mcp", "hook"] {
+        assert!(status.contains(&format!("claude\t{item}\tinstalled")), "{status}");
+    }
+
+    assert!(run(&["skill", "setup", "--agent", "claude"]).contains("nothing to change"));
+    run(&["skill", "setup", "--agent", "claude", "--no-hook"]);
+    let settings = read(".claude/settings.json");
+    assert!(settings.contains("mine") && !settings.contains("session-start"), "{settings}");
+
+    run(&["skill", "remove"]);
+    assert!(!home.join(".claude/skills/tsumugi/SKILL.md").exists());
+    let json = read(".claude.json");
+    assert!(json.contains("\"other\"") && !json.contains("\"tsumugi\""), "{json}");
+    assert!(read(".claude/settings.json").contains("mine"));
+}
+
+/// The SessionStart hook says which session the agent is in, and nothing at
+/// all (and no failure) outside tsumugi.
+#[test]
+fn hook_session_start_names_the_session_and_is_silent_outside() {
+    let s = Server::new("hook");
+    let id = s.new_session(&["--tag", "review"]);
+    let text = String::from_utf8(s.command(&["hook", "session-start"]).env("TSUMUGI_SESSION", &id).output().unwrap().stdout).unwrap();
+    assert!(text.contains(&format!("session {id}")) && text.contains("review"), "{text}");
+    let out = s.run(&["hook", "session-start"]);
+    assert!(out.status.success() && out.stdout.is_empty(), "{:?}", out);
+}

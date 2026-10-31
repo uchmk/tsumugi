@@ -1034,7 +1034,16 @@ stdout, so Claude Code (or another MCP client) can read your sessions as tools:
 
 ```sh
 claude mcp add tsumugi -- tsumugi mcp          # the full path to tsumugi(.exe) if it is not on PATH
+tsumugi skill setup                            # or: all of it at once, for Claude Code and Codex
 ```
+
+`tsumugi skill setup` writes a skill (`~/.claude/skills/tsumugi/SKILL.md`), registers this server
+(`mcpServers.tsumugi` in `~/.claude.json`; `[mcp_servers.tsumugi]` in Codex's `config.toml`) and adds a
+SessionStart hook to Claude Code that tells the agent which session it is in (`tsumugi hook session-start`;
+it prints nothing outside tsumugi). `--dry-run` shows the plan, `--no-hook` leaves the hook out, `--agent
+claude|codex` picks one. Running it again changes nothing; your own servers and hooks are kept, and a file
+you edited is not overwritten without `--force`. `tsumugi skill status` shows what is installed and
+`tsumugi skill remove` takes back only what `setup` wrote (the manifest is `agent-install.json` in the state folder).
 
 It talks only to this machine's server, which it never starts: with none
 running, the tools say tsumugi is not running. What the reading tools return

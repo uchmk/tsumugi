@@ -5,6 +5,17 @@
 
 ## [未リリース]
 
+## [0.115.158] - 2026-10-31
+
+### 追加
+
+- `tsumugi skill setup|status|remove`（uchmk/ito#96）。Claude Code と Codex に tsumugi を教える。スキル（`~/.claude/skills/tsumugi/SKILL.md`）、MCP サーバー（`tsumugi mcp`）、Claude Code の SessionStart の hook を入れ、`--dry-run`・`--no-hook`・`--force`・`--agent` を取る。冪等で、`remove` は入れたものだけ消す。
+- `tsumugi hook session-start`。いまのセッションの番号・フォルダー・タグを書く（tsumugi の外では何も出さず、失敗にしない）。
+
+### 変更
+
+- ito v0.160.0 に上げた（`ito-agent`）。
+
 ## [0.115.157] - 2026-10-31
 
 ### 変更
