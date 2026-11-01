@@ -490,7 +490,7 @@ pub fn show(ui: &mut egui::Ui, pal: &Palette, screen: &mut Screen, seen: &Seen) 
     if done.close {
         out.insert(0, Change::Close);
     }
-    if done.open_file {
+    if done.open_file.is_some() {
         out.push(Change::OpenFile);
     }
     out.retain(|change| match change {
