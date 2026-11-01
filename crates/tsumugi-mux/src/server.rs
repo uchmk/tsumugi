@@ -477,7 +477,16 @@ fn handle(shared: &Arc<Shared>, client: ClientId, tx: &Sender<ToClient>, msg: To
                         Some(bytes) => s.term.send(bytes),
                         None => s.term.paste(&text),
                     }
-                    s.term.send(b"\r".to_vec());
+                    // The Enter follows after a pause: in the same burst, Claude Code's input box
+                    // takes it as part of the paste and the text sits there unsent (#281).
+                    let later = shared.clone();
+                    let _ = std::thread::Builder::new().name("ask-enter".into()).spawn(move || {
+                        std::thread::sleep(crate::client::ENTER_AFTER_TEXT);
+                        if let Some(s) = lock(&later.sessions).get_mut(&id) {
+                            s.term.send(b"\r".to_vec());
+                            let _ = later.dirty.send(id);
+                        }
+                    });
                     read_notices_of(shared, id);
                     let _ = shared.dirty.send(id);
                     Ok(())
