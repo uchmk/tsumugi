@@ -231,6 +231,31 @@ fn a_restart_starts_the_shell_again_in_place() {
     pane.kill();
 }
 
+/// A program that works again by itself (a finished background task) says
+/// no new "done": its title turning a spinner takes the stale one back.
+#[test]
+fn a_done_notice_is_stale_while_the_title_spins() {
+    use crate::State;
+    let at = address();
+    let _srv = serve(&at).expect("the server starts");
+    let c = Client::connect(&at, || {}).expect("a client connects");
+    let pane = c.spawn(std::env::temp_dir(), None, Size::new(80, 24), (8, 16)).expect("a shell starts");
+    until(&pane, "a prompt", |t| !t.trim().is_empty());
+    // The key comes first and the notice after it, so the notice counts; the spinner then
+    // comes by itself, with no key.
+    let spin: &[u8] = if cfg!(windows) {
+        b"[Console]::OutputEncoding = [Text.Encoding]::UTF8; Start-Sleep 3; [Console]::Write([string][char]27 + ']0;' + [char]0x280B + ' working' + [char]7); Start-Sleep 20\r"
+    } else {
+        b"sleep 3; printf '\\033]0;\\342\\240\\213 working\\007'; sleep 20\r"
+    };
+    pane.send(spin.to_vec());
+    c.notify(pane.id(), State::Done, String::new(), None).unwrap();
+    eventually("done", || c.sessions().iter().any(|i| i.state == State::Done));
+    eventually("the spinner title", || c.sessions().iter().any(|i| i.title.starts_with('\u{280B}')));
+    eventually("running again", || c.sessions().iter().any(|i| i.state == State::Running));
+    pane.kill();
+}
+
 /// A recording begins with the screen as it was: started at a prompt and
 /// stopped with nothing new, it still plays back what was there.
 #[test]
