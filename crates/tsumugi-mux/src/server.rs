@@ -1616,7 +1616,11 @@ fn settle(s: &mut Session, quiet: Duration) -> Option<(State, u64)> {
     let after_input = |t: Option<std::time::Instant>| t.is_some_and(|t| input.is_none_or(|i| t > i));
     let busy = s.term.busy();
     let notice = s.notice;
+    // A program that wakes itself (a finished background task, a monitor's event) works again with
+    // no key from the user, so its earlier "done" is stale: its title turns a braille spinner.
+    let spinning = s.info.title.trim_start().starts_with(|c: char| ('\u{2800}'..='\u{28FF}').contains(&c));
     let state = match notice {
+        Some((State::Done, _)) if spinning => State::Running,
         Some((state, at)) if after_input(Some(at)) => state,
         _ if !busy && after_input(s.term.last_prompt()) => State::Done,
         _ if !busy && s.term.quiet_for(Duration::from_secs(2)) => State::Done,
