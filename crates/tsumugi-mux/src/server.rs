@@ -1377,6 +1377,20 @@ fn here(cwd: PathBuf, home: Option<PathBuf>) -> PathBuf {
 /// `:checkhealth` reads them from here and not from XTVERSION, and said
 /// "Terminal: unknown" without (2.54). Before the settings' variables, which
 /// can still say otherwise.
+/// Variables a Claude Code that started this process left in its environment
+/// and that would make every Claude Code started in a pane believe it is a
+/// child of that one, and so not save its conversation (no `/resume`).
+const INHERITED_CHILD_MARKERS: [&str; 1] = ["CLAUDE_CODE_CHILD_SESSION"];
+
+/// Drop [`INHERITED_CHILD_MARKERS`] from this process's environment, so the
+/// panes it starts do not inherit them. Call it first thing in `main`, while
+/// no other thread is running.
+pub fn scrub_inherited_env() {
+    for name in INHERITED_CHILD_MARKERS {
+        std::env::remove_var(name);
+    }
+}
+
 fn terminal_names() -> [(String, String); 2] {
     [("TERM_PROGRAM".to_owned(), "tsumugi".to_owned()), ("TERM_PROGRAM_VERSION".to_owned(), env!("CARGO_PKG_VERSION").to_owned())]
 }
@@ -2278,6 +2292,16 @@ mod here {
         assert_eq!(super::here("~x".into(), Some(home.clone())), home, "not a home folder: missing, so home");
         assert_eq!(super::here("~".into(), None), std::path::PathBuf::from("~"), "no home: as it came");
         let _ = std::fs::remove_dir_all(&home);
+    }
+}
+
+#[cfg(test)]
+mod scrub {
+    #[test]
+    fn a_claude_code_child_marker_is_dropped() {
+        std::env::set_var("CLAUDE_CODE_CHILD_SESSION", "1");
+        super::scrub_inherited_env();
+        assert!(std::env::var_os("CLAUDE_CODE_CHILD_SESSION").is_none());
     }
 }
 
