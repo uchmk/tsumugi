@@ -4484,6 +4484,15 @@ impl App {
                         egui::ScrollArea::vertical().max_height(220.0).show(ui, |ui| {
                             ui.label(egui::RichText::new(&text).monospace().size(12.5).color(crate::theme::colors().strong()));
                         });
+                        ui.add_space(6.0);
+                        // The text can be copied before deciding (the words say so once it has been).
+                        let copied_id = egui::Id::new(("send-ask-copied", n));
+                        let copied = ui.data(|d| d.get_temp::<bool>(copied_id)).unwrap_or(false);
+                        let words = if copied { tr("dialog.send_copied") } else { tr("dialog.send_copy") };
+                        if ito_prefs::icon_button(ui, ito_prefs::Mark::Copy, words, tr("dialog.send_copy")).clicked() {
+                            ui.ctx().copy_text(text.clone());
+                            ui.data_mut(|d| d.insert_temp(copied_id, true));
+                        }
                         ui.add_space(4.0);
                         ui.label(egui::RichText::new(tr("dialog.send_note")).size(12.0).color(crate::theme::colors().dim));
                         ui.add_space(10.0);
