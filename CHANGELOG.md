@@ -5,6 +5,13 @@
 
 ## [未リリース]
 
+## [0.115.165] - 2026-11-03
+
+### 変更
+
+- 貼り付けた画像を、PNG ではなく WebP（品質 75）で `attachments/paste-<日時>.webp` に保存する。読み込みと符号化は ito の `ito-image`（`clipboard_image`・`encode_webp`）に移した。Windows は PNG / CF_DIBV5 / CF_DIB を直接読み、ほかは arboard 経由。符号化は今までの `paste-image` のスレッドの中で回る。
+- ito の全クレートを c77aba9（v0.228.0）にそろえた。
+
 ## [0.115.164] - 2026-11-03
 
 ### 追加

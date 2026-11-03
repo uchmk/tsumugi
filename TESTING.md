@@ -380,7 +380,7 @@ to `cli.rs` and a line to this table instead of a row.
 | 7.5 | While a session runs, **When done** (or `Ctrl+Shift+Enter`) | `1 queued` on the card and in the box; when the session is done, the prompt goes and a toast says so |
 | 7.6 | Queue to a session showing a permission menu | It waits until the menu is answered and the session is done |
 | 7.7 | `Esc`, then type `echo ok` and Enter | The box closes and the keys go back to the pane; the draft is kept for next time; the Esc does not reach the shell (`echo ok` runs whole), nor Claude Code (it is not stopped) |
-| 7.8 | Take a screenshot (`Win+Shift+S`), `Ctrl+V` in the box | A chip `▣ paste-<date>-<time>.png · N KB`; the PNG is in the settings folder's `attachments`; sent, its path follows the text |
+| 7.8 | Take a screenshot (`Win+Shift+S`), `Ctrl+V` in the box (v0.115.165: a lossy WebP, read by `ito-image`) | A chip `▣ paste-<date>-<time>.webp · N KB`, a fraction of the old PNG's size, after about a second on a 4K screen with the window still answering keys; the WebP opens in a browser and looks like the screenshot, in the settings folder's `attachments`; sent, its path follows the text |
 | 7.9 | `Ctrl+V` with text on the clipboard | The text is pasted; no chip |
 | 7.10 | Drop a file of a few hundred KB | Its chip says its size, `▤ name · 214 KB` |
 | 7.11 | Split the tab, open the box, move the keys with `Alt+Arrows` | The box follows the pane with the keys; a pane narrower than 20 columns has none |
