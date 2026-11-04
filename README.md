@@ -652,6 +652,12 @@ tag = "{name}"
 branch = "claude/*"
 tag = "claude"
 
+# Claude Code's options for sessions in a folder (instead of [sessions] claude_args;
+# the first matching rule with claude_args wins; by folder only, a tag is optional).
+[[tags.rule]]
+folder = "~/dev/weft"
+claude_args = "--model sonnet --effort high --advisor opus"
+
 # A tag's own colour, over the one picked from its name.
 [tags.colors]
 claude = "#5e4a86"
@@ -670,6 +676,7 @@ confirm_send = false       # on: an AI's tsumugi_send waits for Allow in a box
 [sessions]
 start = "claude"           # what the new-session dialog picks: claude, resume, shell
 claude = "claude"          # the command that is Claude Code
+claude_args = ""           # its options for every session, e.g. "--model sonnet --effort high"
 resume = true              # claude --resume in restored sessions
 quiet = 10                 # seconds of silence before "probably waiting"; 0: never
 

@@ -288,7 +288,7 @@ fn layout_cli(args: &[String]) -> std::process::ExitCode {
         }
         let claude = tsumugi_mux::settings::default_path()
             .and_then(|p| tsumugi_mux::settings::load(&p).ok())
-            .map(|s| s.sessions.claude)
+            .map(|s| s.sessions.line_for(&s.tags.rule, &folder, tsumugi_mux::settings::home().as_deref()))
             .unwrap_or_default();
         let client = connect(|| {}).map_err(|e| e.to_string())?;
         cli::open_layout(&client, l, &folder, &claude)
@@ -2245,7 +2245,7 @@ impl App {
             }
             keys::Action::Duplicate => {
                 if let Some(focus) = sessions.iter().find(|i| i.id == w.focus) {
-                    let typed = focus.claude.then(|| newsession::Start::Claude.typed(&self.settings_now.sessions.claude)).flatten();
+                    let typed = focus.claude.then(|| newsession::Start::Claude.typed(&self.claude_line(&focus.cwd, ""))).flatten();
                     if let Ok(pane) = client.spawn_typing(
                         focus.cwd.clone(),
                         None,
@@ -2649,7 +2649,7 @@ impl App {
             Size::new(80, 24),
             (8, 16),
             place,
-            c.start.typed(&self.settings_now.sessions.claude).filter(|_| c.on.takes_typing()).into_iter().collect(),
+            c.start.typed(&self.claude_line(&c.folder, &c.claude_args)).filter(|_| c.on.takes_typing()).into_iter().collect(),
         ) {
             Ok(pane) => {
                 let id = pane.id();
@@ -2676,7 +2676,7 @@ impl App {
                         Size::new(80, 24),
                         (8, 16),
                         Place::Split { beside, dir },
-                        s.typed(&self.settings_now.sessions.claude).filter(|_| c.on.takes_typing()).into_iter().collect(),
+                        s.typed(&self.claude_line(&c.folder, &c.claude_args)).filter(|_| c.on.takes_typing()).into_iter().collect(),
                     ) {
                         Ok(pane) => {
                             made.push(pane.id());
@@ -2737,7 +2737,7 @@ impl App {
     /// A saved layout as a new tab in `folder`: its first pane as the tab,
     /// the rest split from it, then the saved shape set once all are there.
     fn open_layout(&mut self, client: &Client, l: &layouts::Layout, folder: std::path::PathBuf) {
-        let claude = self.settings_now.sessions.claude.clone();
+        let claude = self.claude_line(&folder, "");
         let starts = l.tree.leaves();
         let mut made: Vec<SessionId> = Vec::new();
         for (k, s) in starts.iter().enumerate() {
@@ -4020,7 +4020,7 @@ impl App {
                     SideOp::Restart(id) => client.restart(id),
                     SideOp::Duplicate(cwd, claude) => {
                         let shell = None;
-                        let typed = claude.then(|| newsession::Start::Claude.typed(&self.settings_now.sessions.claude)).flatten();
+                        let typed = claude.then(|| newsession::Start::Claude.typed(&self.claude_line(&cwd, ""))).flatten();
                         if let Ok(pane) =
                             client.spawn_typing(cwd, shell, Size::new(80, 24), (8, 16), Place::NewWorkspace, typed.into_iter().collect())
                         {
@@ -4786,10 +4786,10 @@ impl App {
         let made: Vec<Result<(std::path::PathBuf, String), String>> = rx.try_iter().collect();
         let program = self.settings_now.shell.command().map(|(p, _)| p).unwrap_or_else(ito_pane::default_program);
         let how = ito_pane::Quoting::for_shell(Some(&program));
-        let claude = newsession::Start::Claude.typed(&self.settings_now.sessions.claude).unwrap_or_else(|| "claude".into());
         for m in made {
             match m {
                 Ok((path, task)) => {
+                    let claude = self.claude_line(&path, "");
                     if let Err(e) = client.spawn_typing(
                         path,
                         None,
@@ -4804,6 +4804,16 @@ impl App {
                 Err(e) => self.say(trf("toast.parallel_stopped", &[&e.to_string()]), true),
             }
         }
+    }
+
+    /// The line that starts Claude Code in `cwd`: the command and its options
+    /// (`[sessions] claude_args`, or the first folder rule's), unless `over`
+    /// (what the new-session dialog was given) says otherwise.
+    fn claude_line(&self, cwd: &std::path::Path, over: &str) -> String {
+        let s = &self.settings_now;
+        let args =
+            if over.trim().is_empty() { s.sessions.args_for(&s.tags.rule, cwd, tsumugi_mux::settings::home().as_deref()) } else { over };
+        tsumugi_mux::settings::claude_line(&s.sessions.claude, args)
     }
 
     /// Write a session's output to Downloads on a thread; a toast says where.
@@ -6386,7 +6396,12 @@ fn write_rules(text: &str, rules: &[tsumugi_mux::settings::TagRule]) -> Result<S
             if !r.branch.is_empty() {
                 b.push(("branch", quote(&r.branch)));
             }
-            b.push(("tag", quote(&r.tag)));
+            if !r.tag.is_empty() {
+                b.push(("tag", quote(&r.tag)));
+            }
+            if !r.claude_args.is_empty() {
+                b.push(("claude_args", quote(&r.claude_args)));
+            }
             b
         })
         .collect();
@@ -8083,7 +8098,7 @@ impl App {
                 }
                 lists::Do::StartAgain(k) => {
                     let Some(c) = self.ended.get(k) else { continue };
-                    let claude = &self.settings_now.sessions.claude;
+                    let claude = &self.claude_line(&c.cwd, "");
                     let typed = if c.claude
                         && c.conversation.chars().all(|ch| ch.is_ascii_alphanumeric() || ch == '-' || ch == '_')
                         && !c.conversation.is_empty()

@@ -98,6 +98,8 @@ pub struct Dialog {
     /// The profile last picked, whose theme and font size the session is
     /// drawn in.
     profile: String,
+    /// Claude Code's options for this session only (empty: the settings').
+    claude_args: String,
 }
 
 /// What the dialog was asked to do.
@@ -126,6 +128,9 @@ pub struct Create {
     /// The profile it was started from (picked, or kept as `save_as`), or
     /// empty: its theme and font size are the session's.
     pub profile: String,
+    /// Claude Code's options typed in the dialog for this session; empty:
+    /// the settings' (and the folder rule's) stay.
+    pub claude_args: String,
 }
 
 /// Where the `k`th more pane goes (0 the first of them), given the first
@@ -171,6 +176,7 @@ impl Dialog {
             on: Where::Here,
             places: Vec::new(),
             profile: String::new(),
+            claude_args: String::new(),
         }
     }
 
@@ -238,6 +244,7 @@ impl Dialog {
             more: self.more.clone(),
             on: self.on.clone(),
             profile: self.profile.clone(),
+            claude_args: if self.start == Start::Shell { String::new() } else { self.claude_args.trim().to_owned() },
         }))
     }
 }
@@ -341,7 +348,7 @@ pub fn show(
         }
     }
     let enter_creates =
-        focused.is_none() || on_start.is_some() || ["ns-folder", "ns-branch", "ns-name", "ns-tag"].iter().any(|n| in_field(n));
+        focused.is_none() || on_start.is_some() || ["ns-folder", "ns-branch", "ns-name", "ns-tag", "ns-claude"].iter().any(|n| in_field(n));
     // Alt+Enter before Enter: egui's plain Enter also matches it.
     let (esc, alt_enter, enter, up, down, back, tab) = ctx.input_mut(|i| {
         (
@@ -594,6 +601,18 @@ pub fn show(
                                 }
                                 _ => {}
                             }
+                        });
+                    }
+                    if d.start != Start::Shell {
+                        ui.horizontal(|ui| {
+                            ui.label(RichText::new(tr("newsession.claude_args")).size(ito_theme::zoomed(ui.ctx(), 12.0)).color(pal.fg_dim));
+                            ui.add(
+                                egui::TextEdit::singleline(&mut d.claude_args)
+                                    .id(egui::Id::new("ns-claude"))
+                                    .hint_text(tr("newsession.claude_args_hint"))
+                                    .font(FontId::monospace(ito_theme::zoomed(ui.ctx(), 12.0)))
+                                    .desired_width(f32::INFINITY),
+                            );
                         });
                     }
                     ui.add_space(10.0);

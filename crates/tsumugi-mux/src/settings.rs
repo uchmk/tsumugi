@@ -162,6 +162,7 @@
 //! [sessions]
 //! start = "claude"
 //! claude = "claude"
+//! claude_args = "--model sonnet --effort high"  # after the command; a [[tags.rule]] folder can set its own
 //! resume = true
 //! quiet = 10
 //!
@@ -410,6 +411,9 @@ pub struct Sessions {
     pub start: String,
     /// The command that is Claude Code (`claude`, or a path to it).
     pub claude: String,
+    /// Options put after the command (`--model sonnet --effort high`), for
+    /// every session; a folder rule's `claude_args` replaces them there.
+    pub claude_args: String,
     /// After a restart, run `claude --resume` where Claude Code ran.
     pub resume: bool,
     /// Seconds of silence after which a running program reads as probably
@@ -422,7 +426,7 @@ pub struct Sessions {
 
 impl Default for Sessions {
     fn default() -> Self {
-        Self { start: "claude".into(), claude: "claude".into(), resume: true, quiet: None, compact_after: 12 }
+        Self { start: "claude".into(), claude: "claude".into(), claude_args: String::new(), resume: true, quiet: None, compact_after: 12 }
     }
 }
 
@@ -853,7 +857,14 @@ pub struct TagRule {
     pub folder: String,
     #[serde(default)]
     pub branch: String,
+    /// May be empty when the rule is only there for `claude_args`.
+    #[serde(default)]
     pub tag: String,
+    /// Claude Code's options for a session in `folder` (replaces
+    /// `[sessions] claude_args`; the branch is not looked at, because it is
+    /// not known when the session starts). Empty: the default stays.
+    #[serde(default)]
+    pub claude_args: String,
 }
 
 /// Which states tell in which way, by their words: `waiting`, `error`,
@@ -1053,6 +1064,12 @@ pub fn parse(text: &str) -> Result<Settings, String> {
     if let Some(r) = s.tags.rule.iter().find(|r| r.folder.trim().is_empty() && r.branch.trim().is_empty()) {
         return Err(format!("tags.rule for `{}`: a folder, a branch or both", r.tag));
     }
+    if let Some(r) = s.tags.rule.iter().find(|r| r.tag.trim().is_empty() && r.claude_args.trim().is_empty()) {
+        return Err(format!("tags.rule for `{}`: a tag, claude_args or both", r.folder));
+    }
+    if let Some(r) = s.tags.rule.iter().find(|r| r.folder.trim().is_empty() && !r.claude_args.trim().is_empty()) {
+        return Err(format!("tags.rule for `{}`: claude_args needs a folder", r.tag));
+    }
     if !(8.0..=32.0).contains(&s.font.size) {
         return Err(format!("font.size: {} is not between 8 and 32", s.font.size));
     }
@@ -1165,7 +1182,39 @@ pub fn home() -> Option<PathBuf> {
     std::env::var_os(if cfg!(windows) { "USERPROFILE" } else { "HOME" }).filter(|v| !v.is_empty()).map(PathBuf::from)
 }
 
+/// The line that starts Claude Code: the command, then its options.
+pub fn claude_line(claude: &str, args: &str) -> String {
+    let claude = if claude.trim().is_empty() { "claude" } else { claude.trim() };
+    match args.trim() {
+        "" => claude.to_owned(),
+        a => format!("{claude} {a}"),
+    }
+}
+
+impl Sessions {
+    /// The options for a session in `cwd`: the first rule with a folder that
+    /// holds `cwd` and `claude_args` of its own, else `claude_args`.
+    pub fn args_for<'a>(&'a self, rules: &'a [TagRule], cwd: &Path, home: Option<&Path>) -> &'a str {
+        rules
+            .iter()
+            .find(|r| !r.claude_args.trim().is_empty() && r.holds(cwd, home))
+            .map_or(self.claude_args.as_str(), |r| r.claude_args.trim())
+    }
+
+    /// The whole line for a new session in `cwd`.
+    pub fn line_for(&self, rules: &[TagRule], cwd: &Path, home: Option<&Path>) -> String {
+        claude_line(&self.claude, self.args_for(rules, cwd, home))
+    }
+}
+
 impl TagRule {
+    /// Whether this rule's folder holds `cwd` (a rule without one holds nothing).
+    pub fn holds(&self, cwd: &Path, home: Option<&Path>) -> bool {
+        TagRule { folder: self.folder.clone(), branch: String::new(), tag: "x".into(), claude_args: String::new() }
+            .tag_for(cwd, home)
+            .is_some()
+    }
+
     /// The tag this rule gives a session in `cwd` on `branch`, if any.
     pub fn tag_for_session(&self, cwd: &Path, branch: &str, home: Option<&Path>) -> Option<String> {
         if self.folder.trim().is_empty() && self.branch.trim().is_empty() {
@@ -1348,11 +1397,37 @@ mod tests {
     }
 
     #[test]
+    fn claude_options_follow_the_default_and_the_first_folder_rule() {
+        let s = parse(
+            "[sessions]
+claude_args = \"--model haiku\"
+             [[tags.rule]]
+folder = \"/dev/weft\"
+claude_args = \"--model sonnet --effort high --advisor opus\"
+             [[tags.rule]]
+folder = \"/dev/tagonly\"
+tag = \"t\"
+",
+        )
+        .expect("reads");
+        let rules = &s.tags.rule;
+        assert_eq!(rules[0].tag, "", "a rule may be for options alone");
+        let line = |cwd: &str| s.sessions.line_for(rules, Path::new(cwd), None);
+        assert_eq!(line("/dev/weft"), "claude --model sonnet --effort high --advisor opus");
+        assert_eq!(line("/dev/weft/sub"), "claude --model sonnet --effort high --advisor opus", "under it too");
+        assert_eq!(line("/dev/other"), "claude --model haiku", "the default elsewhere");
+        assert_eq!(line("/dev/tagonly"), "claude --model haiku", "a rule without options changes nothing");
+        assert_eq!(claude_line("  ", ""), "claude");
+        assert_eq!(claude_line("/opt/claude", " -x "), "/opt/claude -x");
+        assert_eq!(Sessions::default().line_for(&[], Path::new("/x"), None), "claude");
+    }
+
+    #[test]
     fn a_rule_by_branch_tags_its_sessions() {
         let r = TagRule { branch: "claude/*".into(), tag: "claude".into(), ..TagRule::default() };
         assert_eq!(r.tag_for_session(Path::new("/x"), "claude/task-1", None).as_deref(), Some("claude"));
         assert_eq!(r.tag_for_session(Path::new("/x"), "main", None), None);
-        let both = TagRule { folder: "/srv".into(), branch: "main".into(), tag: "prod".into() };
+        let both = TagRule { folder: "/srv".into(), branch: "main".into(), tag: "prod".into(), claude_args: String::new() };
         assert_eq!(both.tag_for_session(Path::new("/srv/app"), "main", None).as_deref(), Some("prod"));
         assert_eq!(both.tag_for_session(Path::new("/srv/app"), "dev", None), None);
         assert!(glob("a*b*c", "aXXbYc") && !glob("a*b", "ac") && glob("*", "") && glob("x", "x"));

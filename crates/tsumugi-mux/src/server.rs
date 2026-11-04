@@ -716,7 +716,7 @@ fn handle(shared: &Arc<Shared>, client: ClientId, tx: &Sender<ToClient>, msg: To
                     s.info.state = State::Running;
                     s.info.since_ms = now_ms();
                     s.info.note.clear();
-                    s.pending = lock(&shared.rules).take_up(s.claude.as_deref(), &s.info.agent);
+                    s.pending = lock(&shared.rules).take_up(s.claude.as_deref(), &s.info.agent, &s.info.cwd);
                     // Ending a shell can take a moment: not under the lock.
                     std::thread::spawn(move || drop(old));
                     broadcast(shared, &sessions);
@@ -963,7 +963,7 @@ struct Rules {
     long_run: u64,
     /// `[sessions] resume` and `claude`: what a restored Claude Code pane types.
     resume: bool,
-    claude: String,
+    sessions: crate::settings::Sessions,
     shell: crate::settings::Shell,
     scrollback: usize,
     pane_log: bool,
@@ -997,7 +997,7 @@ impl Rules {
             quiet: s.sessions.quiet.map(Duration::from_secs),
             long_run: s.notify.long_run.saturating_mul(1000),
             resume: s.sessions.resume,
-            claude: if s.sessions.claude.trim().is_empty() { "claude".into() } else { s.sessions.claude.trim().to_owned() },
+            sessions: s.sessions.clone(),
             shell: s.shell,
             scrollback: s.advanced.scrollback,
             pane_log: s.advanced.pane_log,
@@ -1012,16 +1012,17 @@ impl Rules {
 
     /// What a restored or restarted session types: Claude Code's
     /// conversation resumed, else the other AI program's own line.
-    fn take_up(&self, claude: Option<&str>, agent: &str) -> Option<Vec<u8>> {
+    fn take_up(&self, claude: Option<&str>, agent: &str, cwd: &Path) -> Option<Vec<u8>> {
         if let Some(c) = claude {
-            return self.resume_line(c);
+            return self.resume_line(c, cwd);
         }
         self.resume.then(|| self.settings.resume_for(agent)).flatten().map(|l| format!("{l}\r").into_bytes())
     }
 
     /// The line a restored or restarted Claude Code pane types, if any.
-    fn resume_line(&self, conversation: &str) -> Option<Vec<u8>> {
-        (self.resume && conversation_id(conversation)).then(|| format!("{} --resume {conversation}\r", self.claude).into_bytes())
+    fn resume_line(&self, conversation: &str, cwd: &Path) -> Option<Vec<u8>> {
+        (self.resume && conversation_id(conversation))
+            .then(|| format!("{} --resume {conversation}\r", self.sessions.line_for(&self.tags, cwd, self.home.as_deref())).into_bytes())
     }
 
     /// The tags the rules give a session in `cwd` on `branch`.
@@ -1457,7 +1458,7 @@ fn restore(shared: &Arc<Shared>, sessions: &mut BTreeMap<SessionId, Session>, on
             }
             s.info.agent.clone_from(&p.agent);
             s.info.profile.clone_from(&p.profile);
-            s.pending = lock(&shared.rules).take_up(p.claude.as_deref(), &p.agent);
+            s.pending = lock(&shared.rules).take_up(p.claude.as_deref(), &p.agent, &p.cwd);
             ids.insert(p.id, id);
             started += 1;
         }
@@ -2357,8 +2358,8 @@ mod tags {
     #[test]
     fn a_folder_rules_tag_follows_the_shell() {
         let r = rules(vec![
-            TagRule { folder: "/dev/filer".into(), branch: String::new(), tag: "filer".into() },
-            TagRule { folder: "/dev/tsumugi".into(), branch: String::new(), tag: "tsumugi".into() },
+            TagRule { folder: "/dev/filer".into(), branch: String::new(), tag: "filer".into(), claude_args: String::new() },
+            TagRule { folder: "/dev/tsumugi".into(), branch: String::new(), tag: "tsumugi".into(), claude_args: String::new() },
         ]);
         let mut i = info("/dev/filer", &["mine"]);
         assert!(r.apply(&mut i));
@@ -2379,7 +2380,8 @@ mod tags {
     /// shell reports its folder (the same rule gives it before and after).
     #[test]
     fn a_rule_tag_taken_off_stays_off_while_the_rule_is_the_same() {
-        let r = rules(vec![TagRule { folder: "/dev/filer".into(), branch: String::new(), tag: "filer".into() }]);
+        let r =
+            rules(vec![TagRule { folder: "/dev/filer".into(), branch: String::new(), tag: "filer".into(), claude_args: String::new() }]);
         let mut i = info("/dev/filer", &[]);
         let was = r.given(&i.cwd, &i.branch);
         i.cwd = PathBuf::from("/dev/filer/src");

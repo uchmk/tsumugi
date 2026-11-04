@@ -127,6 +127,7 @@ const INDEX: &[(Page, &str)] = &[
     (Page::Notifications, "prefs.head.quiet_tags"),
     (Page::Sessions, "prefs.sessions.default_program"),
     (Page::Sessions, "prefs.sessions.claude_command"),
+    (Page::Sessions, "prefs.sessions.claude_args"),
     (Page::Sessions, "prefs.sessions.resume"),
     (Page::Sessions, "prefs.sessions.quiet"),
     (Page::Sessions, "prefs.sessions.sort"),
@@ -274,6 +275,7 @@ struct RuleDraft {
     folder: String,
     branch: String,
     tag: String,
+    claude_args: String,
 }
 
 struct ProfileDraft {
@@ -1118,6 +1120,16 @@ fn sessions(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut 
             out.push(Change::Set(Some("sessions"), "claude", cfg::quote(if t.is_empty() { "claude" } else { t })));
         }
         sep(ui, l);
+        // The line a new session types, as it will be (a folder rule's
+        // options replace these in its folder).
+        let line = tsumugi_mux::settings::claude_line(&s.claude, &s.claude_args);
+        let note = trf("prefs.sessions.claude_args_note", &[&line]);
+        if let Some(t) = row(ui, l, tr("prefs.sessions.claude_args"), &note, |ui| {
+            field(ui, &mut edit.drafts, "claude_args", &s.claude_args, "--model sonnet --effort high", 260.0)
+        }) {
+            out.push(Change::Set(Some("sessions"), "claude_args", cfg::quote(t.trim())));
+        }
+        sep(ui, l);
         let note = trf("prefs.sessions.resume_note", &[&s.claude]);
         if row(ui, l, tr("prefs.sessions.resume"), &note, |ui| switch(ui, l, s.resume)) {
             out.push(Change::Set(Some("sessions"), "resume", (!s.resume).to_string()));
@@ -1480,7 +1492,7 @@ fn tags(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut Vec<
     let c = l.c;
     let t = &seen.settings.tags;
     let mut known: Vec<String> = seen.tags.to_vec();
-    for name in t.rule.iter().map(|r| &r.tag).chain(t.colors.keys()).filter(|n| !n.contains('{')) {
+    for name in t.rule.iter().map(|r| &r.tag).chain(t.colors.keys()).filter(|n| !n.is_empty() && !n.contains('{')) {
         if !known.contains(name) {
             known.push(name.clone());
         }
@@ -1572,9 +1584,15 @@ fn tags(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut Vec<
                 let change = edit.rule.at != Some(k) && button(ui, l, tr("prefs.common.edit"));
                 ui.add_space(8.0);
                 let zoomed_size = ito_theme::zoomed(ui.ctx(), 11.0);
-                let w = ui.fonts_mut(|f| f.layout_no_wrap(r.tag.clone(), FontId::proportional(zoomed_size), c.fg).size().x) + 12.0;
-                let (rect, _) = ui.allocate_exact_size(egui::vec2(w, 16.0), egui::Sense::hover());
-                crate::chrome::tag_chip(ui.painter(), rect.min, &r.tag, false);
+                if !r.claude_args.is_empty() {
+                    ui.label(RichText::new(&r.claude_args).font(FontId::monospace(ito_theme::zoomed(ui.ctx(), 11.5))).color(c.dim));
+                    ui.add_space(6.0);
+                }
+                if !r.tag.is_empty() {
+                    let w = ui.fonts_mut(|f| f.layout_no_wrap(r.tag.clone(), FontId::proportional(zoomed_size), c.fg).size().x) + 12.0;
+                    let (rect, _) = ui.allocate_exact_size(egui::vec2(w, 16.0), egui::Sense::hover());
+                    crate::chrome::tag_chip(ui.painter(), rect.min, &r.tag, false);
+                }
                 (gone, change)
             });
             if gone {
@@ -1584,7 +1602,13 @@ fn tags(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut Vec<
                 edit.rule = RuleDraft::default();
             }
             if change {
-                edit.rule = RuleDraft { at: Some(k), folder: r.folder.clone(), branch: r.branch.clone(), tag: r.tag.clone() };
+                edit.rule = RuleDraft {
+                    at: Some(k),
+                    folder: r.folder.clone(),
+                    branch: r.branch.clone(),
+                    tag: r.tag.clone(),
+                    claude_args: r.claude_args.clone(),
+                };
             }
             sep(ui, l);
         }
@@ -1609,10 +1633,24 @@ fn tags(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut Vec<
                         .font(FontId::monospace(ito_theme::zoomed(ui.ctx(), 12.5))),
                 );
                 ui.add(egui::TextEdit::singleline(&mut d.tag).hint_text(tr("prefs.tags.tag_hint")).desired_width(80.0));
-                let ok = (!d.folder.trim().is_empty() || !d.branch.trim().is_empty()) && !d.tag.trim().is_empty();
+                ui.add(
+                    egui::TextEdit::singleline(&mut d.claude_args)
+                        .hint_text(tr("prefs.tags.claude_args_hint"))
+                        .desired_width(150.0)
+                        .font(FontId::monospace(ito_theme::zoomed(ui.ctx(), 12.5))),
+                );
+                // Options are by folder alone (the branch is not known when a
+                // session starts), so a rule for options needs a folder.
+                let has_what = !d.tag.trim().is_empty() || !d.claude_args.trim().is_empty();
+                let has_where = !d.folder.trim().is_empty() || (!d.branch.trim().is_empty() && !d.tag.trim().is_empty());
+                let ok = has_where && has_what && (d.claude_args.trim().is_empty() || !d.folder.trim().is_empty());
                 if ui.add_enabled(ok, egui::Button::new(verb)).clicked() {
-                    let rule =
-                        TagRule { folder: d.folder.trim().to_owned(), branch: d.branch.trim().to_owned(), tag: d.tag.trim().to_owned() };
+                    let rule = TagRule {
+                        folder: d.folder.trim().to_owned(),
+                        branch: d.branch.trim().to_owned(),
+                        tag: d.tag.trim().to_owned(),
+                        claude_args: d.claude_args.trim().to_owned(),
+                    };
                     let mut next = t.rule.clone();
                     match d.at {
                         Some(k) => next[k] = rule,
