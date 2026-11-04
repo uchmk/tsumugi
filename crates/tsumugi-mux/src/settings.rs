@@ -154,6 +154,9 @@
 //! warn_large_paste = true
 //! # Letting go of a selection copies it; off, Ctrl+Shift+C (Cmd+C) does.
 //! copy_on_select = true
+//! # Ask (an Allow box) before an AI program's tsumugi_send types into a
+//! # session; off, it types at once.
+//! confirm_send = false
 //!
 //! # What a new session runs, and how waiting is told.
 //! [sessions]
@@ -372,6 +375,10 @@ pub struct General {
     /// Letting go of a selection in a pane puts it on the clipboard; off,
     /// Ctrl+Shift+C (Cmd+C on a Mac) does.
     pub copy_on_select: bool,
+    /// An AI program's `tsumugi_send` waits for the user's Allow in a box
+    /// before typing into a session; off, it types at once, so the programs
+    /// can talk to each other without anyone pressing Allow.
+    pub confirm_send: bool,
 }
 
 /// A paste this long or longer is asked about (`warn_large_paste`), as
@@ -390,6 +397,7 @@ impl Default for General {
             warn_multiline_paste: true,
             warn_large_paste: true,
             copy_on_select: true,
+            confirm_send: false,
         }
     }
 }

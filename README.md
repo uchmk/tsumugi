@@ -665,6 +665,7 @@ cmd_on_mac = true          # macOS: Cmd+T rather than Ctrl+Shift+T
 warn_multiline_paste = true  # ask before lines that each run as they land
 warn_large_paste = true    # ask before a paste of 5 KB or more
 copy_on_select = true      # off: Ctrl+Shift+C (Cmd+C) copies a selection
+confirm_send = false       # on: an AI's tsumugi_send waits for Allow in a box
 
 [sessions]
 start = "claude"           # what the new-session dialog picks: claude, resume, shell
@@ -1030,7 +1031,7 @@ stdout, so Claude Code (or another MCP client) can read your sessions as tools:
 | `tsumugi_attention` | For supervising: counts per state, and the sessions not running, longest in their state first (`for_secs`) |
 | `tsumugi_wait` | Waits (50 s at most, `timeout_secs`) until one session stops running; answers its state, or `timed_out` |
 | `tsumugi_screen` | One session's last lines (`lines`, 40) or whole scrollback (`all`), by number or name (`tsumugi read`) |
-| `tsumugi_send` | Types `text` into a session and presses Enter (`tsumugi send`), only after you press Allow in a box in a tsumugi window |
+| `tsumugi_send` | Types `text` into a session and presses Enter (`tsumugi send`); with `confirm_send` on (Settings → General), only after you press Allow in a box in a tsumugi window |
 | `tsumugi_split` | Opens a shell pane beside or below a session (`down`), starting no program; answers its number |
 | `tsumugi_close` | Closes a pane opened with `tsumugi_split`; any other session is refused |
 
@@ -1050,9 +1051,10 @@ you edited is not overwritten without `--force`. `tsumugi skill status` shows wh
 It talks only to this machine's server, which it never starts: with none
 running, the tools say tsumugi is not running. What the reading tools return
 (the sessions' folders and screens) goes to the model like anything else
-Claude Code reads. `tsumugi_send` is the one that changes anything, and it
-asks you each time: a box in the window names the session and shows the exact
-text, and nothing is typed unless you press Allow. The box starts on Refuse
+Claude Code reads. `tsumugi_send` is the one that changes anything. By default
+it types at once, so agents can talk to each other; turn on `confirm_send`
+(Settings → General) and it asks you each time: a box in the window names the
+session and shows the exact text, and nothing is typed unless you press Allow. The box starts on Refuse
 (Esc refuses too), there is no "don't ask again", and with no window open, or
 a read-only session, it refuses without asking. With no answer in two minutes
 nothing is typed.

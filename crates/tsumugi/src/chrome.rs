@@ -1324,8 +1324,20 @@ pub fn in_order<R>(ui: &mut egui::Ui, add: impl FnOnce(&mut egui::Ui) -> R) -> R
 /// design's): at the right, Cancel then the main one, in the order they read
 /// and Tab goes. Whether each was clicked, and their responses (for a ring).
 pub fn foot(ui: &mut egui::Ui, main: egui::Button<'_>, enabled: bool, cancel: &str) -> (egui::Response, egui::Response) {
+    foot_with(ui, main, enabled, cancel, |_| {})
+}
+
+/// [`foot`] with something of its own to the left of Cancel (a Copy button).
+pub fn foot_with(
+    ui: &mut egui::Ui,
+    main: egui::Button<'_>,
+    enabled: bool,
+    cancel: &str,
+    before: impl FnOnce(&mut egui::Ui),
+) -> (egui::Response, egui::Response) {
     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
         in_order(ui, |ui| {
+            before(ui);
             let c = ui.add(egui::Button::new(cancel).min_size(egui::vec2(80.0, 30.0)));
             let m = ui.add_enabled(enabled, main.min_size(egui::vec2(90.0, 30.0)));
             (m, c)

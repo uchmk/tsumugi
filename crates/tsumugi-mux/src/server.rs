@@ -428,6 +428,11 @@ fn handle(shared: &Arc<Shared>, client: ClientId, tx: &Sender<ToClient>, msg: To
             match sessions.get(&id) {
                 None => refuse("no such session"),
                 Some(s) if s.info.read_only => refuse("the session is read-only: nothing was typed"),
+                Some(_) if !lock(&shared.rules).confirm_send => {
+                    // No box: the text goes in at once (the settings' `confirm_send` is off).
+                    let result = type_line(shared, &mut sessions, id, &text);
+                    let _ = tx.send(ToClient::AskDone(result));
+                }
                 Some(_) => {
                     let judges = lock(&shared.judges).clone();
                     let clients = lock(&shared.clients);
@@ -468,30 +473,8 @@ fn handle(shared: &Arc<Shared>, client: ClientId, tx: &Sender<ToClient>, msg: To
         }
         ToServer::Decide { n, allow } => {
             let Some((asker, id, text)) = lock(&shared.asks).remove(&n) else { return };
-            let result = match sessions.get_mut(&id) {
-                _ if !allow => Err("the user refused: nothing was typed".to_owned()),
-                None => Err("no such session".to_owned()),
-                Some(s) if s.info.read_only => Err("the session is read-only: nothing was typed".to_owned()),
-                Some(s) => {
-                    match crate::client::typed_line(&text) {
-                        Some(bytes) => s.term.send(bytes),
-                        None => s.term.paste(&text),
-                    }
-                    // The Enter follows after a pause: in the same burst, Claude Code's input box
-                    // takes it as part of the paste and the text sits there unsent (#281).
-                    let later = shared.clone();
-                    let _ = std::thread::Builder::new().name("ask-enter".into()).spawn(move || {
-                        std::thread::sleep(crate::client::ENTER_AFTER_TEXT);
-                        if let Some(s) = lock(&later.sessions).get_mut(&id) {
-                            s.term.send(b"\r".to_vec());
-                            let _ = later.dirty.send(id);
-                        }
-                    });
-                    read_notices_of(shared, id);
-                    let _ = shared.dirty.send(id);
-                    Ok(())
-                }
-            };
+            let result =
+                if allow { type_line(shared, &mut sessions, id, &text) } else { Err("the user refused: nothing was typed".to_owned()) };
             let judges = lock(&shared.judges).clone();
             let clients = lock(&shared.clients);
             if let Some(tx) = clients.get(&asker) {
@@ -984,6 +967,8 @@ struct Rules {
     shell: crate::settings::Shell,
     scrollback: usize,
     pane_log: bool,
+    /// `[general] confirm_send`: `tsumugi_send` waits for Allow in a window.
+    confirm_send: bool,
     /// Where a session goes while no one is at a window (`[notify] webhook`
     /// and the `[[notify.webhooks]]`), and `webhook_after` (ms).
     webhooks: Vec<ito_notify::webhook::Place>,
@@ -1016,6 +1001,7 @@ impl Rules {
             shell: s.shell,
             scrollback: s.advanced.scrollback,
             pane_log: s.advanced.pane_log,
+            confirm_send: s.general.confirm_send,
             webhooks: s.notify.places(),
             webhook_after: s.notify.webhook_after.saturating_mul(1000),
             agent_names,
@@ -1795,6 +1781,33 @@ fn record_triggered(shared: &Shared, s: &mut Session) {
         notices.1.pop_front();
     }
     broadcast_notices(shared, &notices.1);
+}
+
+/// `tsumugi_send`'s text typed into a session, then Enter.
+fn type_line(shared: &Arc<Shared>, sessions: &mut BTreeMap<SessionId, Session>, id: SessionId, text: &str) -> Result<(), String> {
+    match sessions.get_mut(&id) {
+        None => Err("no such session".to_owned()),
+        Some(s) if s.info.read_only => Err("the session is read-only: nothing was typed".to_owned()),
+        Some(s) => {
+            match crate::client::typed_line(text) {
+                Some(bytes) => s.term.send(bytes),
+                None => s.term.paste(text),
+            }
+            // The Enter follows after a pause: in the same burst, Claude Code's input box
+            // takes it as part of the paste and the text sits there unsent (#281).
+            let later = shared.clone();
+            let _ = std::thread::Builder::new().name("ask-enter".into()).spawn(move || {
+                std::thread::sleep(crate::client::ENTER_AFTER_TEXT);
+                if let Some(s) = lock(&later.sessions).get_mut(&id) {
+                    s.term.send(b"\r".to_vec());
+                    let _ = later.dirty.send(id);
+                }
+            });
+            read_notices_of(shared, id);
+            let _ = shared.dirty.send(id);
+            Ok(())
+        }
+    }
 }
 
 /// A key typed into a session answers what it asked: its notices are read.

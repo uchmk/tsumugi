@@ -4485,15 +4485,6 @@ impl App {
                             ui.label(egui::RichText::new(&text).monospace().size(12.5).color(crate::theme::colors().strong()));
                         });
                         ui.add_space(6.0);
-                        // The text can be copied before deciding (the words say so once it has been).
-                        let copied_id = egui::Id::new(("send-ask-copied", n));
-                        let copied = ui.data(|d| d.get_temp::<bool>(copied_id)).unwrap_or(false);
-                        let words = if copied { tr("dialog.send_copied") } else { tr("dialog.send_copy") };
-                        if ito_prefs::icon_button(ui, ito_prefs::Mark::Copy, words, tr("dialog.send_copy")).clicked() {
-                            ui.ctx().copy_text(text.clone());
-                            ui.data_mut(|d| d.insert_temp(copied_id, true));
-                        }
-                        ui.add_space(4.0);
                         ui.label(egui::RichText::new(tr("dialog.send_note")).size(12.0).color(crate::theme::colors().dim));
                         ui.add_space(10.0);
                         ui.horizontal(|ui| {
@@ -4501,7 +4492,18 @@ impl App {
                                 egui::RichText::new(tr("dialog.send_allow")).color(crate::theme::colors().on_accent()).strong(),
                             )
                             .fill(chrome::red());
-                            let (allow, refuse) = chrome::foot(ui, allow, true, tr("dialog.send_refuse"));
+                            // The text can be copied before deciding (the words say so once it has been),
+                            // the button at the left of Refuse.
+                            let copy = |ui: &mut egui::Ui| {
+                                let copied_id = egui::Id::new(("send-ask-copied", n));
+                                let copied = ui.data(|d| d.get_temp::<bool>(copied_id)).unwrap_or(false);
+                                let words = if copied { tr("dialog.send_copied") } else { tr("dialog.send_copy") };
+                                if ito_prefs::icon_button(ui, ito_prefs::Mark::Copy, words, tr("dialog.send_copy")).clicked() {
+                                    ui.ctx().copy_text(text.clone());
+                                    ui.data_mut(|d| d.insert_temp(copied_id, true));
+                                }
+                            };
+                            let (allow, refuse) = chrome::foot_with(ui, allow, true, tr("dialog.send_refuse"), copy);
                             first = Some(refuse.id);
                             if allow.clicked() {
                                 answer = Some(true);

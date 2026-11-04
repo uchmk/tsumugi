@@ -93,6 +93,7 @@ const INDEX: &[(Page, &str)] = &[
     (Page::General, "prefs.general.copy_on_select"),
     (Page::General, "prefs.general.warn_multiline"),
     (Page::General, "prefs.general.warn_large"),
+    (Page::General, "prefs.general.confirm_send"),
     (Page::Appearance, "prefs.appearance.nerd"),
     (Page::Appearance, "prefs.appearance.titlebar"),
     (Page::Appearance, "prefs.appearance.material"),
@@ -583,6 +584,11 @@ fn general(ui: &mut egui::Ui, l: Look, seen: &Seen, edit: &mut Edit, out: &mut V
         sep(ui, l);
         if row(ui, l, tr("prefs.general.warn_large"), tr("prefs.general.large_note"), |ui| switch(ui, l, g.warn_large_paste)) {
             out.push(set("warn_large_paste", !g.warn_large_paste));
+        }
+    });
+    section(ui, l, tr("prefs.head.agent_send"), |ui| {
+        if row(ui, l, tr("prefs.general.confirm_send"), tr("prefs.general.confirm_send_note"), |ui| switch(ui, l, g.confirm_send)) {
+            out.push(set("confirm_send", !g.confirm_send));
         }
     });
     out.extend(ito_prefs::clock_card(ui, l, words(), seen.clock).into_iter().map(Change::Common));

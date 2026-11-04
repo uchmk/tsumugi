@@ -418,6 +418,10 @@ fn send_to_a_read_only_session_is_refused() {
 #[test]
 fn an_ask_to_type_waits_for_a_window_and_a_refusal_types_nothing() {
     let s = Server::new("ask");
+    // The box is off by default (`confirm_send`); this is the on case.
+    let config = s.dir.join("config.toml");
+    let text = std::fs::read_to_string(&config).unwrap();
+    std::fs::write(&config, format!("{text}[general]\nconfirm_send = true\n")).unwrap();
     let id = s.new_session(&[]);
     let n: u64 = id.parse().unwrap();
     let at = Address(s.address.clone());
@@ -470,6 +474,22 @@ fn an_ask_to_type_waits_for_a_window_and_a_refusal_types_nothing() {
     window.decide(1000, true);
     std::thread::sleep(Duration::from_millis(500));
     assert!(!s.dir.join("late.txt").exists());
+}
+
+/// With `confirm_send` off (the default) an `ask_send` types at once, with no
+/// window open to ask.
+#[test]
+fn an_ask_to_type_goes_straight_in_when_the_box_is_off() {
+    let s = Server::new("ask-off");
+    let id = s.new_session(&[]);
+    let n: u64 = id.parse().unwrap();
+    let asker = Client::connect(&Address(s.address.clone()), || {}).expect("an asker connects");
+    asker.ask_send(n, "echo direct > direct.txt".into(), Duration::from_secs(20)).expect("typed without a box");
+    let deadline = Instant::now() + PATIENCE;
+    while !s.dir.join("direct.txt").exists() {
+        assert!(Instant::now() < deadline, "no direct.txt; the session shows:\n{}", s.ok(&["read", &id, "--all"]));
+        std::thread::sleep(Duration::from_millis(200));
+    }
 }
 
 /// 2.70's last clause, and starting a work log without the key: `log N
