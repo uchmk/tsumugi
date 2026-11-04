@@ -269,6 +269,18 @@ mod tests {
     }
 
     #[test]
+    fn the_skill_names_exactly_the_tools_of_the_server() {
+        let a: Value = serde_json_from(&server().handle(r#"{"jsonrpc":"2.0","id":1,"method":"tools/list"}"#).unwrap());
+        let mut tools: Vec<&str> = a["result"]["tools"].as_array().unwrap().iter().map(|t| t["name"].as_str().unwrap()).collect();
+        let mut named: Vec<&str> =
+            crate::agent::SKILL.split(|c: char| !(c.is_ascii_alphanumeric() || c == '_')).filter(|w| w.starts_with("tsumugi_")).collect();
+        tools.sort_unstable();
+        named.sort_unstable();
+        named.dedup();
+        assert_eq!(named, tools);
+    }
+
+    #[test]
     fn close_refuses_what_the_agent_did_not_open() {
         let opened = ito_mcp::Opened::new();
         opened.insert("7");

@@ -5,6 +5,16 @@
 
 ## [未リリース]
 
+## [0.115.166] - 2026-11-04
+
+### 修正
+
+- `tsumugi skill setup` が入れるスキル（SKILL.md）が、MCP のツールを `tsumugi_read` と案内していた（正しくは `tsumugi_screen`）。スキルを読んだエージェントが無いツールを探していた。直したスキルは `tsumugi skill setup` をもう一度回すと入る（手で直したファイルは `--force` まで残る）。
+
+### 変更
+
+- スキルの本文をリポジトリの `skills/tsumugi/SKILL.md` に出し、`agent.rs` はそれを `include_str!` で読む。tsumugi の外（`TSUMUGI_SESSION` が無い）では使わないこと、`tsumugi skill setup` で MCP サーバーと一緒に入ることを冒頭に書いた。スキルの挙げるツールと MCP サーバーのツールがずれるとテストが落ちる。
+
 ## [0.115.165] - 2026-11-03
 
 ### 変更

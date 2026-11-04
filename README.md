@@ -1039,7 +1039,7 @@ claude mcp add tsumugi -- tsumugi mcp          # the full path to tsumugi(.exe) 
 tsumugi skill setup                            # or: all of it at once, for Claude Code and Codex
 ```
 
-`tsumugi skill setup` writes a skill (`~/.claude/skills/tsumugi/SKILL.md`), registers this server
+`tsumugi skill setup` writes a skill (`~/.claude/skills/tsumugi/SKILL.md`, the text is [skills/tsumugi/SKILL.md](skills/tsumugi/SKILL.md)), registers this server
 (`mcpServers.tsumugi` in `~/.claude.json`; `[mcp_servers.tsumugi]` in Codex's `config.toml`) and adds a
 SessionStart hook to Claude Code that tells the agent which session it is in (`tsumugi hook session-start`;
 it prints nothing outside tsumugi). `--dry-run` shows the plan, `--no-hook` leaves the hook out, `--agent
