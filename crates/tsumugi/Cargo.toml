@@ -79,7 +79,7 @@ window-vibrancy = "0.8"
 # is read and encoded by ito-image, below.
 arboard = { version = "3.6", default-features = false, features = ["image-data"] }
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
-global-hotkey = "0.8"
+global-hotkey = "0.9"
 ito-image = { git = "https://github.com/uchmk/ito", rev = "c77aba9672dc274be387c55227e49695b9fc55b3" }
 
 [target."cfg(windows)".dependencies]
